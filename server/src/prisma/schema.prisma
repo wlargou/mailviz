@@ -1,0 +1,221 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── PHASE 1 MODELS ────────────────────────────────
+
+model Task {
+  id          String       @id @default(uuid())
+  title       String       @db.VarChar(255)
+  description String?      @db.Text
+  status      TaskStatus   @default(TODO)
+  priority    TaskPriority @default(MEDIUM)
+  dueDate     DateTime?    @map("due_date")
+  position    Int          @default(0)
+  customerId  String?      @map("customer_id")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  labels     TaskLabel[]
+  mailToTask MailToTask?
+  customer   Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([priority])
+  @@index([dueDate])
+  @@index([customerId])
+  @@map("tasks")
+}
+
+model Customer {
+  id        String   @id @default(uuid())
+  name      String   @db.VarChar(255)
+  email     String?  @db.VarChar(255)
+  phone     String?  @db.VarChar(50)
+  company   String?  @db.VarChar(255)
+  website   String?  @db.VarChar(255)
+  domain    String?  @unique @db.VarChar(255)
+  logoUrl   String?  @map("logo_url") @db.VarChar(500)
+  notes     String?  @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  contacts       Contact[]
+  tasks          Task[]
+  calendarEvents CalendarEventCustomer[]
+  emails         Email[]
+
+  @@map("customers")
+}
+
+model Contact {
+  id         String   @id @default(uuid())
+  firstName  String   @db.VarChar(100) @map("first_name")
+  lastName   String   @db.VarChar(100) @map("last_name")
+  email      String?  @db.VarChar(255)
+  phone      String?  @db.VarChar(50)
+  role       String?  @db.VarChar(100)
+  customerId String   @map("customer_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@map("contacts")
+}
+
+model Label {
+  id        String   @id @default(uuid())
+  name      String   @unique @db.VarChar(100)
+  color     String   @db.VarChar(7)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tasks TaskLabel[]
+
+  @@map("labels")
+}
+
+model TaskLabel {
+  taskId  String @map("task_id")
+  labelId String @map("label_id")
+
+  task  Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  label Label @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, labelId])
+  @@map("task_labels")
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+// ─── PHASE 2 MODELS ────────────────────────────────
+
+model GoogleAuth {
+  id           String    @id @default(uuid())
+  accessToken  String    @db.Text @map("access_token")
+  refreshToken String    @db.Text @map("refresh_token")
+  tokenExpiry  DateTime  @map("token_expiry")
+  email        String?   @db.VarChar(255)
+  scope        String?   @db.Text
+  lastSyncAt   DateTime? @map("last_sync_at")
+  lastMailSyncAt DateTime? @map("last_mail_sync_at")
+  lastHistoryId  String?   @map("last_history_id") @db.VarChar(50)
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@map("google_auth")
+}
+
+model CalendarEvent {
+  id            String    @id @default(uuid())
+  googleEventId String?   @unique @map("google_event_id")
+  title         String    @db.VarChar(255)
+  description   String?   @db.Text
+  startTime     DateTime  @map("start_time")
+  endTime       DateTime  @map("end_time")
+  location      String?
+  isAllDay       Boolean   @default(false) @map("is_all_day")
+  calendarId     String?   @map("calendar_id")
+  colorId        String?   @map("color_id")
+  attendees      Json?     @db.JsonB
+  conferenceLink    String?   @map("conference_link")
+  recurringEventId  String?   @map("recurring_event_id")
+  recurrence        String[]  @default([])
+  syncedAt          DateTime? @map("synced_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  customers CalendarEventCustomer[]
+
+  @@index([startTime, endTime])
+  @@map("calendar_events")
+}
+
+model CalendarEventCustomer {
+  calendarEventId String @map("calendar_event_id")
+  customerId      String @map("customer_id")
+
+  calendarEvent CalendarEvent @relation(fields: [calendarEventId], references: [id], onDelete: Cascade)
+  customer      Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@id([calendarEventId, customerId])
+  @@map("calendar_event_customers")
+}
+
+model Email {
+  id             String    @id @default(uuid())
+  gmailMessageId String?   @unique @map("gmail_message_id")
+  threadId       String?   @map("thread_id")
+  subject        String    @db.VarChar(500)
+  from           String    @db.VarChar(255)
+  fromName       String?   @db.VarChar(255) @map("from_name")
+  to             String[]
+  cc             String[]
+  snippet        String?   @db.Text
+  body           String?   @db.Text
+  receivedAt     DateTime  @map("received_at")
+  isRead         Boolean   @default(false) @map("is_read")
+  isStarred      Boolean   @default(false) @map("is_starred")
+  isArchived     Boolean   @default(false) @map("is_archived")
+  isTrashed      Boolean   @default(false) @map("is_trashed")
+  hasAttachment  Boolean   @default(false) @map("has_attachment")
+  sizeEstimate   Int?      @map("size_estimate")
+  labelIds       String[]  @map("label_ids")
+  syncedAt       DateTime? @map("synced_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  customerId String?   @map("customer_id")
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  mailToTask MailToTask?
+  attachments EmailAttachment[]
+
+  @@index([receivedAt])
+  @@index([threadId])
+  @@index([customerId])
+  @@index([isRead])
+  @@map("emails")
+}
+
+model EmailAttachment {
+  id                String @id @default(uuid())
+  emailId           String @map("email_id")
+  gmailAttachmentId String @map("gmail_attachment_id")
+  filename          String @db.VarChar(500)
+  mimeType          String @db.VarChar(255)
+  size              Int
+
+  email Email @relation(fields: [emailId], references: [id], onDelete: Cascade)
+
+  @@index([emailId])
+  @@map("email_attachments")
+}
+
+model MailToTask {
+  id             String   @id @default(uuid())
+  emailId        String   @unique @map("email_id")
+  taskId         String   @unique @map("task_id")
+  conversionNote String?  @db.Text @map("conversion_note")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  email Email @relation(fields: [emailId], references: [id], onDelete: Cascade)
+  task  Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@map("mail_to_tasks")
+}

@@ -1,0 +1,376 @@
+import { useEffect, useState, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import {
+  Grid,
+  Column,
+  Tile,
+  Button,
+  Tabs,
+  TabList,
+  Tab,
+  TabPanels,
+  TabPanel,
+  DataTable,
+  Table,
+  TableHead,
+  TableRow,
+  TableHeader,
+  TableBody,
+  TableCell,
+  TableContainer,
+  Tag,
+  SkeletonText,
+  TextInput,
+  Modal,
+} from '@carbon/react';
+import { ArrowLeft, Edit, Calendar, Email, Enterprise, Attachment } from '@carbon/icons-react';
+import { SidePanel } from '@carbon/ibm-products';
+import { format } from 'date-fns';
+import { EmptyState } from '../shared/EmptyState';
+import { AttachmentTable } from '../shared/AttachmentTable';
+import { ThreadDetail } from '../mail/ThreadDetail';
+import { contactsApi } from '../../api/customers';
+import { emailsApi } from '../../api/emails';
+import { useUIStore } from '../../store/uiStore';
+import type { Contact } from '../../types/customer';
+import type { CalendarEvent } from '../../types/calendar';
+import type { EmailThread, AttachmentWithEmail } from '../../types/email';
+
+const eventHeaders = [
+  { key: 'title', header: 'Title' },
+  { key: 'date', header: 'Date' },
+  { key: 'location', header: 'Location' },
+  { key: 'attendees', header: 'Attendees' },
+];
+
+export function ContactDetailPage() {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const addNotification = useUIStore((s) => s.addNotification);
+
+  const [contact, setContact] = useState<Contact | null>(null);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [emailThreads, setEmailThreads] = useState<EmailThread[]>([]);
+  const [selectedThread, setSelectedThread] = useState<{ id: string; subject: string } | null>(null);
+  const [attachments, setAttachments] = useState<AttachmentWithEmail[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Edit contact state
+  const [editOpen, setEditOpen] = useState(false);
+  const [editFirstName, setEditFirstName] = useState('');
+  const [editLastName, setEditLastName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editRole, setEditRole] = useState('');
+
+  const fetchData = useCallback(async () => {
+    if (!id) return;
+    setLoading(true);
+    try {
+      const [contactRes, eventsRes] = await Promise.all([
+        contactsApi.getById(id),
+        contactsApi.getEvents(id),
+      ]);
+      setContact(contactRes.data.data);
+      setEvents(eventsRes.data.data);
+      // Fetch emails and attachments for this contact
+      if (contactRes.data.data.email) {
+        emailsApi.getThreads({ contactEmail: contactRes.data.data.email, limit: '20' })
+          .then(({ data: res }) => setEmailThreads(res.data))
+          .catch(() => {});
+      }
+      contactsApi.getAttachments(id!)
+        .then(({ data: res }) => setAttachments(res.data))
+        .catch(() => {});
+    } catch {
+      addNotification({ kind: 'error', title: 'Failed to load contact' });
+    } finally {
+      setLoading(false);
+    }
+  }, [id, addNotification]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const openEditContact = () => {
+    if (!contact) return;
+    setEditFirstName(contact.firstName);
+    setEditLastName(contact.lastName);
+    setEditEmail(contact.email || '');
+    setEditPhone(contact.phone || '');
+    setEditRole(contact.role || '');
+    setEditOpen(true);
+  };
+
+  const handleUpdateContact = async () => {
+    if (!contact || !editFirstName.trim() || !editLastName.trim()) return;
+    try {
+      await contactsApi.update(contact.id, {
+        firstName: editFirstName.trim(),
+        lastName: editLastName.trim(),
+        email: editEmail.trim() || undefined,
+        phone: editPhone.trim() || undefined,
+        role: editRole.trim() || undefined,
+      });
+      addNotification({ kind: 'success', title: 'Contact updated' });
+      setEditOpen(false);
+      fetchData();
+    } catch {
+      addNotification({ kind: 'error', title: 'Failed to update contact' });
+    }
+  };
+
+  if (loading) {
+    return (
+      <Grid fullWidth>
+        <Column lg={16} md={8} sm={4}>
+          <SkeletonText heading width="40%" />
+          <SkeletonText paragraph lineCount={3} />
+        </Column>
+      </Grid>
+    );
+  }
+
+  if (!contact) {
+    return <EmptyState title="Contact not found" />;
+  }
+
+  const eventRows = events.map((e) => {
+    const attendees = e.attendees as unknown as Array<{ email: string }> | null;
+    return {
+      id: e.id,
+      title: e.title,
+      date: format(new Date(e.startTime), 'MMM d, yyyy · h:mm a'),
+      location: e.location || '—',
+      attendees: attendees?.length ?? 0,
+    };
+  });
+
+  return (
+    <div>
+      <Button
+        kind="ghost"
+        size="sm"
+        renderIcon={ArrowLeft}
+        onClick={() => navigate('/contacts')}
+        style={{ marginBottom: '1rem' }}
+      >
+        Back to Contacts
+      </Button>
+
+      <Grid fullWidth>
+        <Column lg={16} md={8} sm={4} className="row-spacing">
+          <Tile>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                  {contact.customer?.logoUrl && (
+                    <img
+                      src={contact.customer.logoUrl}
+                      alt=""
+                      className="customer-logo customer-logo--lg"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                    />
+                  )}
+                  <h2 style={{ margin: 0 }}>{contact.firstName} {contact.lastName}</h2>
+                </div>
+                <div style={{ display: 'flex', gap: '1rem', marginTop: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                  {contact.customer && (
+                    <Tag
+                      type="cyan"
+                      size="sm"
+                      renderIcon={Enterprise}
+                      className="clickable-tag"
+                      onClick={() => navigate(`/customers/${contact.customer!.id}`)}
+                    >
+                      {contact.customer.name}
+                    </Tag>
+                  )}
+                  {contact.role && <Tag type="purple" size="sm">{contact.role}</Tag>}
+                </div>
+                <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.75rem', flexWrap: 'wrap', color: 'var(--cds-text-secondary)' }}>
+                  {contact.email && <span>{contact.email}</span>}
+                  {contact.phone && <span>{contact.phone}</span>}
+                </div>
+              </div>
+              <Button kind="ghost" size="sm" renderIcon={Edit} onClick={openEditContact}>
+                Edit
+              </Button>
+            </div>
+          </Tile>
+        </Column>
+
+        <Column lg={16} md={8} sm={4}>
+          <Tabs>
+            <TabList aria-label="Contact details">
+              <Tab renderIcon={Calendar}>Events ({events.length})</Tab>
+              <Tab renderIcon={Email}>Emails ({emailThreads.length})</Tab>
+              <Tab renderIcon={Attachment}>Attachments ({attachments.length})</Tab>
+            </TabList>
+            <TabPanels>
+              <TabPanel>
+                {events.length === 0 ? (
+                  <EmptyState title="No linked events" description="Events where this contact is an attendee will appear here" icon={<Calendar size={48} />} />
+                ) : (
+                  <DataTable rows={eventRows} headers={eventHeaders}>
+                    {({ rows: tableRows, headers: tableHeaders, getTableProps, getHeaderProps, getRowProps }) => (
+                      <TableContainer>
+                        <Table {...getTableProps()}>
+                          <TableHead>
+                            <TableRow>
+                              {tableHeaders.map((header) => (
+                                <TableHeader {...getHeaderProps({ header })} key={header.key}>
+                                  {header.header}
+                                </TableHeader>
+                              ))}
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {tableRows.map((row) => {
+                              const evt = events.find((e) => e.id === row.id)!;
+                              const attendees = evt.attendees as unknown as Array<{ email: string }> | null;
+                              return (
+                                <TableRow {...getRowProps({ row })} key={row.id}>
+                                  <TableCell>
+                                    <span
+                                      style={{ cursor: 'pointer', fontWeight: 500 }}
+                                      onClick={() => navigate('/calendar')}
+                                    >
+                                      {evt.title}
+                                    </span>
+                                  </TableCell>
+                                  <TableCell>{format(new Date(evt.startTime), 'MMM d, yyyy · h:mm a')}</TableCell>
+                                  <TableCell>{evt.location || '—'}</TableCell>
+                                  <TableCell>
+                                    <Tag type="cool-gray" size="sm">{attendees?.length ?? 0}</Tag>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    )}
+                  </DataTable>
+                )}
+              </TabPanel>
+              <TabPanel>
+                {emailThreads.length === 0 ? (
+                  <EmptyState title="No emails" description="Emails involving this contact will appear here after syncing" icon={<Email size={48} />} />
+                ) : (
+                  <DataTable
+                    rows={emailThreads.map((t) => ({
+                      id: t.threadId || t.latestEmail.id,
+                      subject: t.latestEmail.subject,
+                      from: t.latestEmail.fromName || t.latestEmail.from,
+                      date: format(new Date(t.latestEmail.receivedAt), 'MMM d, yyyy'),
+                      messages: t.messageCount,
+                    }))}
+                    headers={[
+                      { key: 'subject', header: 'Subject' },
+                      { key: 'from', header: 'From' },
+                      { key: 'date', header: 'Date' },
+                      { key: 'messages', header: 'Messages' },
+                    ]}
+                  >
+                    {({ rows: tableRows, headers: tableHeaders, getTableProps, getHeaderProps, getRowProps }) => (
+                      <TableContainer>
+                        <Table {...getTableProps()}>
+                          <TableHead>
+                            <TableRow>
+                              {tableHeaders.map((header) => (
+                                <TableHeader {...getHeaderProps({ header })} key={header.key}>
+                                  {header.header}
+                                </TableHeader>
+                              ))}
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {tableRows.map((row) => (
+                              <TableRow {...getRowProps({ row })} key={row.id}>
+                                {row.cells.map((cell) => (
+                                  <TableCell key={cell.id}>
+                                    {cell.info.header === 'subject' ? (
+                                      <span
+                                        style={{ cursor: 'pointer', fontWeight: 500 }}
+                                        onClick={() => setSelectedThread({ id: row.id, subject: cell.value })}
+                                      >
+                                        {cell.value}
+                                      </span>
+                                    ) : cell.info.header === 'messages' ? (
+                                      <Tag type="cool-gray" size="sm">{cell.value}</Tag>
+                                    ) : (
+                                      cell.value
+                                    )}
+                                  </TableCell>
+                                ))}
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    )}
+                  </DataTable>
+                )}
+              </TabPanel>
+              <TabPanel>
+                <AttachmentTable
+                  attachments={attachments}
+                  emptyDescription="Attachments from emails involving this contact will appear here"
+                />
+              </TabPanel>
+            </TabPanels>
+          </Tabs>
+        </Column>
+      </Grid>
+
+      <Modal
+        open={editOpen}
+        onRequestClose={() => setEditOpen(false)}
+        onRequestSubmit={handleUpdateContact}
+        modalHeading="Edit Contact"
+        primaryButtonText="Save"
+        secondaryButtonText="Cancel"
+        primaryButtonDisabled={!editFirstName.trim() || !editLastName.trim()}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div style={{ display: 'flex', gap: '1rem' }}>
+            <div style={{ flex: 1 }}>
+              <TextInput id="edit-contact-fn" labelText="First name" value={editFirstName} onChange={(e) => setEditFirstName(e.target.value)} required />
+            </div>
+            <div style={{ flex: 1 }}>
+              <TextInput id="edit-contact-ln" labelText="Last name" value={editLastName} onChange={(e) => setEditLastName(e.target.value)} required />
+            </div>
+          </div>
+          <TextInput id="edit-contact-email" labelText="Email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} />
+          <div style={{ display: 'flex', gap: '1rem' }}>
+            <div style={{ flex: 1 }}>
+              <TextInput id="edit-contact-phone" labelText="Phone" value={editPhone} onChange={(e) => setEditPhone(e.target.value)} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <TextInput id="edit-contact-role" labelText="Role" value={editRole} onChange={(e) => setEditRole(e.target.value)} />
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      <SidePanel
+        open={!!selectedThread}
+        onRequestClose={() => setSelectedThread(null)}
+        title={selectedThread?.subject || 'Thread'}
+        size="lg"
+        slideIn
+        selectorPageContent=".app-content"
+        className="mail-page__side-panel"
+      >
+        {selectedThread && (
+          <ThreadDetail
+            threadId={selectedThread.id}
+            onEmailAction={() => {}}
+          />
+        )}
+      </SidePanel>
+    </div>
+  );
+}
