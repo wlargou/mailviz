@@ -5,6 +5,8 @@ import { customerService } from './customerService.js';
 import { extractDomain, isPersonalDomain, normalizeDomain, parseName } from '../utils/domainResolver.js';
 import { parsePagination, paginationMeta } from '../utils/pagination.js';
 import { wsEmit } from '../websocket.js';
+import { buildMimeMessage } from '../utils/mimeBuilder.js';
+import { format } from 'date-fns';
 
 const prisma = new PrismaClient();
 
@@ -410,6 +412,12 @@ export const emailService = {
       }
     }
 
+    // Threading headers
+    const messageIdHeader = headers['message-id'] || null;
+    const inReplyToHeader = headers['in-reply-to'] || null;
+    const referencesHeader = headers['references'] || null;
+    const bccList = parseEmailList(headers['bcc']);
+
     const emailData = {
       threadId: msg.threadId || null,
       subject,
@@ -417,6 +425,10 @@ export const emailService = {
       fromName: fromName || null,
       to: toList,
       cc: ccList,
+      bcc: bccList,
+      messageId: messageIdHeader,
+      inReplyTo: inReplyToHeader,
+      references: referencesHeader,
       snippet: msg.snippet || null,
       receivedAt,
       isRead,
@@ -847,5 +859,197 @@ export const emailService = {
 
   async getUnreadCount() {
     return prisma.email.count({ where: { isRead: false } });
+  },
+
+  async sendEmail(data: { to: string[]; cc?: string[]; bcc?: string[]; subject: string; htmlBody: string }) {
+    const oauth2Client = await googleAuthService.getAuthenticatedClient();
+    if (!oauth2Client) throw Object.assign(new Error('Google not connected'), { status: 400 });
+
+    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    const auth = await prisma.googleAuth.findFirst();
+    if (!auth?.email) throw Object.assign(new Error('Google not connected'), { status: 400 });
+
+    const raw = await buildMimeMessage({
+      from: auth.email,
+      to: data.to,
+      cc: data.cc,
+      bcc: data.bcc,
+      subject: data.subject,
+      htmlBody: data.htmlBody,
+    });
+
+    const sendRes = await gmail.users.messages.send({
+      userId: 'me',
+      requestBody: { raw },
+    });
+
+    // Fetch the sent message to store locally
+    if (sendRes.data.id) {
+      try {
+        const msgRes = await gmail.users.messages.get({
+          userId: 'me',
+          id: sendRes.data.id,
+          format: 'full',
+        });
+        await this.upsertMessage(msgRes.data);
+      } catch {
+        // Best effort local storage
+      }
+    }
+
+    wsEmit('email:sent', { threadId: sendRes.data.threadId });
+    return { messageId: sendRes.data.id, threadId: sendRes.data.threadId };
+  },
+
+  async replyToEmail(emailId: string, data: { htmlBody: string; replyAll?: boolean; cc?: string[]; bcc?: string[] }) {
+    const oauth2Client = await googleAuthService.getAuthenticatedClient();
+    if (!oauth2Client) throw Object.assign(new Error('Google not connected'), { status: 400 });
+
+    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    const auth = await prisma.googleAuth.findFirst();
+    if (!auth?.email) throw Object.assign(new Error('Google not connected'), { status: 400 });
+
+    const original = await prisma.email.findUnique({ where: { id: emailId } });
+    if (!original) throw Object.assign(new Error('Email not found'), { status: 404 });
+
+    const userEmail = auth.email.toLowerCase();
+
+    // Determine recipients
+    let to: string[];
+    let cc: string[] = [];
+
+    if (data.replyAll) {
+      to = [original.from];
+      // Combine original to + cc, exclude user's own email
+      const allCc = [...original.to, ...original.cc, ...(data.cc || [])];
+      cc = [...new Set(allCc.map((e) => e.toLowerCase().trim()))].filter((e) => e !== userEmail && e !== original.from.toLowerCase());
+    } else {
+      to = [original.from];
+      cc = data.cc || [];
+    }
+
+    // Deduplicate case-insensitively
+    to = [...new Set(to.map((e) => e.toLowerCase().trim()))].filter((e) => e !== userEmail);
+    if (to.length === 0) to = [original.from]; // Fallback: can't remove all recipients
+
+    // Subject
+    const subject = original.subject.match(/^Re:/i) ? original.subject : `Re: ${original.subject}`;
+
+    // Build quoted HTML
+    const originalDate = format(original.receivedAt, 'EEE, MMM d, yyyy \'at\' h:mm a');
+    const originalSender = original.fromName ? `${original.fromName} &lt;${original.from}&gt;` : original.from;
+
+    // Fetch original body if not stored
+    let originalBody = '';
+    if (original.body) {
+      originalBody = original.body;
+    } else if (original.gmailMessageId) {
+      try {
+        const msgRes = await gmail.users.messages.get({ userId: 'me', id: original.gmailMessageId, format: 'full' });
+        originalBody = extractBody(msgRes.data.payload || {}) || original.snippet || '';
+      } catch {
+        originalBody = original.snippet || '';
+      }
+    }
+
+    const quotedHtml = `<div style="border-left:2px solid #ccc;padding-left:12px;margin-top:16px;color:#666"><p>On ${originalDate}, ${originalSender} wrote:</p>${originalBody}</div>`;
+    const fullHtml = `${data.htmlBody}${quotedHtml}`;
+
+    // Threading headers
+    const inReplyTo = original.messageId || undefined;
+    const references = original.references
+      ? `${original.references} ${original.messageId || ''}`
+      : original.messageId || undefined;
+
+    const raw = await buildMimeMessage({
+      from: auth.email,
+      to,
+      cc: cc.length > 0 ? cc : undefined,
+      bcc: data.bcc,
+      subject,
+      htmlBody: fullHtml,
+      inReplyTo: inReplyTo?.trim(),
+      references: references?.trim(),
+    });
+
+    const sendRes = await gmail.users.messages.send({
+      userId: 'me',
+      requestBody: { raw, threadId: original.threadId || undefined },
+    });
+
+    if (sendRes.data.id) {
+      try {
+        const msgRes = await gmail.users.messages.get({ userId: 'me', id: sendRes.data.id, format: 'full' });
+        await this.upsertMessage(msgRes.data);
+      } catch {
+        // Best effort
+      }
+    }
+
+    wsEmit('email:sent', { threadId: sendRes.data.threadId });
+    return { messageId: sendRes.data.id, threadId: sendRes.data.threadId };
+  },
+
+  async forwardEmail(emailId: string, data: { to: string[]; cc?: string[]; bcc?: string[]; htmlBody: string }) {
+    const oauth2Client = await googleAuthService.getAuthenticatedClient();
+    if (!oauth2Client) throw Object.assign(new Error('Google not connected'), { status: 400 });
+
+    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    const auth = await prisma.googleAuth.findFirst();
+    if (!auth?.email) throw Object.assign(new Error('Google not connected'), { status: 400 });
+
+    const original = await prisma.email.findUnique({ where: { id: emailId } });
+    if (!original) throw Object.assign(new Error('Email not found'), { status: 404 });
+
+    // Subject
+    const subject = original.subject.match(/^Fwd:/i) ? original.subject : `Fwd: ${original.subject}`;
+
+    // Fetch original body
+    let originalBody = '';
+    if (original.body) {
+      originalBody = original.body;
+    } else if (original.gmailMessageId) {
+      try {
+        const msgRes = await gmail.users.messages.get({ userId: 'me', id: original.gmailMessageId, format: 'full' });
+        originalBody = extractBody(msgRes.data.payload || {}) || original.snippet || '';
+      } catch {
+        originalBody = original.snippet || '';
+      }
+    }
+
+    const originalDate = format(original.receivedAt, 'EEE, MMM d, yyyy \'at\' h:mm a');
+    const forwardedHtml = `<div style="margin-top:16px;padding-top:12px;border-top:1px solid #ccc"><p style="color:#666">---------- Forwarded message ----------<br>From: ${original.fromName || ''} &lt;${original.from}&gt;<br>Date: ${originalDate}<br>Subject: ${original.subject}<br>To: ${original.to.join(', ')}</p>${originalBody}</div>`;
+    const fullHtml = `${data.htmlBody}${forwardedHtml}`;
+
+    // Deduplicate recipients
+    const to = [...new Set(data.to.map((e) => e.toLowerCase().trim()))];
+    const cc = data.cc ? [...new Set(data.cc.map((e) => e.toLowerCase().trim()))] : undefined;
+
+    const raw = await buildMimeMessage({
+      from: auth.email,
+      to,
+      cc,
+      bcc: data.bcc,
+      subject,
+      htmlBody: fullHtml,
+      // No inReplyTo/references/threadId for forwards — they're new conversations
+    });
+
+    const sendRes = await gmail.users.messages.send({
+      userId: 'me',
+      requestBody: { raw },
+    });
+
+    if (sendRes.data.id) {
+      try {
+        const msgRes = await gmail.users.messages.get({ userId: 'me', id: sendRes.data.id, format: 'full' });
+        await this.upsertMessage(msgRes.data);
+      } catch {
+        // Best effort
+      }
+    }
+
+    wsEmit('email:sent', { threadId: sendRes.data.threadId });
+    return { messageId: sendRes.data.id, threadId: sendRes.data.threadId };
   },
 };

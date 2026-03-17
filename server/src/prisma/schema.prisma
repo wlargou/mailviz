@@ -168,6 +168,10 @@ model Email {
   fromName       String?   @db.VarChar(255) @map("from_name")
   to             String[]
   cc             String[]
+  bcc            String[]
+  messageId      String?   @map("message_id") @db.VarChar(500)
+  inReplyTo      String?   @map("in_reply_to") @db.VarChar(500)
+  references     String?   @map("references") @db.Text
   snippet        String?   @db.Text
   body           String?   @db.Text
   receivedAt     DateTime  @map("received_at")

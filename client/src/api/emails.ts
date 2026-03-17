@@ -67,4 +67,16 @@ export const emailsApi = {
   getSyncStatus() {
     return api.get<ApiResponse<{ syncing: boolean }>>('/emails/sync-status');
   },
+
+  sendEmail(data: { to: string[]; cc?: string[]; bcc?: string[]; subject: string; htmlBody: string }) {
+    return api.post<ApiResponse<{ messageId: string; threadId: string }>>('/emails/send', data);
+  },
+
+  replyToEmail(id: string, data: { htmlBody: string; replyAll?: boolean; cc?: string[]; bcc?: string[] }) {
+    return api.post<ApiResponse<{ messageId: string; threadId: string }>>(`/emails/${id}/reply`, data);
+  },
+
+  forwardEmail(id: string, data: { to: string[]; cc?: string[]; bcc?: string[]; htmlBody: string }) {
+    return api.post<ApiResponse<{ messageId: string; threadId: string }>>(`/emails/${id}/forward`, data);
+  },
 };

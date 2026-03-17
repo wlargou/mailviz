@@ -5,7 +5,7 @@ import {
   InlineLoading,
   SkeletonText,
 } from '@carbon/react';
-import { Enterprise, StarFilled, Star, Attachment, Download, Archive, TrashCan, Undo, Email as EmailIcon, TaskComplete } from '@carbon/icons-react';
+import { Enterprise, StarFilled, Star, Attachment, Download, Archive, TrashCan, Undo, Email as EmailIcon, TaskComplete, Reply, ReplyAll, SendAlt } from '@carbon/icons-react';
 import { UserAvatar } from '@carbon/ibm-products';
 import { format, formatDistanceToNow } from 'date-fns';
 import DOMPurify from 'dompurify';
@@ -15,8 +15,9 @@ import { useUIStore } from '../../store/uiStore';
 import { EmptyState } from '../shared/EmptyState';
 import { ConvertToTaskModal } from './ConvertToTaskModal';
 import { AttachmentPreviewModal } from './AttachmentPreviewModal';
+import { MailComposeModal } from './MailComposeModal';
 import { getFileTypeInfo, formatFileSize as formatSize } from '../../utils/fileTypes';
-import type { EmailMessage, EmailAttachment } from '../../types/email';
+import type { EmailMessage, EmailAttachment, ComposeMode } from '../../types/email';
 
 interface ThreadDetailProps {
   threadId: string;
@@ -39,6 +40,7 @@ export function ThreadDetail({ threadId, onEmailAction }: ThreadDetailProps) {
   const [loadingBodies, setLoadingBodies] = useState<Set<string>>(new Set());
   const [convertEmail, setConvertEmail] = useState<EmailMessage | null>(null);
   const [previewAttachment, setPreviewAttachment] = useState<{ attachment: EmailAttachment; emailId: string } | null>(null);
+  const [composeState, setComposeState] = useState<{ mode: ComposeMode; email: EmailMessage } | null>(null);
   const navigate = useNavigate();
   const addNotification = useUIStore((s) => s.addNotification);
 
@@ -287,6 +289,30 @@ export function ThreadDetail({ threadId, onEmailAction }: ThreadDetailProps) {
                     renderIcon={TaskComplete}
                     onClick={(e: React.MouseEvent) => { e.stopPropagation(); setConvertEmail(msg); }}
                   />
+                  <Button
+                    kind="ghost"
+                    size="sm"
+                    hasIconOnly
+                    iconDescription="Reply"
+                    renderIcon={Reply}
+                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); setComposeState({ mode: 'reply', email: msg }); }}
+                  />
+                  <Button
+                    kind="ghost"
+                    size="sm"
+                    hasIconOnly
+                    iconDescription="Reply all"
+                    renderIcon={ReplyAll}
+                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); setComposeState({ mode: 'replyAll', email: msg }); }}
+                  />
+                  <Button
+                    kind="ghost"
+                    size="sm"
+                    hasIconOnly
+                    iconDescription="Forward"
+                    renderIcon={SendAlt}
+                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); setComposeState({ mode: 'forward', email: msg }); }}
+                  />
                 </div>
               </div>
 
@@ -378,6 +404,15 @@ export function ThreadDetail({ threadId, onEmailAction }: ThreadDetailProps) {
         })}
       </div>
 
+      {messages.length > 0 && (
+        <div
+          className="inline-reply-trigger"
+          onClick={() => setComposeState({ mode: 'reply', email: messages[messages.length - 1] })}
+        >
+          Click to reply...
+        </div>
+      )}
+
       {convertEmail && (
         <ConvertToTaskModal
           email={convertEmail}
@@ -396,6 +431,18 @@ export function ThreadDetail({ threadId, onEmailAction }: ThreadDetailProps) {
         attachment={previewAttachment?.attachment || null}
         emailId={previewAttachment?.emailId || ''}
         onClose={() => setPreviewAttachment(null)}
+      />
+
+      <MailComposeModal
+        open={!!composeState}
+        onClose={() => setComposeState(null)}
+        onSent={() => {
+          setComposeState(null);
+          fetchThread();
+          onEmailAction?.();
+        }}
+        mode={composeState?.mode || 'reply'}
+        replyToEmail={composeState?.email}
       />
     </div>
   );

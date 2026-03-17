@@ -7,7 +7,7 @@ import {
   ContentSwitcher,
   Switch,
 } from '@carbon/react';
-import { Renew, StarFilled, Attachment, Email as EmailIcon } from '@carbon/icons-react';
+import { Renew, StarFilled, Star, Attachment, Email as EmailIcon, Archive, TrashCan, Undo, Add } from '@carbon/icons-react';
 import { SidePanel } from '@carbon/ibm-products';
 import { formatDistanceToNow } from 'date-fns';
 import { useSearchParams } from 'react-router-dom';
@@ -18,6 +18,7 @@ import { useEmailWebSocket } from '../../hooks/useEmailWebSocket';
 import { EmptyState } from '../shared/EmptyState';
 import { ThreadDetail } from './ThreadDetail';
 import { MailSearchBar } from './MailSearchBar';
+import { MailComposeModal } from './MailComposeModal';
 import type { MailFilters } from './MailSearchBar';
 import type { EmailThread } from '../../types/email';
 import type { Customer } from '../../types/customer';
@@ -55,6 +56,7 @@ export function MailPage() {
   });
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedThread, setSelectedThread] = useState<string | null>(null);
+  const [composeOpen, setComposeOpen] = useState(false);
   const addNotification = useUIStore((s) => s.addNotification);
 
   // Real-time WebSocket: auto-refresh thread list when sync finds new emails or state changes
@@ -66,6 +68,9 @@ export function MailPage() {
       fetchThreadsRef.current?.(true);
     },
     'email:deleted': () => {
+      fetchThreadsRef.current?.(true);
+    },
+    'email:sent': () => {
       fetchThreadsRef.current?.(true);
     },
   }), []);
@@ -142,6 +147,104 @@ export function MailPage() {
     }
   };
 
+  const handleThreadAction = useCallback(async (
+    action: 'star' | 'archive' | 'trash' | 'readToggle',
+    thread: EmailThread,
+    ev: React.MouseEvent,
+  ) => {
+    ev.stopPropagation();
+    const emailId = thread.latestEmail.id;
+    const e = thread.latestEmail;
+    const isUnread = thread.unreadCount > 0;
+
+    try {
+      switch (action) {
+        case 'star':
+          setThreads((prev) => prev.map((t) =>
+            t.threadId === thread.threadId
+              ? { ...t, latestEmail: { ...t.latestEmail, isStarred: !t.latestEmail.isStarred } }
+              : t
+          ));
+          await emailsApi.toggleStar(emailId);
+          break;
+
+        case 'archive':
+          if (e.isArchived) {
+            setThreads((prev) => prev.map((t) =>
+              t.threadId === thread.threadId
+                ? { ...t, latestEmail: { ...t.latestEmail, isArchived: false } }
+                : t
+            ));
+            await emailsApi.unarchive(emailId);
+            addNotification({ kind: 'success', title: 'Moved to Inbox' });
+          } else {
+            if (filters.folder === 'inbox' || filters.folder === null) {
+              setThreads((prev) => prev.filter((t) => t.threadId !== thread.threadId));
+            } else {
+              setThreads((prev) => prev.map((t) =>
+                t.threadId === thread.threadId
+                  ? { ...t, latestEmail: { ...t.latestEmail, isArchived: true } }
+                  : t
+              ));
+            }
+            await emailsApi.archive(emailId);
+            addNotification({ kind: 'success', title: 'Archived' });
+          }
+          break;
+
+        case 'trash':
+          if (e.isTrashed) {
+            if (filters.folder === 'trash') {
+              setThreads((prev) => prev.filter((t) => t.threadId !== thread.threadId));
+            } else {
+              setThreads((prev) => prev.map((t) =>
+                t.threadId === thread.threadId
+                  ? { ...t, latestEmail: { ...t.latestEmail, isTrashed: false } }
+                  : t
+              ));
+            }
+            await emailsApi.untrash(emailId);
+            addNotification({ kind: 'success', title: 'Restored from trash' });
+          } else {
+            if (filters.folder !== 'trash') {
+              setThreads((prev) => prev.filter((t) => t.threadId !== thread.threadId));
+            } else {
+              setThreads((prev) => prev.map((t) =>
+                t.threadId === thread.threadId
+                  ? { ...t, latestEmail: { ...t.latestEmail, isTrashed: true } }
+                  : t
+              ));
+            }
+            await emailsApi.trash(emailId);
+            addNotification({ kind: 'success', title: 'Moved to trash' });
+          }
+          break;
+
+        case 'readToggle':
+          if (isUnread) {
+            setThreads((prev) => prev.map((t) =>
+              t.threadId === thread.threadId
+                ? { ...t, unreadCount: 0, latestEmail: { ...t.latestEmail, isRead: true } }
+                : t
+            ));
+            await emailsApi.markAsRead(emailId);
+          } else {
+            setThreads((prev) => prev.map((t) =>
+              t.threadId === thread.threadId
+                ? { ...t, unreadCount: 1, latestEmail: { ...t.latestEmail, isRead: false } }
+                : t
+            ));
+            await emailsApi.markAsUnread(emailId);
+          }
+          break;
+      }
+      fetchThreads(true);
+    } catch {
+      fetchThreads(true);
+      addNotification({ kind: 'error', title: 'Action failed' });
+    }
+  }, [filters.folder, addNotification, fetchThreads]);
+
   const hasActiveFilters = filters.search || filters.from || filters.to || filters.subject ||
     filters.dateAfter || filters.dateBefore || filters.customerIds.length > 0 || filters.isRead !== null ||
     filters.hasAttachment;
@@ -158,15 +261,25 @@ export function MailPage() {
             <h1>Mail</h1>
             <p className="page-header__subtitle">Email threads synced from Gmail</p>
           </div>
-          <Button
-            kind="ghost"
-            size="sm"
-            renderIcon={Renew}
-            onClick={handleSync}
-            disabled={syncing}
-          >
-            {syncing ? 'Syncing...' : 'Sync'}
-          </Button>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <Button
+              kind="primary"
+              size="sm"
+              renderIcon={Add}
+              onClick={() => setComposeOpen(true)}
+            >
+              Compose
+            </Button>
+            <Button
+              kind="ghost"
+              size="sm"
+              renderIcon={Renew}
+              onClick={handleSync}
+              disabled={syncing}
+            >
+              {syncing ? 'Syncing...' : 'Sync'}
+            </Button>
+          </div>
         </div>
 
         <div className="mail-folder-switcher">
@@ -228,10 +341,18 @@ export function MailPage() {
                 const isSelected = thread.threadId === selectedThread;
 
                 return (
-                  <button
+                  <div
                     key={thread.threadId}
+                    role="button"
+                    tabIndex={0}
                     className={`thread-item${isUnread ? ' thread-item--unread' : ' thread-item--read'}${isSelected ? ' thread-item--selected' : ''}`}
                     onClick={() => setSelectedThread(thread.threadId)}
+                    onKeyDown={(ev) => {
+                      if (ev.key === 'Enter' || ev.key === ' ') {
+                        ev.preventDefault();
+                        setSelectedThread(thread.threadId);
+                      }
+                    }}
                   >
                     <div className="thread-item__top">
                       <span className="thread-item__sender">
@@ -245,6 +366,41 @@ export function MailPage() {
                         )}
                         <span>{formatDistanceToNow(new Date(e.receivedAt), { addSuffix: true })}</span>
                       </span>
+                      <div className="thread-item__actions">
+                        <Button
+                          kind="ghost"
+                          size="sm"
+                          hasIconOnly
+                          iconDescription={e.isStarred ? 'Unstar' : 'Star'}
+                          renderIcon={e.isStarred ? StarFilled : Star}
+                          className={e.isStarred ? 'thread-action--starred' : ''}
+                          onClick={(ev: React.MouseEvent) => handleThreadAction('star', thread, ev)}
+                        />
+                        <Button
+                          kind="ghost"
+                          size="sm"
+                          hasIconOnly
+                          iconDescription={e.isArchived ? 'Unarchive' : 'Archive'}
+                          renderIcon={e.isArchived ? Undo : Archive}
+                          onClick={(ev: React.MouseEvent) => handleThreadAction('archive', thread, ev)}
+                        />
+                        <Button
+                          kind="ghost"
+                          size="sm"
+                          hasIconOnly
+                          iconDescription={e.isTrashed ? 'Restore' : 'Trash'}
+                          renderIcon={e.isTrashed ? Undo : TrashCan}
+                          onClick={(ev: React.MouseEvent) => handleThreadAction('trash', thread, ev)}
+                        />
+                        <Button
+                          kind="ghost"
+                          size="sm"
+                          hasIconOnly
+                          iconDescription={isUnread ? 'Mark as read' : 'Mark as unread'}
+                          renderIcon={EmailIcon}
+                          onClick={(ev: React.MouseEvent) => handleThreadAction('readToggle', thread, ev)}
+                        />
+                      </div>
                     </div>
                     <div className="thread-item__subject">{e.subject}</div>
                     <div className="thread-item__snippet">{e.snippet}</div>
@@ -261,7 +417,7 @@ export function MailPage() {
                         <span>{e.customer.name}</span>
                       </div>
                     )}
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -294,6 +450,16 @@ export function MailPage() {
           />
         )}
       </SidePanel>
+
+      <MailComposeModal
+        open={composeOpen}
+        onClose={() => setComposeOpen(false)}
+        onSent={() => {
+          setComposeOpen(false);
+          fetchThreads(true);
+        }}
+        mode="new"
+      />
     </div>
   );
 }

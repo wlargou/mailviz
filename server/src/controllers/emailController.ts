@@ -139,4 +139,31 @@ export const emailController = {
   async getSyncStatus(_req: Request, res: Response) {
     res.json({ data: { syncing: isSyncInProgress() } });
   },
+
+  async sendEmail(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await emailService.sendEmail(req.body);
+      res.status(201).json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async replyToEmail(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await emailService.replyToEmail(req.params.id, req.body);
+      res.status(201).json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async forwardEmail(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await emailService.forwardEmail(req.params.id, req.body);
+      res.status(201).json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  },
 };

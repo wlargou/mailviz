@@ -58,6 +58,8 @@ export interface AttachmentWithEmail {
   };
 }
 
+export type ComposeMode = 'new' | 'reply' | 'replyAll' | 'forward';
+
 export interface ConvertToTaskInput {
   title?: string;
   priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
