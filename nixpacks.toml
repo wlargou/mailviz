@@ -1,6 +1,5 @@
 [phases.setup]
-nixPkgs = ["openssl"]
-nixLibs = ["openssl"]
+aptPkgs = ["...", "openssl", "libssl-dev"]
 
 [phases.install]
 cmds = ["npm ci"]
