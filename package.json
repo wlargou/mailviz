@@ -12,6 +12,10 @@
     "db:migrate": "npm run prisma:migrate --workspace=server",
     "db:seed": "npm run prisma:seed --workspace=server"
   },
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
+  },
   "devDependencies": {
     "concurrently": "^9.1.2",
     "typescript": "^5.7.3"

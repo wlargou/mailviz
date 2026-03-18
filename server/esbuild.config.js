@@ -22,7 +22,7 @@ await build({
   entryPoints,
   outdir: 'dist',
   platform: 'node',
-  target: 'node20',
+  target: 'node22',
   format: 'esm',
   sourcemap: true,
   bundle: false,
