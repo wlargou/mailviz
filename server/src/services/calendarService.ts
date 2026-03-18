@@ -171,9 +171,9 @@ export const calendarService = {
       singleEvents: true,
       orderBy: 'startTime',
       conferenceDataVersion: 1,
-    });
+    } as any);
 
-    const googleEvents = response.data.items || [];
+    const googleEvents = (response as any).data.items || [];
     let synced = 0;
     let customersCreated = 0;
     let contactsCreated = 0;
@@ -205,7 +205,7 @@ export const calendarService = {
         : new Date(gEvent.end!.dateTime!);
 
       // Extract attendees
-      const attendees = gEvent.attendees?.map((a) => ({
+      const attendees = gEvent.attendees?.map((a: any) => ({
         email: a.email || '',
         displayName: a.displayName || null,
         responseStatus: a.responseStatus || 'needsAction',
@@ -217,7 +217,7 @@ export const calendarService = {
       let conferenceLink: string | null = null;
       if (gEvent.conferenceData?.entryPoints) {
         const videoEntry = gEvent.conferenceData.entryPoints.find(
-          (ep) => ep.entryPointType === 'video'
+          (ep: any) => ep.entryPointType === 'video'
         );
         if (videoEntry?.uri) {
           conferenceLink = videoEntry.uri;

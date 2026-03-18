@@ -1,0 +1,14 @@
+[phases.setup]
+nixPkgs = ["nodejs_20", "npm-9_x", "openssl"]
+
+[phases.install]
+cmds = ["npm ci"]
+
+[phases.build]
+cmds = [
+  "cd client && npm run build",
+  "cd server && npx prisma generate && npm run build"
+]
+
+[start]
+cmd = "cd server && npx prisma migrate deploy && node dist/index.js"

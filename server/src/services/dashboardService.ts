@@ -241,12 +241,8 @@ export const dashboardService = {
       for (let i = 13; i >= 0; i--) {
         const d = subDays(startOfToday, i);
         const dateStr = formatDate(d);
-        emailVolume.push(volumeMap.get(dateStr) || { date: dateStr, sent: 0, received: 0 });
-        if (volumeMap.has(dateStr)) {
-          emailVolume[emailVolume.length - 1].date = dateStr;
-        } else {
-          emailVolume[emailVolume.length - 1].date = dateStr;
-        }
+        const existing = volumeMap.get(dateStr);
+        emailVolume.push({ date: dateStr, sent: existing?.sent ?? 0, received: existing?.received ?? 0 });
       }
     } catch (err) {
       // Fallback: 14 zero entries if raw SQL fails

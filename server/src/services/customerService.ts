@@ -66,7 +66,7 @@ export const customerService = {
   async create(data: CreateCustomerInput) {
     const cleaned = cleanEmptyStrings(data);
     return prisma.customer.create({
-      data: cleaned,
+      data: cleaned as any,
       include: { _count: { select: { contacts: true, tasks: true } } },
     });
   },
