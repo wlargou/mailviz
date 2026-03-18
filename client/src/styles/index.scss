@@ -1589,6 +1589,7 @@ body {
 
   .calendar-week__event {
     position: absolute;
+    border: none;
     border-radius: 4px;
     padding: 4px 6px;
     cursor: pointer;
@@ -1753,6 +1754,7 @@ body {
 
   .calendar-day__event {
     position: absolute;
+    border: none;
     border-radius: 4px;
     padding: 4px 8px;
     cursor: pointer;
