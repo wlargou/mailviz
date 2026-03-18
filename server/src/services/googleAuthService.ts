@@ -42,7 +42,7 @@ export const googleAuthService = {
     return oauth2Client.generateAuthUrl({
       access_type: 'offline',
       scope: SCOPES,
-      prompt: 'consent',
+      prompt: intent === 'connect' ? 'consent' : 'select_account',
       state: intent === 'connect' && userId ? userId : 'login',
     });
   },

@@ -3157,48 +3157,79 @@ body {
 
 // ─── LOGIN PAGE ─────────────────────────────────
 .login-page {
+  position: relative;
   display: flex;
-  align-items: center;
-  justify-content: center;
   min-height: 100vh;
-  background: var(--cds-background);
-  padding: 1rem;
+  background: #161616;
+  overflow: hidden;
 }
 
-.login-card {
+.login-water-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
-  max-width: 400px;
-  background: var(--cds-layer-01);
-  border: 1px solid var(--cds-border-subtle);
-  padding: 2.5rem 2rem;
+  height: 100%;
+  z-index: 0;
+}
+
+.login-panel {
+  position: relative;
+  z-index: 1;
+  width: 420px;
+  min-height: 100vh;
+  background: rgba(22, 22, 22, 0.85);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  justify-content: center;
 }
 
-.login-card__header {
-  text-align: center;
+.login-panel__content {
+  padding: 3rem 2.5rem;
 }
 
-.login-card__title {
-  font-size: 1.75rem;
-  font-weight: 600;
-  color: var(--cds-text-primary);
-  margin: 0 0 0.25rem;
+.login-panel__title {
+  font-size: 2.25rem;
+  font-weight: 300;
+  color: #f4f4f4;
+  margin: 0 0 0.5rem;
+  letter-spacing: 0.01em;
 }
 
-.login-card__subtitle {
+.login-panel__subtitle {
   font-size: 0.875rem;
-  color: var(--cds-text-secondary);
+  color: #c6c6c6;
   margin: 0;
+  line-height: 1.4;
 }
 
-.login-card__error {
-  margin: 0;
+.login-panel__divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 2rem 0;
 }
 
-.login-card__button {
+.login-panel__label {
+  font-size: 0.875rem;
+  color: #c6c6c6;
+  margin: 0 0 1rem;
+}
+
+.login-panel__error {
+  margin: 0 0 1rem;
+}
+
+.login-panel__button {
   width: 100%;
   max-width: 100%;
-  justify-content: center;
+}
+
+@media (max-width: 640px) {
+  .login-panel {
+    width: 100%;
+    border-right: none;
+  }
 }
