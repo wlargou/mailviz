@@ -1,11 +1,58 @@
 import { Request, Response, NextFunction } from 'express';
 import { googleAuthService } from '../services/googleAuthService.js';
 import { env } from '../config/env.js';
+import { signAccessToken, signRefreshToken } from '../utils/jwt.js';
+import { setAuthCookies, clearAuthCookies } from '../utils/cookies.js';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 export const authController = {
-  async getGoogleUrl(_req: Request, res: Response, next: NextFunction) {
+  // ── Login flow ──
+
+  async getLoginGoogleUrl(_req: Request, res: Response, next: NextFunction) {
     try {
-      const url = googleAuthService.getAuthUrl();
+      const url = googleAuthService.getAuthUrl('login');
+      res.json({ data: { url } });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  // ── Session ──
+
+  async getMe(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.id;
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, email: true, name: true, avatarUrl: true },
+      });
+      if (!user) {
+        res.status(401).json({ error: { code: 'UNAUTHORIZED' } });
+        return;
+      }
+      res.json({ data: user });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async logout(_req: Request, res: Response, next: NextFunction) {
+    try {
+      clearAuthCookies(res);
+      res.json({ data: { success: true } });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  // ── Google integration (connect Gmail/Calendar) ──
+
+  async getGoogleUrl(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user?.id;
+      const url = googleAuthService.getAuthUrl('connect', userId);
       res.json({ data: { url } });
     } catch (err) {
       next(err);
@@ -14,31 +61,84 @@ export const authController = {
 
   async googleCallback(req: Request, res: Response, next: NextFunction) {
     try {
-      const { code } = req.query;
+      const { code, state } = req.query;
       if (!code || typeof code !== 'string') {
-        res.status(400).json({ error: 'Missing authorization code' });
+        res.redirect(`${env.CLIENT_URL}/login?error=missing_code`);
         return;
       }
 
-      await googleAuthService.handleCallback(code);
-      res.redirect(`${env.CLIENT_URL}/settings?connected=true`);
+      const stateStr = typeof state === 'string' ? state : '';
+
+      // Exchange code for tokens and user info
+      const result = await googleAuthService.exchangeCodeForTokens(code);
+
+      if (stateStr === 'login') {
+        // ── Login flow ──
+        if (!result.email) {
+          res.redirect(`${env.CLIENT_URL}/login?error=no_email`);
+          return;
+        }
+
+        // Check if email is allowed (skip check if ALLOWED_EMAILS is empty — open access)
+        if (env.ALLOWED_EMAILS.length > 0) {
+          const isAllowed = env.ALLOWED_EMAILS.some(
+            (allowed) => allowed.toLowerCase() === result.email!.toLowerCase()
+          );
+          if (!isAllowed) {
+            res.redirect(`${env.CLIENT_URL}/login?error=unauthorized`);
+            return;
+          }
+        }
+
+        // Upsert user
+        const user = await prisma.user.upsert({
+          where: { email: result.email },
+          create: {
+            email: result.email,
+            name: result.name || null,
+            avatarUrl: result.avatarUrl || null,
+          },
+          update: {
+            name: result.name || undefined,
+            avatarUrl: result.avatarUrl || undefined,
+          },
+        });
+
+        // Store Google auth tokens linked to user
+        await googleAuthService.upsertGoogleAuth(user.id, result.tokens);
+
+        // Issue JWT cookies
+        const accessToken = signAccessToken(user.id);
+        const refreshToken = signRefreshToken(user.id);
+        setAuthCookies(res, accessToken, refreshToken);
+
+        res.redirect(env.CLIENT_URL);
+      } else if (stateStr) {
+        // ── Connect flow — state is userId ──
+        await googleAuthService.upsertGoogleAuth(stateStr, result.tokens);
+        res.redirect(`${env.CLIENT_URL}/settings?connected=true`);
+      } else {
+        res.redirect(`${env.CLIENT_URL}/login?error=invalid_state`);
+      }
     } catch (err) {
       next(err);
     }
   },
 
-  async getGoogleStatus(_req: Request, res: Response, next: NextFunction) {
+  async getGoogleStatus(req: Request, res: Response, next: NextFunction) {
     try {
-      const status = await googleAuthService.getStatus();
+      const userId = (req as any).user?.id;
+      const status = await googleAuthService.getStatus(userId);
       res.json({ data: status });
     } catch (err) {
       next(err);
     }
   },
 
-  async disconnectGoogle(_req: Request, res: Response, next: NextFunction) {
+  async disconnectGoogle(req: Request, res: Response, next: NextFunction) {
     try {
-      await googleAuthService.disconnect();
+      const userId = (req as any).user?.id;
+      await googleAuthService.disconnect(userId);
       res.json({ data: { success: true } });
     } catch (err) {
       next(err);

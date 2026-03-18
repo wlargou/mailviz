@@ -105,6 +105,21 @@ enum TaskPriority {
   URGENT
 }
 
+// ─── AUTH MODELS ──────────────────────────────────
+
+model User {
+  id        String      @id @default(uuid())
+  email     String      @unique @db.VarChar(255)
+  name      String?     @db.VarChar(255)
+  avatarUrl String?     @map("avatar_url") @db.VarChar(500)
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+
+  googleAuth GoogleAuth?
+
+  @@map("users")
+}
+
 // ─── PHASE 2 MODELS ────────────────────────────────
 
 model GoogleAuth {
@@ -117,8 +132,11 @@ model GoogleAuth {
   lastSyncAt   DateTime? @map("last_sync_at")
   lastMailSyncAt DateTime? @map("last_mail_sync_at")
   lastHistoryId  String?   @map("last_history_id") @db.VarChar(50)
+  userId       String    @unique @map("user_id")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("google_auth")
 }

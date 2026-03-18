@@ -5,11 +5,13 @@ import {
   HeaderGlobalBar,
   HeaderGlobalAction,
 } from '@carbon/react';
-import { Light, Asleep } from '@carbon/icons-react';
+import { Light, Asleep, Logout } from '@carbon/icons-react';
 import { useUIStore } from '../../store/uiStore';
+import { useAuthStore } from '../../store/authStore';
 
 export function AppHeader() {
   const { theme, toggleTheme, sideNavOpen, setSideNavOpen } = useUIStore();
+  const logout = useAuthStore((s) => s.logout);
 
   return (
     <Header aria-label="Mailviz Productivity Hub">
@@ -28,6 +30,13 @@ export function AppHeader() {
           tooltipAlignment="end"
         >
           {theme === 'g10' ? <Asleep size={20} /> : <Light size={20} />}
+        </HeaderGlobalAction>
+        <HeaderGlobalAction
+          aria-label="Sign out"
+          onClick={logout}
+          tooltipAlignment="end"
+        >
+          <Logout size={20} />
         </HeaderGlobalAction>
       </HeaderGlobalBar>
     </Header>

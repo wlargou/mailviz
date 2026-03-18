@@ -1,11 +1,22 @@
 import { Router } from 'express';
 import { authController } from '../controllers/authController.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
 
-router.get('/google/url', authController.getGoogleUrl);
+// ── Public routes (no auth required) ──
+router.get('/login/google/url', authController.getLoginGoogleUrl);
+
+// Single Google callback — branches on state param (login vs connect)
 router.get('/google/callback', authController.googleCallback);
-router.get('/google/status', authController.getGoogleStatus);
-router.post('/google/disconnect', authController.disconnectGoogle);
+
+// ── Protected routes ──
+router.get('/me', requireAuth, authController.getMe);
+router.post('/logout', requireAuth, authController.logout);
+
+// Google integration (connect Gmail/Calendar to existing user)
+router.get('/google/url', requireAuth, authController.getGoogleUrl);
+router.get('/google/status', requireAuth, authController.getGoogleStatus);
+router.post('/google/disconnect', requireAuth, authController.disconnectGoogle);
 
 export { router as authRoutes };

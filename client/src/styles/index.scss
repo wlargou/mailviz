@@ -3154,3 +3154,51 @@ body {
 
   img { max-width: 100%; height: auto; }
 }
+
+// ─── LOGIN PAGE ─────────────────────────────────
+.login-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: var(--cds-background);
+  padding: 1rem;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--cds-layer-01);
+  border: 1px solid var(--cds-border-subtle);
+  padding: 2.5rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.login-card__header {
+  text-align: center;
+}
+
+.login-card__title {
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: var(--cds-text-primary);
+  margin: 0 0 0.25rem;
+}
+
+.login-card__subtitle {
+  font-size: 0.875rem;
+  color: var(--cds-text-secondary);
+  margin: 0;
+}
+
+.login-card__error {
+  margin: 0;
+}
+
+.login-card__button {
+  width: 100%;
+  max-width: 100%;
+  justify-content: center;
+}

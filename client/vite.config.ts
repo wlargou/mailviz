@@ -3,6 +3,9 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    dedupe: ['react', 'react-dom'],
+  },
   build: {
     outDir: 'dist',
     sourcemap: false,
@@ -13,6 +16,10 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:3002',
         changeOrigin: true,
+      },
+      '/ws': {
+        target: 'ws://localhost:3002',
+        ws: true,
       },
     },
   },

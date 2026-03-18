@@ -1,12 +1,14 @@
 import { google } from 'googleapis';
 import { PrismaClient } from '@prisma/client';
+import { env } from '../config/env.js';
+import { encrypt, decrypt } from '../utils/encryption.js';
 
 const prisma = new PrismaClient();
-import { env } from '../config/env.js';
 
 const SCOPES = [
   'https://www.googleapis.com/auth/calendar',
   'https://www.googleapis.com/auth/userinfo.email',
+  'https://www.googleapis.com/auth/userinfo.profile',
   'https://www.googleapis.com/auth/gmail.modify',
 ];
 
@@ -18,62 +20,101 @@ function createOAuth2Client() {
   );
 }
 
+interface ExchangeResult {
+  email: string | null;
+  name: string | null;
+  avatarUrl: string | null;
+  tokens: {
+    accessToken: string;
+    refreshToken: string;
+    expiryDate: number;
+  };
+}
+
 export const googleAuthService = {
-  getAuthUrl() {
+  /**
+   * Generate Google OAuth URL.
+   * intent='login': used for the login flow (state=login)
+   * intent='connect': used for connecting Gmail/Calendar (state=userId)
+   */
+  getAuthUrl(intent: 'login' | 'connect' = 'login', userId?: string) {
     const oauth2Client = createOAuth2Client();
     return oauth2Client.generateAuthUrl({
       access_type: 'offline',
       scope: SCOPES,
       prompt: 'consent',
+      state: intent === 'connect' && userId ? userId : 'login',
     });
   },
 
-  async handleCallback(code: string) {
+  /**
+   * Exchange authorization code for tokens + user info.
+   */
+  async exchangeCodeForTokens(code: string): Promise<ExchangeResult> {
     const oauth2Client = createOAuth2Client();
     const { tokens } = await oauth2Client.getToken(code);
-
     oauth2Client.setCredentials(tokens);
 
-    // Get user email (best-effort)
     let email: string | null = null;
+    let name: string | null = null;
+    let avatarUrl: string | null = null;
+
     try {
       const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
       const { data: userInfo } = await oauth2.userinfo.get();
       email = userInfo.email || null;
+      name = userInfo.name || null;
+      avatarUrl = userInfo.picture || null;
     } catch {
-      // Scope may not include userinfo — that's OK
+      // Scope may not include userinfo
     }
 
-    // Upsert — single-user app, keep only one row
-    const existing = await prisma.googleAuth.findFirst();
+    return {
+      email,
+      name,
+      avatarUrl,
+      tokens: {
+        accessToken: tokens.access_token!,
+        refreshToken: tokens.refresh_token!,
+        expiryDate: tokens.expiry_date!,
+      },
+    };
+  },
+
+  /**
+   * Upsert GoogleAuth record linked to a user.
+   */
+  async upsertGoogleAuth(userId: string, tokens: ExchangeResult['tokens']) {
+    const existing = await prisma.googleAuth.findUnique({ where: { userId } });
+    const user = await prisma.user.findUnique({ where: { id: userId } });
 
     const authData = {
-      accessToken: tokens.access_token!,
-      refreshToken: tokens.refresh_token!,
-      tokenExpiry: new Date(tokens.expiry_date!),
-      email,
+      accessToken: encrypt(tokens.accessToken),
+      refreshToken: encrypt(tokens.refreshToken),
+      tokenExpiry: new Date(tokens.expiryDate),
       scope: SCOPES.join(' '),
+      userId,
     };
 
     if (existing) {
       await prisma.googleAuth.update({
         where: { id: existing.id },
-        data: authData,
+        data: { ...authData, email: user?.email || existing.email },
       });
     } else {
-      await prisma.googleAuth.create({ data: authData });
+      await prisma.googleAuth.create({
+        data: { ...authData, email: user?.email || null },
+      });
     }
-
-    return { email };
   },
 
-  async getStatus() {
-    const auth = await prisma.googleAuth.findFirst();
+  async getStatus(userId?: string) {
+    const where = userId ? { userId } : {};
+    const auth = await prisma.googleAuth.findFirst({ where });
     if (!auth) {
       return { connected: false };
     }
 
-    // Check if stored scope is outdated (e.g. still gmail.readonly instead of gmail.modify)
     const needsReauth = auth.scope
       ? !SCOPES.every((s) => auth.scope!.includes(s))
       : false;
@@ -87,34 +128,42 @@ export const googleAuthService = {
     };
   },
 
-  async disconnect() {
-    const auth = await prisma.googleAuth.findFirst();
+  async disconnect(userId?: string) {
+    const where = userId ? { userId } : {};
+    const auth = await prisma.googleAuth.findFirst({ where });
     if (!auth) return;
 
-    // Try to revoke the token
     try {
       const oauth2Client = createOAuth2Client();
-      oauth2Client.setCredentials({ access_token: auth.accessToken });
-      await oauth2Client.revokeToken(auth.accessToken);
+      const accessToken = decrypt(auth.accessToken);
+      oauth2Client.setCredentials({ access_token: accessToken });
+      await oauth2Client.revokeToken(accessToken);
     } catch {
       // Token may already be invalid
     }
 
     await prisma.googleAuth.delete({ where: { id: auth.id } });
-    // Clear synced data
     await prisma.calendarEvent.deleteMany({ where: { googleEventId: { not: null } } });
     await prisma.emailAttachment.deleteMany({});
     await prisma.email.deleteMany({ where: { gmailMessageId: { not: null } } });
   },
 
-  async getAuthenticatedClient() {
-    const auth = await prisma.googleAuth.findFirst();
+  /**
+   * Get an authenticated Google OAuth2 client.
+   * Can be called with userId (from requests) or without (from background jobs).
+   */
+  async getAuthenticatedClient(userId?: string) {
+    const where = userId ? { userId } : {};
+    const auth = await prisma.googleAuth.findFirst({ where });
     if (!auth) return null;
+
+    const accessToken = decrypt(auth.accessToken);
+    const refreshToken = decrypt(auth.refreshToken);
 
     const oauth2Client = createOAuth2Client();
     oauth2Client.setCredentials({
-      access_token: auth.accessToken,
-      refresh_token: auth.refreshToken,
+      access_token: accessToken,
+      refresh_token: refreshToken,
       expiry_date: auth.tokenExpiry.getTime(),
     });
 
@@ -126,9 +175,9 @@ export const googleAuthService = {
       await prisma.googleAuth.update({
         where: { id: auth.id },
         data: {
-          accessToken: credentials.access_token!,
+          accessToken: encrypt(credentials.access_token!),
           tokenExpiry: new Date(credentials.expiry_date!),
-          ...(credentials.refresh_token ? { refreshToken: credentials.refresh_token } : {}),
+          ...(credentials.refresh_token ? { refreshToken: encrypt(credentials.refresh_token) } : {}),
         },
       });
       oauth2Client.setCredentials(credentials);
@@ -136,4 +185,14 @@ export const googleAuthService = {
 
     return oauth2Client;
   },
+
+  // Helper used by calendarSyncScheduler to check if sync is in progress
+  async isCalendarSyncInProgress() {
+    return false; // Placeholder — actual impl is in the scheduler
+  },
 };
+
+// Re-export for backward compatibility
+export function isCalendarSyncInProgress() {
+  return false;
+}

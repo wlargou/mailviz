@@ -2,10 +2,13 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import cookieParser from 'cookie-parser';
+import rateLimit from 'express-rate-limit';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { env } from './config/env.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import { requireAuth } from './middleware/auth.js';
 import { taskRoutes } from './routes/tasks.js';
 import { labelRoutes } from './routes/labels.js';
 import { customerRoutes } from './routes/customers.js';
@@ -23,24 +26,38 @@ const app = express();
 app.use(helmet({
   contentSecurityPolicy: env.NODE_ENV === 'production' ? undefined : false,
 }));
-app.use(cors({ origin: env.CLIENT_URL }));
+app.use(cors({
+  origin: env.CLIENT_URL,
+  credentials: true,
+}));
 app.use(express.json());
+app.use(cookieParser());
 app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
-// Routes
-app.use('/api/v1/tasks', taskRoutes);
-app.use('/api/v1/labels', labelRoutes);
-app.use('/api/v1/customers', customerRoutes);
-app.use('/api/v1/contacts', contactRoutes);
-app.use('/api/v1/auth', authRoutes);
-app.use('/api/v1/calendar', calendarRoutes);
-app.use('/api/v1/emails', emailRoutes);
-app.use('/api/v1/dashboard', dashboardRoutes);
+// Rate limiting on auth login routes
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: { error: { code: 'TOO_MANY_REQUESTS', message: 'Too many login attempts' } },
+});
 
-// Health check
+// Health check (public)
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
+
+// Auth routes (has its own public/protected split internally)
+app.use('/api/v1/auth/login', authLimiter);
+app.use('/api/v1/auth', authRoutes);
+
+// Protected routes — require authentication
+app.use('/api/v1/tasks', requireAuth, taskRoutes);
+app.use('/api/v1/labels', requireAuth, labelRoutes);
+app.use('/api/v1/customers', requireAuth, customerRoutes);
+app.use('/api/v1/contacts', requireAuth, contactRoutes);
+app.use('/api/v1/calendar', requireAuth, calendarRoutes);
+app.use('/api/v1/emails', requireAuth, emailRoutes);
+app.use('/api/v1/dashboard', requireAuth, dashboardRoutes);
 
 // Serve client static files in production
 if (env.NODE_ENV === 'production') {

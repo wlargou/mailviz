@@ -1,6 +1,12 @@
 import dotenv from 'dotenv';
+import crypto from 'crypto';
 
 dotenv.config();
+
+// Generate deterministic dev secrets from a seed (only for local development)
+function devSecret(seed: string): string {
+  return crypto.createHash('sha256').update(seed).digest('hex');
+}
 
 export const env = {
   PORT: parseInt(process.env.PORT || '3002', 10),
@@ -11,7 +17,13 @@ export const env = {
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET || '',
   GOOGLE_REDIRECT_URI: process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3002/api/v1/auth/google/callback',
   SYNC_INTERVAL_SECONDS: parseInt(process.env.SYNC_INTERVAL_SECONDS || '60', 10),
-  EMAIL_SYNC_ENABLED: process.env.EMAIL_SYNC_ENABLED !== 'false', // enabled by default
-  CALENDAR_SYNC_ENABLED: process.env.CALENDAR_SYNC_ENABLED !== 'false', // enabled by default
+  EMAIL_SYNC_ENABLED: process.env.EMAIL_SYNC_ENABLED !== 'false',
+  CALENDAR_SYNC_ENABLED: process.env.CALENDAR_SYNC_ENABLED !== 'false',
   CALENDAR_SYNC_INTERVAL_SECONDS: parseInt(process.env.CALENDAR_SYNC_INTERVAL_SECONDS || '120', 10),
+
+  // Auth
+  JWT_SECRET: process.env.JWT_SECRET || devSecret('mailviz-jwt-dev'),
+  JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET || devSecret('mailviz-jwt-refresh-dev'),
+  ALLOWED_EMAILS: (process.env.ALLOWED_EMAILS || '').split(',').map(e => e.trim()).filter(Boolean),
+  TOKEN_ENCRYPTION_KEY: process.env.TOKEN_ENCRYPTION_KEY || '',
 };
