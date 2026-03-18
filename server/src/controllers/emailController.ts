@@ -118,6 +118,62 @@ export const emailController = {
     }
   },
 
+  async batchMarkAsRead(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { ids } = req.body;
+      if (!Array.isArray(ids) || ids.length === 0) {
+        res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'ids array required' } });
+        return;
+      }
+      const result = await emailService.batchMarkAsRead(ids);
+      res.json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async batchMarkAsUnread(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { ids } = req.body;
+      if (!Array.isArray(ids) || ids.length === 0) {
+        res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'ids array required' } });
+        return;
+      }
+      const result = await emailService.batchMarkAsUnread(ids);
+      res.json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async batchArchive(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { ids } = req.body;
+      if (!Array.isArray(ids) || ids.length === 0) {
+        res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'ids array required' } });
+        return;
+      }
+      const result = await emailService.batchArchive(ids);
+      res.json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async batchTrash(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { ids } = req.body;
+      if (!Array.isArray(ids) || ids.length === 0) {
+        res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'ids array required' } });
+        return;
+      }
+      const result = await emailService.batchTrash(ids);
+      res.json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async convertToTask(req: Request, res: Response, next: NextFunction) {
     try {
       const task = await emailService.convertToTask(req.params.id, req.body);

@@ -56,6 +56,22 @@ export const emailsApi = {
     return api.patch(`/emails/${id}/untrash`);
   },
 
+  batchMarkAsRead(ids: string[]) {
+    return api.post('/emails/batch/read', { ids });
+  },
+
+  batchMarkAsUnread(ids: string[]) {
+    return api.post('/emails/batch/unread', { ids });
+  },
+
+  batchArchive(ids: string[]) {
+    return api.post('/emails/batch/archive', { ids });
+  },
+
+  batchTrash(ids: string[]) {
+    return api.post('/emails/batch/trash', { ids });
+  },
+
   convertToTask(id: string, data: ConvertToTaskInput) {
     return api.post<ApiResponse<Task>>(`/emails/${id}/convert-to-task`, data);
   },

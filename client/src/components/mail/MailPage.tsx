@@ -7,7 +7,7 @@ import {
   ContentSwitcher,
   Switch,
 } from '@carbon/react';
-import { Renew, StarFilled, Star, Attachment, Email as EmailIcon, Archive, TrashCan, Undo, Add } from '@carbon/icons-react';
+import { Renew, StarFilled, Star, Attachment, Email as EmailIcon, Archive, TrashCan, Undo, Add, CheckmarkOutline, Close, CheckboxCheckedFilled } from '@carbon/icons-react';
 import { SidePanel } from '@carbon/ibm-products';
 import { formatDistanceToNow } from 'date-fns';
 import { useSearchParams } from 'react-router-dom';
@@ -57,6 +57,9 @@ export function MailPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedThread, setSelectedThread] = useState<string | null>(null);
   const [composeOpen, setComposeOpen] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkLoading, setBulkLoading] = useState(false);
   const addNotification = useUIStore((s) => s.addNotification);
 
   // Real-time WebSocket: auto-refresh thread list when sync finds new emails or state changes
@@ -245,6 +248,51 @@ export function MailPage() {
     }
   }, [filters.folder, addNotification, fetchThreads]);
 
+  const selectAll = useCallback(() => {
+    if (selectedIds.size === threads.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(threads.map((t) => t.latestEmail.id)));
+    }
+  }, [threads, selectedIds.size]);
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+    setSelectMode(false);
+  }, []);
+
+  const handleBulkAction = useCallback(async (action: 'read' | 'unread' | 'archive' | 'trash') => {
+    if (selectedIds.size === 0) return;
+    setBulkLoading(true);
+    const ids = Array.from(selectedIds);
+    try {
+      switch (action) {
+        case 'read':
+          await emailsApi.batchMarkAsRead(ids);
+          addNotification({ kind: 'success', title: `${ids.length} marked as read` });
+          break;
+        case 'unread':
+          await emailsApi.batchMarkAsUnread(ids);
+          addNotification({ kind: 'success', title: `${ids.length} marked as unread` });
+          break;
+        case 'archive':
+          await emailsApi.batchArchive(ids);
+          addNotification({ kind: 'success', title: `${ids.length} archived` });
+          break;
+        case 'trash':
+          await emailsApi.batchTrash(ids);
+          addNotification({ kind: 'success', title: `${ids.length} moved to trash` });
+          break;
+      }
+      setSelectedIds(new Set());
+      fetchThreads(true);
+    } catch {
+      addNotification({ kind: 'error', title: 'Bulk action failed' });
+    } finally {
+      setBulkLoading(false);
+    }
+  }, [selectedIds, addNotification, fetchThreads]);
+
   const hasActiveFilters = filters.search || filters.from || filters.to || filters.subject ||
     filters.dateAfter || filters.dateBefore || filters.customerIds.length > 0 || filters.isRead !== null ||
     filters.hasAttachment;
@@ -269,6 +317,20 @@ export function MailPage() {
               onClick={() => setComposeOpen(true)}
             >
               Compose
+            </Button>
+            <Button
+              kind={selectMode ? 'secondary' : 'ghost'}
+              size="sm"
+              renderIcon={CheckboxCheckedFilled}
+              onClick={() => {
+                if (selectMode) {
+                  clearSelection();
+                } else {
+                  setSelectMode(true);
+                }
+              }}
+            >
+              Select
             </Button>
             <Button
               kind="ghost"
@@ -334,26 +396,73 @@ export function MailPage() {
           />
         ) : (
           <>
-            <div className="thread-list">
+            {selectMode && (
+              <div className="bulk-action-bar">
+                <div className="bulk-action-bar__info">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.size === threads.length && threads.length > 0}
+                    ref={(el) => {
+                      if (el) el.indeterminate = selectedIds.size > 0 && selectedIds.size < threads.length;
+                    }}
+                    onChange={selectAll}
+                  />
+                  <span className="bulk-action-bar__count">
+                    {selectedIds.size > 0 ? `${selectedIds.size} selected` : 'Select emails'}
+                  </span>
+                </div>
+                <div className="bulk-action-bar__actions">
+                  <Button kind="ghost" size="sm" hasIconOnly iconDescription="Mark as read" renderIcon={CheckmarkOutline} onClick={() => handleBulkAction('read')} disabled={bulkLoading || selectedIds.size === 0} />
+                  <Button kind="ghost" size="sm" hasIconOnly iconDescription="Mark as unread" renderIcon={EmailIcon} onClick={() => handleBulkAction('unread')} disabled={bulkLoading || selectedIds.size === 0} />
+                  <Button kind="ghost" size="sm" hasIconOnly iconDescription="Archive" renderIcon={Archive} onClick={() => handleBulkAction('archive')} disabled={bulkLoading || selectedIds.size === 0} />
+                  <Button kind="ghost" size="sm" hasIconOnly iconDescription="Trash" renderIcon={TrashCan} onClick={() => handleBulkAction('trash')} disabled={bulkLoading || selectedIds.size === 0} />
+                  <Button kind="ghost" size="sm" hasIconOnly iconDescription="Exit select mode" renderIcon={Close} onClick={clearSelection} />
+                </div>
+              </div>
+            )}
+            <div className={`thread-list${selectMode ? ' thread-list--select-mode' : ''}`}>
               {threads.map((thread) => {
                 const e = thread.latestEmail;
                 const isUnread = thread.unreadCount > 0;
                 const isSelected = thread.threadId === selectedThread;
+                const isChecked = selectedIds.has(e.id);
 
                 return (
                   <div
                     key={thread.threadId}
-                    role="button"
-                    tabIndex={0}
-                    className={`thread-item${isUnread ? ' thread-item--unread' : ' thread-item--read'}${isSelected ? ' thread-item--selected' : ''}`}
-                    onClick={() => setSelectedThread(thread.threadId)}
-                    onKeyDown={(ev) => {
-                      if (ev.key === 'Enter' || ev.key === ' ') {
-                        ev.preventDefault();
-                        setSelectedThread(thread.threadId);
-                      }
-                    }}
+                    className={`thread-item-row${isChecked ? ' thread-item-row--checked' : ''}`}
                   >
+                    {selectMode && (
+                      <div
+                        className="thread-item__select"
+                        onClick={() => {
+                          setSelectedIds((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(e.id)) next.delete(e.id);
+                            else next.add(e.id);
+                            return next;
+                          });
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => {}}
+                        />
+                      </div>
+                    )}
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      className={`thread-item${isUnread ? ' thread-item--unread' : ' thread-item--read'}${isSelected ? ' thread-item--selected' : ''}${isChecked ? ' thread-item--checked' : ''}`}
+                      onClick={() => setSelectedThread(thread.threadId)}
+                      onKeyDown={(ev) => {
+                        if (ev.key === 'Enter' || ev.key === ' ') {
+                          ev.preventDefault();
+                          setSelectedThread(thread.threadId);
+                        }
+                      }}
+                    >
                     <div className="thread-item__top">
                       <span className="thread-item__sender">
                         {e.fromName || e.from}
@@ -417,6 +526,7 @@ export function MailPage() {
                         <span>{e.customer.name}</span>
                       </div>
                     )}
+                    </div>
                   </div>
                 );
               })}

@@ -829,6 +829,120 @@ export const emailService = {
     wsEmit('email:updated', { id, isTrashed: false });
   },
 
+  async batchMarkAsRead(ids: string[]) {
+    // Get thread IDs for selected emails, then mark ALL emails in those threads as read
+    const selectedEmails = await prisma.email.findMany({ where: { id: { in: ids } }, select: { threadId: true } });
+    const threadIds = [...new Set(selectedEmails.map((e) => e.threadId).filter((id): id is string => id != null))];
+    const allEmails = await prisma.email.findMany({ where: { threadId: { in: threadIds }, isRead: false } });
+    await prisma.email.updateMany({ where: { threadId: { in: threadIds } }, data: { isRead: true } });
+
+    const oauth2Client = await googleAuthService.getAuthenticatedClient();
+    if (oauth2Client) {
+      const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+      for (const email of allEmails) {
+        if (email.gmailMessageId) {
+          try {
+            await gmail.users.messages.modify({
+              userId: 'me',
+              id: email.gmailMessageId,
+              requestBody: { removeLabelIds: ['UNREAD'] },
+            });
+          } catch { /* best effort */ }
+        }
+      }
+    }
+
+    for (const email of allEmails) wsEmit('email:updated', { id: email.id, isRead: true });
+    return { count: threadIds.length };
+  },
+
+  async batchMarkAsUnread(ids: string[]) {
+    // Get thread IDs for selected emails, then mark ALL emails in those threads as unread
+    const selectedEmails = await prisma.email.findMany({ where: { id: { in: ids } }, select: { threadId: true } });
+    const threadIds = [...new Set(selectedEmails.map((e) => e.threadId).filter((id): id is string => id != null))];
+    const allEmails = await prisma.email.findMany({ where: { threadId: { in: threadIds }, isRead: true } });
+    await prisma.email.updateMany({ where: { threadId: { in: threadIds } }, data: { isRead: false } });
+
+    const oauth2Client = await googleAuthService.getAuthenticatedClient();
+    if (oauth2Client) {
+      const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+      for (const email of allEmails) {
+        if (email.gmailMessageId) {
+          try {
+            await gmail.users.messages.modify({
+              userId: 'me',
+              id: email.gmailMessageId,
+              requestBody: { addLabelIds: ['UNREAD'] },
+            });
+          } catch { /* best effort */ }
+        }
+      }
+    }
+
+    for (const email of allEmails) wsEmit('email:updated', { id: email.id, isRead: false });
+    return { count: threadIds.length };
+  },
+
+  async batchArchive(ids: string[]) {
+    const selectedEmails = await prisma.email.findMany({ where: { id: { in: ids } }, select: { threadId: true } });
+    const threadIds = [...new Set(selectedEmails.map((e) => e.threadId).filter((id): id is string => id != null))];
+    const allEmails = await prisma.email.findMany({ where: { threadId: { in: threadIds } } });
+
+    const oauth2Client = await googleAuthService.getAuthenticatedClient();
+    if (oauth2Client) {
+      const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+      for (const email of allEmails) {
+        if (email.gmailMessageId) {
+          try {
+            await gmail.users.messages.modify({
+              userId: 'me',
+              id: email.gmailMessageId,
+              requestBody: { removeLabelIds: ['INBOX'] },
+            });
+          } catch { /* best effort */ }
+        }
+      }
+    }
+
+    for (const email of allEmails) {
+      await prisma.email.update({
+        where: { id: email.id },
+        data: { isArchived: true, labelIds: email.labelIds.filter((l) => l !== 'INBOX') },
+      });
+      wsEmit('email:updated', { id: email.id, isArchived: true });
+    }
+
+    return { count: threadIds.length };
+  },
+
+  async batchTrash(ids: string[]) {
+    const selectedEmails = await prisma.email.findMany({ where: { id: { in: ids } }, select: { threadId: true } });
+    const threadIds = [...new Set(selectedEmails.map((e) => e.threadId).filter((id): id is string => id != null))];
+    const allEmails = await prisma.email.findMany({ where: { threadId: { in: threadIds } } });
+
+    const oauth2Client = await googleAuthService.getAuthenticatedClient();
+    if (oauth2Client) {
+      const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+      for (const email of allEmails) {
+        if (email.gmailMessageId) {
+          try {
+            await gmail.users.messages.trash({ userId: 'me', id: email.gmailMessageId });
+          } catch { /* best effort */ }
+        }
+      }
+    }
+
+    for (const email of allEmails) {
+      await prisma.email.update({
+        where: { id: email.id },
+        data: { isTrashed: true, labelIds: [...email.labelIds.filter((l) => l !== 'INBOX'), 'TRASH'] },
+      });
+      wsEmit('email:updated', { id: email.id, isTrashed: true });
+    }
+
+    return { count: threadIds.length };
+  },
+
   async convertToTask(emailId: string, data: { title?: string; priority?: string; notes?: string }) {
     const email = await prisma.email.findUnique({ where: { id: emailId } });
     if (!email) throw Object.assign(new Error('Email not found'), { status: 404 });

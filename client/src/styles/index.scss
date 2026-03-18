@@ -2435,6 +2435,86 @@ body {
   }
 }
 
+// Bulk action bar
+.bulk-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 1rem;
+  background: var(--cds-layer-selected);
+  border-bottom: 1px solid var(--cds-border-subtle);
+}
+
+.bulk-action-bar__info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+
+  .cds--checkbox-wrapper {
+    margin-bottom: 0;
+  }
+
+  .cds--checkbox-label::before {
+    margin-right: 0;
+  }
+}
+
+.bulk-action-bar__count {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--cds-text-primary);
+}
+
+.bulk-action-bar__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+// Select mode layout
+.thread-item-row {
+  display: flex;
+  align-items: stretch;
+
+  .thread-item {
+    flex: 1;
+    min-width: 0;
+    border-bottom: none;
+  }
+
+  &--checked .thread-item {
+    background: var(--cds-layer-selected);
+  }
+}
+
+.thread-item__select {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  flex-shrink: 0;
+  cursor: pointer;
+  border-bottom: 1px solid var(--cds-border-subtle);
+
+  &:hover {
+    background: var(--cds-layer-hover);
+  }
+
+  input[type='checkbox'] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: var(--cds-interactive);
+  }
+}
+
+.bulk-action-bar input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--cds-interactive);
+}
+
 // SidePanel override for mail
 .mail-page__side-panel {
   z-index: 8000;
