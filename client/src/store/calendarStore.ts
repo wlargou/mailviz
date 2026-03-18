@@ -29,6 +29,7 @@ interface CalendarState {
   syncEvents: () => Promise<{ synced: number }>;
   setViewMode: (mode: CalendarViewMode) => void;
   navigate: (direction: 'prev' | 'next' | 'today') => void;
+  goToDay: (date: Date) => void;
   fetchGoogleStatus: () => Promise<void>;
 }
 
@@ -106,6 +107,11 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     }
 
     set({ currentDate: newDate });
+    get().fetchEvents();
+  },
+
+  goToDay: (date) => {
+    set({ currentDate: date, viewMode: 'day' });
     get().fetchEvents();
   },
 

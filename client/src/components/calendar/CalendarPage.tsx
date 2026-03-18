@@ -13,7 +13,7 @@ import { EventTooltip } from './EventTooltip';
 import type { CalendarEvent } from '../../types/calendar';
 
 export function CalendarPage() {
-  const { viewMode, fetchEvents, fetchGoogleStatus, syncing } = useCalendarStore();
+  const { viewMode, fetchEvents, fetchGoogleStatus, syncing, goToDay } = useCalendarStore();
   const addNotification = useUIStore((s) => s.addNotification);
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -41,9 +41,7 @@ export function CalendarPage() {
   }, [fetchEvents, fetchGoogleStatus]);
 
   const handleDayClick = (date: Date) => {
-    setInitialDate(date);
-    setEditEvent(null);
-    setCreateOpen(true);
+    goToDay(date);
   };
 
   const handleSlotClick = (date: Date) => {
