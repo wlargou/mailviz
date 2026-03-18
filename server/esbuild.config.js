@@ -1,8 +1,22 @@
 import { build } from 'esbuild';
-import { globSync } from 'node:fs';
+import { readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 
-// Get all TypeScript source files (preserves file structure like tsc)
-const entryPoints = globSync('src/**/*.ts');
+// Recursively find all .ts files in src/
+function findTsFiles(dir) {
+  const results = [];
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) {
+      results.push(...findTsFiles(full));
+    } else if (full.endsWith('.ts') && !full.endsWith('.d.ts')) {
+      results.push(full);
+    }
+  }
+  return results;
+}
+
+const entryPoints = findTsFiles('src');
 
 await build({
   entryPoints,
