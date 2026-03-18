@@ -124,13 +124,13 @@ export function CalendarDayCell({ date, currentMonth, events, onDayClick, onEven
 
   return (
     <div
-      className={`calendar-day ${!isCurrentMonth ? 'calendar-day--muted' : ''} ${today ? 'calendar-day--today' : ''}`}
+      className={`calendar-day-cell ${!isCurrentMonth ? 'calendar-day-cell--muted' : ''} ${today ? 'calendar-day-cell--today' : ''}`}
       onClick={() => onDayClick(date)}
     >
-      <span className={`calendar-day__number ${today ? 'calendar-day__number--today' : ''}`}>
+      <span className={`calendar-day-cell__number ${today ? 'calendar-day-cell__number--today' : ''}`}>
         {format(date, 'd')}
       </span>
-      <div className="calendar-day__events">
+      <div className="calendar-day-cell__events">
         {visible.map((event) => {
           const colors = getEventColor(event.colorId);
 
@@ -174,7 +174,7 @@ export function CalendarDayCell({ date, currentMonth, events, onDayClick, onEven
         {overflowCount > 0 && (
           <button
             ref={moreRef}
-            className="calendar-day__more"
+            className="calendar-day-cell__more"
             onClick={handleMoreClick}
           >
             +{overflowCount} more
