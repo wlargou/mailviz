@@ -12,4 +12,6 @@ export const env = {
   GOOGLE_REDIRECT_URI: process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3002/api/v1/auth/google/callback',
   SYNC_INTERVAL_SECONDS: parseInt(process.env.SYNC_INTERVAL_SECONDS || '60', 10),
   EMAIL_SYNC_ENABLED: process.env.EMAIL_SYNC_ENABLED !== 'false', // enabled by default
+  CALENDAR_SYNC_ENABLED: process.env.CALENDAR_SYNC_ENABLED !== 'false', // enabled by default
+  CALENDAR_SYNC_INTERVAL_SECONDS: parseInt(process.env.CALENDAR_SYNC_INTERVAL_SECONDS || '120', 10),
 };

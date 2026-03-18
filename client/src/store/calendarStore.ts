@@ -25,7 +25,7 @@ interface CalendarState {
   currentDate: Date;
   googleStatus: GoogleStatus | null;
 
-  fetchEvents: () => Promise<void>;
+  fetchEvents: (silent?: boolean) => Promise<void>;
   syncEvents: () => Promise<{ synced: number }>;
   setViewMode: (mode: CalendarViewMode) => void;
   navigate: (direction: 'prev' | 'next' | 'today') => void;
@@ -61,17 +61,17 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
   currentDate: new Date(),
   googleStatus: null,
 
-  fetchEvents: async () => {
+  fetchEvents: async (silent = false) => {
     const { currentDate, viewMode } = get();
     const { start, end } = getDateRange(currentDate, viewMode);
-    set({ loading: true });
+    if (!silent) set({ loading: true });
     try {
       const { data: response } = await calendarApi.getAll(start, end);
       set({ events: response.data });
     } catch (err) {
       console.error('Failed to fetch events:', err);
     } finally {
-      set({ loading: false });
+      if (!silent) set({ loading: false });
     }
   },
 

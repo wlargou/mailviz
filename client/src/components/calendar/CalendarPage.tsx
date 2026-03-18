@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { useCalendarStore } from '../../store/calendarStore';
 import { calendarApi } from '../../api/calendar';
 import { useUIStore } from '../../store/uiStore';
+import { useEmailWebSocket } from '../../hooks/useEmailWebSocket';
 import { CalendarToolbar } from './CalendarToolbar';
 import { CalendarMonthView } from './CalendarMonthView';
 import { CalendarWeekView } from './CalendarWeekView';
@@ -12,13 +13,27 @@ import { EventTooltip } from './EventTooltip';
 import type { CalendarEvent } from '../../types/calendar';
 
 export function CalendarPage() {
-  const { viewMode, fetchEvents, fetchGoogleStatus } = useCalendarStore();
+  const { viewMode, fetchEvents, fetchGoogleStatus, syncing } = useCalendarStore();
   const addNotification = useUIStore((s) => s.addNotification);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [editEvent, setEditEvent] = useState<CalendarEvent | null>(null);
   const [detailEvent, setDetailEvent] = useState<CalendarEvent | null>(null);
   const [initialDate, setInitialDate] = useState<Date | null>(null);
+
+  // Ref for silent refetch from WS handlers (avoids stale closure)
+  const fetchEventsRef = useRef(fetchEvents);
+  fetchEventsRef.current = fetchEvents;
+
+  // Real-time calendar sync via WebSocket
+  const wsHandlers = useMemo(() => ({
+    'calendar:synced': () => fetchEventsRef.current?.(true),
+    'calendar:sync:status': (data: { syncing: boolean }) => {
+      useCalendarStore.setState({ syncing: data.syncing });
+    },
+  }), []);
+
+  useEmailWebSocket(wsHandlers);
 
   useEffect(() => {
     fetchEvents();

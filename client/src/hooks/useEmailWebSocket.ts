@@ -9,7 +9,7 @@ interface WsMessage {
 type EventHandler = (data: any) => void;
 
 /**
- * WebSocket hook for real-time email sync updates.
+ * WebSocket hook for real-time sync updates (email, calendar, etc.).
  * Automatically connects, reconnects with exponential backoff,
  * and invokes handlers when server emits events.
  */

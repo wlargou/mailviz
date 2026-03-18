@@ -22,4 +22,7 @@ export const calendarApi = {
 
   sync: () =>
     api.post<{ data: { synced: number; customersCreated: number; contactsCreated: number } }>('/calendar/sync'),
+
+  getSyncStatus: () =>
+    api.get<{ data: { syncing: boolean } }>('/calendar/sync-status'),
 };

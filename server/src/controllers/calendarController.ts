@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { calendarService } from '../services/calendarService.js';
+import { isCalendarSyncInProgress } from '../jobs/calendarSyncScheduler.js';
 
 export const calendarController = {
   async findAll(req: Request, res: Response, next: NextFunction) {
@@ -64,5 +65,9 @@ export const calendarController = {
     } catch (err) {
       next(err);
     }
+  },
+
+  async getSyncStatus(_req: Request, res: Response) {
+    res.json({ data: { syncing: isCalendarSyncInProgress() } });
   },
 };
