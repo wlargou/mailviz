@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import {
   eachHourOfInterval,
   startOfDay,
@@ -106,6 +107,7 @@ function formatTimeRange(start: Date, end: Date): string {
 
 export function CalendarDayView({ onEventClick, onSlotClick }: CalendarDayViewProps) {
   const { currentDate, events } = useCalendarStore();
+  const bodyRef = useRef<HTMLDivElement>(null);
 
   const dayStart = startOfDay(currentDate);
   const dayEnd = endOfDay(currentDate);
@@ -114,6 +116,13 @@ export function CalendarDayView({ onEventClick, onSlotClick }: CalendarDayViewPr
   const allDayEvents = events.filter((e) => e.isAllDay);
   const timedEvents = events.filter((e) => !e.isAllDay);
   const layout = layoutEvents(timedEvents);
+
+  // Scroll to 8 AM on mount and when date changes
+  useEffect(() => {
+    if (bodyRef.current) {
+      bodyRef.current.scrollTop = 8 * PX_PER_HOUR;
+    }
+  }, [currentDate]);
 
   return (
     <div className="calendar-day">
@@ -154,7 +163,7 @@ export function CalendarDayView({ onEventClick, onSlotClick }: CalendarDayViewPr
       )}
 
       {/* Time grid */}
-      <div className="calendar-day__body">
+      <div className="calendar-day__body" ref={bodyRef}>
         <div className="calendar-day__time-grid">
           {hours.map((hour) => (
             <div key={hour.toISOString()} className="calendar-day__time-row">

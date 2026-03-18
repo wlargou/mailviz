@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import {
   startOfWeek,
   endOfWeek,
@@ -112,6 +113,7 @@ function formatTimeRange(start: Date, end: Date): string {
 
 export function CalendarWeekView({ onEventClick, onSlotClick }: CalendarWeekViewProps) {
   const { currentDate, events } = useCalendarStore();
+  const bodyRef = useRef<HTMLDivElement>(null);
 
   const weekStart = startOfWeek(currentDate, { weekStartsOn: 0 });
   const weekEnd = endOfWeek(currentDate, { weekStartsOn: 0 });
@@ -120,6 +122,13 @@ export function CalendarWeekView({ onEventClick, onSlotClick }: CalendarWeekView
 
   const allDayEvents = events.filter((e) => e.isAllDay);
   const timedEvents = events.filter((e) => !e.isAllDay);
+
+  // Scroll to 8 AM on mount and when week changes
+  useEffect(() => {
+    if (bodyRef.current) {
+      bodyRef.current.scrollTop = 8 * PX_PER_HOUR;
+    }
+  }, [currentDate]);
 
   const getEventsForDay = (day: Date) =>
     timedEvents.filter((e) => isSameDay(new Date(e.startTime), day));
@@ -171,7 +180,7 @@ export function CalendarWeekView({ onEventClick, onSlotClick }: CalendarWeekView
       </div>
 
       {/* Time grid */}
-      <div className="calendar-week__body">
+      <div className="calendar-week__body" ref={bodyRef}>
         <div className="calendar-week__time-grid">
           {hours.map((hour) => (
             <div key={hour.toISOString()} className="calendar-week__time-row">
