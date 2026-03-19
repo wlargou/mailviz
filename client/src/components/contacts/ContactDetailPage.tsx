@@ -18,6 +18,10 @@ import {
   TableBody,
   TableCell,
   TableContainer,
+  TableToolbar,
+  TableToolbarContent,
+  TableToolbarSearch,
+  Pagination,
   Tag,
   SkeletonText,
   TextInput,
@@ -54,6 +58,14 @@ export function ContactDetailPage() {
   const [selectedThread, setSelectedThread] = useState<{ id: string; subject: string } | null>(null);
   const [attachments, setAttachments] = useState<AttachmentWithEmail[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Table search/pagination state
+  const [eventSearch, setEventSearch] = useState('');
+  const [eventPage, setEventPage] = useState(1);
+  const [eventPageSize, setEventPageSize] = useState(20);
+  const [emailSearch, setEmailSearch] = useState('');
+  const [emailPage, setEmailPage] = useState(1);
+  const [emailPageSize, setEmailPageSize] = useState(20);
 
   // Edit contact state
   const [editOpen, setEditOpen] = useState(false);
@@ -136,17 +148,6 @@ export function ContactDetailPage() {
     return <EmptyState title="Contact not found" />;
   }
 
-  const eventRows = events.map((e) => {
-    const attendees = e.attendees as unknown as Array<{ email: string }> | null;
-    return {
-      id: e.id,
-      title: e.title,
-      date: format(new Date(e.startTime), 'MMM d, yyyy · h:mm a'),
-      location: e.location || '—',
-      attendees: attendees?.length ?? 0,
-    };
-  });
-
   return (
     <div>
       <Button
@@ -212,107 +213,133 @@ export function ContactDetailPage() {
               <TabPanel>
                 {events.length === 0 ? (
                   <EmptyState title="No linked events" description="Events where this contact is an attendee will appear here" icon={<Calendar size={48} />} />
-                ) : (
-                  <DataTable rows={eventRows} headers={eventHeaders}>
-                    {({ rows: tableRows, headers: tableHeaders, getTableProps, getHeaderProps, getRowProps }) => (
-                      <TableContainer>
-                        <Table {...getTableProps()}>
-                          <TableHead>
-                            <TableRow>
-                              {tableHeaders.map((header) => (
-                                <TableHeader {...getHeaderProps({ header })} key={header.key}>
-                                  {header.header}
-                                </TableHeader>
-                              ))}
-                            </TableRow>
-                          </TableHead>
-                          <TableBody>
-                            {tableRows.map((row) => {
-                              const evt = events.find((e) => e.id === row.id)!;
-                              const attendees = evt.attendees as unknown as Array<{ email: string }> | null;
-                              return (
-                                <TableRow {...getRowProps({ row })} key={row.id}>
-                                  <TableCell>
-                                    <span
-                                      style={{ cursor: 'pointer', fontWeight: 500 }}
-                                      onClick={() => navigate('/calendar')}
-                                    >
-                                      {evt.title}
-                                    </span>
-                                  </TableCell>
-                                  <TableCell>{format(new Date(evt.startTime), 'MMM d, yyyy · h:mm a')}</TableCell>
-                                  <TableCell>{evt.location || '—'}</TableCell>
-                                  <TableCell>
-                                    <Tag type="cool-gray" size="sm">{attendees?.length ?? 0}</Tag>
-                                  </TableCell>
+                ) : (() => {
+                  const filteredEvents = eventSearch
+                    ? events.filter((e) => e.title.toLowerCase().includes(eventSearch.toLowerCase()) || (e.location || '').toLowerCase().includes(eventSearch.toLowerCase()))
+                    : events;
+                  const paginatedEvents = filteredEvents.slice((eventPage - 1) * eventPageSize, eventPage * eventPageSize);
+                  const rows = paginatedEvents.map((e) => ({
+                    id: e.id,
+                    title: e.title,
+                    date: format(new Date(e.startTime), 'MMM d, yyyy · h:mm a'),
+                    location: e.location || '—',
+                    attendees: String((e.attendees as unknown as Array<{ email: string }> | null)?.length ?? 0),
+                  }));
+                  return (
+                    <>
+                      <DataTable rows={rows} headers={eventHeaders} isSortable>
+                        {({ rows: tableRows, headers: tableHeaders, getTableProps, getHeaderProps, getRowProps }) => (
+                          <TableContainer>
+                            <TableToolbar>
+                              <TableToolbarContent>
+                                <TableToolbarSearch placeholder="Search events..." onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setEventSearch(e.target.value); setEventPage(1); }} persistent />
+                              </TableToolbarContent>
+                            </TableToolbar>
+                            <Table {...getTableProps()} size="lg">
+                              <TableHead>
+                                <TableRow>
+                                  {tableHeaders.map((header) => (
+                                    <TableHeader {...getHeaderProps({ header })} key={header.key}>{header.header}</TableHeader>
+                                  ))}
                                 </TableRow>
-                              );
-                            })}
-                          </TableBody>
-                        </Table>
-                      </TableContainer>
-                    )}
-                  </DataTable>
-                )}
+                              </TableHead>
+                              <TableBody>
+                                {tableRows.map((row) => {
+                                  const evt = paginatedEvents.find((e) => e.id === row.id)!;
+                                  const attendees = evt?.attendees as unknown as Array<{ email: string }> | null;
+                                  return (
+                                    <TableRow {...getRowProps({ row })} key={row.id}>
+                                      <TableCell>
+                                        <span style={{ cursor: 'pointer', fontWeight: 500 }} onClick={() => navigate('/calendar')}>{evt?.title}</span>
+                                      </TableCell>
+                                      <TableCell>{format(new Date(evt?.startTime), 'MMM d, yyyy · h:mm a')}</TableCell>
+                                      <TableCell>{evt?.location || '—'}</TableCell>
+                                      <TableCell><Tag type="cool-gray" size="sm">{attendees?.length ?? 0}</Tag></TableCell>
+                                    </TableRow>
+                                  );
+                                })}
+                              </TableBody>
+                            </Table>
+                          </TableContainer>
+                        )}
+                      </DataTable>
+                      {filteredEvents.length > 10 && (
+                        <Pagination totalItems={filteredEvents.length} pageSize={eventPageSize} pageSizes={[10, 20, 50]} page={eventPage}
+                          onChange={({ page: p, pageSize: ps }: { page: number; pageSize: number }) => { setEventPage(p); setEventPageSize(ps); }}
+                        />
+                      )}
+                    </>
+                  );
+                })()}
               </TabPanel>
               <TabPanel>
                 {emailThreads.length === 0 ? (
                   <EmptyState title="No emails" description="Emails involving this contact will appear here after syncing" icon={<Email size={48} />} />
-                ) : (
-                  <DataTable
-                    rows={emailThreads.map((t) => ({
-                      id: t.threadId || t.latestEmail.id,
-                      subject: t.latestEmail.subject,
-                      from: t.latestEmail.fromName || t.latestEmail.from,
-                      date: format(new Date(t.latestEmail.receivedAt), 'MMM d, yyyy'),
-                      messages: t.messageCount,
-                    }))}
-                    headers={[
-                      { key: 'subject', header: 'Subject' },
-                      { key: 'from', header: 'From' },
-                      { key: 'date', header: 'Date' },
-                      { key: 'messages', header: 'Messages' },
-                    ]}
-                  >
-                    {({ rows: tableRows, headers: tableHeaders, getTableProps, getHeaderProps, getRowProps }) => (
-                      <TableContainer>
-                        <Table {...getTableProps()}>
-                          <TableHead>
-                            <TableRow>
-                              {tableHeaders.map((header) => (
-                                <TableHeader {...getHeaderProps({ header })} key={header.key}>
-                                  {header.header}
-                                </TableHeader>
-                              ))}
-                            </TableRow>
-                          </TableHead>
-                          <TableBody>
-                            {tableRows.map((row) => (
-                              <TableRow {...getRowProps({ row })} key={row.id}>
-                                {row.cells.map((cell) => (
-                                  <TableCell key={cell.id}>
-                                    {cell.info.header === 'subject' ? (
-                                      <span
-                                        style={{ cursor: 'pointer', fontWeight: 500 }}
-                                        onClick={() => setSelectedThread({ id: row.id, subject: cell.value })}
-                                      >
-                                        {cell.value}
-                                      </span>
-                                    ) : cell.info.header === 'messages' ? (
-                                      <Tag type="cool-gray" size="sm">{cell.value}</Tag>
-                                    ) : (
-                                      cell.value
-                                    )}
-                                  </TableCell>
+                ) : (() => {
+                  const filteredEmails = emailSearch
+                    ? emailThreads.filter((t) => t.latestEmail.subject.toLowerCase().includes(emailSearch.toLowerCase()) || (t.latestEmail.fromName || t.latestEmail.from).toLowerCase().includes(emailSearch.toLowerCase()))
+                    : emailThreads;
+                  const paginatedEmails = filteredEmails.slice((emailPage - 1) * emailPageSize, emailPage * emailPageSize);
+                  const emailHeaders = [
+                    { key: 'subject', header: 'Subject' },
+                    { key: 'from', header: 'From' },
+                    { key: 'date', header: 'Date' },
+                    { key: 'messages', header: 'Messages' },
+                  ];
+                  const rows = paginatedEmails.map((t) => ({
+                    id: t.threadId || t.latestEmail.id,
+                    subject: t.latestEmail.subject,
+                    from: t.latestEmail.fromName || t.latestEmail.from,
+                    date: format(new Date(t.latestEmail.receivedAt), 'MMM d, yyyy'),
+                    messages: String(t.messageCount),
+                  }));
+                  return (
+                    <>
+                      <DataTable rows={rows} headers={emailHeaders} isSortable>
+                        {({ rows: tableRows, headers: tableHeaders, getTableProps, getHeaderProps, getRowProps }) => (
+                          <TableContainer>
+                            <TableToolbar>
+                              <TableToolbarContent>
+                                <TableToolbarSearch placeholder="Search emails..." onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setEmailSearch(e.target.value); setEmailPage(1); }} persistent />
+                              </TableToolbarContent>
+                            </TableToolbar>
+                            <Table {...getTableProps()} size="lg">
+                              <TableHead>
+                                <TableRow>
+                                  {tableHeaders.map((header) => (
+                                    <TableHeader {...getHeaderProps({ header })} key={header.key}>{header.header}</TableHeader>
+                                  ))}
+                                </TableRow>
+                              </TableHead>
+                              <TableBody>
+                                {tableRows.map((row) => (
+                                  <TableRow {...getRowProps({ row })} key={row.id}>
+                                    {row.cells.map((cell) => (
+                                      <TableCell key={cell.id}>
+                                        {cell.info.header === 'subject' ? (
+                                          <span style={{ cursor: 'pointer', fontWeight: 500 }} onClick={() => setSelectedThread({ id: row.id, subject: cell.value })}>{cell.value}</span>
+                                        ) : cell.info.header === 'messages' ? (
+                                          <Tag type="cool-gray" size="sm">{cell.value}</Tag>
+                                        ) : (
+                                          cell.value
+                                        )}
+                                      </TableCell>
+                                    ))}
+                                  </TableRow>
                                 ))}
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </TableContainer>
-                    )}
-                  </DataTable>
-                )}
+                              </TableBody>
+                            </Table>
+                          </TableContainer>
+                        )}
+                      </DataTable>
+                      {filteredEmails.length > 10 && (
+                        <Pagination totalItems={filteredEmails.length} pageSize={emailPageSize} pageSizes={[10, 20, 50]} page={emailPage}
+                          onChange={({ page: p, pageSize: ps }: { page: number; pageSize: number }) => { setEmailPage(p); setEmailPageSize(ps); }}
+                        />
+                      )}
+                    </>
+                  );
+                })()}
               </TabPanel>
               <TabPanel>
                 <AttachmentTable
