@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
+  DataTable,
   Table,
   TableHead,
   TableRow,
@@ -7,11 +8,13 @@ import {
   TableBody,
   TableCell,
   TableContainer,
+  TableToolbar,
+  TableToolbarContent,
+  TableToolbarSearch,
   Pagination,
   DataTableSkeleton,
   Tag,
   Dropdown,
-  Search,
 } from '@carbon/react';
 import { useNavigate } from 'react-router-dom';
 import { contactsApi, customersApi } from '../../api/customers';
@@ -93,45 +96,47 @@ export function ContactsPage() {
         <EmptyState title="No contacts yet" description="Contacts are created automatically when you sync your calendar" />
       ) : (
         <>
-          <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', alignItems: 'flex-end' }}>
-            <Search
-              size="sm"
-              placeholder="Search contacts..."
-              labelText="Search"
-              closeButtonLabelText="Clear"
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                setSearch(e.target.value || '');
-                setPage(1);
-              }}
-              style={{ flex: 1 }}
-            />
-            <Dropdown
-              id="company-filter"
-              titleText=""
-              label="Filter by company"
-              items={dropdownItems}
-              itemToString={(item: { id: string; text: string } | null) => item?.text || ''}
-              selectedItem={dropdownItems.find((d) => d.id === (selectedCustomerId || '__all__')) || dropdownItems[0]}
-              onChange={({ selectedItem }: { selectedItem: { id: string; text: string } | null }) => {
-                const id = selectedItem?.id === '__all__' ? null : selectedItem?.id || null;
-                setSelectedCustomerId(id);
-                setPage(1);
-              }}
-              size="sm"
-              className="contacts-company-filter"
-            />
-          </div>
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  {headers.map((header) => (
-                    <TableHeader key={header.key}>
-                      {header.header}
-                    </TableHeader>
-                  ))}
-                </TableRow>
-              </TableHead>
+          <DataTable rows={contacts.map((c) => ({ id: c.id }))} headers={headers} isSortable>
+            {({ getTableProps, getHeaderProps }) => (
+            <TableContainer>
+              <TableToolbar>
+                <TableToolbarContent>
+                  <TableToolbarSearch
+                    placeholder="Search contacts..."
+                    defaultValue={search}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                      setSearch(e.target.value || '');
+                      setPage(1);
+                    }}
+                    persistent
+                  />
+                  <Dropdown
+                    id="company-filter"
+                    titleText=""
+                    label="All companies"
+                    items={dropdownItems}
+                    itemToString={(item: { id: string; text: string } | null) => item?.text || ''}
+                    selectedItem={dropdownItems.find((d) => d.id === (selectedCustomerId || '__all__')) || dropdownItems[0]}
+                    onChange={({ selectedItem }: { selectedItem: { id: string; text: string } | null }) => {
+                      const id = selectedItem?.id === '__all__' ? null : selectedItem?.id || null;
+                      setSelectedCustomerId(id);
+                      setPage(1);
+                    }}
+                    size="sm"
+                    className="contacts-company-filter"
+                  />
+                </TableToolbarContent>
+              </TableToolbar>
+              <Table {...getTableProps()} size="lg">
+                <TableHead>
+                  <TableRow>
+                    {headers.map((header) => (
+                      <TableHeader {...getHeaderProps({ header })} key={header.key} isSortable={header.key !== 'actions'}>
+                        {header.header}
+                      </TableHeader>
+                    ))}
+                  </TableRow>
+                </TableHead>
               <TableBody>
                 {contacts.map((contact) => (
                   <TableRow key={contact.id}>
@@ -171,6 +176,8 @@ export function ContactsPage() {
               </TableBody>
             </Table>
           </TableContainer>
+            )}
+          </DataTable>
           {meta && meta.totalPages > 1 && (
             <Pagination
               totalItems={meta.total}

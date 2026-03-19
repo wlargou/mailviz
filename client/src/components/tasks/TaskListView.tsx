@@ -1,4 +1,5 @@
 import {
+  DataTable,
   Table,
   TableHead,
   TableRow,
@@ -6,10 +7,12 @@ import {
   TableBody,
   TableCell,
   TableContainer,
+  TableToolbar,
+  TableToolbarContent,
+  TableToolbarSearch,
   Button,
   Pagination,
   DataTableSkeleton,
-  Search,
 } from '@carbon/react';
 import { Edit, TrashCan } from '@carbon/icons-react';
 import { format } from 'date-fns';
@@ -48,99 +51,79 @@ export function TaskListView({ tasks, loading, onEdit, onDelete }: TaskListViewP
     return <EmptyState title="No tasks found" description="Try adjusting your filters or create a new task" />;
   }
 
+  const rows = tasks.map((t) => ({
+    id: t.id,
+    title: t.title,
+    status: t.status,
+    priority: t.priority,
+    dueDate: t.dueDate || '',
+    customer: t.customer?.name || '',
+    labels: '',
+  }));
+
   return (
     <>
-      <Search
-        size="sm"
-        placeholder="Search tasks..."
-        labelText="Search"
-        closeButtonLabelText="Clear"
-        value={filters.search || ''}
-        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-          setFilter('search', e.target.value || undefined);
-        }}
-        style={{ marginBottom: '1rem' }}
-      />
-      <TableContainer>
-        <Table>
-          <TableHead>
-            <TableRow>
-              {headers.map((header) => (
-                <TableHeader key={header.key}>
-                  {header.header}
-                </TableHeader>
-              ))}
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {tasks.map((task) => (
-              <TableRow key={task.id}>
-                <TableCell>
-                  <span
-                    style={{ cursor: 'pointer', fontWeight: 500 }}
-                    onClick={() => onEdit(task)}
-                  >
-                    {task.title}
-                  </span>
-                </TableCell>
-                <TableCell>
-                  <TaskStatusTag status={task.status} />
-                </TableCell>
-                <TableCell>
-                  <PriorityBadge priority={task.priority} />
-                </TableCell>
-                <TableCell>
-                  {task.dueDate ? (
-                    <span
-                      className={
-                        new Date(task.dueDate) < new Date() && task.status !== 'DONE'
-                          ? 'overdue-date'
-                          : ''
-                      }
-                    >
-                      {format(new Date(task.dueDate), 'MMM d, yyyy')}
-                    </span>
-                  ) : (
-                    '—'
-                  )}
-                </TableCell>
-                <TableCell>
-                  {task.customer ? (
-                    <span style={{ fontSize: '0.875rem' }}>{task.customer.name}</span>
-                  ) : '—'}
-                </TableCell>
-                <TableCell>
-                  <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
-                    {task.labels.map((label) => (
-                      <LabelTag key={label.id} label={label} />
-                    ))}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="table-actions">
-                    <Button
-                      kind="ghost"
-                      size="sm"
-                      hasIconOnly
-                      renderIcon={Edit}
-                      iconDescription="Edit"
-                      onClick={() => onEdit(task)}
-                    />
-                    <Button
-                      kind="danger--ghost"
-                      size="sm"
-                      hasIconOnly
-                      renderIcon={TrashCan}
-                      iconDescription="Delete"
-                      onClick={() => onDelete(task)}
-                    />
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
+      <DataTable rows={rows} headers={headers} isSortable>
+        {({ rows: tableRows, headers: tableHeaders, getTableProps, getHeaderProps }) => (
+          <TableContainer>
+            <TableToolbar>
+              <TableToolbarContent>
+                <TableToolbarSearch
+                  placeholder="Search tasks..."
+                  defaultValue={filters.search || ''}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                    setFilter('search', e.target.value || undefined);
+                  }}
+                  persistent
+                />
+              </TableToolbarContent>
+            </TableToolbar>
+            <Table {...getTableProps()} size="lg">
+              <TableHead>
+                <TableRow>
+                  {tableHeaders.map((header) => (
+                    <TableHeader {...getHeaderProps({ header })} key={header.key} isSortable={header.key !== 'actions' && header.key !== 'labels'}>
+                      {header.header}
+                    </TableHeader>
+                  ))}
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {tasks.map((task) => (
+                  <TableRow key={task.id}>
+                    <TableCell>
+                      <span style={{ cursor: 'pointer', fontWeight: 500 }} onClick={() => onEdit(task)}>
+                        {task.title}
+                      </span>
+                    </TableCell>
+                    <TableCell><TaskStatusTag status={task.status} /></TableCell>
+                    <TableCell><PriorityBadge priority={task.priority} /></TableCell>
+                    <TableCell>
+                      {task.dueDate ? (
+                        <span className={new Date(task.dueDate) < new Date() && task.status !== 'DONE' ? 'overdue-date' : ''}>
+                          {format(new Date(task.dueDate), 'MMM d, yyyy')}
+                        </span>
+                      ) : '—'}
+                    </TableCell>
+                    <TableCell>{task.customer ? task.customer.name : '—'}</TableCell>
+                    <TableCell>
+                      <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
+                        {task.labels.map((label) => <LabelTag key={label.id} label={label} />)}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="table-actions">
+                        <Button kind="ghost" size="sm" hasIconOnly renderIcon={Edit} iconDescription="Edit" onClick={() => onEdit(task)} />
+                        <Button kind="danger--ghost" size="sm" hasIconOnly renderIcon={TrashCan} iconDescription="Delete" onClick={() => onDelete(task)} />
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+      </DataTable>
       {meta && meta.totalPages > 1 && (
         <Pagination
           totalItems={meta.total}

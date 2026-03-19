@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
+  DataTable,
   Table,
   TableHead,
   TableRow,
@@ -7,11 +8,13 @@ import {
   TableBody,
   TableCell,
   TableContainer,
+  TableToolbar,
+  TableToolbarContent,
+  TableToolbarSearch,
   Pagination,
   Button,
   DataTableSkeleton,
   Tag,
-  Search,
 } from '@carbon/react';
 import { Add, View, TrashCan } from '@carbon/icons-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -100,30 +103,32 @@ export function CustomersPage() {
         <EmptyState title="No customers yet" description="Create your first customer to get started" />
       ) : (
         <>
-          <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', alignItems: 'flex-end' }}>
-            <Search
-              size="sm"
-              placeholder="Search customers..."
-              labelText="Search"
-              closeButtonLabelText="Clear"
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                setSearch(e.target.value || '');
-                setPage(1);
-              }}
-              style={{ flex: 1 }}
-            />
-          </div>
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  {headers.map((header) => (
-                    <TableHeader key={header.key}>
-                      {header.header}
-                    </TableHeader>
-                  ))}
-                </TableRow>
-              </TableHead>
+          <DataTable rows={customers.map((c) => ({ id: c.id }))} headers={headers} isSortable>
+            {({ getTableProps, getHeaderProps }) => (
+            <TableContainer>
+              <TableToolbar>
+                <TableToolbarContent>
+                  <TableToolbarSearch
+                    placeholder="Search customers..."
+                    defaultValue={search}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                      setSearch(e.target.value || '');
+                      setPage(1);
+                    }}
+                    persistent
+                  />
+                </TableToolbarContent>
+              </TableToolbar>
+              <Table {...getTableProps()} size="lg">
+                <TableHead>
+                  <TableRow>
+                    {headers.map((header) => (
+                      <TableHeader {...getHeaderProps({ header })} key={header.key} isSortable={header.key !== 'actions'}>
+                        {header.header}
+                      </TableHeader>
+                    ))}
+                  </TableRow>
+                </TableHead>
               <TableBody>
                 {customers.map((customer) => (
                   <TableRow key={customer.id}>
@@ -176,6 +181,8 @@ export function CustomersPage() {
               </TableBody>
             </Table>
           </TableContainer>
+            )}
+          </DataTable>
           {meta && meta.totalPages > 1 && (
             <Pagination
               totalItems={meta.total}
