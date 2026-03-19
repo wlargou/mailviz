@@ -8,6 +8,7 @@ import {
 import { Light, Asleep, Logout } from '@carbon/icons-react';
 import { useUIStore } from '../../store/uiStore';
 import { useAuthStore } from '../../store/authStore';
+import { GlobalSearch } from './GlobalSearch';
 
 export function AppHeader() {
   const { theme, toggleTheme, sideNavOpen, setSideNavOpen } = useUIStore();
@@ -24,6 +25,7 @@ export function AppHeader() {
         Mailviz
       </HeaderName>
       <HeaderGlobalBar>
+        <GlobalSearch />
         <HeaderGlobalAction
           aria-label="Toggle theme"
           onClick={toggleTheme}

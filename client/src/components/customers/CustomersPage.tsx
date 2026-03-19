@@ -14,7 +14,7 @@ import {
   Search,
 } from '@carbon/react';
 import { Add, View, TrashCan } from '@carbon/icons-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CustomerCreateModal } from './CustomerCreateModal';
 import { ConfirmDeleteModal } from '../shared/ConfirmDeleteModal';
 import { EmptyState } from '../shared/EmptyState';
@@ -37,8 +37,9 @@ export function CustomersPage() {
   const [loading, setLoading] = useState(true);
   const [meta, setMeta] = useState<PaginationMeta | null>(null);
   const [page, setPage] = useState(1);
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [urlParams] = useSearchParams();
+  const [search, setSearch] = useState(() => urlParams.get('search') || '');
+  const [debouncedSearch, setDebouncedSearch] = useState(() => urlParams.get('search') || '');
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteCustomer, setDeleteCustomer] = useState<Customer | null>(null);
   const navigate = useNavigate();

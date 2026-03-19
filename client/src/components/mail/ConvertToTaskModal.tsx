@@ -1,9 +1,11 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Modal,
   TextInput,
   TextArea,
   Dropdown,
+  Tag,
 } from '@carbon/react';
 import { emailsApi } from '../../api/emails';
 import { useUIStore } from '../../store/uiStore';
@@ -49,7 +51,7 @@ export function ConvertToTaskModal({ email, open, onClose, onConverted }: Conver
     }
   };
 
-  return (
+  return createPortal(
     <Modal
       open={open}
       onRequestClose={onClose}
@@ -78,6 +80,18 @@ export function ConvertToTaskModal({ email, open, onClose, onConverted }: Conver
             setPriority(selectedItem?.id || 'MEDIUM');
           }}
         />
+        <div className="modal-form__row">
+          <div style={{ flex: 1 }}>
+            <p className="modal-form__label">Status</p>
+            <Tag type="blue" size="md">To Do</Tag>
+          </div>
+          {email.customer && (
+            <div style={{ flex: 1 }}>
+              <p className="modal-form__label">Customer</p>
+              <Tag type="teal" size="md">{email.customer.name}</Tag>
+            </div>
+          )}
+        </div>
         <TextArea
           id="task-notes"
           labelText="Notes"
@@ -90,6 +104,7 @@ export function ConvertToTaskModal({ email, open, onClose, onConverted }: Conver
           From: {email.fromName || email.from} · {email.snippet?.slice(0, 100)}
         </p>
       </div>
-    </Modal>
+    </Modal>,
+    document.body,
   );
 }

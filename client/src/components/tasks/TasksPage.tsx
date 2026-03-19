@@ -38,9 +38,11 @@ export function TasksPage() {
     const status = searchParams.get('status');
     const priority = searchParams.get('priority');
     const overdue = searchParams.get('overdue');
+    const search = searchParams.get('search');
     if (status) setFilter('status', status);
     if (priority) setFilter('priority', priority);
     if (overdue === 'true') setFilter('overdue', 'true');
+    if (search) setFilter('search', search);
   }, [searchParams, setFilter]);
 
   useEffect(() => {

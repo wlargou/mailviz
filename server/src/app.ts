@@ -17,6 +17,7 @@ import { authRoutes } from './routes/auth.js';
 import { calendarRoutes } from './routes/calendar.js';
 import { emailRoutes } from './routes/emails.js';
 import { dashboardRoutes } from './routes/dashboard.js';
+import { searchRoutes } from './routes/search.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -58,6 +59,7 @@ app.use('/api/v1/contacts', requireAuth, contactRoutes);
 app.use('/api/v1/calendar', requireAuth, calendarRoutes);
 app.use('/api/v1/emails', requireAuth, emailRoutes);
 app.use('/api/v1/dashboard', requireAuth, dashboardRoutes);
+app.use('/api/v1/search', requireAuth, searchRoutes);
 
 // Serve client static files in production
 if (env.NODE_ENV === 'production') {

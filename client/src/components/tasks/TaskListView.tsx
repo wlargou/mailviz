@@ -38,7 +38,7 @@ interface TaskListViewProps {
 }
 
 export function TaskListView({ tasks, loading, onEdit, onDelete }: TaskListViewProps) {
-  const { meta, setPage, setFilter, currentPage } = useTaskStore();
+  const { meta, setPage, setFilter, filters, currentPage } = useTaskStore();
 
   if (loading) {
     return <DataTableSkeleton headers={headers} rowCount={5} />;
@@ -55,6 +55,7 @@ export function TaskListView({ tasks, loading, onEdit, onDelete }: TaskListViewP
         placeholder="Search tasks..."
         labelText="Search"
         closeButtonLabelText="Clear"
+        value={filters.search || ''}
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
           setFilter('search', e.target.value || undefined);
         }}
