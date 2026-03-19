@@ -34,6 +34,18 @@ import type { TaskStatusConfig } from '../../types/task';
 import type { GoogleStatus } from '../../types/calendar';
 import { format } from 'date-fns';
 
+const STATUS_COLORS = [
+  { hex: '#4589ff', label: 'Blue' },
+  { hex: '#8a3ffc', label: 'Purple' },
+  { hex: '#d2a106', label: 'Yellow' },
+  { hex: '#42be65', label: 'Green' },
+  { hex: '#08bdba', label: 'Teal' },
+  { hex: '#ff832b', label: 'Orange' },
+  { hex: '#ee5396', label: 'Pink' },
+  { hex: '#da1e28', label: 'Red' },
+  { hex: '#878d96', label: 'Gray' },
+];
+
 export function SettingsPage() {
   const [status, setStatus] = useState<GoogleStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -47,6 +59,7 @@ export function SettingsPage() {
   const [newStatusLabel, setNewStatusLabel] = useState('');
   const [editingStatusId, setEditingStatusId] = useState<string | null>(null);
   const [editLabel, setEditLabel] = useState('');
+  const [colorPickerOpen, setColorPickerOpen] = useState<string | null>(null);
 
   const fetchTaskStatuses = useCallback(async () => {
     try {
@@ -303,26 +316,37 @@ export function SettingsPage() {
                 {taskStatuses.map((s) => (
                   <StructuredListRow key={s.id}>
                     <StructuredListCell>
-                      <label className="settings-status-color-picker">
-                        <span className="settings-status-dot" style={{ backgroundColor: s.color }} />
-                        <input
-                          type="color"
-                          value={s.color}
-                          onChange={async (e) => {
-                            const newColor = e.target.value;
-                            // Optimistic update
-                            setTaskStatuses((prev) =>
-                              prev.map((ts) => ts.id === s.id ? { ...ts, color: newColor } : ts)
-                            );
-                            try {
-                              await taskStatusesApi.update(s.id, { color: newColor });
-                            } catch {
-                              fetchTaskStatuses(); // revert
-                            }
-                          }}
-                          className="settings-status-color-input"
+                      <div className="settings-color-swatch-wrapper">
+                        <button
+                          className="settings-status-dot"
+                          style={{ backgroundColor: s.color }}
+                          title="Change color"
+                          onClick={() => setColorPickerOpen(colorPickerOpen === s.id ? null : s.id)}
                         />
-                      </label>
+                        {colorPickerOpen === s.id && (
+                          <div className="settings-color-popover">
+                            {STATUS_COLORS.map((c) => (
+                              <button
+                                key={c.hex}
+                                className={`settings-color-option${s.color === c.hex ? ' settings-color-option--selected' : ''}`}
+                                style={{ backgroundColor: c.hex }}
+                                title={c.label}
+                                onClick={async () => {
+                                  setTaskStatuses((prev) =>
+                                    prev.map((ts) => ts.id === s.id ? { ...ts, color: c.hex } : ts)
+                                  );
+                                  setColorPickerOpen(null);
+                                  try {
+                                    await taskStatusesApi.update(s.id, { color: c.hex });
+                                  } catch {
+                                    fetchTaskStatuses();
+                                  }
+                                }}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </StructuredListCell>
                     <StructuredListCell>
                       {editingStatusId === s.id ? (
