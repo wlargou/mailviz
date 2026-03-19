@@ -105,6 +105,15 @@ body {
       margin: 0;
     }
   }
+
+  &--padded {
+    padding: 0 1rem;
+  }
+}
+
+.page-header__actions {
+  display: flex;
+  gap: 0.5rem;
 }
 
 // Component partials

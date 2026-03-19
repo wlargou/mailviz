@@ -29,7 +29,7 @@ export function RecentActivity({ stats, loading, onEmailClick, onTaskClick }: Re
     return (
       <div>
         {[1, 2, 3].map((i) => (
-          <div key={i} style={{ padding: '0.75rem 1rem' }}>
+          <div key={i} className="skeleton-row--lg">
             <SkeletonText paragraph lineCount={2} />
           </div>
         ))}

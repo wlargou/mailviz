@@ -15,9 +15,9 @@ interface EmailVolumeChartProps {
 export function EmailVolumeChart({ data, loading }: EmailVolumeChartProps) {
   if (loading || !data) {
     return (
-      <div style={{ padding: '1rem' }}>
+      <div className="skeleton-block">
         <SkeletonText heading width="40%" />
-        <div style={{ height: '250px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div className="skeleton-chart">
           <SkeletonText paragraph lineCount={5} />
         </div>
       </div>

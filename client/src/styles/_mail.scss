@@ -7,6 +7,20 @@
 }
 
 
+.mail-page__search-wrapper {
+  padding: 0 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.mail-page__sync-status {
+  padding: 0.5rem 1rem;
+}
+
+.mail-page__loading {
+  padding: 2rem;
+  text-align: center;
+}
+
 .mail-page__list {
   width: 100%;
   overflow-y: auto;

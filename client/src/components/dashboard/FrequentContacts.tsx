@@ -24,7 +24,7 @@ export function FrequentContacts({ contacts, loading }: FrequentContactsProps) {
     return (
       <div>
         {[1, 2, 3].map((i) => (
-          <div key={i} style={{ padding: '0.5rem 1rem' }}>
+          <div key={i} className="skeleton-row">
             <SkeletonText paragraph lineCount={2} />
           </div>
         ))}

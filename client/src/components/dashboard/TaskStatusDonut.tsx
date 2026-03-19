@@ -48,9 +48,9 @@ export function TaskStatusDonut({ data, loading }: TaskStatusDonutProps) {
 
   if (loading || !data) {
     return (
-      <div style={{ padding: '1rem' }}>
+      <div className="skeleton-block">
         <SkeletonText heading width="40%" />
-        <div style={{ height: '250px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div className="skeleton-chart">
           <SkeletonText paragraph lineCount={3} />
         </div>
       </div>

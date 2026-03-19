@@ -341,12 +341,12 @@ export function MailPage() {
   return (
     <div className="mail-page">
       <div className="mail-page__list">
-        <div className="page-header" style={{ padding: '0 1rem' }}>
+        <div className="page-header page-header--padded">
           <div className="page-header__info">
             <h1>Mail</h1>
             <p className="page-header__subtitle">Email threads synced from Gmail</p>
           </div>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <div className="page-header__actions">
             <Button
               kind="primary"
               size="sm"
@@ -407,7 +407,7 @@ export function MailPage() {
           </ContentSwitcher>
         </div>
 
-        <div style={{ padding: '0 1rem', marginBottom: '0.75rem' }}>
+        <div className="mail-page__search-wrapper">
           <MailSearchBar
             filters={filters}
             onFiltersChange={handleFiltersChange}
@@ -416,13 +416,13 @@ export function MailPage() {
         </div>
 
         {syncing && (
-          <div style={{ padding: '0.5rem 1rem' }}>
+          <div className="mail-page__sync-status">
             <InlineLoading description="Syncing emails from Gmail..." />
           </div>
         )}
 
         {loading && !syncing ? (
-          <div style={{ padding: '2rem', textAlign: 'center' }}>
+          <div className="mail-page__loading">
             <InlineLoading description="Loading emails..." />
           </div>
         ) : threads.length === 0 ? (
