@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
-import { Button, InlineLoading, InlineNotification } from '@carbon/react';
-import { Checkmark, Misuse, Renew, WarningAlt } from '@carbon/icons-react';
+import { useEffect, useState, useCallback } from 'react';
+import { Button, InlineLoading, InlineNotification, TextInput, Tag } from '@carbon/react';
+import { Checkmark, Misuse, Renew, WarningAlt, Add, TrashCan, Edit } from '@carbon/icons-react';
 import { useSearchParams } from 'react-router-dom';
 import { authApi } from '../../api/auth';
+import { taskStatusesApi } from '../../api/taskStatuses';
 import { useUIStore } from '../../store/uiStore';
+import type { TaskStatusConfig } from '../../types/task';
 import type { GoogleStatus } from '../../types/calendar';
 import { format } from 'date-fns';
 
@@ -16,8 +18,21 @@ export function SettingsPage() {
   const addNotification = useUIStore((s) => s.addNotification);
   const [searchParams, setSearchParams] = useSearchParams();
 
+  const [taskStatuses, setTaskStatuses] = useState<TaskStatusConfig[]>([]);
+  const [newStatusLabel, setNewStatusLabel] = useState('');
+  const [editingStatusId, setEditingStatusId] = useState<string | null>(null);
+  const [editLabel, setEditLabel] = useState('');
+
+  const fetchTaskStatuses = useCallback(async () => {
+    try {
+      const { data: res } = await taskStatusesApi.getAll();
+      setTaskStatuses(res.data);
+    } catch { /* ignore */ }
+  }, []);
+
   useEffect(() => {
     fetchStatus();
+    fetchTaskStatuses();
   }, []);
 
   useEffect(() => {
@@ -250,6 +265,118 @@ export function SettingsPage() {
               </Button>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Task Statuses Management */}
+      <div className="settings-card" style={{ marginTop: '1.5rem' }}>
+        <div className="settings-card__header">
+          <h3>Task Statuses</h3>
+          <p style={{ fontSize: '0.875rem', color: 'var(--cds-text-secondary)', margin: '0.25rem 0 0' }}>
+            Manage the status columns for your task Kanban board
+          </p>
+        </div>
+        <div className="settings-card__body">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {taskStatuses.map((s) => (
+              <div key={s.id} className="settings-status-row">
+                <span className="settings-status-row__indicator" style={{ backgroundColor: s.color }} />
+                {editingStatusId === s.id ? (
+                  <TextInput
+                    id={`edit-status-${s.id}`}
+                    labelText=""
+                    size="sm"
+                    value={editLabel}
+                    onChange={(e) => setEditLabel(e.target.value)}
+                    onKeyDown={async (e) => {
+                      if (e.key === 'Enter' && editLabel.trim()) {
+                        await taskStatusesApi.update(s.id, { label: editLabel.trim() });
+                        setEditingStatusId(null);
+                        fetchTaskStatuses();
+                      }
+                      if (e.key === 'Escape') setEditingStatusId(null);
+                    }}
+                    autoFocus
+                    style={{ flex: 1 }}
+                  />
+                ) : (
+                  <span className="settings-status-row__label">{s.label}</span>
+                )}
+                <Tag size="sm" type="cool-gray">{s.name}</Tag>
+                <Button
+                  kind="ghost"
+                  size="sm"
+                  hasIconOnly
+                  iconDescription="Edit"
+                  renderIcon={Edit}
+                  onClick={() => {
+                    setEditingStatusId(s.id);
+                    setEditLabel(s.label);
+                  }}
+                />
+                <Button
+                  kind="ghost"
+                  size="sm"
+                  hasIconOnly
+                  iconDescription="Delete"
+                  renderIcon={TrashCan}
+                  onClick={async () => {
+                    try {
+                      await taskStatusesApi.delete(s.id);
+                      addNotification({ kind: 'success', title: `Status "${s.label}" deleted` });
+                      fetchTaskStatuses();
+                    } catch (err: any) {
+                      addNotification({
+                        kind: 'error',
+                        title: err?.response?.data?.error?.message || 'Cannot delete status',
+                      });
+                    }
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem', alignItems: 'flex-end' }}>
+            <TextInput
+              id="new-status-label"
+              labelText="New status"
+              placeholder="e.g. Orders, Delivery..."
+              size="sm"
+              value={newStatusLabel}
+              onChange={(e) => setNewStatusLabel(e.target.value)}
+              onKeyDown={async (e) => {
+                if (e.key === 'Enter' && newStatusLabel.trim()) {
+                  try {
+                    await taskStatusesApi.create({ label: newStatusLabel.trim() });
+                    setNewStatusLabel('');
+                    fetchTaskStatuses();
+                    addNotification({ kind: 'success', title: 'Status created' });
+                  } catch {
+                    addNotification({ kind: 'error', title: 'Failed to create status' });
+                  }
+                }
+              }}
+            />
+            <Button
+              kind="primary"
+              size="sm"
+              renderIcon={Add}
+              disabled={!newStatusLabel.trim()}
+              onClick={async () => {
+                try {
+                  await taskStatusesApi.create({ label: newStatusLabel.trim() });
+                  setNewStatusLabel('');
+                  fetchTaskStatuses();
+                  addNotification({ kind: 'success', title: 'Status created' });
+                } catch {
+                  addNotification({ kind: 'error', title: 'Failed to create status' });
+                }
+              }}
+            >
+              Add
+            </Button>
+          </div>
         </div>
       </div>
     </div>

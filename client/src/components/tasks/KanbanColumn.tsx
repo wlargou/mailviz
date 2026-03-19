@@ -1,21 +1,17 @@
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { KanbanCard } from './KanbanCard';
-import type { Task, TaskStatus } from '../../types/task';
-
-const statusLabels: Record<TaskStatus, string> = {
-  TODO: 'To Do',
-  IN_PROGRESS: 'In Progress',
-  DONE: 'Done',
-};
+import type { Task } from '../../types/task';
 
 interface KanbanColumnProps {
-  status: TaskStatus;
+  status: string;
+  label: string;
+  color: string;
   tasks: Task[];
   onCardClick: (task: Task) => void;
 }
 
-export function KanbanColumn({ status, tasks, onCardClick }: KanbanColumnProps) {
+export function KanbanColumn({ status, label, color, tasks, onCardClick }: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
 
   return (
@@ -27,7 +23,8 @@ export function KanbanColumn({ status, tasks, onCardClick }: KanbanColumnProps) 
       }}
     >
       <div className="kanban-column-header">
-        <h4>{statusLabels[status]}</h4>
+        <span className="kanban-column-header__indicator" style={{ backgroundColor: color }} />
+        <h4>{label}</h4>
         <span className="column-count">{tasks.length}</span>
       </div>
       <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>

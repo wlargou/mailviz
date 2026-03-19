@@ -10,15 +10,10 @@ import {
 } from '@carbon/react';
 import { tasksApi } from '../../api/tasks';
 import { customersApi } from '../../api/customers';
+import { taskStatusesApi } from '../../api/taskStatuses';
 import { useUIStore } from '../../store/uiStore';
-import type { Task, Label, TaskPriority, TaskStatus } from '../../types/task';
+import type { Task, Label, TaskPriority, TaskStatus, TaskStatusConfig } from '../../types/task';
 import type { Customer } from '../../types/customer';
-
-const statusItems = [
-  { id: 'TODO', text: 'To Do' },
-  { id: 'IN_PROGRESS', text: 'In Progress' },
-  { id: 'DONE', text: 'Done' },
-];
 
 const priorityItems = [
   { id: 'LOW', text: 'Low' },
@@ -44,6 +39,7 @@ export function TaskDetailModal({ task, open, onClose, onUpdated, labels }: Task
   const [selectedLabels, setSelectedLabels] = useState<string[]>([]);
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [statusItems, setStatusItems] = useState<{ id: string; text: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const addNotification = useUIStore((s) => s.addNotification);
 
@@ -54,9 +50,19 @@ export function TaskDetailModal({ task, open, onClose, onUpdated, labels }: Task
     } catch { /* ignore */ }
   }, []);
 
+  const fetchStatuses = useCallback(async () => {
+    try {
+      const { data: res } = await taskStatusesApi.getAll();
+      setStatusItems(res.data.map((s: TaskStatusConfig) => ({ id: s.name, text: s.label })));
+    } catch { /* ignore */ }
+  }, []);
+
   useEffect(() => {
-    if (open) fetchCustomers();
-  }, [open, fetchCustomers]);
+    if (open) {
+      fetchCustomers();
+      fetchStatuses();
+    }
+  }, [open, fetchCustomers, fetchStatuses]);
 
   useEffect(() => {
     if (task) {

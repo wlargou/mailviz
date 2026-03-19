@@ -13,7 +13,7 @@ model Task {
   id          String       @id @default(uuid())
   title       String       @db.VarChar(255)
   description String?      @db.Text
-  status      TaskStatus   @default(TODO)
+  status      String       @default("TODO") @db.VarChar(100)
   priority    TaskPriority @default(MEDIUM)
   dueDate     DateTime?    @map("due_date")
   position    Int          @default(0)
@@ -30,6 +30,17 @@ model Task {
   @@index([dueDate])
   @@index([customerId])
   @@map("tasks")
+}
+
+model TaskStatus {
+  id        String   @id @default(uuid())
+  name      String   @unique @db.VarChar(100)
+  label     String   @db.VarChar(100)
+  color     String   @default("#4589ff") @db.VarChar(7)
+  position  Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("task_statuses")
 }
 
 model Customer {
@@ -90,12 +101,6 @@ model TaskLabel {
 
   @@id([taskId, labelId])
   @@map("task_labels")
-}
-
-enum TaskStatus {
-  TODO
-  IN_PROGRESS
-  DONE
 }
 
 enum TaskPriority {

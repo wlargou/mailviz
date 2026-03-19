@@ -26,10 +26,10 @@ export const taskService = {
     const where: Prisma.TaskWhereInput = {};
 
     if (query.status) {
-      where.status = query.status as Prisma.EnumTaskStatusFilter;
+      where.status = query.status;
     }
     if (query.statusNot) {
-      where.status = { not: query.statusNot as Prisma.EnumTaskStatusFilter };
+      where.status = { not: query.statusNot };
     }
     if (query.priority) {
       where.priority = query.priority as Prisma.EnumTaskPriorityFilter;

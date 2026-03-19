@@ -11,27 +11,39 @@ import {
   type DragOverEvent,
 } from '@dnd-kit/core';
 import { arrayMove } from '@dnd-kit/sortable';
-import { ClickableTile } from '@carbon/react';
+import { ClickableTile, Button, TextInput } from '@carbon/react';
+import { Add, Close } from '@carbon/icons-react';
 import { KanbanColumn } from './KanbanColumn';
 import { tasksApi } from '../../api/tasks';
+import { taskStatusesApi } from '../../api/taskStatuses';
 import { useUIStore } from '../../store/uiStore';
-import type { Task, TaskStatus, ReorderItem } from '../../types/task';
+import type { Task, TaskStatus, TaskStatusConfig, ReorderItem } from '../../types/task';
 
 interface TaskKanbanViewProps {
   onCardClick: (task: Task) => void;
 }
 
-const STATUSES: TaskStatus[] = ['TODO', 'IN_PROGRESS', 'DONE'];
-
 export function TaskKanbanView({ onCardClick }: TaskKanbanViewProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [statuses, setStatuses] = useState<TaskStatusConfig[]>([]);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [loading, setLoading] = useState(true);
+  const [addingStatus, setAddingStatus] = useState(false);
+  const [newStatusLabel, setNewStatusLabel] = useState('');
   const addNotification = useUIStore((s) => s.addNotification);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
   );
+
+  const fetchStatuses = useCallback(async () => {
+    try {
+      const { data: res } = await taskStatusesApi.getAll();
+      setStatuses(res.data);
+    } catch {
+      addNotification({ kind: 'error', title: 'Failed to load statuses' });
+    }
+  }, [addNotification]);
 
   const fetchKanbanTasks = useCallback(async () => {
     setLoading(true);
@@ -50,16 +62,27 @@ export function TaskKanbanView({ onCardClick }: TaskKanbanViewProps) {
   }, [addNotification]);
 
   useEffect(() => {
+    fetchStatuses();
     fetchKanbanTasks();
-  }, [fetchKanbanTasks]);
+  }, [fetchStatuses, fetchKanbanTasks]);
+
+  const statusNames = useMemo(() => statuses.map((s) => s.name), [statuses]);
 
   const tasksByStatus = useMemo(() => {
-    const grouped: Record<TaskStatus, Task[]> = { TODO: [], IN_PROGRESS: [], DONE: [] };
-    tasks.forEach((t) => grouped[t.status].push(t));
+    const grouped: Record<string, Task[]> = {};
+    for (const s of statuses) grouped[s.name] = [];
+    tasks.forEach((t) => {
+      if (grouped[t.status]) grouped[t.status].push(t);
+      else {
+        // Task has an unknown status — put it in the first column
+        const first = statuses[0]?.name;
+        if (first && grouped[first]) grouped[first].push(t);
+      }
+    });
     return grouped;
-  }, [tasks]);
+  }, [tasks, statuses]);
 
-  const findTaskStatus = (taskId: string): TaskStatus | undefined => {
+  const findTaskStatus = (taskId: string): string | undefined => {
     return tasks.find((t) => t.id === taskId)?.status;
   };
 
@@ -76,9 +99,8 @@ export function TaskKanbanView({ onCardClick }: TaskKanbanViewProps) {
     const overId = String(over.id);
 
     const activeStatus = findTaskStatus(activeId);
-    // Determine target status: if over a column, use column id; otherwise use the task's status
-    const overStatus = STATUSES.includes(overId as TaskStatus)
-      ? (overId as TaskStatus)
+    const overStatus = statusNames.includes(overId)
+      ? overId
       : findTaskStatus(overId);
 
     if (!activeStatus || !overStatus || activeStatus === overStatus) return;
@@ -100,14 +122,13 @@ export function TaskKanbanView({ onCardClick }: TaskKanbanViewProps) {
 
     if (!activeTask) return;
 
-    const targetStatus = STATUSES.includes(overId as TaskStatus)
-      ? (overId as TaskStatus)
+    const targetStatus = statusNames.includes(overId)
+      ? overId
       : (tasks.find((t) => t.id === overId)?.status || activeTask.status);
 
     const columnTasks = tasks.filter((t) => t.status === targetStatus);
 
-    // If dropping on another task in the same column, reorder
-    if (activeId !== overId && !STATUSES.includes(overId as TaskStatus)) {
+    if (activeId !== overId && !statusNames.includes(overId)) {
       const oldIndex = columnTasks.findIndex((t) => t.id === activeId);
       const newIndex = columnTasks.findIndex((t) => t.id === overId);
 
@@ -119,7 +140,6 @@ export function TaskKanbanView({ onCardClick }: TaskKanbanViewProps) {
           position: (i + 1) * 1000,
         }));
 
-        // Optimistic update
         setTasks((prev) => {
           const others = prev.filter((t) => t.status !== targetStatus);
           return [
@@ -138,8 +158,7 @@ export function TaskKanbanView({ onCardClick }: TaskKanbanViewProps) {
       }
     }
 
-    // Moving to a new column
-    if (activeTask.status !== targetStatus || STATUSES.includes(overId as TaskStatus)) {
+    if (activeTask.status !== targetStatus || statusNames.includes(overId)) {
       const updatedColumnTasks = tasks.filter(
         (t) => t.status === targetStatus && t.id !== activeId
       );
@@ -160,13 +179,25 @@ export function TaskKanbanView({ onCardClick }: TaskKanbanViewProps) {
     }
   };
 
+  const handleAddStatus = async () => {
+    if (!newStatusLabel.trim()) return;
+    try {
+      await taskStatusesApi.create({ label: newStatusLabel.trim() });
+      setNewStatusLabel('');
+      setAddingStatus(false);
+      fetchStatuses();
+    } catch {
+      addNotification({ kind: 'error', title: 'Failed to create status' });
+    }
+  };
+
   if (loading) {
     return (
       <div className="kanban-board">
-        {STATUSES.map((status) => (
-          <div key={status} className="kanban-column" style={{ opacity: 0.5 }}>
+        {statuses.map((s) => (
+          <div key={s.id} className="kanban-column" style={{ opacity: 0.5 }}>
             <div className="kanban-column-header">
-              <h4>{status.replace('_', ' ')}</h4>
+              <h4>{s.label}</h4>
             </div>
             <div className="kanban-cards" />
           </div>
@@ -184,14 +215,55 @@ export function TaskKanbanView({ onCardClick }: TaskKanbanViewProps) {
       onDragEnd={handleDragEnd}
     >
       <div className="kanban-board">
-        {STATUSES.map((status) => (
+        {statuses.map((s) => (
           <KanbanColumn
-            key={status}
-            status={status}
-            tasks={tasksByStatus[status]}
+            key={s.name}
+            status={s.name}
+            label={s.label}
+            color={s.color}
+            tasks={tasksByStatus[s.name] || []}
             onCardClick={onCardClick}
           />
         ))}
+
+        {/* Add new status column */}
+        <div className="kanban-column kanban-column--add">
+          {addingStatus ? (
+            <div className="kanban-add-form">
+              <TextInput
+                id="new-status-label"
+                labelText=""
+                placeholder="Status name..."
+                size="sm"
+                value={newStatusLabel}
+                onChange={(e) => setNewStatusLabel(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleAddStatus();
+                  if (e.key === 'Escape') { setAddingStatus(false); setNewStatusLabel(''); }
+                }}
+                autoFocus
+              />
+              <div className="kanban-add-form__actions">
+                <Button size="sm" kind="primary" onClick={handleAddStatus} disabled={!newStatusLabel.trim()}>
+                  Add
+                </Button>
+                <Button size="sm" kind="ghost" renderIcon={Close} hasIconOnly iconDescription="Cancel"
+                  onClick={() => { setAddingStatus(false); setNewStatusLabel(''); }}
+                />
+              </div>
+            </div>
+          ) : (
+            <Button
+              kind="ghost"
+              size="sm"
+              renderIcon={Add}
+              className="kanban-add-column-btn"
+              onClick={() => setAddingStatus(true)}
+            >
+              Add status
+            </Button>
+          )}
+        </div>
       </div>
       <DragOverlay>
         {activeTask && (

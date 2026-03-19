@@ -1,5 +1,14 @@
-export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'DONE';
+export type TaskStatus = string;
 export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+
+export interface TaskStatusConfig {
+  id: string;
+  name: string;
+  label: string;
+  color: string;
+  position: number;
+  createdAt: string;
+}
 
 export interface Label {
   id: string;

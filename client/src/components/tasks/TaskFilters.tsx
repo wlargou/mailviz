@@ -1,14 +1,9 @@
+import { useEffect, useState } from 'react';
 import { Dropdown, Button } from '@carbon/react';
 import { Reset } from '@carbon/icons-react';
 import { useTaskStore } from '../../store/taskStore';
-import type { Label } from '../../types/task';
-
-const statusItems = [
-  { id: '', text: 'All Statuses' },
-  { id: 'TODO', text: 'To Do' },
-  { id: 'IN_PROGRESS', text: 'In Progress' },
-  { id: 'DONE', text: 'Done' },
-];
+import { taskStatusesApi } from '../../api/taskStatuses';
+import type { Label, TaskStatusConfig } from '../../types/task';
 
 const priorityItems = [
   { id: '', text: 'All Priorities' },
@@ -24,6 +19,16 @@ interface TaskFiltersProps {
 
 export function TaskFilters({ labels }: TaskFiltersProps) {
   const { filters, setFilter, resetFilters } = useTaskStore();
+  const [statuses, setStatuses] = useState<{ id: string; text: string }[]>([{ id: '', text: 'All Statuses' }]);
+
+  useEffect(() => {
+    taskStatusesApi.getAll().then(({ data: res }) => {
+      setStatuses([
+        { id: '', text: 'All Statuses' },
+        ...res.data.map((s: TaskStatusConfig) => ({ id: s.name, text: s.label })),
+      ]);
+    }).catch(() => {});
+  }, []);
 
   const labelItems = [
     { id: '', text: 'All Labels' },
@@ -37,9 +42,9 @@ export function TaskFilters({ labels }: TaskFiltersProps) {
           id="filter-status"
           titleText="Status"
           label="All Statuses"
-          items={statusItems}
+          items={statuses}
           itemToString={(item) => item?.text || ''}
-          selectedItem={statusItems.find((s) => s.id === (filters.status || '')) || statusItems[0]}
+          selectedItem={statuses.find((s) => s.id === (filters.status || '')) || statuses[0]}
           onChange={({ selectedItem }) => setFilter('status', selectedItem?.id || undefined)}
         />
       </div>
