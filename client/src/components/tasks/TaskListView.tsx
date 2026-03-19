@@ -1,3 +1,4 @@
+import { useState, useRef, useCallback } from 'react';
 import {
   DataTable,
   Table,
@@ -42,12 +43,23 @@ interface TaskListViewProps {
 
 export function TaskListView({ tasks, loading, onEdit, onDelete }: TaskListViewProps) {
   const { meta, setPage, setFilter, filters, currentPage } = useTaskStore();
+  const [localSearch, setLocalSearch] = useState(filters.search || '');
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  if (loading) {
+  const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setLocalSearch(val);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setFilter('search', val || undefined);
+    }, 400);
+  }, [setFilter]);
+
+  if (loading && tasks.length === 0) {
     return <DataTableSkeleton headers={headers} rowCount={5} />;
   }
 
-  if (tasks.length === 0) {
+  if (tasks.length === 0 && !localSearch) {
     return <EmptyState title="No tasks found" description="Try adjusting your filters or create a new task" />;
   }
 
@@ -63,17 +75,15 @@ export function TaskListView({ tasks, loading, onEdit, onDelete }: TaskListViewP
 
   return (
     <>
-      <DataTable rows={rows} headers={headers} isSortable>
-        {({ rows: tableRows, headers: tableHeaders, getTableProps, getHeaderProps }) => (
+      <DataTable rows={rows} headers={headers}>
+        {({ getTableProps, getHeaderProps }) => (
           <TableContainer>
             <TableToolbar>
               <TableToolbarContent>
                 <TableToolbarSearch
                   placeholder="Search tasks..."
-                  defaultValue={filters.search || ''}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                    setFilter('search', e.target.value || undefined);
-                  }}
+                  value={localSearch}
+                  onChange={handleSearchChange}
                   persistent
                 />
               </TableToolbarContent>
@@ -81,15 +91,21 @@ export function TaskListView({ tasks, loading, onEdit, onDelete }: TaskListViewP
             <Table {...getTableProps()} size="lg">
               <TableHead>
                 <TableRow>
-                  {tableHeaders.map((header) => (
-                    <TableHeader {...getHeaderProps({ header })} key={header.key} isSortable={header.key !== 'actions' && header.key !== 'labels'}>
+                  {headers.map((header) => (
+                    <TableHeader {...getHeaderProps({ header })} key={header.key}>
                       {header.header}
                     </TableHeader>
                   ))}
                 </TableRow>
               </TableHead>
               <TableBody>
-                {tasks.map((task) => (
+                {tasks.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={headers.length}>
+                      <EmptyState title="No results" description={`No tasks match "${localSearch}"`} />
+                    </TableCell>
+                  </TableRow>
+                ) : tasks.map((task) => (
                   <TableRow key={task.id}>
                     <TableCell>
                       <span style={{ cursor: 'pointer', fontWeight: 500 }} onClick={() => onEdit(task)}>

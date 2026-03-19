@@ -103,8 +103,8 @@ export function CustomersPage() {
         <EmptyState title="No customers yet" description="Create your first customer to get started" />
       ) : (
         <>
-          <DataTable rows={customers.map((c) => ({ id: c.id }))} headers={headers} isSortable>
-            {({ getTableProps, getHeaderProps }) => (
+          <DataTable rows={customers.map((c) => ({ id: c.id }))} headers={headers}>
+            {({ getTableProps }) => (
             <TableContainer>
               <TableToolbar>
                 <TableToolbarContent>
@@ -123,7 +123,7 @@ export function CustomersPage() {
                 <TableHead>
                   <TableRow>
                     {headers.map((header) => (
-                      <TableHeader {...getHeaderProps({ header })} key={header.key} isSortable={header.key !== 'actions'}>
+                      <TableHeader key={header.key}>
                         {header.header}
                       </TableHeader>
                     ))}

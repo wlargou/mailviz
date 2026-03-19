@@ -96,8 +96,8 @@ export function ContactsPage() {
         <EmptyState title="No contacts yet" description="Contacts are created automatically when you sync your calendar" />
       ) : (
         <>
-          <DataTable rows={contacts.map((c) => ({ id: c.id }))} headers={headers} isSortable>
-            {({ getTableProps, getHeaderProps }) => (
+          <DataTable rows={contacts.map((c) => ({ id: c.id }))} headers={headers}>
+            {({ getTableProps }) => (
             <TableContainer>
               <TableToolbar>
                 <TableToolbarContent>
@@ -131,7 +131,7 @@ export function ContactsPage() {
                 <TableHead>
                   <TableRow>
                     {headers.map((header) => (
-                      <TableHeader {...getHeaderProps({ header })} key={header.key} isSortable={header.key !== 'actions'}>
+                      <TableHeader key={header.key}>
                         {header.header}
                       </TableHeader>
                     ))}
