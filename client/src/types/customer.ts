@@ -10,7 +10,7 @@ export interface Customer {
   notes: string | null;
   createdAt: string;
   updatedAt: string;
-  _count?: { contacts: number; tasks: number };
+  _count?: { contacts: number; tasks: number; emails: number };
   contacts?: Contact[];
 }
 

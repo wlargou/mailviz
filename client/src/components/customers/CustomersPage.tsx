@@ -29,9 +29,9 @@ import type { PaginationMeta } from '../../types/api';
 const headers = [
   { key: 'name', header: 'Name' },
   { key: 'company', header: 'Company' },
-  { key: 'email', header: 'Email' },
   { key: 'contacts', header: 'Contacts' },
   { key: 'tasks', header: 'Tasks' },
+  { key: 'emails', header: 'Emails' },
   { key: 'actions', header: '' },
 ];
 
@@ -149,12 +149,14 @@ export function CustomersPage() {
                       </span>
                     </TableCell>
                     <TableCell>{customer.company || '—'}</TableCell>
-                    <TableCell>{customer.email || '—'}</TableCell>
                     <TableCell>
                       <Tag type="cyan" size="sm">{customer._count?.contacts ?? 0}</Tag>
                     </TableCell>
                     <TableCell>
                       <Tag type="blue" size="sm">{customer._count?.tasks ?? 0}</Tag>
+                    </TableCell>
+                    <TableCell>
+                      <Tag type="teal" size="sm">{customer._count?.emails ?? 0}</Tag>
                     </TableCell>
                     <TableCell>
                       <div className="table-actions">

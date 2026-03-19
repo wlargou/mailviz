@@ -36,7 +36,7 @@ export const customerService = {
         skip: pagination.skip,
         take: pagination.limit,
         include: {
-          _count: { select: { contacts: true, tasks: true } },
+          _count: { select: { contacts: true, tasks: true, emails: true } },
         },
       }),
       prisma.customer.count({ where }),
@@ -53,7 +53,7 @@ export const customerService = {
       where: { id },
       include: {
         contacts: { orderBy: { firstName: 'asc' } },
-        _count: { select: { contacts: true, tasks: true } },
+        _count: { select: { contacts: true, tasks: true, emails: true } },
       },
     });
     if (!customer) {
@@ -66,7 +66,7 @@ export const customerService = {
     const cleaned = cleanEmptyStrings(data);
     return prisma.customer.create({
       data: cleaned as any,
-      include: { _count: { select: { contacts: true, tasks: true } } },
+      include: { _count: { select: { contacts: true, tasks: true, emails: true } } },
     });
   },
 
@@ -79,7 +79,7 @@ export const customerService = {
     return prisma.customer.update({
       where: { id },
       data: cleaned,
-      include: { _count: { select: { contacts: true, tasks: true } } },
+      include: { _count: { select: { contacts: true, tasks: true, emails: true } } },
     });
   },
 

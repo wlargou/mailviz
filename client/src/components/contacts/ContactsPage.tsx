@@ -16,6 +16,7 @@ import {
   Tag,
   Dropdown,
 } from '@carbon/react';
+import { Copy } from '@carbon/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { contactsApi, customersApi } from '../../api/customers';
 import { useUIStore } from '../../store/uiStore';
@@ -26,8 +27,6 @@ import type { PaginationMeta } from '../../types/api';
 const headers = [
   { key: 'name', header: 'Name' },
   { key: 'email', header: 'Email' },
-  { key: 'phone', header: 'Phone' },
-  { key: 'role', header: 'Role' },
   { key: 'company', header: 'Company' },
 ];
 
@@ -156,9 +155,23 @@ export function ContactsPage() {
                         {contact.firstName} {contact.lastName}
                       </span>
                     </TableCell>
-                    <TableCell>{contact.email || '—'}</TableCell>
-                    <TableCell>{contact.phone || '—'}</TableCell>
-                    <TableCell>{contact.role || '—'}</TableCell>
+                    <TableCell>
+                      {contact.email ? (
+                        <span className="contact-email-cell">
+                          <span>{contact.email}</span>
+                          <button
+                            className="contact-copy-btn"
+                            title="Copy email"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigator.clipboard.writeText(contact.email!);
+                            }}
+                          >
+                            <Copy size={14} />
+                          </button>
+                        </span>
+                      ) : '—'}
+                    </TableCell>
                     <TableCell>
                       {contact.customer ? (
                         <Tag
