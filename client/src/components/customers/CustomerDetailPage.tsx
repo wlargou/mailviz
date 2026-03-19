@@ -18,6 +18,10 @@ import {
   TableBody,
   TableCell,
   TableContainer,
+  TableToolbar,
+  TableToolbarContent,
+  TableToolbarSearch,
+  Pagination,
   OverflowMenu,
   OverflowMenuItem,
   Tag,
@@ -79,6 +83,20 @@ export function CustomerDetailPage() {
   const [selectedThread, setSelectedThread] = useState<{ id: string; subject: string } | null>(null);
   const [attachments, setAttachments] = useState<AttachmentWithEmail[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Table search/pagination state
+  const [contactSearch, setContactSearch] = useState('');
+  const [contactPage, setContactPage] = useState(1);
+  const [contactPageSize, setContactPageSize] = useState(20);
+  const [taskSearch, setTaskSearch] = useState('');
+  const [taskPage, setTaskPage] = useState(1);
+  const [taskPageSize, setTaskPageSize] = useState(20);
+  const [eventSearch, setEventSearch] = useState('');
+  const [eventPage, setEventPage] = useState(1);
+  const [eventPageSize, setEventPageSize] = useState(20);
+  const [emailSearch, setEmailSearch] = useState('');
+  const [emailPage, setEmailPage] = useState(1);
+  const [emailPageSize, setEmailPageSize] = useState(20);
 
   const [contactModalOpen, setContactModalOpen] = useState(false);
   const [editContact, setEditContact] = useState<Contact | null>(null);
@@ -182,29 +200,6 @@ export function CustomerDetailPage() {
     return <EmptyState title="Customer not found" />;
   }
 
-  const contactRows = contacts.map((c) => ({
-    id: c.id,
-    name: `${c.firstName} ${c.lastName}`,
-    email: c.email,
-    phone: c.phone,
-    role: c.role,
-  }));
-
-  const taskRows = tasks.map((t) => ({
-    id: t.id,
-    title: t.title,
-    status: t.status,
-    priority: t.priority,
-    dueDate: t.dueDate,
-  }));
-
-  const eventRows = events.map((e) => ({
-    id: e.id,
-    title: e.title,
-    date: format(new Date(e.startTime), 'MMM d, yyyy · h:mm a'),
-    location: e.location || '—',
-  }));
-
   return (
     <div>
       <Button
@@ -267,205 +262,159 @@ export function CustomerDetailPage() {
               <Tab renderIcon={Attachment}>Attachments ({attachments.length})</Tab>
             </TabList>
             <TabPanels>
+              {/* ─── Contacts Tab ─── */}
               <TabPanel>
                 <div style={{ marginBottom: '1rem' }}>
-                  <Button size="sm" renderIcon={Add} onClick={() => { setEditContact(null); setContactModalOpen(true); }}>
-                    Add Contact
-                  </Button>
+                  <Button size="sm" renderIcon={Add} onClick={() => { setEditContact(null); setContactModalOpen(true); }}>Add Contact</Button>
                 </div>
                 {contacts.length === 0 ? (
                   <EmptyState title="No contacts" description="Add contacts to this customer" icon={<UserMultiple size={48} />} />
-                ) : (
-                  <DataTable rows={contactRows} headers={contactHeaders}>
-                    {({ rows: tableRows, headers: tableHeaders, getTableProps, getHeaderProps, getRowProps }) => (
-                      <TableContainer>
-                        <Table {...getTableProps()}>
-                          <TableHead>
-                            <TableRow>
-                              {tableHeaders.map((header) => (
-                                <TableHeader {...getHeaderProps({ header })} key={header.key}>
-                                  {header.header}
-                                </TableHeader>
-                              ))}
-                            </TableRow>
-                          </TableHead>
-                          <TableBody>
-                            {tableRows.map((row) => {
-                              const contact = contacts.find((c) => c.id === row.id)!;
-                              return (
-                                <TableRow {...getRowProps({ row })} key={row.id}>
+                ) : (() => {
+                  const q = contactSearch.toLowerCase();
+                  const filtered = q ? contacts.filter((c) => `${c.firstName} ${c.lastName}`.toLowerCase().includes(q) || (c.email || '').toLowerCase().includes(q) || (c.role || '').toLowerCase().includes(q)) : contacts;
+                  const paginated = filtered.slice((contactPage - 1) * contactPageSize, contactPage * contactPageSize);
+                  const rows = paginated.map((c) => ({ id: c.id, name: `${c.firstName} ${c.lastName}`, email: c.email || '—', phone: c.phone || '—', role: c.role || '—' }));
+                  return (<>
+                    <DataTable rows={rows} headers={contactHeaders} isSortable>
+                      {({ rows: tableRows, headers: tableHeaders, getTableProps, getHeaderProps, getRowProps }) => (
+                        <TableContainer>
+                          <TableToolbar><TableToolbarContent><TableToolbarSearch placeholder="Search contacts..." onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setContactSearch(e.target.value); setContactPage(1); }} persistent /></TableToolbarContent></TableToolbar>
+                          <Table {...getTableProps()} size="lg">
+                            <TableHead><TableRow>{tableHeaders.map((h) => <TableHeader {...getHeaderProps({ header: h })} key={h.key} isSortable={h.key !== 'actions'}>{h.header}</TableHeader>)}</TableRow></TableHead>
+                            <TableBody>
+                              {paginated.map((contact, i) => {
+                                const row = tableRows[i]; if (!row) return null;
+                                return (<TableRow {...getRowProps({ row })} key={row.id}>
                                   <TableCell>{contact.firstName} {contact.lastName}</TableCell>
                                   <TableCell>{contact.email || '—'}</TableCell>
                                   <TableCell>{contact.phone || '—'}</TableCell>
                                   <TableCell>{contact.role || '—'}</TableCell>
                                   <TableCell>
                                     <OverflowMenu flipped size="sm" aria-label="Actions">
-                                      <OverflowMenuItem
-                                        itemText="Edit"
-                                        onClick={() => { setEditContact(contact); setContactModalOpen(true); }}
-                                      />
-                                      <OverflowMenuItem
-                                        itemText="Delete"
-                                        isDelete
-                                        onClick={() => setDeleteContact(contact)}
-                                      />
+                                      <OverflowMenuItem itemText="Edit" onClick={() => { setEditContact(contact); setContactModalOpen(true); }} />
+                                      <OverflowMenuItem itemText="Delete" isDelete onClick={() => setDeleteContact(contact)} />
                                     </OverflowMenu>
                                   </TableCell>
-                                </TableRow>
-                              );
-                            })}
-                          </TableBody>
-                        </Table>
-                      </TableContainer>
-                    )}
-                  </DataTable>
-                )}
+                                </TableRow>);
+                              })}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+                      )}
+                    </DataTable>
+                    {filtered.length > 10 && <Pagination totalItems={filtered.length} pageSize={contactPageSize} pageSizes={[10, 20, 50]} page={contactPage} onChange={({ page: p, pageSize: ps }: { page: number; pageSize: number }) => { setContactPage(p); setContactPageSize(ps); }} />}
+                  </>);
+                })()}
               </TabPanel>
+
+              {/* ─── Tasks Tab ─── */}
               <TabPanel>
                 {tasks.length === 0 ? (
                   <EmptyState title="No linked tasks" description="Link tasks to this customer from the Tasks page" icon={<TaskComplete size={48} />} />
-                ) : (
-                  <DataTable rows={taskRows} headers={taskHeaders}>
-                    {({ rows: tableRows, headers: tableHeaders, getTableProps, getHeaderProps, getRowProps }) => (
-                      <TableContainer>
-                        <Table {...getTableProps()}>
-                          <TableHead>
-                            <TableRow>
-                              {tableHeaders.map((header) => (
-                                <TableHeader {...getHeaderProps({ header })} key={header.key}>
-                                  {header.header}
-                                </TableHeader>
-                              ))}
-                            </TableRow>
-                          </TableHead>
-                          <TableBody>
-                            {tableRows.map((row) => {
-                              const task = tasks.find((t) => t.id === row.id)!;
-                              return (
-                                <TableRow {...getRowProps({ row })} key={row.id}>
-                                  <TableCell>
-                                    <span
-                                      style={{ cursor: 'pointer', fontWeight: 500 }}
-                                      onClick={() => navigate('/tasks')}
-                                    >
-                                      {task.title}
-                                    </span>
-                                  </TableCell>
+                ) : (() => {
+                  const q = taskSearch.toLowerCase();
+                  const filtered = q ? tasks.filter((t) => t.title.toLowerCase().includes(q) || t.status.toLowerCase().includes(q)) : tasks;
+                  const paginated = filtered.slice((taskPage - 1) * taskPageSize, taskPage * taskPageSize);
+                  const rows = paginated.map((t) => ({ id: t.id, title: t.title, status: t.status, priority: t.priority, dueDate: t.dueDate || '' }));
+                  return (<>
+                    <DataTable rows={rows} headers={taskHeaders} isSortable>
+                      {({ rows: tableRows, headers: tableHeaders, getTableProps, getHeaderProps, getRowProps }) => (
+                        <TableContainer>
+                          <TableToolbar><TableToolbarContent><TableToolbarSearch placeholder="Search tasks..." onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setTaskSearch(e.target.value); setTaskPage(1); }} persistent /></TableToolbarContent></TableToolbar>
+                          <Table {...getTableProps()} size="lg">
+                            <TableHead><TableRow>{tableHeaders.map((h) => <TableHeader {...getHeaderProps({ header: h })} key={h.key}>{h.header}</TableHeader>)}</TableRow></TableHead>
+                            <TableBody>
+                              {paginated.map((task, i) => {
+                                const row = tableRows[i]; if (!row) return null;
+                                return (<TableRow {...getRowProps({ row })} key={row.id}>
+                                  <TableCell><span style={{ cursor: 'pointer', fontWeight: 500 }} onClick={() => navigate('/tasks')}>{task.title}</span></TableCell>
                                   <TableCell><TaskStatusTag status={task.status} /></TableCell>
                                   <TableCell><PriorityBadge priority={task.priority} /></TableCell>
-                                  <TableCell>
-                                    {task.dueDate ? format(new Date(task.dueDate), 'MMM d, yyyy') : '—'}
-                                  </TableCell>
-                                </TableRow>
-                              );
-                            })}
-                          </TableBody>
-                        </Table>
-                      </TableContainer>
-                    )}
-                  </DataTable>
-                )}
+                                  <TableCell>{task.dueDate ? format(new Date(task.dueDate), 'MMM d, yyyy') : '—'}</TableCell>
+                                </TableRow>);
+                              })}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+                      )}
+                    </DataTable>
+                    {filtered.length > 10 && <Pagination totalItems={filtered.length} pageSize={taskPageSize} pageSizes={[10, 20, 50]} page={taskPage} onChange={({ page: p, pageSize: ps }: { page: number; pageSize: number }) => { setTaskPage(p); setTaskPageSize(ps); }} />}
+                  </>);
+                })()}
               </TabPanel>
+
+              {/* ─── Events Tab ─── */}
               <TabPanel>
                 {events.length === 0 ? (
                   <EmptyState title="No linked events" description="Events will appear here after syncing your calendar" icon={<Calendar size={48} />} />
-                ) : (
-                  <DataTable rows={eventRows} headers={eventHeaders}>
-                    {({ rows: tableRows, headers: tableHeaders, getTableProps, getHeaderProps, getRowProps }) => (
-                      <TableContainer>
-                        <Table {...getTableProps()}>
-                          <TableHead>
-                            <TableRow>
-                              {tableHeaders.map((header) => (
-                                <TableHeader {...getHeaderProps({ header })} key={header.key}>
-                                  {header.header}
-                                </TableHeader>
-                              ))}
-                            </TableRow>
-                          </TableHead>
-                          <TableBody>
-                            {tableRows.map((row) => {
-                              const evt = events.find((e) => e.id === row.id)!;
-                              return (
-                                <TableRow {...getRowProps({ row })} key={row.id}>
-                                  <TableCell>
-                                    <span
-                                      style={{ cursor: 'pointer', fontWeight: 500 }}
-                                      onClick={() => navigate('/calendar')}
-                                    >
-                                      {evt.title}
-                                    </span>
-                                  </TableCell>
+                ) : (() => {
+                  const q = eventSearch.toLowerCase();
+                  const filtered = q ? events.filter((e) => e.title.toLowerCase().includes(q) || (e.location || '').toLowerCase().includes(q)) : events;
+                  const paginated = filtered.slice((eventPage - 1) * eventPageSize, eventPage * eventPageSize);
+                  const rows = paginated.map((e) => ({ id: e.id, title: e.title, date: format(new Date(e.startTime), 'MMM d, yyyy · h:mm a'), location: e.location || '—' }));
+                  return (<>
+                    <DataTable rows={rows} headers={eventHeaders} isSortable>
+                      {({ rows: tableRows, headers: tableHeaders, getTableProps, getHeaderProps, getRowProps }) => (
+                        <TableContainer>
+                          <TableToolbar><TableToolbarContent><TableToolbarSearch placeholder="Search events..." onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setEventSearch(e.target.value); setEventPage(1); }} persistent /></TableToolbarContent></TableToolbar>
+                          <Table {...getTableProps()} size="lg">
+                            <TableHead><TableRow>{tableHeaders.map((h) => <TableHeader {...getHeaderProps({ header: h })} key={h.key}>{h.header}</TableHeader>)}</TableRow></TableHead>
+                            <TableBody>
+                              {paginated.map((evt, i) => {
+                                const row = tableRows[i]; if (!row) return null;
+                                return (<TableRow {...getRowProps({ row })} key={row.id}>
+                                  <TableCell><span style={{ cursor: 'pointer', fontWeight: 500 }} onClick={() => navigate('/calendar')}>{evt.title}</span></TableCell>
                                   <TableCell>{format(new Date(evt.startTime), 'MMM d, yyyy · h:mm a')}</TableCell>
                                   <TableCell>{evt.location || '—'}</TableCell>
-                                </TableRow>
-                              );
-                            })}
-                          </TableBody>
-                        </Table>
-                      </TableContainer>
-                    )}
-                  </DataTable>
-                )}
+                                </TableRow>);
+                              })}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+                      )}
+                    </DataTable>
+                    {filtered.length > 10 && <Pagination totalItems={filtered.length} pageSize={eventPageSize} pageSizes={[10, 20, 50]} page={eventPage} onChange={({ page: p, pageSize: ps }: { page: number; pageSize: number }) => { setEventPage(p); setEventPageSize(ps); }} />}
+                  </>);
+                })()}
               </TabPanel>
+
+              {/* ─── Emails Tab ─── */}
               <TabPanel>
                 {emailThreads.length === 0 ? (
                   <EmptyState title="No emails" description="Emails will appear here after syncing Gmail" icon={<Email size={48} />} />
-                ) : (
-                  <DataTable
-                    rows={emailThreads.map((t) => ({
-                      id: t.threadId || t.latestEmail.id,
-                      subject: t.latestEmail.subject,
-                      from: t.latestEmail.fromName || t.latestEmail.from,
-                      date: format(new Date(t.latestEmail.receivedAt), 'MMM d, yyyy'),
-                      messages: t.messageCount,
-                    }))}
-                    headers={[
-                      { key: 'subject', header: 'Subject' },
-                      { key: 'from', header: 'From' },
-                      { key: 'date', header: 'Date' },
-                      { key: 'messages', header: 'Messages' },
-                    ]}
-                  >
-                    {({ rows: tableRows, headers: tableHeaders, getTableProps, getHeaderProps, getRowProps }) => (
-                      <TableContainer>
-                        <Table {...getTableProps()}>
-                          <TableHead>
-                            <TableRow>
-                              {tableHeaders.map((header) => (
-                                <TableHeader {...getHeaderProps({ header })} key={header.key}>
-                                  {header.header}
-                                </TableHeader>
+                ) : (() => {
+                  const q = emailSearch.toLowerCase();
+                  const filtered = q ? emailThreads.filter((t) => t.latestEmail.subject.toLowerCase().includes(q) || (t.latestEmail.fromName || t.latestEmail.from).toLowerCase().includes(q)) : emailThreads;
+                  const paginated = filtered.slice((emailPage - 1) * emailPageSize, emailPage * emailPageSize);
+                  const emailHeaders = [{ key: 'subject', header: 'Subject' }, { key: 'from', header: 'From' }, { key: 'date', header: 'Date' }, { key: 'messages', header: 'Messages' }];
+                  const rows = paginated.map((t) => ({ id: t.threadId || t.latestEmail.id, subject: t.latestEmail.subject, from: t.latestEmail.fromName || t.latestEmail.from, date: format(new Date(t.latestEmail.receivedAt), 'MMM d, yyyy'), messages: String(t.messageCount) }));
+                  return (<>
+                    <DataTable rows={rows} headers={emailHeaders} isSortable>
+                      {({ rows: tableRows, headers: tableHeaders, getTableProps, getHeaderProps, getRowProps }) => (
+                        <TableContainer>
+                          <TableToolbar><TableToolbarContent><TableToolbarSearch placeholder="Search emails..." onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setEmailSearch(e.target.value); setEmailPage(1); }} persistent /></TableToolbarContent></TableToolbar>
+                          <Table {...getTableProps()} size="lg">
+                            <TableHead><TableRow>{tableHeaders.map((h) => <TableHeader {...getHeaderProps({ header: h })} key={h.key}>{h.header}</TableHeader>)}</TableRow></TableHead>
+                            <TableBody>
+                              {tableRows.map((row) => (
+                                <TableRow {...getRowProps({ row })} key={row.id}>
+                                  {row.cells.map((cell) => (
+                                    <TableCell key={cell.id}>
+                                      {cell.info.header === 'subject' ? <span style={{ cursor: 'pointer', fontWeight: 500 }} onClick={() => setSelectedThread({ id: row.id, subject: cell.value })}>{cell.value}</span>
+                                        : cell.info.header === 'messages' ? <Tag type="cool-gray" size="sm">{cell.value}</Tag>
+                                        : cell.value}
+                                    </TableCell>
+                                  ))}
+                                </TableRow>
                               ))}
-                            </TableRow>
-                          </TableHead>
-                          <TableBody>
-                            {tableRows.map((row) => (
-                              <TableRow {...getRowProps({ row })} key={row.id}>
-                                {row.cells.map((cell) => (
-                                  <TableCell key={cell.id}>
-                                    {cell.info.header === 'subject' ? (
-                                      <span
-                                        style={{ cursor: 'pointer', fontWeight: 500 }}
-                                        onClick={() => setSelectedThread({ id: row.id, subject: cell.value })}
-                                      >
-                                        {cell.value}
-                                      </span>
-                                    ) : cell.info.header === 'messages' ? (
-                                      <Tag type="cool-gray" size="sm">{cell.value}</Tag>
-                                    ) : (
-                                      cell.value
-                                    )}
-                                  </TableCell>
-                                ))}
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </TableContainer>
-                    )}
-                  </DataTable>
-                )}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+                      )}
+                    </DataTable>
+                    {filtered.length > 10 && <Pagination totalItems={filtered.length} pageSize={emailPageSize} pageSizes={[10, 20, 50]} page={emailPage} onChange={({ page: p, pageSize: ps }: { page: number; pageSize: number }) => { setEmailPage(p); setEmailPageSize(ps); }} />}
+                  </>);
+                })()}
               </TabPanel>
               <TabPanel>
                 <AttachmentTable
