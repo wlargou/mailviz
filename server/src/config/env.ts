@@ -20,6 +20,9 @@ export const env = {
   EMAIL_SYNC_ENABLED: process.env.EMAIL_SYNC_ENABLED !== 'false',
   CALENDAR_SYNC_ENABLED: process.env.CALENDAR_SYNC_ENABLED !== 'false',
   CALENDAR_SYNC_INTERVAL_SECONDS: parseInt(process.env.CALENDAR_SYNC_INTERVAL_SECONDS || '120', 10),
+  EMAIL_SYNC_MONTHS: parseInt(process.env.EMAIL_SYNC_MONTHS || '3', 10),
+  CALENDAR_SYNC_PAST_MONTHS: parseInt(process.env.CALENDAR_SYNC_PAST_MONTHS || '3', 10),
+  CALENDAR_SYNC_FUTURE_MONTHS: parseInt(process.env.CALENDAR_SYNC_FUTURE_MONTHS || '6', 10),
 
   // Auth
   JWT_SECRET: process.env.JWT_SECRET || devSecret('mailviz-jwt-dev'),

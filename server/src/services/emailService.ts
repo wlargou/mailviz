@@ -7,6 +7,7 @@ import { extractDomain, isPersonalDomain, normalizeDomain, parseName } from '../
 import { parsePagination, paginationMeta } from '../utils/pagination.js';
 import { wsEmit } from '../websocket.js';
 import { buildMimeMessage } from '../utils/mimeBuilder.js';
+import { env } from '../config/env.js';
 import { format } from 'date-fns';
 
 // Parse "Display Name <email@domain.com>" format
@@ -197,7 +198,7 @@ export const emailService = {
     do {
       const listRes = await gmail.users.messages.list({
         userId: 'me',
-        q: 'newer_than:3m',
+        q: `newer_than:${env.EMAIL_SYNC_MONTHS}m`,
         maxResults: 100,
         pageToken,
       });

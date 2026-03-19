@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { googleAuthService } from './googleAuthService.js';
 import { customerService } from './customerService.js';
 import { extractDomain, isPersonalDomain, normalizeDomain } from '../utils/domainResolver.js';
+import { env } from '../config/env.js';
 import type { Prisma } from '@prisma/client';
 
 // Patterns to extract meeting links from event descriptions.
@@ -196,9 +197,9 @@ export const calendarService = {
         } else {
           // Initial full sync — fetch events from -3 months to +6 months
           const timeMin = new Date();
-          timeMin.setMonth(timeMin.getMonth() - 3);
+          timeMin.setMonth(timeMin.getMonth() - env.CALENDAR_SYNC_PAST_MONTHS);
           const timeMax = new Date();
-          timeMax.setMonth(timeMax.getMonth() + 6);
+          timeMax.setMonth(timeMax.getMonth() + env.CALENDAR_SYNC_FUTURE_MONTHS);
 
           response = await calendar.events.list({
             calendarId: 'primary',
