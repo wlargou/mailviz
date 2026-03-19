@@ -1,9 +1,8 @@
-import { PrismaClient, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import { prisma } from '../lib/prisma.js';
 import { CreateContactInput, UpdateContactInput } from '../validators/contactValidator.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { parsePagination, paginationMeta } from '../utils/pagination.js';
-
-const prisma = new PrismaClient();
 
 interface ContactQueryParams {
   search?: string;

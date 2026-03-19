@@ -1,8 +1,6 @@
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma.js';
 import { CreateLabelInput, UpdateLabelInput } from '../validators/labelValidator.js';
 import { AppError } from '../middleware/errorHandler.js';
-
-const prisma = new PrismaClient();
 
 export const labelService = {
   async findAll() {

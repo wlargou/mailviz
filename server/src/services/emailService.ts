@@ -1,14 +1,13 @@
 import { google } from 'googleapis';
-import { PrismaClient, Prisma } from '@prisma/client';
-import { googleAuthService } from './googleAuthService.js';
+import { Prisma } from '@prisma/client';
+import { prisma } from '../lib/prisma.js';
+import { getGmailClient } from '../lib/gmail.js';
 import { customerService } from './customerService.js';
 import { extractDomain, isPersonalDomain, normalizeDomain, parseName } from '../utils/domainResolver.js';
 import { parsePagination, paginationMeta } from '../utils/pagination.js';
 import { wsEmit } from '../websocket.js';
 import { buildMimeMessage } from '../utils/mimeBuilder.js';
 import { format } from 'date-fns';
-
-const prisma = new PrismaClient();
 
 // Parse "Display Name <email@domain.com>" format
 function parseEmailAddress(raw: string): { email: string; name: string | null } {
@@ -140,10 +139,7 @@ interface EmailQueryParams {
 
 export const emailService = {
   async syncFromGmail() {
-    const oauth2Client = await googleAuthService.getAuthenticatedClient();
-    if (!oauth2Client) throw Object.assign(new Error('Google not connected'), { status: 400 });
-
-    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    const gmail = await getGmailClient();
     const auth = await prisma.googleAuth.findFirst();
     if (!auth) throw Object.assign(new Error('Google not connected'), { status: 400 });
 
@@ -610,23 +606,20 @@ export const emailService = {
 
     // On-demand body fetch if body is null
     if (email.body === null && email.gmailMessageId) {
-      const oauth2Client = await googleAuthService.getAuthenticatedClient();
-      if (oauth2Client) {
-        const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-        try {
-          const msgRes = await gmail.users.messages.get({
-            userId: 'me',
-            id: email.gmailMessageId,
-            format: 'full',
-          });
-          const body = extractBody(msgRes.data.payload || {});
-          if (body) {
-            await prisma.email.update({ where: { id }, data: { body } });
-            return { ...email, body };
-          }
-        } catch {
-          // Could not fetch body
+      try {
+        const gmail = await getGmailClient();
+        const msgRes = await gmail.users.messages.get({
+          userId: 'me',
+          id: email.gmailMessageId,
+          format: 'full',
+        });
+        const body = extractBody(msgRes.data.payload || {});
+        if (body) {
+          await prisma.email.update({ where: { id }, data: { body } });
+          return { ...email, body };
         }
+      } catch {
+        // Could not fetch body
       }
     }
 
@@ -643,10 +636,7 @@ export const emailService = {
       throw Object.assign(new Error('Attachment not found'), { status: 404 });
     }
 
-    const oauth2Client = await googleAuthService.getAuthenticatedClient();
-    if (!oauth2Client) throw Object.assign(new Error('Google not connected'), { status: 400 });
-
-    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    const gmail = await getGmailClient();
     const res = await gmail.users.messages.attachments.get({
       userId: 'me',
       messageId: attachment.email.gmailMessageId,
@@ -668,21 +658,15 @@ export const emailService = {
     await prisma.email.update({ where: { id }, data: { isRead: true } });
     wsEmit('email:updated', { id, isRead: true });
 
-    // Update on Gmail
+    // Sync to Gmail (best effort)
     if (email.gmailMessageId) {
-      const oauth2Client = await googleAuthService.getAuthenticatedClient();
-      if (oauth2Client) {
-        const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-        try {
-          await gmail.users.messages.modify({
-            userId: 'me',
-            id: email.gmailMessageId,
-            requestBody: { removeLabelIds: ['UNREAD'] },
-          });
-        } catch {
-          // Best effort
-        }
-      }
+      try {
+        const gmail = await getGmailClient();
+        await gmail.users.messages.modify({
+          userId: 'me', id: email.gmailMessageId,
+          requestBody: { removeLabelIds: ['UNREAD'] },
+        });
+      } catch { /* best effort */ }
     }
   },
 
@@ -694,19 +678,13 @@ export const emailService = {
     wsEmit('email:updated', { id, isRead: false });
 
     if (email.gmailMessageId) {
-      const oauth2Client = await googleAuthService.getAuthenticatedClient();
-      if (oauth2Client) {
-        const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-        try {
-          await gmail.users.messages.modify({
-            userId: 'me',
-            id: email.gmailMessageId,
-            requestBody: { addLabelIds: ['UNREAD'] },
-          });
-        } catch {
-          // Best effort
-        }
-      }
+      try {
+        const gmail = await getGmailClient();
+        await gmail.users.messages.modify({
+          userId: 'me', id: email.gmailMessageId,
+          requestBody: { addLabelIds: ['UNREAD'] },
+        });
+      } catch { /* best effort */ }
     }
   },
 
@@ -719,21 +697,15 @@ export const emailService = {
     wsEmit('email:updated', { id, isStarred: newStarred });
 
     if (email.gmailMessageId) {
-      const oauth2Client = await googleAuthService.getAuthenticatedClient();
-      if (oauth2Client) {
-        const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-        try {
-          await gmail.users.messages.modify({
-            userId: 'me',
-            id: email.gmailMessageId,
-            requestBody: newStarred
-              ? { addLabelIds: ['STARRED'] }
-              : { removeLabelIds: ['STARRED'] },
-          });
-        } catch {
-          // Best effort
-        }
-      }
+      try {
+        const gmail = await getGmailClient();
+        await gmail.users.messages.modify({
+          userId: 'me', id: email.gmailMessageId,
+          requestBody: newStarred
+            ? { addLabelIds: ['STARRED'] }
+            : { removeLabelIds: ['STARRED'] },
+        });
+      } catch { /* best effort */ }
     }
 
     return { isStarred: newStarred };
@@ -744,15 +716,13 @@ export const emailService = {
     if (!email) throw Object.assign(new Error('Email not found'), { status: 404 });
 
     if (email.gmailMessageId) {
-      const oauth2Client = await googleAuthService.getAuthenticatedClient();
-      if (oauth2Client) {
-        const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+      try {
+        const gmail = await getGmailClient();
         await gmail.users.messages.modify({
-          userId: 'me',
-          id: email.gmailMessageId,
+          userId: 'me', id: email.gmailMessageId,
           requestBody: { removeLabelIds: ['INBOX'] },
         });
-      }
+      } catch { /* best effort */ }
     }
 
     await prisma.email.update({
@@ -767,15 +737,13 @@ export const emailService = {
     if (!email) throw Object.assign(new Error('Email not found'), { status: 404 });
 
     if (email.gmailMessageId) {
-      const oauth2Client = await googleAuthService.getAuthenticatedClient();
-      if (oauth2Client) {
-        const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+      try {
+        const gmail = await getGmailClient();
         await gmail.users.messages.modify({
-          userId: 'me',
-          id: email.gmailMessageId,
+          userId: 'me', id: email.gmailMessageId,
           requestBody: { addLabelIds: ['INBOX'] },
         });
-      }
+      } catch { /* best effort */ }
     }
 
     await prisma.email.update({
@@ -790,14 +758,10 @@ export const emailService = {
     if (!email) throw Object.assign(new Error('Email not found'), { status: 404 });
 
     if (email.gmailMessageId) {
-      const oauth2Client = await googleAuthService.getAuthenticatedClient();
-      if (oauth2Client) {
-        const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-        await gmail.users.messages.trash({
-          userId: 'me',
-          id: email.gmailMessageId,
-        });
-      }
+      try {
+        const gmail = await getGmailClient();
+        await gmail.users.messages.trash({ userId: 'me', id: email.gmailMessageId });
+      } catch { /* best effort */ }
     }
 
     await prisma.email.update({
@@ -812,14 +776,10 @@ export const emailService = {
     if (!email) throw Object.assign(new Error('Email not found'), { status: 404 });
 
     if (email.gmailMessageId) {
-      const oauth2Client = await googleAuthService.getAuthenticatedClient();
-      if (oauth2Client) {
-        const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-        await gmail.users.messages.untrash({
-          userId: 'me',
-          id: email.gmailMessageId,
-        });
-      }
+      try {
+        const gmail = await getGmailClient();
+        await gmail.users.messages.untrash({ userId: 'me', id: email.gmailMessageId });
+      } catch { /* best effort */ }
     }
 
     await prisma.email.update({
@@ -836,48 +796,43 @@ export const emailService = {
     const allEmails = await prisma.email.findMany({ where: { threadId: { in: threadIds }, isRead: false } });
     await prisma.email.updateMany({ where: { threadId: { in: threadIds } }, data: { isRead: true } });
 
-    const oauth2Client = await googleAuthService.getAuthenticatedClient();
-    if (oauth2Client) {
-      const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    try {
+      const gmail = await getGmailClient();
       for (const email of allEmails) {
         if (email.gmailMessageId) {
           try {
             await gmail.users.messages.modify({
-              userId: 'me',
-              id: email.gmailMessageId,
+              userId: 'me', id: email.gmailMessageId,
               requestBody: { removeLabelIds: ['UNREAD'] },
             });
           } catch { /* best effort */ }
         }
       }
-    }
+    } catch { /* Gmail not connected */ }
 
     for (const email of allEmails) wsEmit('email:updated', { id: email.id, isRead: true });
     return { count: threadIds.length };
   },
 
   async batchMarkAsUnread(ids: string[]) {
-    // Get thread IDs for selected emails, then mark ALL emails in those threads as unread
     const selectedEmails = await prisma.email.findMany({ where: { id: { in: ids } }, select: { threadId: true } });
     const threadIds = [...new Set(selectedEmails.map((e) => e.threadId).filter((id): id is string => id != null))];
     const allEmails = await prisma.email.findMany({ where: { threadId: { in: threadIds }, isRead: true } });
     await prisma.email.updateMany({ where: { threadId: { in: threadIds } }, data: { isRead: false } });
 
-    const oauth2Client = await googleAuthService.getAuthenticatedClient();
-    if (oauth2Client) {
-      const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    try {
+      const gmail = await getGmailClient();
       for (const email of allEmails) {
         if (email.gmailMessageId) {
           try {
             await gmail.users.messages.modify({
-              userId: 'me',
-              id: email.gmailMessageId,
+              userId: 'me', id: email.gmailMessageId,
               requestBody: { addLabelIds: ['UNREAD'] },
             });
           } catch { /* best effort */ }
         }
       }
-    }
+    } catch { /* Gmail not connected */ }
 
     for (const email of allEmails) wsEmit('email:updated', { id: email.id, isRead: false });
     return { count: threadIds.length };
@@ -888,21 +843,19 @@ export const emailService = {
     const threadIds = [...new Set(selectedEmails.map((e) => e.threadId).filter((id): id is string => id != null))];
     const allEmails = await prisma.email.findMany({ where: { threadId: { in: threadIds } } });
 
-    const oauth2Client = await googleAuthService.getAuthenticatedClient();
-    if (oauth2Client) {
-      const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    try {
+      const gmail = await getGmailClient();
       for (const email of allEmails) {
         if (email.gmailMessageId) {
           try {
             await gmail.users.messages.modify({
-              userId: 'me',
-              id: email.gmailMessageId,
+              userId: 'me', id: email.gmailMessageId,
               requestBody: { removeLabelIds: ['INBOX'] },
             });
           } catch { /* best effort */ }
         }
       }
-    }
+    } catch { /* Gmail not connected */ }
 
     for (const email of allEmails) {
       await prisma.email.update({
@@ -920,9 +873,8 @@ export const emailService = {
     const threadIds = [...new Set(selectedEmails.map((e) => e.threadId).filter((id): id is string => id != null))];
     const allEmails = await prisma.email.findMany({ where: { threadId: { in: threadIds } } });
 
-    const oauth2Client = await googleAuthService.getAuthenticatedClient();
-    if (oauth2Client) {
-      const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    try {
+      const gmail = await getGmailClient();
       for (const email of allEmails) {
         if (email.gmailMessageId) {
           try {
@@ -930,7 +882,7 @@ export const emailService = {
           } catch { /* best effort */ }
         }
       }
-    }
+    } catch { /* Gmail not connected */ }
 
     for (const email of allEmails) {
       await prisma.email.update({
@@ -976,10 +928,7 @@ export const emailService = {
   },
 
   async sendEmail(data: { to: string[]; cc?: string[]; bcc?: string[]; subject: string; htmlBody: string }) {
-    const oauth2Client = await googleAuthService.getAuthenticatedClient();
-    if (!oauth2Client) throw Object.assign(new Error('Google not connected'), { status: 400 });
-
-    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    const gmail = await getGmailClient();
     const auth = await prisma.googleAuth.findFirst();
     if (!auth?.email) throw Object.assign(new Error('Google not connected'), { status: 400 });
 
@@ -1016,10 +965,7 @@ export const emailService = {
   },
 
   async replyToEmail(emailId: string, data: { htmlBody: string; replyAll?: boolean; cc?: string[]; bcc?: string[] }) {
-    const oauth2Client = await googleAuthService.getAuthenticatedClient();
-    if (!oauth2Client) throw Object.assign(new Error('Google not connected'), { status: 400 });
-
-    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    const gmail = await getGmailClient();
     const auth = await prisma.googleAuth.findFirst();
     if (!auth?.email) throw Object.assign(new Error('Google not connected'), { status: 400 });
 
@@ -1105,10 +1051,7 @@ export const emailService = {
   },
 
   async forwardEmail(emailId: string, data: { to: string[]; cc?: string[]; bcc?: string[]; htmlBody: string }) {
-    const oauth2Client = await googleAuthService.getAuthenticatedClient();
-    if (!oauth2Client) throw Object.assign(new Error('Google not connected'), { status: 400 });
-
-    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    const gmail = await getGmailClient();
     const auth = await prisma.googleAuth.findFirst();
     if (!auth?.email) throw Object.assign(new Error('Google not connected'), { status: 400 });
 

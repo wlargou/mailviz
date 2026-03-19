@@ -1,8 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { verifyAccessToken, verifyRefreshToken, signAccessToken } from '../utils/jwt.js';
 import { setAuthCookies } from '../utils/cookies.js';
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma.js';
 
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const accessToken = req.cookies?.access_token;

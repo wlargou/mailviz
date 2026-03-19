@@ -1,9 +1,7 @@
 import { google } from 'googleapis';
-import { PrismaClient } from '@prisma/client';
 import { env } from '../config/env.js';
 import { encrypt, decrypt } from '../utils/encryption.js';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma.js';
 
 const SCOPES = [
   'https://www.googleapis.com/auth/calendar',

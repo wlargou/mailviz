@@ -7,7 +7,7 @@ import {
   ContentSwitcher,
   Switch,
 } from '@carbon/react';
-import { Renew, StarFilled, Star, Attachment, Email as EmailIcon, Archive, TrashCan, Undo, Add, CheckmarkOutline, Close, CheckboxCheckedFilled } from '@carbon/icons-react';
+import { Renew, StarFilled, Star, Attachment, Email as EmailIcon, Archive, TrashCan, Undo, Add, CheckmarkOutline, Close, CheckboxCheckedFilled, Task } from '@carbon/icons-react';
 import { SidePanel } from '@carbon/ibm-products';
 import { formatDistanceToNow } from 'date-fns';
 import { useSearchParams } from 'react-router-dom';
@@ -19,6 +19,7 @@ import { EmptyState } from '../shared/EmptyState';
 import { ThreadDetail } from './ThreadDetail';
 import { MailSearchBar } from './MailSearchBar';
 import { MailComposeModal } from './MailComposeModal';
+import { ConvertToTaskModal } from './ConvertToTaskModal';
 import type { MailFilters } from './MailSearchBar';
 import type { EmailThread } from '../../types/email';
 import type { Customer } from '../../types/customer';
@@ -49,14 +50,17 @@ export function MailPage() {
     const isRead = searchParams.get('isRead');
     const hasAttachment = searchParams.get('hasAttachment');
     const folder = searchParams.get('folder');
+    const search = searchParams.get('search');
     if (isRead !== null) initial.isRead = isRead;
     if (hasAttachment === 'true') initial.hasAttachment = true;
     if (folder) initial.folder = folder;
+    if (search) initial.search = search;
     return initial;
   });
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedThread, setSelectedThread] = useState<string | null>(null);
   const [composeOpen, setComposeOpen] = useState(false);
+  const [convertEmail, setConvertEmail] = useState<EmailThread | null>(null);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
@@ -265,6 +269,38 @@ export function MailPage() {
     if (selectedIds.size === 0) return;
     setBulkLoading(true);
     const ids = Array.from(selectedIds);
+    const selectedThreadIds = new Set(
+      threads.filter((t) => ids.includes(t.latestEmail.id)).map((t) => t.threadId)
+    );
+
+    // Optimistic UI update — apply changes immediately before API call
+    const prevThreads = threads;
+    switch (action) {
+      case 'read':
+        setThreads((prev) => prev.map((t) =>
+          selectedThreadIds.has(t.threadId)
+            ? { ...t, unreadCount: 0, latestEmail: { ...t.latestEmail, isRead: true } }
+            : t
+        ));
+        break;
+      case 'unread':
+        setThreads((prev) => prev.map((t) =>
+          selectedThreadIds.has(t.threadId)
+            ? { ...t, unreadCount: 1, latestEmail: { ...t.latestEmail, isRead: false } }
+            : t
+        ));
+        break;
+      case 'archive':
+      case 'trash':
+        // Remove from list optimistically (unless viewing that folder)
+        if ((action === 'archive' && filters.folder !== 'archived') ||
+            (action === 'trash' && filters.folder !== 'trash')) {
+          setThreads((prev) => prev.filter((t) => !selectedThreadIds.has(t.threadId)));
+        }
+        break;
+    }
+    setSelectedIds(new Set());
+
     try {
       switch (action) {
         case 'read':
@@ -284,14 +320,15 @@ export function MailPage() {
           addNotification({ kind: 'success', title: `${ids.length} moved to trash` });
           break;
       }
-      setSelectedIds(new Set());
       fetchThreads(true);
     } catch {
+      // Revert optimistic update on failure
+      setThreads(prevThreads);
       addNotification({ kind: 'error', title: 'Bulk action failed' });
     } finally {
       setBulkLoading(false);
     }
-  }, [selectedIds, addNotification, fetchThreads]);
+  }, [selectedIds, threads, filters.folder, addNotification, fetchThreads]);
 
   const hasActiveFilters = filters.search || filters.from || filters.to || filters.subject ||
     filters.dateAfter || filters.dateBefore || filters.customerIds.length > 0 || filters.isRead !== null ||
@@ -509,6 +546,17 @@ export function MailPage() {
                           renderIcon={EmailIcon}
                           onClick={(ev: React.MouseEvent) => handleThreadAction('readToggle', thread, ev)}
                         />
+                        <Button
+                          kind="ghost"
+                          size="sm"
+                          hasIconOnly
+                          iconDescription="Convert to task"
+                          renderIcon={Task}
+                          onClick={(ev: React.MouseEvent) => {
+                            ev.stopPropagation();
+                            setConvertEmail(thread);
+                          }}
+                        />
                       </div>
                     </div>
                     <div className="thread-item__subject">{e.subject}</div>
@@ -570,6 +618,18 @@ export function MailPage() {
         }}
         mode="new"
       />
+
+      {convertEmail && (
+        <ConvertToTaskModal
+          email={convertEmail.latestEmail}
+          open={!!convertEmail}
+          onClose={() => setConvertEmail(null)}
+          onConverted={() => {
+            setConvertEmail(null);
+            fetchThreads(true);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -1,10 +1,9 @@
-import { PrismaClient, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import { prisma } from '../lib/prisma.js';
 import { CreateCustomerInput, UpdateCustomerInput } from '../validators/customerValidator.js';
 import { parsePagination, paginationMeta } from '../utils/pagination.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { domainToCompanyName, getLogoUrl, parseName } from '../utils/domainResolver.js';
-
-const prisma = new PrismaClient();
 
 interface CustomerQueryParams {
   search?: string;

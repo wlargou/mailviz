@@ -1,11 +1,9 @@
 import { google } from 'googleapis';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma.js';
 import { googleAuthService } from './googleAuthService.js';
 import { customerService } from './customerService.js';
 import { extractDomain, isPersonalDomain, normalizeDomain } from '../utils/domainResolver.js';
 import type { Prisma } from '@prisma/client';
-
-const prisma = new PrismaClient();
 
 // Patterns to extract meeting links from event descriptions.
 // Order matters — first match wins.

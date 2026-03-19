@@ -3,9 +3,7 @@ import { googleAuthService } from '../services/googleAuthService.js';
 import { env } from '../config/env.js';
 import { signAccessToken, signRefreshToken } from '../utils/jwt.js';
 import { setAuthCookies, clearAuthCookies } from '../utils/cookies.js';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma.js';
 
 export const authController = {
   // ── Login flow ──

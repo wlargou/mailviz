@@ -1,0 +1,445 @@
+// ─── ATTACHMENT PREVIEW MODAL ────────────────────
+.attachment-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.attachment-preview__image {
+  display: flex;
+  justify-content: center;
+  max-height: 60vh;
+  overflow: auto;
+
+  img {
+    max-width: 100%;
+    height: auto;
+    object-fit: contain;
+  }
+}
+
+.attachment-preview__pdf {
+  iframe {
+    width: 100%;
+    height: 60vh;
+    border: none;
+  }
+}
+
+.attachment-preview__fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 2rem 1rem;
+  color: var(--cds-text-secondary);
+}
+
+.attachment-preview__filename {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--cds-text-primary);
+  margin: 0;
+}
+
+.attachment-preview__meta {
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.attachment-preview__hint {
+  font-size: 0.75rem;
+  margin: 0;
+}
+
+.attachment-preview__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+// ─── ATTACHMENT TABLE ────────────────────────────
+.attachment-table__filename {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-weight: 500;
+
+  &:hover {
+    color: var(--cds-link-primary);
+  }
+}
+
+// Unread badge in sidebar
+.mail-unread-badge {
+  margin-left: auto;
+  min-width: 1.5rem;
+  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+// Ensure SideNavLink with badge uses flex layout for right-alignment
+.cds--side-nav__link-text {
+  display: flex !important;
+  align-items: center;
+  width: 100%;
+  gap: 0.5rem;
+}
+
+// ─── SHARED MODAL FORM LAYOUT ────────────────────
+.modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.modal-form__helper {
+  font-size: 0.75rem;
+  color: var(--cds-text-secondary);
+  margin: 0;
+}
+
+.modal-form__row {
+  display: flex;
+  gap: 1rem;
+}
+
+.modal-form__label {
+  font-size: 0.75rem;
+  color: var(--cds-text-secondary);
+  margin: 0 0 0.25rem;
+}
+
+// ─── COMPOSE EDITOR ─────────────────────────────
+.compose-editor {
+  min-height: 200px;
+  border: 1px solid var(--cds-border-strong);
+  border-radius: 0 0 4px 4px;
+  background: var(--cds-field);
+  color: var(--cds-text-primary);
+  font-size: 0.875rem;
+
+  .ProseMirror {
+    outline: none;
+    padding: 0.75rem 1rem;
+    min-height: 180px;
+    font-family: 'IBM Plex Sans', 'Helvetica Neue', Arial, sans-serif;
+    line-height: 1.6;
+
+    > * + * { margin-top: 0.25em; }
+
+    p { margin-bottom: 0.25em; }
+
+    p.is-editor-empty:first-child::before {
+      content: attr(data-placeholder);
+      color: var(--cds-text-placeholder);
+      pointer-events: none;
+      float: left;
+      height: 0;
+    }
+
+    a {
+      color: var(--cds-link-primary);
+      text-decoration: underline;
+      cursor: pointer;
+    }
+
+    blockquote {
+      border-left: 3px solid var(--cds-border-subtle);
+      margin: 0.5rem 0;
+      padding-left: 0.75rem;
+      color: var(--cds-text-secondary);
+    }
+
+    ul, ol {
+      padding-left: 1.5rem;
+      margin: 0.25rem 0;
+    }
+
+    ul {
+      list-style-type: disc;
+
+      ul { list-style-type: circle; }
+      ul ul { list-style-type: square; }
+    }
+
+    ol {
+      list-style-type: decimal;
+
+      ol { list-style-type: lower-alpha; }
+      ol ol { list-style-type: lower-roman; }
+    }
+
+    li {
+      display: list-item;
+      margin-bottom: 0.125em;
+
+      p { margin-bottom: 0; }
+    }
+
+    hr {
+      border: none;
+      border-top: 1px solid var(--cds-border-subtle);
+      margin: 0.75rem 0;
+    }
+
+    code {
+      background: var(--cds-layer-02);
+      padding: 0.125rem 0.25rem;
+      border-radius: 2px;
+      font-size: 0.8125rem;
+    }
+
+    mark {
+      background-color: #fef3bd;
+      border-radius: 2px;
+      padding: 0 2px;
+    }
+  }
+}
+
+// ─── COMPOSE TOOLBAR ────────────────────────────
+.compose-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  padding: 0.25rem;
+  border: 1px solid var(--cds-border-strong);
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  background: var(--cds-layer);
+  align-items: center;
+}
+
+.compose-toolbar__separator {
+  width: 1px;
+  height: 1.5rem;
+  background: var(--cds-border-subtle);
+  margin: 0 0.125rem;
+  align-self: center;
+}
+
+.compose-toolbar .cds--btn--ghost.cds--btn--sm.cds--btn--icon-only.compose-toolbar__btn--active {
+  background: var(--cds-layer-selected);
+}
+
+// Toolbar dropdown
+.compose-toolbar__dropdown {
+  position: relative;
+  display: inline-flex;
+}
+
+.compose-toolbar__dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 9100;
+  min-width: 140px;
+  background: var(--cds-layer);
+  border: 1px solid var(--cds-border-subtle);
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  padding: 0.25rem 0;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.compose-toolbar__dropdown-item {
+  padding: 0.375rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.8125rem;
+  color: var(--cds-text-primary);
+  white-space: nowrap;
+
+  &:hover {
+    background: var(--cds-layer-hover);
+  }
+
+  &--active {
+    background: var(--cds-layer-selected);
+    font-weight: 600;
+  }
+}
+
+// Color picker grid
+.compose-toolbar__color-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  padding: 0.5rem;
+}
+
+.compose-toolbar__color-swatch {
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--cds-border-subtle);
+  border-radius: 3px;
+  cursor: pointer;
+  padding: 0;
+  outline: none;
+
+  &:hover {
+    transform: scale(1.15);
+    border-color: var(--cds-border-strong);
+  }
+}
+
+// ─── RECIPIENT INPUT ────────────────────────────
+.recipient-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  position: relative;
+}
+
+.recipient-field__label {
+  font-size: 0.75rem;
+  color: var(--cds-text-secondary);
+  font-weight: 500;
+}
+
+.recipient-input {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--cds-border-strong);
+  border-radius: 4px;
+  background: var(--cds-field);
+  min-height: 2rem;
+  cursor: text;
+
+  &:focus-within {
+    border-color: var(--cds-focus);
+    outline: 2px solid var(--cds-focus);
+    outline-offset: -2px;
+  }
+}
+
+.recipient-input__field {
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--cds-text-primary);
+  flex: 1;
+  min-width: 120px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  padding: 0.125rem 0;
+}
+
+.recipient-input__suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--cds-layer);
+  border: 1px solid var(--cds-border-subtle);
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  z-index: 9100;
+  max-height: 200px;
+  overflow-y: auto;
+  margin-top: 2px;
+}
+
+.recipient-input__suggestion {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.8125rem;
+
+  &:hover,
+  &--active {
+    background: var(--cds-layer-hover);
+  }
+}
+
+.recipient-input__suggestion-name {
+  font-weight: 500;
+  color: var(--cds-text-primary);
+}
+
+.recipient-input__suggestion-email {
+  color: var(--cds-text-secondary);
+}
+
+.recipient-input__suggestion-company {
+  color: var(--cds-text-placeholder);
+  margin-left: auto;
+  font-size: 0.75rem;
+}
+
+// ─── COMPOSE FORM (inside side panel) ───────────
+.compose-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.compose-form__cc-toggle {
+  align-self: flex-start;
+  font-size: 0.75rem;
+}
+
+.compose-form__subject-display {
+  font-size: 0.875rem;
+  color: var(--cds-text-secondary);
+  padding: 0.25rem 0;
+}
+
+.compose-form__subject-label {
+  font-weight: 500;
+  color: var(--cds-text-primary);
+}
+
+.compose-form__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+// ─── COMPOSE SIDE PANEL ────────────────────────
+.compose-side-panel {
+  z-index: 8100;
+
+  &.c4p--side-panel--lg {
+    max-inline-size: 50%;
+    inline-size: 50%;
+  }
+}
+
+// ─── INLINE REPLY TRIGGER ───────────────────────
+.inline-reply-trigger {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--cds-border-subtle);
+  border-radius: 4px;
+  color: var(--cds-text-placeholder);
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: background-color 0.1s, border-color 0.1s;
+
+  &:hover {
+    background: var(--cds-layer-hover);
+    border-color: var(--cds-border-strong);
+  }
+}
+
+// ─── QUOTED CONTENT ─────────────────────────────
+.compose-quoted {
+  border-left: 2px solid var(--cds-border-subtle);
+  padding-left: 12px;
+  margin-top: 1rem;
+  color: var(--cds-text-secondary);
+  font-size: 0.8125rem;
+  overflow: hidden;
+  word-wrap: break-word;
+
+  img { max-width: 100%; height: auto; }
+}
+
