@@ -154,29 +154,16 @@ export const calendarService = {
     if (!oauth2Client) throw Object.assign(new Error('Google Calendar not connected'), { status: 400 });
 
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+    const auth = await prisma.googleAuth.findFirst();
+    if (!auth) throw Object.assign(new Error('Google Calendar not connected'), { status: 400 });
 
-    // Fetch events from last 3 months to next 6 months
-    const timeMin = new Date();
-    timeMin.setMonth(timeMin.getMonth() - 3);
-    const timeMax = new Date();
-    timeMax.setMonth(timeMax.getMonth() + 6);
-
-    const response = await calendar.events.list({
-      calendarId: 'primary',
-      timeMin: timeMin.toISOString(),
-      timeMax: timeMax.toISOString(),
-      maxResults: 500,
-      singleEvents: true,
-      orderBy: 'startTime',
-      conferenceDataVersion: 1,
-    } as any);
-
-    const googleEvents = (response as any).data.items || [];
     let synced = 0;
+    let deleted = 0;
     let customersCreated = 0;
     let contactsCreated = 0;
+    let nextSyncToken: string | null = null;
 
-    // Cache parent recurring event RRULE data to attach to instances
+    // Cache parent recurring event RRULE data
     const recurrenceCache = new Map<string, string[]>();
     const getRecurrence = async (recurringEventId: string): Promise<string[]> => {
       if (recurrenceCache.has(recurringEventId)) return recurrenceCache.get(recurringEventId)!;
@@ -191,118 +178,185 @@ export const calendarService = {
       }
     };
 
-    for (const gEvent of googleEvents) {
-      if (!gEvent.id) continue;
+    try {
+      let pageToken: string | undefined;
 
-      const isAllDay = !!gEvent.start?.date;
-      const startTime = isAllDay
-        ? new Date(gEvent.start!.date!)
-        : new Date(gEvent.start!.dateTime!);
-      const endTime = isAllDay
-        ? new Date(gEvent.end!.date!)
-        : new Date(gEvent.end!.dateTime!);
+      do {
+        let response: any;
 
-      // Extract attendees
-      const attendees = gEvent.attendees?.map((a: any) => ({
-        email: a.email || '',
-        displayName: a.displayName || null,
-        responseStatus: a.responseStatus || 'needsAction',
-        self: a.self || false,
-        organizer: a.organizer || false,
-      })) || null;
+        if (auth.calendarSyncToken) {
+          // Incremental sync — only fetch changes since last sync
+          response = await calendar.events.list({
+            calendarId: 'primary',
+            syncToken: auth.calendarSyncToken,
+            maxResults: 250,
+            pageToken,
+            conferenceDataVersion: 1,
+          } as any);
+        } else {
+          // Initial full sync — fetch events from -3 months to +6 months
+          const timeMin = new Date();
+          timeMin.setMonth(timeMin.getMonth() - 3);
+          const timeMax = new Date();
+          timeMax.setMonth(timeMax.getMonth() + 6);
 
-      // Extract conference/meeting link
-      let conferenceLink: string | null = null;
-      if (gEvent.conferenceData?.entryPoints) {
-        const videoEntry = gEvent.conferenceData.entryPoints.find(
-          (ep: any) => ep.entryPointType === 'video'
-        );
-        if (videoEntry?.uri) {
-          conferenceLink = videoEntry.uri;
-        }
-      }
-      // Fallback: check hangoutLink
-      if (!conferenceLink && gEvent.hangoutLink) {
-        conferenceLink = gEvent.hangoutLink;
-      }
-      // Fallback: parse description for Teams/Zoom/Webex links
-      if (!conferenceLink) {
-        conferenceLink = extractMeetingLink(gEvent.description);
-      }
-
-      // Recurrence: instances have recurringEventId, parent has recurrence rules
-      const recurringEventId = gEvent.recurringEventId || null;
-      let recurrence: string[] = [];
-      if (gEvent.recurrence) {
-        recurrence = gEvent.recurrence as string[];
-      } else if (recurringEventId) {
-        recurrence = await getRecurrence(recurringEventId);
-      }
-
-      const eventData = {
-        title: gEvent.summary || '(No title)',
-        description: gEvent.description || null,
-        startTime,
-        endTime,
-        location: gEvent.location || null,
-        isAllDay,
-        attendees: attendees as unknown as Prisma.InputJsonValue,
-        conferenceLink,
-        recurringEventId,
-        recurrence,
-        colorId: gEvent.colorId || null,
-        syncedAt: new Date(),
-      };
-
-      const localEvent = await prisma.calendarEvent.upsert({
-        where: { googleEventId: gEvent.id },
-        update: eventData,
-        create: {
-          googleEventId: gEvent.id,
-          calendarId: 'primary',
-          ...eventData,
-        },
-      });
-      synced++;
-
-      // Auto-import customers and contacts from attendees
-      if (attendees && Array.isArray(attendees)) {
-        const customerIds = new Set<string>();
-
-        for (const att of attendees as Array<{ email: string; displayName: string | null; self: boolean }>) {
-          if (att.self) continue;
-          const rawDomain = extractDomain(att.email);
-          if (!rawDomain || isPersonalDomain(rawDomain)) continue;
-          const domain = normalizeDomain(rawDomain);
-
-          const { customer, created: customerCreated } = await customerService.findOrCreateByDomain(domain);
-          customerIds.add(customer.id);
-          if (customerCreated) customersCreated++;
-
-          const { created: contactCreated } = await customerService.findOrCreateContact(att.email, att.displayName, customer.id);
-          if (contactCreated) contactsCreated++;
+          response = await calendar.events.list({
+            calendarId: 'primary',
+            timeMin: timeMin.toISOString(),
+            timeMax: timeMax.toISOString(),
+            maxResults: 500,
+            singleEvents: true,
+            orderBy: 'startTime',
+            pageToken,
+            conferenceDataVersion: 1,
+          } as any);
         }
 
-        for (const customerId of customerIds) {
-          await prisma.calendarEventCustomer.upsert({
-            where: { calendarEventId_customerId: { calendarEventId: localEvent.id, customerId } },
-            update: {},
-            create: { calendarEventId: localEvent.id, customerId },
-          });
+        const googleEvents = response.data.items || [];
+        pageToken = response.data.nextPageToken || undefined;
+        nextSyncToken = response.data.nextSyncToken || null;
+
+        for (const gEvent of googleEvents) {
+          if (!gEvent.id) continue;
+
+          // Handle cancelled/deleted events
+          if (gEvent.status === 'cancelled') {
+            const result = await prisma.calendarEvent.deleteMany({
+              where: { googleEventId: gEvent.id },
+            });
+            if (result.count > 0) deleted++;
+            continue;
+          }
+
+          const result = await this.upsertGoogleEvent(calendar, gEvent, recurrenceCache, getRecurrence);
+          synced++;
+          customersCreated += result.customersCreated;
+          contactsCreated += result.contactsCreated;
         }
+      } while (pageToken);
+    } catch (err: any) {
+      // If syncToken is invalid/expired, fall back to full sync
+      if (err?.code === 410 || err?.status === 410) {
+        console.warn('[CalendarSync] Sync token expired, resetting for full sync');
+        await prisma.googleAuth.update({
+          where: { id: auth.id },
+          data: { calendarSyncToken: null, lastSyncAt: new Date() },
+        });
+        // Recursive call will do a full sync since token is now null
+        return this.syncFromGoogle();
+      }
+      throw err;
+    }
+
+    // Store the new sync token for next incremental sync
+    await prisma.googleAuth.update({
+      where: { id: auth.id },
+      data: {
+        lastSyncAt: new Date(),
+        ...(nextSyncToken ? { calendarSyncToken: nextSyncToken } : {}),
+      },
+    });
+
+    return { synced, deleted, customersCreated, contactsCreated };
+  },
+
+  /** Upsert a single Google Calendar event into the local database */
+  async upsertGoogleEvent(
+    calendar: ReturnType<typeof google.calendar>,
+    gEvent: any,
+    recurrenceCache: Map<string, string[]>,
+    getRecurrence: (id: string) => Promise<string[]>,
+  ) {
+    let customersCreated = 0;
+    let contactsCreated = 0;
+
+    const isAllDay = !!gEvent.start?.date;
+    const startTime = isAllDay
+      ? new Date(gEvent.start!.date!)
+      : new Date(gEvent.start!.dateTime!);
+    const endTime = isAllDay
+      ? new Date(gEvent.end!.date!)
+      : new Date(gEvent.end!.dateTime!);
+
+    const attendees = gEvent.attendees?.map((a: any) => ({
+      email: a.email || '',
+      displayName: a.displayName || null,
+      responseStatus: a.responseStatus || 'needsAction',
+      self: a.self || false,
+      organizer: a.organizer || false,
+    })) || null;
+
+    let conferenceLink: string | null = null;
+    if (gEvent.conferenceData?.entryPoints) {
+      const videoEntry = gEvent.conferenceData.entryPoints.find(
+        (ep: any) => ep.entryPointType === 'video'
+      );
+      if (videoEntry?.uri) conferenceLink = videoEntry.uri;
+    }
+    if (!conferenceLink && gEvent.hangoutLink) conferenceLink = gEvent.hangoutLink;
+    if (!conferenceLink) conferenceLink = extractMeetingLink(gEvent.description);
+
+    const recurringEventId = gEvent.recurringEventId || null;
+    let recurrence: string[] = [];
+    if (gEvent.recurrence) {
+      recurrence = gEvent.recurrence as string[];
+    } else if (recurringEventId) {
+      recurrence = await getRecurrence(recurringEventId);
+    }
+
+    const eventData = {
+      title: gEvent.summary || '(No title)',
+      description: gEvent.description || null,
+      startTime,
+      endTime,
+      location: gEvent.location || null,
+      isAllDay,
+      attendees: attendees as unknown as Prisma.InputJsonValue,
+      conferenceLink,
+      recurringEventId,
+      recurrence,
+      colorId: gEvent.colorId || null,
+      syncedAt: new Date(),
+    };
+
+    const localEvent = await prisma.calendarEvent.upsert({
+      where: { googleEventId: gEvent.id },
+      update: eventData,
+      create: {
+        googleEventId: gEvent.id,
+        calendarId: 'primary',
+        ...eventData,
+      },
+    });
+
+    // Auto-import customers and contacts from attendees
+    if (attendees && Array.isArray(attendees)) {
+      const customerIds = new Set<string>();
+
+      for (const att of attendees as Array<{ email: string; displayName: string | null; self: boolean }>) {
+        if (att.self) continue;
+        const rawDomain = extractDomain(att.email);
+        if (!rawDomain || isPersonalDomain(rawDomain)) continue;
+        const domain = normalizeDomain(rawDomain);
+
+        const { customer, created: customerCreated } = await customerService.findOrCreateByDomain(domain);
+        customerIds.add(customer.id);
+        if (customerCreated) customersCreated++;
+
+        const { created: contactCreated } = await customerService.findOrCreateContact(att.email, att.displayName, customer.id);
+        if (contactCreated) contactsCreated++;
+      }
+
+      for (const customerId of customerIds) {
+        await prisma.calendarEventCustomer.upsert({
+          where: { calendarEventId_customerId: { calendarEventId: localEvent.id, customerId } },
+          update: {},
+          create: { calendarEventId: localEvent.id, customerId },
+        });
       }
     }
 
-    // Update lastSyncAt
-    const auth = await prisma.googleAuth.findFirst();
-    if (auth) {
-      await prisma.googleAuth.update({
-        where: { id: auth.id },
-        data: { lastSyncAt: new Date() },
-      });
-    }
-
-    return { synced, customersCreated, contactsCreated };
+    return { customersCreated, contactsCreated };
   },
 
   async respond(id: string, response: 'accepted' | 'declined' | 'tentative') {

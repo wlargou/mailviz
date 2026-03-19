@@ -136,7 +136,8 @@ model GoogleAuth {
   scope        String?   @db.Text
   lastSyncAt   DateTime? @map("last_sync_at")
   lastMailSyncAt DateTime? @map("last_mail_sync_at")
-  lastHistoryId  String?   @map("last_history_id") @db.VarChar(50)
+  lastHistoryId      String?   @map("last_history_id") @db.VarChar(50)
+  calendarSyncToken  String?   @map("calendar_sync_token") @db.Text
   userId       String    @unique @map("user_id")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
