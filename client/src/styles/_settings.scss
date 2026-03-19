@@ -64,6 +64,11 @@
 .settings-connection-email {
   font-size: 0.875rem;
   color: var(--cds-text-secondary);
+  flex: 1;
+}
+
+.settings-connection-status__action {
+  margin-left: auto;
 }
 
 // ─── Sync grid ───
@@ -112,11 +117,34 @@
 }
 
 // ─── Task statuses ───
+.settings-status-color-picker {
+  position: relative;
+  display: inline-flex;
+  cursor: pointer;
+}
+
 .settings-status-dot {
   display: inline-block;
-  width: 12px;
-  height: 12px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: border-color 0.15s ease;
+
+  &:hover {
+    border-color: var(--cds-border-strong-01);
+  }
+}
+
+.settings-status-color-input {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
 }
 
 .settings-status-actions {

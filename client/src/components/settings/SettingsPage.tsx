@@ -202,6 +202,17 @@ export function SettingsPage() {
                 <div className="settings-connection-status">
                   <Tag type="green" size="sm" renderIcon={Checkmark}>Connected</Tag>
                   {status.email && <span className="settings-connection-email">{status.email}</span>}
+                  <div className="settings-connection-status__action">
+                    {status.needsReauth ? (
+                      <Button kind="primary" size="sm" renderIcon={WarningAlt} onClick={handleConnect}>
+                        Reconnect
+                      </Button>
+                    ) : (
+                      <Button kind="danger--ghost" size="sm" renderIcon={Misuse} onClick={handleDisconnect} disabled={disconnecting}>
+                        Disconnect
+                      </Button>
+                    )}
+                  </div>
                 </div>
 
                 {status.needsReauth && (
@@ -247,17 +258,6 @@ export function SettingsPage() {
                   </div>
                 </Layer>
 
-                <div className="settings-tile__actions">
-                  {status.needsReauth ? (
-                    <Button kind="primary" size="sm" renderIcon={WarningAlt} onClick={handleConnect}>
-                      Reconnect Google
-                    </Button>
-                  ) : (
-                    <Button kind="danger--tertiary" size="sm" renderIcon={Misuse} onClick={handleDisconnect} disabled={disconnecting}>
-                      Disconnect
-                    </Button>
-                  )}
-                </div>
               </Stack>
             ) : (
               <Stack gap={4}>
@@ -303,7 +303,26 @@ export function SettingsPage() {
                 {taskStatuses.map((s) => (
                   <StructuredListRow key={s.id}>
                     <StructuredListCell>
-                      <span className="settings-status-dot" style={{ backgroundColor: s.color }} />
+                      <label className="settings-status-color-picker">
+                        <span className="settings-status-dot" style={{ backgroundColor: s.color }} />
+                        <input
+                          type="color"
+                          value={s.color}
+                          onChange={async (e) => {
+                            const newColor = e.target.value;
+                            // Optimistic update
+                            setTaskStatuses((prev) =>
+                              prev.map((ts) => ts.id === s.id ? { ...ts, color: newColor } : ts)
+                            );
+                            try {
+                              await taskStatusesApi.update(s.id, { color: newColor });
+                            } catch {
+                              fetchTaskStatuses(); // revert
+                            }
+                          }}
+                          className="settings-status-color-input"
+                        />
+                      </label>
                     </StructuredListCell>
                     <StructuredListCell>
                       {editingStatusId === s.id ? (
