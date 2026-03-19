@@ -38,7 +38,10 @@ export function NeedsAttention({ customers, loading }: NeedsAttentionProps) {
         <div
           key={customer.id}
           className="needs-attention__row"
+          role="button"
+          tabIndex={0}
           onClick={() => navigate(`/customers/${customer.id}`)}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/customers/${customer.id}`); } }}
         >
           <div className="needs-attention__logo">
             {customer.logoUrl ? (

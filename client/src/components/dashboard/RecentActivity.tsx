@@ -57,6 +57,9 @@ export function RecentActivity({ stats, loading, onEmailClick, onTaskClick }: Re
                 <div
                   key={email.threadId || idx}
                   className="recent-activity__item"
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (onEmailClick && email.threadId) onEmailClick(email.threadId, email.subject || '(No subject)'); else navigate('/mail'); } }}
                   onClick={() => {
                     if (onEmailClick && email.threadId) {
                       onEmailClick(email.threadId, email.subject || '(No subject)');
@@ -92,6 +95,9 @@ export function RecentActivity({ stats, loading, onEmailClick, onTaskClick }: Re
                 <div
                   key={task.id}
                   className="recent-activity__item"
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (onTaskClick) onTaskClick(task as Task); else navigate('/tasks'); } }}
                   onClick={() => {
                     if (onTaskClick) {
                       onTaskClick(task as Task);

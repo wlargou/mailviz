@@ -45,11 +45,12 @@ const FONT_SIZES = [
   { label: 'Huge', value: '1.5rem' },
 ];
 
+// Carbon Design System color palette
 const TEXT_COLORS = [
-  '#000000', '#434343', '#666666', '#999999', '#cccccc',
-  '#b80000', '#db3e00', '#fccb00', '#008b02', '#006b76',
-  '#1273de', '#004dcf', '#5300eb', '#eb9694', '#fad0c3',
-  '#fef3bd', '#c1e1c5', '#bedadc', '#c4def6', '#bed3f3', '#d4c4fb',
+  '#161616', '#525252', '#8d8d8d', '#f4f4f4', '#ffffff',
+  '#da1e28', '#ff832b', '#f1c21b', '#24a148', '#007d79',
+  '#0f62fe', '#4589ff', '#8a3ffc', '#fa4d56', '#ff8389',
+  '#78a9ff', '#a6c8ff', '#be95ff', '#d4bbff', '#42be65', '#a7f0ba',
 ];
 
 function DropdownMenu({ children, trigger }: { children: React.ReactNode; trigger: React.ReactNode }) {

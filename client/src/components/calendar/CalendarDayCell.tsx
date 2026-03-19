@@ -53,7 +53,7 @@ function OverflowPopover({ events, date, anchorRect, onEventClick, onClose }: Ov
         <span className="calendar-overflow-popover__date">
           {format(date, 'EEEE, MMMM d')}
         </span>
-        <button className="calendar-overflow-popover__close" onClick={onClose}>
+        <button className="calendar-overflow-popover__close" onClick={onClose} aria-label="Close">
           ×
         </button>
       </div>

@@ -47,9 +47,12 @@ export function FrequentContacts({ contacts, loading }: FrequentContactsProps) {
         <div
           key={contact.email}
           className={`frequent-contacts__row${contact.contactId ? ' frequent-contacts__row--clickable' : ''}`}
+          role={contact.contactId ? 'button' : undefined}
+          tabIndex={contact.contactId ? 0 : undefined}
           onClick={() => {
             if (contact.contactId) navigate(`/contacts/${contact.contactId}`);
           }}
+          onKeyDown={(e) => { if (contact.contactId && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); navigate(`/contacts/${contact.contactId}`); } }}
         >
           <div className="frequent-contacts__avatar">
             {getInitials(contact.name, contact.email)}

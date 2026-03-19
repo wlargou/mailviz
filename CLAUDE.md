@@ -101,5 +101,5 @@ Configured via `nixpacks.toml`. Uses Node 22 via nixPkgs. Build: `npm ci` → cl
 
 ## Database Schema
 
-The database schema is defined in the ./server/@prisma/schema.prisma file. Reference it anytime you need to understand the structure of data stored in the database.
+The database schema is defined in the ./server/src/prisma/schema.prisma file. Reference it anytime you need to understand the structure of data stored in the database.
 
