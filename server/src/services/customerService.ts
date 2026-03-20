@@ -11,6 +11,7 @@ interface CustomerQueryParams {
   limit?: string;
   sortBy?: string;
   sortOrder?: string;
+  categoryId?: string;
 }
 
 export const customerService = {
@@ -25,6 +26,9 @@ export const customerService = {
         { email: { contains: query.search, mode: 'insensitive' } },
       ];
     }
+    if (query.categoryId) {
+      where.categoryId = query.categoryId;
+    }
 
     const sortBy = query.sortBy || 'createdAt';
     const sortOrder = (query.sortOrder || 'desc') as Prisma.SortOrder;
@@ -36,6 +40,7 @@ export const customerService = {
         skip: pagination.skip,
         take: pagination.limit,
         include: {
+          category: true,
           _count: { select: { contacts: true, tasks: true, emails: true } },
         },
       }),
@@ -53,6 +58,7 @@ export const customerService = {
       where: { id },
       include: {
         contacts: { orderBy: { firstName: 'asc' } },
+        category: true,
         _count: { select: { contacts: true, tasks: true, emails: true } },
       },
     });
@@ -66,7 +72,7 @@ export const customerService = {
     const cleaned = cleanEmptyStrings(data);
     return prisma.customer.create({
       data: cleaned as any,
-      include: { _count: { select: { contacts: true, tasks: true, emails: true } } },
+      include: { category: true, _count: { select: { contacts: true, tasks: true, emails: true } } },
     });
   },
 
@@ -79,7 +85,7 @@ export const customerService = {
     return prisma.customer.update({
       where: { id },
       data: cleaned,
-      include: { _count: { select: { contacts: true, tasks: true, emails: true } } },
+      include: { category: true, _count: { select: { contacts: true, tasks: true, emails: true } } },
     });
   },
 

@@ -41,12 +41,12 @@ export function CustomerCreateModal({ open, onClose, onCreated }: CustomerCreate
         website: website.trim() || undefined,
         notes: notes.trim() || undefined,
       });
-      addNotification({ kind: 'success', title: 'Customer created' });
+      addNotification({ kind: 'success', title: 'Company created' });
       resetForm();
       onCreated();
       onClose();
     } catch {
-      addNotification({ kind: 'error', title: 'Failed to create customer' });
+      addNotification({ kind: 'error', title: 'Failed to create company' });
     } finally {
       setLoading(false);
     }
@@ -57,10 +57,10 @@ export function CustomerCreateModal({ open, onClose, onCreated }: CustomerCreate
       open={open}
       onRequestClose={() => { resetForm(); onClose(); }}
       onRequestSubmit={handleSubmit}
-      title="New Customer"
-      subtitle="Add a new customer to your CRM"
-      formTitle="Customer details"
-      formDescription="Fill in the customer information below."
+      title="New Company"
+      subtitle="Add a new company to your CRM"
+      formTitle="Company details"
+      formDescription="Fill in the company information below."
       primaryButtonText={loading ? 'Creating...' : 'Create'}
       secondaryButtonText="Cancel"
       disableSubmit={!name.trim() || loading}

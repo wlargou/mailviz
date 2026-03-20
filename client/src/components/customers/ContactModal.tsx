@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { TextInput } from '@carbon/react';
+import { TextInput, Toggle } from '@carbon/react';
 import { CreateSidePanel } from '@carbon/ibm-products';
 import { contactsApi } from '../../api/customers';
 import { useUIStore } from '../../store/uiStore';
@@ -19,6 +19,7 @@ export function ContactModal({ open, contact, customerId, onClose, onSaved }: Co
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState('');
+  const [isVip, setIsVip] = useState(false);
   const [loading, setLoading] = useState(false);
   const addNotification = useUIStore((s) => s.addNotification);
 
@@ -31,12 +32,14 @@ export function ContactModal({ open, contact, customerId, onClose, onSaved }: Co
       setEmail(contact.email || '');
       setPhone(contact.phone || '');
       setRole(contact.role || '');
+      setIsVip(contact.isVip || false);
     } else {
       setFirstName('');
       setLastName('');
       setEmail('');
       setPhone('');
       setRole('');
+      setIsVip(false);
     }
   }, [contact, open]);
 
@@ -51,6 +54,7 @@ export function ContactModal({ open, contact, customerId, onClose, onSaved }: Co
           email: email.trim() || undefined,
           phone: phone.trim() || undefined,
           role: role.trim() || undefined,
+          isVip,
         });
         addNotification({ kind: 'success', title: 'Contact updated' });
       } else {
@@ -61,6 +65,7 @@ export function ContactModal({ open, contact, customerId, onClose, onSaved }: Co
           phone: phone.trim() || undefined,
           role: role.trim() || undefined,
           customerId,
+          isVip,
         });
         addNotification({ kind: 'success', title: 'Contact created' });
       }
@@ -79,7 +84,7 @@ export function ContactModal({ open, contact, customerId, onClose, onSaved }: Co
       onRequestClose={onClose}
       onRequestSubmit={handleSubmit}
       title={isEdit ? 'Edit Contact' : 'Add Contact'}
-      subtitle={isEdit ? 'Update contact information' : 'Add a new contact to this customer'}
+      subtitle={isEdit ? 'Update contact information' : 'Add a new contact to this company'}
       formTitle="Contact details"
       formDescription="Provide the contact's name and optional details."
       primaryButtonText={loading ? 'Saving...' : isEdit ? 'Save' : 'Add'}
@@ -130,6 +135,15 @@ export function ContactModal({ open, contact, customerId, onClose, onSaved }: Co
         placeholder="e.g. CEO, CTO, Manager"
         value={role}
         onChange={(e) => setRole(e.target.value)}
+        className="create-side-panel__form-item"
+      />
+      <Toggle
+        id="contact-vip"
+        labelText="VIP Contact"
+        labelA="No"
+        labelB="Yes"
+        toggled={isVip}
+        onToggle={(checked: boolean) => setIsVip(checked)}
         className="create-side-panel__form-item"
       />
     </CreateSidePanel>

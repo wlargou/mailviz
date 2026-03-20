@@ -25,7 +25,7 @@ const SCOPES: Scope[] = [
   { id: 'emails', text: 'Emails' },
   { id: 'tasks', text: 'Tasks' },
   { id: 'events', text: 'Events' },
-  { id: 'customers', text: 'Customers' },
+  { id: 'customers', text: 'Companies' },
   { id: 'contacts', text: 'Contacts' },
 ];
 
@@ -41,7 +41,7 @@ const CATEGORY_META: Record<Category, { icon: typeof Email; label: string }> = {
   emails: { icon: Email, label: 'Email results' },
   tasks: { icon: Task, label: 'Task results' },
   events: { icon: Calendar, label: 'Event results' },
-  customers: { icon: UserAvatar, label: 'Customer results' },
+  customers: { icon: UserAvatar, label: 'Company results' },
   contacts: { icon: User, label: 'Contact results' },
 };
 

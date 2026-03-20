@@ -32,6 +32,10 @@ export const customersApi = {
   getAttachments(customerId: string) {
     return api.get<ApiResponse<AttachmentWithEmail[]>>(`/customers/${customerId}/attachments`);
   },
+
+  toggleVip(id: string) {
+    return api.patch<ApiResponse<Customer>>(`/customers/${id}/vip`);
+  },
 };
 
 export const contactsApi = {
@@ -65,5 +69,9 @@ export const contactsApi = {
 
   delete(id: string) {
     return api.delete(`/contacts/${id}`);
+  },
+
+  toggleVip(id: string) {
+    return api.patch<ApiResponse<Contact>>(`/contacts/${id}/vip`);
   },
 };

@@ -31,8 +31,10 @@ import {
 import { useSearchParams } from 'react-router-dom';
 import { authApi } from '../../api/auth';
 import { taskStatusesApi } from '../../api/taskStatuses';
+import { companyCategoriesApi } from '../../api/companyCategories';
 import { useUIStore } from '../../store/uiStore';
 import type { TaskStatusConfig } from '../../types/task';
+import type { CompanyCategory } from '../../types/customer';
 import type { GoogleStatus } from '../../types/calendar';
 import { format } from 'date-fns';
 
@@ -63,6 +65,12 @@ export function SettingsPage() {
   const [editLabel, setEditLabel] = useState('');
   const [colorPickerOpen, setColorPickerOpen] = useState<string | null>(null);
 
+  const [categories, setCategories] = useState<CompanyCategory[]>([]);
+  const [newCategoryLabel, setNewCategoryLabel] = useState('');
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [editCategoryLabel, setEditCategoryLabel] = useState('');
+  const [categoryColorPickerOpen, setCategoryColorPickerOpen] = useState<string | null>(null);
+
   const fetchTaskStatuses = useCallback(async () => {
     try {
       const { data: res } = await taskStatusesApi.getAll();
@@ -70,9 +78,17 @@ export function SettingsPage() {
     } catch { /* ignore */ }
   }, []);
 
+  const fetchCategories = useCallback(async () => {
+    try {
+      const { data: res } = await companyCategoriesApi.getAll();
+      setCategories(res.data);
+    } catch { /* ignore */ }
+  }, []);
+
   useEffect(() => {
     fetchStatus();
     fetchTaskStatuses();
+    fetchCategories();
   }, []);
 
   useEffect(() => {
@@ -180,6 +196,38 @@ export function SettingsPage() {
     await taskStatusesApi.update(id, { label: editLabel.trim() });
     setEditingStatusId(null);
     fetchTaskStatuses();
+  };
+
+  const handleAddCategory = async () => {
+    if (!newCategoryLabel.trim()) return;
+    try {
+      await companyCategoriesApi.create({ label: newCategoryLabel.trim() });
+      setNewCategoryLabel('');
+      fetchCategories();
+      addNotification({ kind: 'success', title: 'Category created' });
+    } catch {
+      addNotification({ kind: 'error', title: 'Failed to create category' });
+    }
+  };
+
+  const handleDeleteCategory = async (c: CompanyCategory) => {
+    try {
+      await companyCategoriesApi.delete(c.id);
+      addNotification({ kind: 'success', title: `Category "${c.label}" deleted` });
+      fetchCategories();
+    } catch (err: any) {
+      addNotification({
+        kind: 'error',
+        title: err?.response?.data?.error?.message || 'Cannot delete category',
+      });
+    }
+  };
+
+  const handleSaveEditCategory = async (id: string) => {
+    if (!editCategoryLabel.trim()) return;
+    await companyCategoriesApi.update(id, { label: editCategoryLabel.trim() });
+    setEditingCategoryId(null);
+    fetchCategories();
   };
 
   return (
@@ -401,6 +449,121 @@ export function SettingsPage() {
                 onKeyDown={(e) => { if (e.key === 'Enter') handleAddStatus(); }}
               />
               <Button kind="primary" size="sm" renderIcon={Add} disabled={!newStatusLabel.trim()} onClick={handleAddStatus}>
+                Add
+              </Button>
+            </div>
+          </Stack>
+        </Tile>
+
+        {/* ─── Company Categories ─── */}
+        <Tile className="settings-tile">
+          <Stack gap={5}>
+            <div className="settings-tile__header">
+              <div className="settings-tile__icon">
+                <svg viewBox="0 0 32 32" width="20" height="20" fill="var(--cds-icon-primary)">
+                  <path d="M28 12h-8V4h8zm-6-2h4V6h-4zM17 15H9V7h8zM11 13h4V9h-4zM28 26h-8v-8h8zm-6-2h4v-4h-4zM17 26H9v-8h8zm-6-2h4v-4h-4z" />
+                </svg>
+              </div>
+              <div>
+                <h4 className="settings-tile__title">Company Categories</h4>
+                <p className="settings-tile__desc">Categorize your companies (e.g. Customers, Distributors, Partners)</p>
+              </div>
+            </div>
+
+            <StructuredListWrapper isCondensed>
+              <StructuredListHead>
+                <StructuredListRow head>
+                  <StructuredListCell head>Color</StructuredListCell>
+                  <StructuredListCell head>Label</StructuredListCell>
+                  <StructuredListCell head>Key</StructuredListCell>
+                  <StructuredListCell head>{''}</StructuredListCell>
+                </StructuredListRow>
+              </StructuredListHead>
+              <StructuredListBody>
+                {categories.map((c) => (
+                  <StructuredListRow key={c.id}>
+                    <StructuredListCell>
+                      <div className="settings-color-swatch-wrapper">
+                        <button
+                          className="settings-status-dot"
+                          style={{ backgroundColor: c.color }}
+                          title="Change color"
+                          onClick={() => setCategoryColorPickerOpen(categoryColorPickerOpen === c.id ? null : c.id)}
+                        />
+                        {categoryColorPickerOpen === c.id && (
+                          <div className="settings-color-popover">
+                            {STATUS_COLORS.map((sc) => (
+                              <button
+                                key={sc.hex}
+                                className={`settings-color-option${c.color === sc.hex ? ' settings-color-option--selected' : ''}`}
+                                style={{ backgroundColor: sc.hex }}
+                                title={sc.label}
+                                onClick={async () => {
+                                  setCategories((prev) =>
+                                    prev.map((cat) => cat.id === c.id ? { ...cat, color: sc.hex } : cat)
+                                  );
+                                  setCategoryColorPickerOpen(null);
+                                  try {
+                                    await companyCategoriesApi.update(c.id, { color: sc.hex });
+                                  } catch {
+                                    fetchCategories();
+                                  }
+                                }}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </StructuredListCell>
+                    <StructuredListCell>
+                      {editingCategoryId === c.id ? (
+                        <TextInput
+                          id={`edit-category-${c.id}`}
+                          labelText=""
+                          hideLabel
+                          size="sm"
+                          value={editCategoryLabel}
+                          onChange={(e) => setEditCategoryLabel(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSaveEditCategory(c.id);
+                            if (e.key === 'Escape') setEditingCategoryId(null);
+                          }}
+                          onBlur={() => handleSaveEditCategory(c.id)}
+                          autoFocus
+                        />
+                      ) : (
+                        <span>{c.label}</span>
+                      )}
+                    </StructuredListCell>
+                    <StructuredListCell>
+                      <Tag size="sm" type="cool-gray">{c.name}</Tag>
+                    </StructuredListCell>
+                    <StructuredListCell>
+                      <div className="settings-status-actions">
+                        <Button kind="ghost" size="sm" hasIconOnly iconDescription="Rename" renderIcon={Edit}
+                          onClick={() => { setEditingCategoryId(c.id); setEditCategoryLabel(c.label); }}
+                        />
+                        <Button kind="ghost" size="sm" hasIconOnly iconDescription="Delete" renderIcon={TrashCan}
+                          onClick={() => handleDeleteCategory(c)}
+                        />
+                      </div>
+                    </StructuredListCell>
+                  </StructuredListRow>
+                ))}
+              </StructuredListBody>
+            </StructuredListWrapper>
+
+            <div className="settings-status-add">
+              <TextInput
+                id="new-category-label"
+                labelText="Add new category"
+                placeholder="e.g. Vendors, Agencies..."
+                size="sm"
+                value={newCategoryLabel}
+                onChange={(e) => setNewCategoryLabel(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleAddCategory(); }}
+              />
+              <Button kind="primary" size="sm" renderIcon={Add} disabled={!newCategoryLabel.trim()} onClick={handleAddCategory}>
                 Add
               </Button>
             </div>

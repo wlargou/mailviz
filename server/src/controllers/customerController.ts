@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { prisma } from '../lib/prisma.js';
 import { customerService } from '../services/customerService.js';
 
 export const customerController = {
@@ -60,6 +61,24 @@ export const customerController = {
     try {
       const events = await customerService.findLinkedEvents(req.params.id);
       res.json({ data: events });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async toggleVip(req: Request, res: Response, next: NextFunction) {
+    try {
+      const customer = await prisma.customer.findUnique({ where: { id: req.params.id } });
+      if (!customer) {
+        res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Customer not found' } });
+        return;
+      }
+      const updated = await prisma.customer.update({
+        where: { id: req.params.id },
+        data: { isVip: !customer.isVip },
+        include: { category: true, _count: { select: { contacts: true, tasks: true, emails: true } } },
+      });
+      res.json({ data: updated });
     } catch (err) {
       next(err);
     }

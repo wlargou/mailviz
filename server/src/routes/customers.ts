@@ -10,6 +10,7 @@ router.get('/:id', customerController.findById);
 router.get('/:id/attachments', customerController.findAttachments);
 router.get('/:id/events', customerController.findLinkedEvents);
 router.post('/', validate(createCustomerSchema), customerController.create);
+router.patch('/:id/vip', customerController.toggleVip);
 router.patch('/:id', validate(updateCustomerSchema), customerController.update);
 router.delete('/:id', customerController.delete);
 

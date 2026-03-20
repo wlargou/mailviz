@@ -29,8 +29,13 @@ import {
   TextInput,
   TextArea,
   Modal,
+  Dropdown,
 } from '@carbon/react';
 import { Add, Edit, UserMultiple, TaskComplete, Calendar, Email, Attachment } from '@carbon/icons-react';
+import { CategoryTag } from '../shared/CategoryTag';
+import { VipBadge } from '../shared/VipBadge';
+import { companyCategoriesApi } from '../../api/companyCategories';
+import type { CompanyCategory } from '../../types/customer';
 import { PageHeader } from '../shared/PageHeader';
 import { SidePanel } from '@carbon/ibm-products';
 import { format } from 'date-fns';
@@ -111,6 +116,8 @@ export function CustomerDetailPage() {
   const [editPhone, setEditPhone] = useState('');
   const [editWebsite, setEditWebsite] = useState('');
   const [editNotes, setEditNotes] = useState('');
+  const [editCategoryId, setEditCategoryId] = useState<string | null>(null);
+  const [allCategories, setAllCategories] = useState<CompanyCategory[]>([]);
 
   const fetchData = useCallback(async () => {
     if (!id) return;
@@ -134,7 +141,7 @@ export function CustomerDetailPage() {
         .then(({ data: res }) => setAttachments(res.data))
         .catch(() => {});
     } catch {
-      addNotification({ kind: 'error', title: 'Failed to load customer' });
+      addNotification({ kind: 'error', title: 'Failed to load company' });
     } finally {
       setLoading(false);
     }
@@ -142,6 +149,7 @@ export function CustomerDetailPage() {
 
   useEffect(() => {
     fetchData();
+    companyCategoriesApi.getAll().then(({ data: res }) => setAllCategories(res.data)).catch(() => {});
   }, [fetchData]);
 
   const handleDeleteContact = async () => {
@@ -164,6 +172,7 @@ export function CustomerDetailPage() {
     setEditPhone(customer.phone || '');
     setEditWebsite(customer.website || '');
     setEditNotes(customer.notes || '');
+    setEditCategoryId(customer.categoryId || null);
     setEditOpen(true);
   };
 
@@ -177,12 +186,13 @@ export function CustomerDetailPage() {
         phone: editPhone.trim() || undefined,
         website: editWebsite.trim() || undefined,
         notes: editNotes.trim() || undefined,
+        categoryId: editCategoryId,
       });
-      addNotification({ kind: 'success', title: 'Customer updated' });
+      addNotification({ kind: 'success', title: 'Company updated' });
       setEditOpen(false);
       fetchData();
     } catch {
-      addNotification({ kind: 'error', title: 'Failed to update customer' });
+      addNotification({ kind: 'error', title: 'Failed to update company' });
     }
   };
 
@@ -198,14 +208,14 @@ export function CustomerDetailPage() {
   }
 
   if (!customer) {
-    return <EmptyState title="Customer not found" />;
+    return <EmptyState title="Company not found" />;
   }
 
   return (
     <div>
       <PageHeader
-        title={customer?.name || 'Customer'}
-        breadcrumbs={[{ label: 'Customers', href: '/customers' }]}
+        title={customer?.name || 'Company'}
+        breadcrumbs={[{ label: 'Companies', href: '/customers' }]}
       />
 
       <Grid fullWidth>
@@ -223,6 +233,19 @@ export function CustomerDetailPage() {
                     />
                   )}
                   <h2 style={{ margin: 0 }}>{customer.name}</h2>
+                  <VipBadge
+                    isVip={customer.isVip}
+                    size={20}
+                    onToggle={async () => {
+                      try {
+                        const { data: res } = await customersApi.toggleVip(customer.id);
+                        setCustomer(res.data);
+                      } catch {
+                        addNotification({ kind: 'error', title: 'Failed to toggle VIP status' });
+                      }
+                    }}
+                  />
+                  <CategoryTag category={customer.category} />
                 </div>
                 {customer.company && (
                   <p style={{ margin: '0 0 0.25rem', color: 'var(--cds-text-secondary)' }}>
@@ -264,7 +287,7 @@ export function CustomerDetailPage() {
                   <Button size="sm" renderIcon={Add} onClick={() => { setEditContact(null); setContactModalOpen(true); }}>Add Contact</Button>
                 </div>
                 {contacts.length === 0 ? (
-                  <EmptyState title="No contacts" description="Add contacts to this customer" icon={<UserMultiple size={48} />} />
+                  <EmptyState title="No contacts" description="Add contacts to this company" icon={<UserMultiple size={48} />} />
                 ) : (() => {
                   const q = contactSearch.toLowerCase();
                   const filtered = q ? contacts.filter((c) => `${c.firstName} ${c.lastName}`.toLowerCase().includes(q) || (c.email || '').toLowerCase().includes(q) || (c.role || '').toLowerCase().includes(q)) : contacts;
@@ -442,7 +465,7 @@ export function CustomerDetailPage() {
         open={editOpen}
         onRequestClose={() => setEditOpen(false)}
         onRequestSubmit={handleUpdateCustomer}
-        modalHeading="Edit Customer"
+        modalHeading="Edit Company"
         primaryButtonText="Save"
         secondaryButtonText="Cancel"
         primaryButtonDisabled={!editName.trim()}
@@ -455,6 +478,23 @@ export function CustomerDetailPage() {
             <div style={{ flex: 1 }}><TextInput id="edit-cust-phone" labelText="Phone" value={editPhone} onChange={(e) => setEditPhone(e.target.value)} /></div>
           </div>
           <TextInput id="edit-cust-website" labelText="Website" value={editWebsite} onChange={(e) => setEditWebsite(e.target.value)} />
+          {allCategories.length > 0 && (
+            <Dropdown
+              id="edit-cust-category"
+              titleText="Category"
+              label="Select a category"
+              items={[{ id: '__none__', text: 'No category' }, ...allCategories.map((c) => ({ id: c.id, text: c.label }))]}
+              itemToString={(item: { id: string; text: string } | null) => item?.text || ''}
+              selectedItem={
+                editCategoryId
+                  ? { id: editCategoryId, text: allCategories.find((c) => c.id === editCategoryId)?.label || '' }
+                  : { id: '__none__', text: 'No category' }
+              }
+              onChange={({ selectedItem }: { selectedItem: { id: string; text: string } | null }) => {
+                setEditCategoryId(selectedItem?.id === '__none__' ? null : selectedItem?.id || null);
+              }}
+            />
+          )}
           <TextArea id="edit-cust-notes" labelText="Notes" value={editNotes} onChange={(e) => setEditNotes(e.target.value)} />
         </div>
       </Modal>

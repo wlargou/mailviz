@@ -17,20 +17,24 @@ import {
   Tag,
   Grid,
   Column,
+  Dropdown,
 } from '@carbon/react';
 import { Add, View, TrashCan } from '@carbon/icons-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CustomerCreateModal } from './CustomerCreateModal';
 import { ConfirmDeleteModal } from '../shared/ConfirmDeleteModal';
 import { EmptyState } from '../shared/EmptyState';
+import { CategoryTag } from '../shared/CategoryTag';
+import { VipBadge } from '../shared/VipBadge';
 import { customersApi } from '../../api/customers';
+import { companyCategoriesApi } from '../../api/companyCategories';
 import { useUIStore } from '../../store/uiStore';
-import type { Customer } from '../../types/customer';
+import type { Customer, CompanyCategory } from '../../types/customer';
 import type { PaginationMeta } from '../../types/api';
 
 const headers = [
   { key: 'name', header: 'Name' },
-  { key: 'company', header: 'Company' },
+  { key: 'category', header: 'Category' },
   { key: 'contacts', header: 'Contacts' },
   { key: 'tasks', header: 'Tasks' },
   { key: 'emails', header: 'Emails' },
@@ -45,6 +49,8 @@ export function CustomersPage() {
   const [urlParams] = useSearchParams();
   const [search, setSearch] = useState(() => urlParams.get('search') || '');
   const [debouncedSearch, setDebouncedSearch] = useState(() => urlParams.get('search') || '');
+  const [categories, setCategories] = useState<CompanyCategory[]>([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteCustomer, setDeleteCustomer] = useState<Customer | null>(null);
   const navigate = useNavigate();
@@ -56,20 +62,28 @@ export function CustomersPage() {
     return () => clearTimeout(timer);
   }, [search]);
 
+  // Load categories for filter dropdown
+  useEffect(() => {
+    companyCategoriesApi.getAll().then(({ data: res }) => {
+      setCategories(res.data);
+    }).catch(() => {});
+  }, []);
+
   const fetchCustomers = useCallback(async () => {
     setLoading(true);
     try {
       const params: Record<string, string> = { page: String(page), limit: '20' };
       if (debouncedSearch) params.search = debouncedSearch;
+      if (selectedCategoryId) params.categoryId = selectedCategoryId;
       const { data: response } = await customersApi.getAll(params);
       setCustomers(response.data);
       setMeta(response.meta || null);
     } catch {
-      addNotification({ kind: 'error', title: 'Failed to load customers' });
+      addNotification({ kind: 'error', title: 'Failed to load companies' });
     } finally {
       setLoading(false);
     }
-  }, [page, debouncedSearch, addNotification]);
+  }, [page, debouncedSearch, selectedCategoryId, addNotification]);
 
   useEffect(() => {
     fetchCustomers();
@@ -79,11 +93,11 @@ export function CustomersPage() {
     if (!deleteCustomer) return;
     try {
       await customersApi.delete(deleteCustomer.id);
-      addNotification({ kind: 'success', title: 'Customer deleted' });
+      addNotification({ kind: 'success', title: 'Company deleted' });
       setDeleteCustomer(null);
       fetchCustomers();
     } catch {
-      addNotification({ kind: 'error', title: 'Failed to delete customer' });
+      addNotification({ kind: 'error', title: 'Failed to delete company' });
     }
   };
 
@@ -91,11 +105,11 @@ export function CustomersPage() {
     <div>
       <div className="page-header">
         <div className="page-header__info">
-          <h1>Customers</h1>
-          <p className="page-header__subtitle">All customers and their contacts</p>
+          <h1>Companies</h1>
+          <p className="page-header__subtitle">All companies and their contacts</p>
         </div>
         <Button renderIcon={Add} onClick={() => setCreateOpen(true)}>
-          New Customer
+          New Company
         </Button>
       </div>
 
@@ -104,7 +118,7 @@ export function CustomersPage() {
           {loading && customers.length === 0 ? (
             <DataTableSkeleton headers={headers} rowCount={5} />
           ) : customers.length === 0 && !search ? (
-            <EmptyState title="No customers yet" description="Create your first customer to get started" />
+            <EmptyState title="No companies yet" description="Create your first company to get started" />
           ) : (
             <>
               <DataTable rows={customers.map((c) => ({ id: c.id }))} headers={headers}>
@@ -113,7 +127,7 @@ export function CustomersPage() {
                   <TableToolbar>
                     <TableToolbarContent>
                       <TableToolbarSearch
-                        placeholder="Search customers..."
+                        placeholder="Search companies..."
                         defaultValue={search}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                           setSearch(e.target.value || '');
@@ -121,6 +135,27 @@ export function CustomersPage() {
                         }}
                         persistent
                       />
+                      {categories.length > 0 && (
+                        <Dropdown
+                          id="category-filter"
+                          titleText=""
+                          label="All categories"
+                          items={[{ id: '__all__', text: 'All categories' }, ...categories.map((c) => ({ id: c.id, text: c.label }))]}
+                          itemToString={(item: { id: string; text: string } | null) => item?.text || ''}
+                          selectedItem={
+                            selectedCategoryId
+                              ? { id: selectedCategoryId, text: categories.find((c) => c.id === selectedCategoryId)?.label || '' }
+                              : { id: '__all__', text: 'All categories' }
+                          }
+                          onChange={({ selectedItem }: { selectedItem: { id: string; text: string } | null }) => {
+                            const id = selectedItem?.id === '__all__' ? null : selectedItem?.id || null;
+                            setSelectedCategoryId(id);
+                            setPage(1);
+                          }}
+                          size="sm"
+                          className="contacts-company-filter"
+                        />
+                      )}
                     </TableToolbarContent>
                   </TableToolbar>
                   <Table {...getTableProps()} size="lg">
@@ -141,6 +176,7 @@ export function CustomersPage() {
                             className="customer-name-cell"
                             onClick={() => navigate(`/customers/${customer.id}`)}
                           >
+                            {customer.isVip && <VipBadge isVip size={16} />}
                             {customer.logoUrl && (
                               <img
                                 src={customer.logoUrl}
@@ -152,7 +188,9 @@ export function CustomersPage() {
                             {customer.name}
                           </span>
                         </TableCell>
-                        <TableCell>{customer.company || '—'}</TableCell>
+                        <TableCell>
+                          <CategoryTag category={customer.category} />
+                        </TableCell>
                         <TableCell>
                           <Tag type="cyan" size="sm">{customer._count?.contacts ?? 0}</Tag>
                         </TableCell>

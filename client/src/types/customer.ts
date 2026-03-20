@@ -1,3 +1,12 @@
+export interface CompanyCategory {
+  id: string;
+  name: string;
+  label: string;
+  color: string;
+  position: number;
+  createdAt: string;
+}
+
 export interface Customer {
   id: string;
   name: string;
@@ -8,6 +17,9 @@ export interface Customer {
   domain: string | null;
   logoUrl: string | null;
   notes: string | null;
+  categoryId: string | null;
+  isVip: boolean;
+  category: CompanyCategory | null;
   createdAt: string;
   updatedAt: string;
   _count?: { contacts: number; tasks: number; emails: number };
@@ -28,6 +40,7 @@ export interface Contact {
   email: string | null;
   phone: string | null;
   role: string | null;
+  isVip: boolean;
   customerId: string;
   customer?: { id: string; name: string; domain: string | null; logoUrl: string | null };
   createdAt: string;
@@ -41,6 +54,8 @@ export interface CreateCustomerInput {
   company?: string;
   website?: string;
   notes?: string;
+  categoryId?: string | null;
+  isVip?: boolean;
 }
 
 export interface UpdateCustomerInput extends Partial<CreateCustomerInput> {}
@@ -52,6 +67,7 @@ export interface CreateContactInput {
   phone?: string;
   role?: string;
   customerId: string;
+  isVip?: boolean;
 }
 
 export interface UpdateContactInput {

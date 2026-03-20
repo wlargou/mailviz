@@ -7,6 +7,8 @@ export const createCustomerSchema = z.object({
   company: z.string().max(255).optional().or(z.literal('')),
   website: z.string().max(255).optional().or(z.literal('')),
   notes: z.string().optional().or(z.literal('')),
+  categoryId: z.string().uuid().optional().nullable(),
+  isVip: z.boolean().optional(),
 });
 
 export const updateCustomerSchema = createCustomerSchema.partial();

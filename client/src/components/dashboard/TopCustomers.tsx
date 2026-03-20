@@ -32,7 +32,7 @@ export function TopCustomers({ stats, loading }: TopCustomersProps) {
   const { topCustomers } = stats.customers;
 
   if (topCustomers.length === 0) {
-    return <div className="card-empty"><p>No customer data yet</p></div>;
+    return <div className="card-empty"><p>No company data yet</p></div>;
   }
 
   return (

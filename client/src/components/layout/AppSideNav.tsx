@@ -59,7 +59,7 @@ export function AppSideNav() {
           isActive={location.pathname.startsWith('/customers')}
           onClick={() => navigate('/customers')}
         >
-          Customers
+          Companies
         </SideNavLink>
         <SideNavLink
           renderIcon={Events}

@@ -28,6 +28,7 @@ import {
   Modal,
 } from '@carbon/react';
 import { Edit, Calendar, Email, Enterprise, Attachment } from '@carbon/icons-react';
+import { VipBadge } from '../shared/VipBadge';
 import { PageHeader } from '../shared/PageHeader';
 import { SidePanel } from '@carbon/ibm-products';
 import { format } from 'date-fns';
@@ -171,6 +172,18 @@ export function ContactDetailPage() {
                     />
                   )}
                   <h2 style={{ margin: 0 }}>{contact.firstName} {contact.lastName}</h2>
+                  <VipBadge
+                    isVip={contact.isVip}
+                    size={20}
+                    onToggle={async () => {
+                      try {
+                        const { data: res } = await contactsApi.toggleVip(contact.id);
+                        setContact(res.data);
+                      } catch {
+                        addNotification({ kind: 'error', title: 'Failed to toggle VIP status' });
+                      }
+                    }}
+                  />
                 </div>
                 <div style={{ display: 'flex', gap: '1rem', marginTop: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
                   {contact.customer && (

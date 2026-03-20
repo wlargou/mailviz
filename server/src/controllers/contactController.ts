@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { prisma } from '../lib/prisma.js';
 import { contactService } from '../services/contactService.js';
 
 export const contactController = {
@@ -60,6 +61,24 @@ export const contactController = {
     try {
       await contactService.delete(req.params.id);
       res.status(204).send();
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async toggleVip(req: Request, res: Response, next: NextFunction) {
+    try {
+      const contact = await prisma.contact.findUnique({ where: { id: req.params.id } });
+      if (!contact) {
+        res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Contact not found' } });
+        return;
+      }
+      const updated = await prisma.contact.update({
+        where: { id: req.params.id },
+        data: { isVip: !contact.isVip },
+        include: { customer: { select: { id: true, name: true, domain: true, logoUrl: true } } },
+      });
+      res.json({ data: updated });
     } catch (err) {
       next(err);
     }

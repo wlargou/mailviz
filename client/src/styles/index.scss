@@ -125,6 +125,21 @@ body {
   gap: 0.5rem;
 }
 
+// VIP and Category styles
+.vip-star {
+  color: var(--cds-support-warning);
+  flex-shrink: 0;
+}
+
+.vip-star--clickable {
+  cursor: pointer;
+  &:hover { opacity: 0.7; }
+}
+
+.category-tag {
+  border-radius: 1rem;
+}
+
 // Component partials
 @import 'dashboard';
 @import 'settings';
