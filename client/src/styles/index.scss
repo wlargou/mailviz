@@ -60,6 +60,22 @@ body {
   overflow: hidden;
 }
 
+// Sidebar floating animated logo (fixed to viewport bottom-left)
+.sidebar-logo-float {
+  position: fixed;
+  bottom: 0.5rem;
+  left: 58px;
+  z-index: 5999;
+  opacity: 0.2;
+  pointer-events: none;
+  animation: sidebar-logo-float 10s ease-in-out infinite;
+}
+
+@keyframes sidebar-logo-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
 // Header logo + text alignment
 .mailviz-header-name {
   display: inline-flex !important;

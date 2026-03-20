@@ -5,6 +5,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useUIStore } from '../../store/uiStore';
 import { emailsApi } from '../../api/emails';
 import { useEmailWebSocket } from '../../hooks/useEmailWebSocket';
+import { MailvizLogo } from '../shared/MailvizLogo';
 
 export function AppSideNav() {
   const navigate = useNavigate();

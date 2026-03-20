@@ -4,6 +4,7 @@ import { Theme } from '@carbon/react';
 import { AppHeader } from './AppHeader';
 import { AppSideNav } from './AppSideNav';
 import { NotificationContainer } from '../shared/NotificationContainer';
+import { MailvizLogo } from '../shared/MailvizLogo';
 import { useUIStore } from '../../store/uiStore';
 
 export function AppShell() {
@@ -25,6 +26,9 @@ export function AppShell() {
           </main>
         </div>
         <NotificationContainer />
+        <div className="sidebar-logo-float">
+          <MailvizLogo size={140} variant="animated" />
+        </div>
       </div>
     </Theme>
   );
