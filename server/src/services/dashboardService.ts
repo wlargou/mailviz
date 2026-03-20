@@ -345,6 +345,35 @@ export const dashboardService = {
       };
     });
 
+    // Expiring deals (next 15 days)
+    const fifteenDaysFromNow = new Date(now);
+    fifteenDaysFromNow.setDate(fifteenDaysFromNow.getDate() + 15);
+    let expiringDeals: any[] = [];
+    try {
+      const deals = await prisma.deal.findMany({
+        where: {
+          userId,
+          expiryDate: { gte: now, lte: fifteenDaysFromNow },
+          status: { not: 'DECLINED' },
+        },
+        orderBy: { expiryDate: 'asc' },
+        take: 10,
+        include: {
+          partner: { select: { name: true } },
+          customer: { select: { id: true, name: true } },
+        },
+      });
+      expiringDeals = deals.map((d) => ({
+        id: d.id,
+        title: d.title,
+        status: d.status,
+        expiryDate: d.expiryDate,
+        partner: d.partner,
+        customer: d.customer,
+        daysUntilExpiry: Math.ceil((new Date(d.expiryDate!).getTime() - now.getTime()) / 86400000),
+      }));
+    } catch { /* ignore */ }
+
     return {
       tasks: {
         total: taskTotal,
@@ -394,6 +423,7 @@ export const dashboardService = {
       },
       needsAttention,
       frequentContacts,
+      expiringDeals,
     };
   },
 };

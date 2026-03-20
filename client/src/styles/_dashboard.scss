@@ -456,6 +456,61 @@
     width: 100%;
   }
 
+  // Make chart background transparent (g100 theme adds dark bg)
+  svg.cds--cc--area,
+  .cds--cc--chart-wrapper svg {
+    background-color: transparent !important;
+  }
+}
+
+// ─── Expiring Deals ─────────────────────
+.expiring-deals {
+  display: flex;
+  flex-direction: column;
+}
+
+.expiring-deals__item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--cds-border-subtle);
+  cursor: pointer;
+
+  &:last-child { border-bottom: none; }
+  &:hover { background: var(--cds-layer-hover); margin: 0 -1rem; padding: 0.5rem 1rem; }
+}
+
+.expiring-deals__icon {
+  flex-shrink: 0;
+  color: var(--cds-text-secondary);
+
+  &--urgent { color: var(--cds-support-error); }
+}
+
+.expiring-deals__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.expiring-deals__title {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--cds-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.expiring-deals__meta {
+  font-size: 0.75rem;
+  color: var(--cds-text-secondary);
+}
+
+.expiring-deals__expiry {
+  flex-shrink: 0;
 }
 
 // Cards containing charts should stretch to fill grid cell

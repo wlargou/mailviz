@@ -87,4 +87,13 @@ export interface DashboardStats {
     contactId: string | null;
     messageCount: number;
   }>;
+  expiringDeals: Array<{
+    id: string;
+    title: string;
+    status: string;
+    expiryDate: string;
+    partner: { name: string };
+    customer: { id: string; name: string } | null;
+    daysUntilExpiry: number;
+  }>;
 }

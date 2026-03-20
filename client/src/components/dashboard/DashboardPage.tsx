@@ -3,8 +3,8 @@ import { Grid, Column, Tile } from '@carbon/react';
 import { useNavigate } from 'react-router-dom';
 import { SidePanel } from '@carbon/ibm-products';
 import { TaskSummaryTiles } from './TaskSummaryTiles';
-import { MyDaySummary } from './MyDaySummary';
 import { RecentActivity } from './RecentActivity';
+import { ExpiringDeals } from './ExpiringDeals';
 import { EmailVolumeChart } from './EmailVolumeChart';
 import { TaskStatusDonut } from './TaskStatusDonut';
 import { TopCustomers } from './TopCustomers';
@@ -116,17 +116,17 @@ export function DashboardPage() {
       <TaskSummaryTiles stats={stats} loading={loading} />
 
       <Grid fullWidth className="dashboard-grid">
-        {/* Row 2: My Day + Upcoming Events */}
+        {/* Row 2: Recent Activity + Upcoming Events */}
         <Column lg={8} md={4} sm={4}>
           <Tile className="card">
             <div className="card__header">
-              <h4 className="card__title">My Day</h4>
+              <h4 className="card__title">Recent Activity</h4>
             </div>
             <div className="card__content">
-              <MyDaySummary
+              <RecentActivity
                 stats={stats}
                 loading={loading}
-                onEventClick={handleEventClick}
+                onEmailClick={handleEmailClick}
                 onTaskClick={handleTaskClick}
               />
             </div>
@@ -143,19 +143,14 @@ export function DashboardPage() {
           </Tile>
         </Column>
 
-        {/* Row 3: Recent Activity + Email Volume Chart */}
+        {/* Row 3: Expiring Deals + Email Volume Chart */}
         <Column lg={8} md={4} sm={4}>
           <Tile className="card">
             <div className="card__header">
-              <h4 className="card__title">Recent Activity</h4>
+              <h4 className="card__title">Expiring Deal Registrations</h4>
             </div>
             <div className="card__content">
-              <RecentActivity
-                stats={stats}
-                loading={loading}
-                onEmailClick={handleEmailClick}
-                onTaskClick={handleTaskClick}
-              />
+              <ExpiringDeals deals={stats?.expiringDeals} loading={loading} />
             </div>
           </Tile>
         </Column>
