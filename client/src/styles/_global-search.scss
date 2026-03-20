@@ -1,4 +1,4 @@
-// ─── GLOBAL SEARCH ──────────────────────────────
+// ─── GLOBAL SEARCH (Carbon SearchBar with Scopes) ──────────────────────────────
 
 .global-search {
   position: relative;
@@ -6,58 +6,65 @@
   align-items: center;
   margin-right: 0.5rem;
   flex: 1;
-  max-width: 540px;
+  max-width: 600px;
   margin-left: 1rem;
 }
 
 .global-search__input {
   width: 100%;
 
-  // Override Carbon Search to fit header
-  .cds--search {
-    background: var(--cds-layer-01);
-    border-bottom: none;
+  // Override Carbon SearchBar to fit header height
+  .c4p--search-bar {
+    min-height: 2rem;
   }
 
-  .cds--search-input {
-    background: var(--cds-layer-01);
-    color: var(--cds-text-primary);
-    height: 2rem;
-    font-size: 0.875rem;
+  .c4p--search-bar__search {
+    .cds--search-input {
+      height: 2rem;
+      font-size: 0.875rem;
+    }
 
-    &::placeholder {
-      color: var(--cds-text-placeholder);
+    .cds--search-magnifier-icon {
+      fill: var(--cds-icon-secondary);
     }
   }
 
-  .cds--search-magnifier-icon {
-    fill: var(--cds-icon-secondary);
+  .c4p--search-bar__submit-button {
+    height: 2rem;
+    min-height: 2rem;
   }
 
-  .cds--search-close {
-    height: 2rem;
-    width: 2rem;
+  // Scope dropdown styling
+  .c4p--search-bar__scope {
+    .cds--dropdown {
+      height: 2rem;
+      min-height: 2rem;
+    }
+
+    .cds--list-box__label {
+      font-size: 0.8125rem;
+    }
   }
 
   @media (max-width: 768px) {
-    max-width: 240px;
+    max-width: 340px;
   }
 
   @media (max-width: 480px) {
-    max-width: 160px;
+    max-width: 200px;
   }
 }
 
 .global-search__panel {
   position: fixed;
   top: var(--app-header-height);
-  width: 480px;
+  width: 540px;
   background: var(--cds-layer-01);
   border: 1px solid var(--cds-border-subtle-01);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
   z-index: 8001;
 
-  @media (max-width: 540px) {
+  @media (max-width: 600px) {
     width: calc(100vw - 1rem);
     left: 0.5rem;
   }

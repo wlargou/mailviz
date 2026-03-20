@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Search, InlineLoading } from '@carbon/react';
+import { InlineLoading } from '@carbon/react';
+import { previewCandidate__SearchBar as SearchBar } from '@carbon/ibm-products';
 import {
   Email,
   Task,
   Calendar,
   UserAvatar,
   Search as SearchIcon,
-  ArrowRight,
   User,
 } from '@carbon/icons-react';
 import { useNavigate } from 'react-router-dom';
@@ -14,6 +14,20 @@ import { formatDistanceToNow, format } from 'date-fns';
 import { searchApi, type SearchResults } from '../../api/search';
 
 type Category = 'emails' | 'tasks' | 'events' | 'customers' | 'contacts';
+
+interface Scope {
+  id: string;
+  text: string;
+}
+
+const SCOPES: Scope[] = [
+  { id: 'all', text: 'All' },
+  { id: 'emails', text: 'Emails' },
+  { id: 'tasks', text: 'Tasks' },
+  { id: 'events', text: 'Events' },
+  { id: 'customers', text: 'Customers' },
+  { id: 'contacts', text: 'Contacts' },
+];
 
 interface FlatResult {
   category: Category;
@@ -23,72 +37,72 @@ interface FlatResult {
   navigateTo: string;
 }
 
-const CATEGORY_META: Record<Category, { icon: typeof Email; label: string; viewAllPath: string }> = {
-  emails: { icon: Email, label: 'Email results', viewAllPath: '/mail' },
-  tasks: { icon: Task, label: 'Task results', viewAllPath: '/tasks' },
-  events: { icon: Calendar, label: 'Event results', viewAllPath: '/calendar' },
-  customers: { icon: UserAvatar, label: 'Customer results', viewAllPath: '/customers' },
-  contacts: { icon: User, label: 'Contact results', viewAllPath: '/contacts' },
+const CATEGORY_META: Record<Category, { icon: typeof Email; label: string }> = {
+  emails: { icon: Email, label: 'Email results' },
+  tasks: { icon: Task, label: 'Task results' },
+  events: { icon: Calendar, label: 'Event results' },
+  customers: { icon: UserAvatar, label: 'Customer results' },
+  contacts: { icon: User, label: 'Contact results' },
 };
 
-function flattenResults(results: SearchResults): FlatResult[] {
+function flattenResults(results: SearchResults, scope: string): FlatResult[] {
   const flat: FlatResult[] = [];
+  const cats = scope === 'all'
+    ? (['emails', 'tasks', 'events', 'customers', 'contacts'] as Category[])
+    : [scope as Category];
 
-  for (const email of results.emails) {
-    flat.push({
-      category: 'emails',
-      icon: Email,
-      label: email.subject,
-      sublabel: `${email.fromName || email.from} · ${formatDistanceToNow(new Date(email.receivedAt), { addSuffix: true })}`,
-      navigateTo: '/mail',
-    });
+  for (const cat of cats) {
+    if (!results[cat]) continue;
+    if (cat === 'emails') {
+      for (const email of results.emails) {
+        flat.push({
+          category: 'emails', icon: Email,
+          label: email.subject,
+          sublabel: `${email.fromName || email.from} · ${formatDistanceToNow(new Date(email.receivedAt), { addSuffix: true })}`,
+          navigateTo: '/mail',
+        });
+      }
+    } else if (cat === 'tasks') {
+      for (const task of results.tasks) {
+        flat.push({
+          category: 'tasks', icon: Task,
+          label: task.title,
+          sublabel: `${task.status.replace('_', ' ')} · ${task.priority}`,
+          navigateTo: '/tasks',
+        });
+      }
+    } else if (cat === 'events') {
+      for (const event of results.events) {
+        flat.push({
+          category: 'events', icon: Calendar,
+          label: event.title,
+          sublabel: format(new Date(event.startTime), 'MMM d, yyyy · h:mm a'),
+          navigateTo: '/calendar',
+        });
+      }
+    } else if (cat === 'customers') {
+      for (const customer of results.customers) {
+        flat.push({
+          category: 'customers', icon: UserAvatar,
+          label: customer.name,
+          sublabel: customer.company || customer.email || '',
+          navigateTo: `/customers/${customer.id}`,
+        });
+      }
+    } else if (cat === 'contacts') {
+      for (const contact of results.contacts) {
+        flat.push({
+          category: 'contacts', icon: User,
+          label: `${contact.firstName} ${contact.lastName}`.trim(),
+          sublabel: [contact.email, contact.customer?.name].filter(Boolean).join(' · '),
+          navigateTo: `/contacts/${contact.id}`,
+        });
+      }
+    }
   }
-
-  for (const task of results.tasks) {
-    flat.push({
-      category: 'tasks',
-      icon: Task,
-      label: task.title,
-      sublabel: `${task.status.replace('_', ' ')} · ${task.priority}`,
-      navigateTo: '/tasks',
-    });
-  }
-
-  for (const event of results.events) {
-    flat.push({
-      category: 'events',
-      icon: Calendar,
-      label: event.title,
-      sublabel: format(new Date(event.startTime), 'MMM d, yyyy · h:mm a'),
-      navigateTo: '/calendar',
-    });
-  }
-
-  for (const customer of results.customers) {
-    flat.push({
-      category: 'customers',
-      icon: UserAvatar,
-      label: customer.name,
-      sublabel: customer.company || customer.email || '',
-      navigateTo: `/customers/${customer.id}`,
-    });
-  }
-
-  for (const contact of results.contacts) {
-    const name = `${contact.firstName} ${contact.lastName}`.trim();
-    flat.push({
-      category: 'contacts',
-      icon: User,
-      label: name,
-      sublabel: [contact.email, contact.customer?.name].filter(Boolean).join(' · '),
-      navigateTo: `/contacts/${contact.id}`,
-    });
-  }
-
   return flat;
 }
 
-/** Highlight matching portions of text by wrapping them in <strong> */
 function HighlightMatch({ text, query }: { text: string; query: string }) {
   if (!query || query.length < 2) return <>{text}</>;
   const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
@@ -114,14 +128,14 @@ export function GlobalSearch() {
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [focusIndex, setFocusIndex] = useState(-1);
+  const [selectedScope, setSelectedScope] = useState<Scope>(SCOPES[0]);
 
   const wrapperRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestIdRef = useRef(0);
 
-  const doSearch = useCallback((q: string) => {
+  const doSearch = useCallback((q: string, scope: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-
     if (q.trim().length < 2) {
       setResults(null);
       setFlatResults([]);
@@ -129,7 +143,6 @@ export function GlobalSearch() {
       setLoading(false);
       return;
     }
-
     setLoading(true);
     debounceRef.current = setTimeout(async () => {
       const id = ++requestIdRef.current;
@@ -137,25 +150,36 @@ export function GlobalSearch() {
         const { data: res } = await searchApi.search(q.trim());
         if (id !== requestIdRef.current) return;
         setResults(res.data);
-        const flat = flattenResults(res.data);
-        setFlatResults(flat);
+        setFlatResults(flattenResults(res.data, scope));
         setOpen(true);
         setFocusIndex(-1);
       } catch {
-        if (id === requestIdRef.current) {
-          setResults(null);
-          setFlatResults([]);
-        }
+        if (id === requestIdRef.current) { setResults(null); setFlatResults([]); }
       } finally {
         if (id === requestIdRef.current) setLoading(false);
       }
     }, 300);
   }, []);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
+  // Re-filter when scope changes
+  useEffect(() => {
+    if (results && query.trim().length >= 2) {
+      setFlatResults(flattenResults(results, selectedScope.id));
+      setFocusIndex(-1);
+    }
+  }, [selectedScope, results, query]);
+
+  const handleChange = (e: { value: string; selectedScopes?: Scope[] }) => {
+    // SearchBar onChange passes { value } for input changes, and { value, selectedScopes } for scope changes
+    const val = e.value ?? '';
     setQuery(val);
-    doSearch(val);
+
+    if (e.selectedScopes && e.selectedScopes.length > 0) {
+      setSelectedScope(e.selectedScopes[0]);
+      doSearch(val, e.selectedScopes[0].id);
+    } else {
+      doSearch(val, selectedScope.id);
+    }
   };
 
   const handleClear = () => {
@@ -174,38 +198,29 @@ export function GlobalSearch() {
   }, [flatResults, navigate]);
 
   const handleViewAll = useCallback((cat: Category) => {
-    const meta = CATEGORY_META[cat];
-    const q = query.trim();
-    // Navigate to the category page with search query
-    const searchParam = encodeURIComponent(q);
-    switch (cat) {
-      case 'emails':
-        navigate(`/mail?search=${searchParam}`);
-        break;
-      case 'tasks':
-        navigate(`/tasks?search=${searchParam}`);
-        break;
-      case 'events':
-        navigate(`/calendar?search=${searchParam}`);
-        break;
-      case 'customers':
-        navigate(`/customers?search=${searchParam}`);
-        break;
-      case 'contacts':
-        navigate(`/contacts?search=${searchParam}`);
-        break;
-      default:
-        navigate(meta.viewAllPath);
-    }
+    const searchParam = encodeURIComponent(query.trim());
+    const paths: Record<Category, string> = {
+      emails: `/mail?search=${searchParam}`,
+      tasks: `/tasks?search=${searchParam}`,
+      events: `/calendar?search=${searchParam}`,
+      customers: `/customers?search=${searchParam}`,
+      contacts: `/contacts?search=${searchParam}`,
+    };
+    navigate(paths[cat]);
     handleClear();
   }, [query, navigate]);
+
+  const handleSubmit = () => {
+    if (query.trim().length >= 2 && selectedScope.id !== 'all') {
+      handleViewAll(selectedScope.id as Category);
+    }
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!open || flatResults.length === 0) {
       if (e.key === 'Escape') handleClear();
       return;
     }
-
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
@@ -226,7 +241,6 @@ export function GlobalSearch() {
     }
   };
 
-  // Outside click to close
   useEffect(() => {
     function handleMouseDown(e: MouseEvent) {
       if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
@@ -238,35 +252,35 @@ export function GlobalSearch() {
   }, []);
 
   const categories = results
-    ? (['emails', 'tasks', 'events', 'customers', 'contacts'] as const).filter(
-        (cat) => results[cat].length > 0
-      )
+    ? (selectedScope.id === 'all'
+        ? (['emails', 'tasks', 'events', 'customers', 'contacts'] as const)
+        : [selectedScope.id as Category]
+      ).filter((cat) => results[cat]?.length > 0)
     : [];
 
   const hasResults = flatResults.length > 0;
   let flatOffset = 0;
 
   return (
-    <div className="global-search" ref={wrapperRef}>
-      <div className="global-search__input" role="combobox" aria-expanded={open} aria-haspopup="listbox">
-        <Search
-          size="sm"
-          placeholder="Search emails, tasks, events..."
-          labelText="Global search"
-          closeButtonLabelText="Clear"
-          id="global-search-input"
-          value={query}
+    <div className="global-search" ref={wrapperRef} onKeyDown={handleKeyDown}>
+      <div className="global-search__input">
+        <SearchBar
+          clearButtonLabelText="Clear"
+          labelText="Search"
+          placeholderText="Search emails, tasks, events..."
+          submitLabel="Search"
           onChange={handleChange}
-          onKeyDown={handleKeyDown}
-          onFocus={() => {
-            if (flatResults.length > 0) setOpen(true);
-          }}
-          autoComplete="off"
+          onSubmit={handleSubmit}
+          scopes={SCOPES}
+          selectedScopes={[selectedScope]}
+          scopesTypeLabel="Scope"
+          scopeToString={(scope: Scope) => scope.text}
+          onFocus={() => { if (flatResults.length > 0) setOpen(true); }}
         />
       </div>
 
       {open && (
-        <div className="global-search__panel" role="listbox" id="global-search-results">
+        <div className="global-search__panel" role="listbox">
           {loading && (
             <div className="global-search__loading">
               <InlineLoading description="Searching..." />
@@ -290,16 +304,14 @@ export function GlobalSearch() {
               <div key={cat} className="global-search__category">
                 <div className="global-search__category-header">
                   <span>{meta.label}</span>
-                  <button
-                    className="global-search__view-all"
-                    onClick={() => handleViewAll(cat)}
-                  >
+                  <button className="global-search__view-all" onClick={() => handleViewAll(cat)}>
                     View all
                   </button>
                 </div>
-                {items.map((_, i) => {
+                {items.map((_: unknown, i: number) => {
                   const globalIdx = startIdx + i;
                   const flat = flatResults[globalIdx];
+                  if (!flat) return null;
                   const isFocused = globalIdx === focusIndex;
                   const Icon = flat.icon;
 
