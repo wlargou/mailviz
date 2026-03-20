@@ -23,7 +23,7 @@ export function AppHeader() {
         isActive={sideNavOpen}
       />
       <HeaderName href="/" prefix="" className="mailviz-header-name">
-        <MailvizLogo size={22} />
+        <MailvizLogo size={26} />
         <span>Mailviz</span>
       </HeaderName>
       <HeaderGlobalBar>
