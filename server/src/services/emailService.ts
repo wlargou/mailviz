@@ -197,6 +197,20 @@ export const emailService = {
     let currentGmail = gmail;
     let messagesSinceRefresh = 0;
 
+    // First, estimate total message count for progress tracking
+    let totalEstimate = 0;
+    try {
+      const countRes = await currentGmail.users.messages.list({
+        userId: 'me',
+        q: `newer_than:${env.EMAIL_SYNC_MONTHS}m`,
+        maxResults: 1,
+      });
+      totalEstimate = countRes.data.resultSizeEstimate || 0;
+      wsEmit('sync:progress', { type: 'email', synced: 0, total: totalEstimate, phase: 'syncing' });
+    } catch {
+      // If count fails, continue without progress tracking
+    }
+
     do {
       const listRes = await currentGmail.users.messages.list({
         userId: 'me',
@@ -233,6 +247,11 @@ export const emailService = {
         }
 
         messagesSinceRefresh += batch.length;
+
+        // Emit progress every 50 messages
+        if (synced % 50 < 10 && totalEstimate > 0) {
+          wsEmit('sync:progress', { type: 'email', synced, total: totalEstimate, phase: 'syncing' });
+        }
       }
 
       // Force-refresh Gmail client every 500 messages to get a fresh token
@@ -246,6 +265,7 @@ export const emailService = {
       }
     } while (pageToken);
 
+    wsEmit('sync:progress', { type: 'email', synced, total: totalEstimate || synced, phase: 'complete' });
     return { synced, customersCreated, contactsCreated, labelsChanged: 0 };
   },
 

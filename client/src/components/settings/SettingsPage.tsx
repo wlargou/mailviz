@@ -18,6 +18,7 @@ import {
   Modal,
   UnorderedList,
   ListItem,
+  ProgressBar,
 } from '@carbon/react';
 import {
   Checkmark,
@@ -60,6 +61,8 @@ export function SettingsPage() {
   const [syncingMail, setSyncingMail] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [disconnectConfirmOpen, setDisconnectConfirmOpen] = useState(false);
+  const [emailProgress, setEmailProgress] = useState<{ synced: number; total: number; phase: string } | null>(null);
+  const [calendarProgress, setCalendarProgress] = useState<{ synced: number; total: number; phase: string } | null>(null);
   const addNotification = useUIStore((s) => s.addNotification);
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -93,6 +96,40 @@ export function SettingsPage() {
     fetchStatus();
     fetchTaskStatuses();
     fetchCategories();
+  }, []);
+
+  // WebSocket listener for sync progress
+  useEffect(() => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    let ws: WebSocket | null = null;
+
+    try {
+      ws = new WebSocket(wsUrl);
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.event === 'sync:progress') {
+            const { type, synced, total, phase } = msg.data;
+            if (type === 'email') {
+              if (phase === 'complete') {
+                setEmailProgress(null);
+              } else {
+                setEmailProgress({ synced, total, phase });
+              }
+            } else if (type === 'calendar') {
+              if (phase === 'complete') {
+                setCalendarProgress(null);
+              } else {
+                setCalendarProgress({ synced, total, phase });
+              }
+            }
+          }
+        } catch { /* ignore parse errors */ }
+      };
+    } catch { /* WS not available */ }
+
+    return () => { ws?.close(); };
   }, []);
 
   useEffect(() => {
@@ -314,7 +351,17 @@ export function SettingsPage() {
                         </span>
                       </div>
                       {syncing ? (
-                        <InlineLoading description="Syncing calendar..." />
+                        calendarProgress && calendarProgress.synced > 0 ? (
+                          <div style={{ minWidth: '180px' }}>
+                            <ProgressBar
+                              label={`${calendarProgress.synced} events synced`}
+                              helperText="Syncing calendar..."
+                              max={100}
+                            />
+                          </div>
+                        ) : (
+                          <InlineLoading description="Syncing calendar..." />
+                        )
                       ) : (
                         <Button kind="tertiary" size="sm" renderIcon={Renew} onClick={handleSync}>
                           Sync
@@ -334,7 +381,18 @@ export function SettingsPage() {
                         </span>
                       </div>
                       {syncingMail ? (
-                        <InlineLoading description="Syncing emails..." />
+                        emailProgress && emailProgress.total > 0 ? (
+                          <div style={{ minWidth: '180px' }}>
+                            <ProgressBar
+                              label={`${emailProgress.synced} / ${emailProgress.total} emails`}
+                              helperText="Syncing emails..."
+                              value={Math.round((emailProgress.synced / emailProgress.total) * 100)}
+                              max={100}
+                            />
+                          </div>
+                        ) : (
+                          <InlineLoading description="Syncing emails..." />
+                        )
                       ) : (
                         <Button kind="tertiary" size="sm" renderIcon={Renew} onClick={handleMailSync}>
                           Sync

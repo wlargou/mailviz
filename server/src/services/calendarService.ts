@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { googleAuthService } from './googleAuthService.js';
 import { customerService } from './customerService.js';
 import { extractDomain, isPersonalDomain, normalizeDomain } from '../utils/domainResolver.js';
+import { wsEmit } from '../websocket.js';
 import { env } from '../config/env.js';
 import type { Prisma } from '@prisma/client';
 
@@ -234,6 +235,9 @@ export const calendarService = {
           customersCreated += result.customersCreated;
           contactsCreated += result.contactsCreated;
         }
+
+        // Emit progress after each page
+        wsEmit('sync:progress', { type: 'calendar', synced, total: 0, phase: 'syncing' });
       } while (pageToken);
     } catch (err: any) {
       // If syncToken is invalid/expired, fall back to full sync
@@ -258,6 +262,7 @@ export const calendarService = {
       },
     });
 
+    wsEmit('sync:progress', { type: 'calendar', synced, total: synced, phase: 'complete' });
     return { synced, deleted, customersCreated, contactsCreated };
   },
 
