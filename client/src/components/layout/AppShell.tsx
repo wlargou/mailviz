@@ -1,11 +1,9 @@
 import { useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import { Outlet } from 'react-router-dom';
 import { Theme } from '@carbon/react';
 import { AppHeader } from './AppHeader';
 import { AppSideNav } from './AppSideNav';
 import { NotificationContainer } from '../shared/NotificationContainer';
-import { MailvizLogo } from '../shared/MailvizLogo';
 import { useUIStore } from '../../store/uiStore';
 
 export function AppShell() {
@@ -28,12 +26,6 @@ export function AppShell() {
         </div>
         <NotificationContainer />
       </div>
-      {createPortal(
-        <div className="sidebar-logo-float">
-          <MailvizLogo size={140} variant="animated" />
-        </div>,
-        document.body
-      )}
     </Theme>
   );
 }

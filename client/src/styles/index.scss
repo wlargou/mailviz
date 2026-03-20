@@ -60,20 +60,20 @@ body {
   overflow: hidden;
 }
 
-// Sidebar floating animated logo (portalled to body, fixed position)
-.sidebar-logo-float {
-  position: fixed;
-  bottom: 2rem;
-  left: 55px;
-  z-index: 6001;
-  opacity: 0.5;
+// Sidebar animated logo (rendered inside Carbon SideNav)
+.sidebar-logo-container {
+  position: absolute;
+  bottom: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 0.3;
   pointer-events: none;
   animation: sidebar-logo-float 10s ease-in-out infinite;
 }
 
 @keyframes sidebar-logo-float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-8px); }
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50% { transform: translateX(-50%) translateY(-8px); }
 }
 
 // Header logo + text alignment

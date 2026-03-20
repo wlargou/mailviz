@@ -96,6 +96,9 @@ export function AppSideNav() {
           Settings
         </SideNavLink>
       </SideNavItems>
+      <div className="sidebar-logo-container">
+        <MailvizLogo size={140} variant="animated" />
+      </div>
     </SideNav>
   );
 }
