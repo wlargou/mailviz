@@ -14,15 +14,18 @@ import {
   Button,
   Pagination,
   DataTableSkeleton,
+  Dropdown,
 } from '@carbon/react';
-import { Edit, TrashCan } from '@carbon/icons-react';
+import { Add, Edit, TrashCan } from '@carbon/icons-react';
 import { format } from 'date-fns';
 import { TaskStatusTag } from '../shared/TaskStatusTag';
 import { PriorityBadge } from '../shared/PriorityBadge';
 import { LabelTag } from '../shared/LabelTag';
 import { EmptyState } from '../shared/EmptyState';
+import { TableFilterFlyout } from '../shared/TableFilterFlyout';
 import { useTaskStore } from '../../store/taskStore';
-import type { Task } from '../../types/task';
+import { taskStatusesApi } from '../../api/taskStatuses';
+import type { Task, Label, TaskStatusConfig } from '../../types/task';
 
 const headers = [
   { key: 'title', header: 'Title' },
@@ -34,18 +37,45 @@ const headers = [
   { key: 'actions', header: '' },
 ];
 
+const priorityItems = [
+  { id: '', text: 'All Priorities' },
+  { id: 'LOW', text: 'Low' },
+  { id: 'MEDIUM', text: 'Medium' },
+  { id: 'HIGH', text: 'High' },
+  { id: 'URGENT', text: 'Urgent' },
+];
+
 interface TaskListViewProps {
   tasks: Task[];
   loading: boolean;
+  labels: Label[];
   onEdit: (task: Task) => void;
   onDelete: (task: Task) => void;
+  onCreateNew: () => void;
 }
 
-export function TaskListView({ tasks, loading, onEdit, onDelete }: TaskListViewProps) {
-  const { meta, setPage, setFilter, filters, currentPage } = useTaskStore();
+export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreateNew }: TaskListViewProps) {
+  const { meta, setPage, setFilter, filters, currentPage, resetFilters } = useTaskStore();
   const [localSearch, setLocalSearch] = useState(filters.search || '');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const [statuses, setStatuses] = useState<{ id: string; text: string }[]>([{ id: '', text: 'All Statuses' }]);
+
+  useEffect(() => {
+    taskStatusesApi.getAll().then(({ data: res }) => {
+      setStatuses([
+        { id: '', text: 'All Statuses' },
+        ...res.data.map((s: TaskStatusConfig) => ({ id: s.name, text: s.label })),
+      ]);
+    }).catch(() => {});
+  }, []);
+
+  const labelItems = [
+    { id: '', text: 'All Labels' },
+    ...labels.map((l) => ({ id: l.id, text: l.name })),
+  ];
+
+  const activeFilterCount = (filters.status ? 1 : 0) + (filters.priority ? 1 : 0) + (filters.labelId ? 1 : 0);
 
   const handleSearchChange = useCallback((e: any) => {
     const val = typeof e === 'string' ? e : (e?.target?.value ?? '');
@@ -103,6 +133,44 @@ export function TaskListView({ tasks, loading, onEdit, onDelete }: TaskListViewP
                   onChange={handleSearchChange}
                   persistent
                 />
+                <TableFilterFlyout
+                  activeFilterCount={activeFilterCount}
+                  onReset={resetFilters}
+                >
+                  <Dropdown
+                    id="filter-status"
+                    titleText="Status"
+                    label="All Statuses"
+                    items={statuses}
+                    itemToString={(item: { id: string; text: string } | null) => item?.text || ''}
+                    selectedItem={statuses.find((s) => s.id === (filters.status || '')) || statuses[0]}
+                    onChange={({ selectedItem }: { selectedItem: { id: string; text: string } | null }) => setFilter('status', selectedItem?.id || undefined)}
+                    size="sm"
+                  />
+                  <Dropdown
+                    id="filter-priority"
+                    titleText="Priority"
+                    label="All Priorities"
+                    items={priorityItems}
+                    itemToString={(item: { id: string; text: string } | null) => item?.text || ''}
+                    selectedItem={priorityItems.find((p) => p.id === (filters.priority || '')) || priorityItems[0]}
+                    onChange={({ selectedItem }: { selectedItem: { id: string; text: string } | null }) => setFilter('priority', selectedItem?.id || undefined)}
+                    size="sm"
+                  />
+                  <Dropdown
+                    id="filter-label"
+                    titleText="Label"
+                    label="All Labels"
+                    items={labelItems}
+                    itemToString={(item: { id: string; text: string } | null) => item?.text || ''}
+                    selectedItem={labelItems.find((l) => l.id === (filters.labelId || '')) || labelItems[0]}
+                    onChange={({ selectedItem }: { selectedItem: { id: string; text: string } | null }) => setFilter('labelId', selectedItem?.id || undefined)}
+                    size="sm"
+                  />
+                </TableFilterFlyout>
+                <Button renderIcon={Add} onClick={onCreateNew}>
+                  New Task
+                </Button>
               </TableToolbarContent>
             </TableToolbar>
             <Table {...getTableProps()} size="lg">

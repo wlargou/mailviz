@@ -1,8 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Button, Tabs, TabList, Tab, TabPanels, TabPanel, Grid, Column } from '@carbon/react';
-import { Add } from '@carbon/icons-react';
+import { Tabs, TabList, Tab, TabPanels, TabPanel, Grid, Column } from '@carbon/react';
 import { useSearchParams } from 'react-router-dom';
-import { TaskFilters } from './TaskFilters';
 import { TaskListView } from './TaskListView';
 import { TaskKanbanView } from './TaskKanbanView';
 import { TaskCreateModal } from './TaskCreateModal';
@@ -80,15 +78,10 @@ export function TasksPage() {
           <h1>Tasks</h1>
           <p className="page-header__subtitle">Manage and track all your tasks</p>
         </div>
-        <Button renderIcon={Add} onClick={() => setCreateOpen(true)}>
-          New Task
-        </Button>
       </div>
 
       <Grid fullWidth>
         <Column lg={16} md={8} sm={4}>
-          <TaskFilters labels={labels} />
-
           <Tabs>
             <TabList aria-label="Task views">
               <Tab>List View</Tab>
@@ -99,8 +92,10 @@ export function TasksPage() {
                 <TaskListView
                   tasks={tasks}
                   loading={loading}
+                  labels={labels}
                   onEdit={setEditTask}
                   onDelete={setDeleteTask}
+                  onCreateNew={() => setCreateOpen(true)}
                 />
               </TabPanel>
               <TabPanel>

@@ -26,6 +26,7 @@ import { ConfirmDeleteModal } from '../shared/ConfirmDeleteModal';
 import { EmptyState } from '../shared/EmptyState';
 import { CategoryTag } from '../shared/CategoryTag';
 import { VipBadge } from '../shared/VipBadge';
+import { TableFilterFlyout } from '../shared/TableFilterFlyout';
 import { customersApi } from '../../api/customers';
 import { companyCategoriesApi } from '../../api/companyCategories';
 import { useUIStore } from '../../store/uiStore';
@@ -122,9 +123,6 @@ export function CustomersPage() {
           <h1>Companies</h1>
           <p className="page-header__subtitle">All companies and their contacts</p>
         </div>
-        <Button renderIcon={Add} onClick={() => setCreateOpen(true)}>
-          New Company
-        </Button>
       </div>
 
       <Grid fullWidth>
@@ -150,26 +148,33 @@ export function CustomersPage() {
                         persistent
                       />
                       {categories.length > 0 && (
-                        <Dropdown
-                          id="category-filter"
-                          titleText=""
-                          label="All categories"
-                          items={[{ id: '__all__', text: 'All categories' }, ...categories.map((c) => ({ id: c.id, text: c.label }))]}
-                          itemToString={(item: { id: string; text: string } | null) => item?.text || ''}
-                          selectedItem={
-                            selectedCategoryId
-                              ? { id: selectedCategoryId, text: categories.find((c) => c.id === selectedCategoryId)?.label || '' }
-                              : { id: '__all__', text: 'All categories' }
-                          }
-                          onChange={({ selectedItem }: { selectedItem: { id: string; text: string } | null }) => {
-                            const id = selectedItem?.id === '__all__' ? null : selectedItem?.id || null;
-                            setSelectedCategoryId(id);
-                            setPage(1);
-                          }}
-                          size="sm"
-                          className="contacts-company-filter"
-                        />
+                        <TableFilterFlyout
+                          activeFilterCount={selectedCategoryId ? 1 : 0}
+                          onReset={() => { setSelectedCategoryId(null); setPage(1); }}
+                        >
+                          <Dropdown
+                            id="category-filter"
+                            titleText="Category"
+                            label="All categories"
+                            items={[{ id: '__all__', text: 'All categories' }, ...categories.map((c) => ({ id: c.id, text: c.label }))]}
+                            itemToString={(item: { id: string; text: string } | null) => item?.text || ''}
+                            selectedItem={
+                              selectedCategoryId
+                                ? { id: selectedCategoryId, text: categories.find((c) => c.id === selectedCategoryId)?.label || '' }
+                                : { id: '__all__', text: 'All categories' }
+                            }
+                            onChange={({ selectedItem }: { selectedItem: { id: string; text: string } | null }) => {
+                              const id = selectedItem?.id === '__all__' ? null : selectedItem?.id || null;
+                              setSelectedCategoryId(id);
+                              setPage(1);
+                            }}
+                            size="sm"
+                          />
+                        </TableFilterFlyout>
                       )}
+                      <Button renderIcon={Add} onClick={() => setCreateOpen(true)}>
+                        New Company
+                      </Button>
                     </TableToolbarContent>
                   </TableToolbar>
                   {customers.length === 0 ? (

@@ -23,6 +23,7 @@ import { useNavigate } from 'react-router-dom';
 import { contactsApi, customersApi } from '../../api/customers';
 import { useUIStore } from '../../store/uiStore';
 import { EmptyState } from '../shared/EmptyState';
+import { TableFilterFlyout } from '../shared/TableFilterFlyout';
 import type { Contact, Customer } from '../../types/customer';
 import type { PaginationMeta } from '../../types/api';
 
@@ -127,21 +128,25 @@ export function ContactsPage() {
                         }}
                         persistent
                       />
-                      <Dropdown
-                        id="company-filter"
-                        titleText=""
-                        label="All companies"
-                        items={dropdownItems}
-                        itemToString={(item: { id: string; text: string } | null) => item?.text || ''}
-                        selectedItem={dropdownItems.find((d) => d.id === (selectedCustomerId || '__all__')) || dropdownItems[0]}
-                        onChange={({ selectedItem }: { selectedItem: { id: string; text: string } | null }) => {
-                          const id = selectedItem?.id === '__all__' ? null : selectedItem?.id || null;
-                          setSelectedCustomerId(id);
-                          setPage(1);
-                        }}
-                        size="sm"
-                        className="contacts-company-filter"
-                      />
+                      <TableFilterFlyout
+                        activeFilterCount={selectedCustomerId ? 1 : 0}
+                        onReset={() => { setSelectedCustomerId(null); setPage(1); }}
+                      >
+                        <Dropdown
+                          id="company-filter"
+                          titleText="Company"
+                          label="All companies"
+                          items={dropdownItems}
+                          itemToString={(item: { id: string; text: string } | null) => item?.text || ''}
+                          selectedItem={dropdownItems.find((d) => d.id === (selectedCustomerId || '__all__')) || dropdownItems[0]}
+                          onChange={({ selectedItem }: { selectedItem: { id: string; text: string } | null }) => {
+                            const id = selectedItem?.id === '__all__' ? null : selectedItem?.id || null;
+                            setSelectedCustomerId(id);
+                            setPage(1);
+                          }}
+                          size="sm"
+                        />
+                      </TableFilterFlyout>
                     </TableToolbarContent>
                   </TableToolbar>
                   <Table {...getTableProps()} size="lg">

@@ -169,6 +169,60 @@ body {
   border-radius: 1rem;
 }
 
+// ─── Table Filter Flyout (shared, Carbon Popover-based) ──────────────
+.table-filter-flyout__trigger--active {
+  color: var(--cds-link-primary);
+  position: relative;
+}
+
+.table-filter-flyout__badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 14px;
+  height: 14px;
+  border-radius: 7px;
+  background: var(--cds-link-primary);
+  color: var(--cds-text-on-color);
+  font-size: 0.5625rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 3px;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.table-filter-flyout__content {
+  padding: 0.75rem 1rem;
+  min-width: 240px;
+
+  .cds--fieldset {
+    margin: 0;
+  }
+
+  .cds--label {
+    margin-bottom: 0.75rem;
+  }
+
+  .cds--dropdown {
+    min-width: 100%;
+  }
+
+  .cds--form-item + .cds--form-item {
+    margin-top: 0.75rem;
+  }
+}
+
+.table-filter-flyout__actions {
+  padding: 0.5rem 1rem 0.75rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  border-top: 1px solid var(--cds-border-subtle);
+}
+
 // Component partials
 @import 'dashboard';
 @import 'settings';

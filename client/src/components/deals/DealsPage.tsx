@@ -24,6 +24,7 @@ import { useNavigate } from 'react-router-dom';
 import { DealCreateModal } from './DealCreateModal';
 import { ConfirmDeleteModal } from '../shared/ConfirmDeleteModal';
 import { EmptyState } from '../shared/EmptyState';
+import { TableFilterFlyout } from '../shared/TableFilterFlyout';
 import { dealsApi } from '../../api/deals';
 import { dealPartnersApi } from '../../api/dealPartners';
 import { useUIStore } from '../../store/uiStore';
@@ -135,9 +136,6 @@ export function DealsPage() {
           <h1>Deal Registration</h1>
           <p className="page-header__subtitle">Track partner deal registrations</p>
         </div>
-        <Button renderIcon={Add} onClick={() => setCreateOpen(true)}>
-          New Deal
-        </Button>
       </div>
 
       <Grid fullWidth>
@@ -162,46 +160,52 @@ export function DealsPage() {
                         }}
                         persistent
                       />
-                      {partners.length > 0 && (
+                      <TableFilterFlyout
+                        activeFilterCount={(selectedPartnerId ? 1 : 0) + (selectedStatus ? 1 : 0)}
+                        onReset={() => { setSelectedPartnerId(null); setSelectedStatus(null); setPage(1); }}
+                      >
+                        {partners.length > 0 && (
+                          <Dropdown
+                            id="partner-filter"
+                            titleText="Partner"
+                            label="All Partners"
+                            items={partnerItems}
+                            itemToString={(item: { id: string; text: string } | null) => item?.text || ''}
+                            selectedItem={
+                              selectedPartnerId
+                                ? { id: selectedPartnerId, text: partners.find((p) => p.id === selectedPartnerId)?.name || '' }
+                                : { id: '__all__', text: 'All Partners' }
+                            }
+                            onChange={({ selectedItem }: { selectedItem: { id: string; text: string } | null }) => {
+                              const id = selectedItem?.id === '__all__' ? null : selectedItem?.id || null;
+                              setSelectedPartnerId(id);
+                              setPage(1);
+                            }}
+                            size="sm"
+                          />
+                        )}
                         <Dropdown
-                          id="partner-filter"
-                          titleText=""
-                          label="All Partners"
-                          items={partnerItems}
+                          id="status-filter"
+                          titleText="Status"
+                          label="All Statuses"
+                          items={statusItems}
                           itemToString={(item: { id: string; text: string } | null) => item?.text || ''}
                           selectedItem={
-                            selectedPartnerId
-                              ? { id: selectedPartnerId, text: partners.find((p) => p.id === selectedPartnerId)?.name || '' }
-                              : { id: '__all__', text: 'All Partners' }
+                            selectedStatus
+                              ? statusItems.find((s) => s.id === selectedStatus) || statusItems[0]
+                              : statusItems[0]
                           }
                           onChange={({ selectedItem }: { selectedItem: { id: string; text: string } | null }) => {
                             const id = selectedItem?.id === '__all__' ? null : selectedItem?.id || null;
-                            setSelectedPartnerId(id);
+                            setSelectedStatus(id);
                             setPage(1);
                           }}
                           size="sm"
-                          className="contacts-company-filter"
                         />
-                      )}
-                      <Dropdown
-                        id="status-filter"
-                        titleText=""
-                        label="All Statuses"
-                        items={statusItems}
-                        itemToString={(item: { id: string; text: string } | null) => item?.text || ''}
-                        selectedItem={
-                          selectedStatus
-                            ? statusItems.find((s) => s.id === selectedStatus) || statusItems[0]
-                            : statusItems[0]
-                        }
-                        onChange={({ selectedItem }: { selectedItem: { id: string; text: string } | null }) => {
-                          const id = selectedItem?.id === '__all__' ? null : selectedItem?.id || null;
-                          setSelectedStatus(id);
-                          setPage(1);
-                        }}
-                        size="sm"
-                        className="contacts-company-filter"
-                      />
+                      </TableFilterFlyout>
+                      <Button renderIcon={Add} onClick={() => setCreateOpen(true)}>
+                        New Deal
+                      </Button>
                     </TableToolbarContent>
                   </TableToolbar>
                   {deals.length === 0 ? (
