@@ -194,9 +194,11 @@ export const emailService = {
     let customersCreated = 0;
     let contactsCreated = 0;
     let pageToken: string | undefined;
+    let currentGmail = gmail;
+    let messagesSinceRefresh = 0;
 
     do {
-      const listRes = await gmail.users.messages.list({
+      const listRes = await currentGmail.users.messages.list({
         userId: 'me',
         q: `newer_than:${env.EMAIL_SYNC_MONTHS}m`,
         maxResults: 100,
@@ -211,7 +213,7 @@ export const emailService = {
         const batch = messages.slice(i, i + 10);
         const results = await Promise.all(
           batch.map((msg) =>
-            gmail.users.messages.get({
+            currentGmail.users.messages.get({
               userId: 'me',
               id: msg.id!,
               format: 'full',
@@ -228,6 +230,18 @@ export const emailService = {
             customersCreated += result.customersCreated;
             contactsCreated += result.contactsCreated;
           }
+        }
+
+        messagesSinceRefresh += batch.length;
+      }
+
+      // Refresh Gmail client every 500 messages to prevent token expiry during long syncs
+      if (messagesSinceRefresh >= 500) {
+        try {
+          currentGmail = await getGmailClient();
+          messagesSinceRefresh = 0;
+        } catch {
+          // If refresh fails, continue with existing client
         }
       }
     } while (pageToken);
