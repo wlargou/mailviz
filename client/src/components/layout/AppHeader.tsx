@@ -9,6 +9,7 @@ import { Light, Asleep, Logout } from '@carbon/icons-react';
 import { useUIStore } from '../../store/uiStore';
 import { useAuthStore } from '../../store/authStore';
 import { GlobalSearch } from './GlobalSearch';
+import { MailvizLogo } from '../shared/MailvizLogo';
 
 export function AppHeader() {
   const { theme, toggleTheme, sideNavOpen, setSideNavOpen } = useUIStore();
@@ -21,8 +22,9 @@ export function AppHeader() {
         onClick={() => setSideNavOpen(!sideNavOpen)}
         isActive={sideNavOpen}
       />
-      <HeaderName href="/" prefix="">
-        Mailviz
+      <HeaderName href="/" prefix="" className="mailviz-header-name">
+        <MailvizLogo size={22} />
+        <span>Mailviz</span>
       </HeaderName>
       <HeaderGlobalBar>
         <GlobalSearch />

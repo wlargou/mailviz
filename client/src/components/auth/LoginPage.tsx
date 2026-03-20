@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Button, InlineNotification, Theme } from '@carbon/react';
 import { ArrowRight } from '@carbon/icons-react';
 import { api } from '../../api/client';
+import { MailvizLogo } from '../shared/MailvizLogo';
 
 const ERROR_MESSAGES: Record<string, string> = {
   unauthorized: 'Your email is not authorized to access this application.',
@@ -135,7 +136,10 @@ export function LoginPage() {
         <WaterBackground />
         <div className="login-panel">
           <div className="login-panel__content">
-            <h1 className="login-panel__title">MailViz</h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
+              <MailvizLogo size={40} />
+              <h1 className="login-panel__title" style={{ margin: 0 }}>Mailviz</h1>
+            </div>
             <p className="login-panel__subtitle">
               Personal CRM & Email Manager
             </p>
