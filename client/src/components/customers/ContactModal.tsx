@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Modal, TextInput } from '@carbon/react';
+import { TextInput } from '@carbon/react';
+import { CreateSidePanel } from '@carbon/ibm-products';
 import { contactsApi } from '../../api/customers';
 import { useUIStore } from '../../store/uiStore';
 import type { Contact } from '../../types/customer';
@@ -73,66 +74,64 @@ export function ContactModal({ open, contact, customerId, onClose, onSaved }: Co
   };
 
   return (
-    <Modal
+    <CreateSidePanel
       open={open}
       onRequestClose={onClose}
       onRequestSubmit={handleSubmit}
-      modalHeading={isEdit ? 'Edit Contact' : 'Add Contact'}
+      title={isEdit ? 'Edit Contact' : 'Add Contact'}
+      subtitle={isEdit ? 'Update contact information' : 'Add a new contact to this customer'}
+      formTitle="Contact details"
+      formDescription="Provide the contact's name and optional details."
       primaryButtonText={loading ? 'Saving...' : isEdit ? 'Save' : 'Add'}
       secondaryButtonText="Cancel"
-      primaryButtonDisabled={!firstName.trim() || !lastName.trim() || loading}
+      disableSubmit={!firstName.trim() || !lastName.trim() || loading}
+      selectorPageContent=".app-content"
+      selectorPrimaryFocus="#contact-first-name"
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        <div style={{ display: 'flex', gap: '1rem' }}>
-          <div style={{ flex: 1 }}>
-            <TextInput
-              id="contact-first-name"
-              labelText="First Name"
-              placeholder="First name"
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-              required
-            />
-          </div>
-          <div style={{ flex: 1 }}>
-            <TextInput
-              id="contact-last-name"
-              labelText="Last Name"
-              placeholder="Last name"
-              value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
-              required
-            />
-          </div>
-        </div>
-        <TextInput
-          id="contact-email"
-          labelText="Email"
-          placeholder="email@example.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        <div style={{ display: 'flex', gap: '1rem' }}>
-          <div style={{ flex: 1 }}>
-            <TextInput
-              id="contact-phone"
-              labelText="Phone"
-              placeholder="+1 234 567 890"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-            />
-          </div>
-          <div style={{ flex: 1 }}>
-            <TextInput
-              id="contact-role"
-              labelText="Role"
-              placeholder="e.g. CEO, CTO, Manager"
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-            />
-          </div>
-        </div>
-      </div>
-    </Modal>
+      <TextInput
+        id="contact-first-name"
+        labelText="First Name"
+        placeholder="First name"
+        value={firstName}
+        onChange={(e) => setFirstName(e.target.value)}
+        invalid={open && firstName.length > 0 && !firstName.trim()}
+        invalidText="First name is required"
+        className="create-side-panel__form-item"
+      />
+      <TextInput
+        id="contact-last-name"
+        labelText="Last Name"
+        placeholder="Last name"
+        value={lastName}
+        onChange={(e) => setLastName(e.target.value)}
+        invalid={open && lastName.length > 0 && !lastName.trim()}
+        invalidText="Last name is required"
+        className="create-side-panel__form-item"
+      />
+      <TextInput
+        id="contact-email"
+        labelText="Email"
+        placeholder="email@example.com"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        className="create-side-panel__form-item"
+      />
+      <TextInput
+        id="contact-phone"
+        labelText="Phone"
+        placeholder="+1 234 567 890"
+        value={phone}
+        onChange={(e) => setPhone(e.target.value)}
+        className="create-side-panel__form-item"
+      />
+      <TextInput
+        id="contact-role"
+        labelText="Role"
+        placeholder="e.g. CEO, CTO, Manager"
+        value={role}
+        onChange={(e) => setRole(e.target.value)}
+        className="create-side-panel__form-item"
+      />
+    </CreateSidePanel>
   );
 }

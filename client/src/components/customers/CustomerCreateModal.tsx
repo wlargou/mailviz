@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Modal, TextInput, TextArea } from '@carbon/react';
+import { TextInput, TextArea } from '@carbon/react';
+import { CreateSidePanel } from '@carbon/ibm-products';
 import { customersApi } from '../../api/customers';
 import { useUIStore } from '../../store/uiStore';
 
@@ -52,66 +53,70 @@ export function CustomerCreateModal({ open, onClose, onCreated }: CustomerCreate
   };
 
   return (
-    <Modal
+    <CreateSidePanel
       open={open}
       onRequestClose={() => { resetForm(); onClose(); }}
       onRequestSubmit={handleSubmit}
-      modalHeading="New Customer"
+      title="New Customer"
+      subtitle="Add a new customer to your CRM"
+      formTitle="Customer details"
+      formDescription="Fill in the customer information below."
       primaryButtonText={loading ? 'Creating...' : 'Create'}
       secondaryButtonText="Cancel"
-      primaryButtonDisabled={!name.trim() || loading}
+      disableSubmit={!name.trim() || loading}
+      selectorPageContent=".app-content"
+      selectorPrimaryFocus="#customer-name"
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        <TextInput
-          id="customer-name"
-          labelText="Name"
-          placeholder="Customer name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          required
-        />
-        <TextInput
-          id="customer-company"
-          labelText="Company"
-          placeholder="Company name"
-          value={company}
-          onChange={(e) => setCompany(e.target.value)}
-        />
-        <div style={{ display: 'flex', gap: '1rem' }}>
-          <div style={{ flex: 1 }}>
-            <TextInput
-              id="customer-email"
-              labelText="Email"
-              placeholder="email@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </div>
-          <div style={{ flex: 1 }}>
-            <TextInput
-              id="customer-phone"
-              labelText="Phone"
-              placeholder="+1 234 567 890"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-            />
-          </div>
-        </div>
-        <TextInput
-          id="customer-website"
-          labelText="Website"
-          placeholder="https://example.com"
-          value={website}
-          onChange={(e) => setWebsite(e.target.value)}
-        />
-        <TextArea
-          id="customer-notes"
-          labelText="Notes"
-          placeholder="Additional notes"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-        />
-      </div>
-    </Modal>
+      <TextInput
+        id="customer-name"
+        labelText="Name"
+        placeholder="Customer name"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        invalid={open && name.length > 0 && !name.trim()}
+        invalidText="Name is required"
+        className="create-side-panel__form-item"
+      />
+      <TextInput
+        id="customer-company"
+        labelText="Company"
+        placeholder="Company name"
+        value={company}
+        onChange={(e) => setCompany(e.target.value)}
+        className="create-side-panel__form-item"
+      />
+      <TextInput
+        id="customer-email"
+        labelText="Email"
+        placeholder="email@example.com"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        className="create-side-panel__form-item"
+      />
+      <TextInput
+        id="customer-phone"
+        labelText="Phone"
+        placeholder="+1 234 567 890"
+        value={phone}
+        onChange={(e) => setPhone(e.target.value)}
+        className="create-side-panel__form-item"
+      />
+      <TextInput
+        id="customer-website"
+        labelText="Website"
+        placeholder="https://example.com"
+        value={website}
+        onChange={(e) => setWebsite(e.target.value)}
+        className="create-side-panel__form-item"
+      />
+      <TextArea
+        id="customer-notes"
+        labelText="Notes"
+        placeholder="Additional notes"
+        value={notes}
+        onChange={(e) => setNotes(e.target.value)}
+        className="create-side-panel__form-item"
+      />
+    </CreateSidePanel>
   );
 }

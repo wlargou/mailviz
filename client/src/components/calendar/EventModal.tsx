@@ -1,17 +1,14 @@
 import { useState, useEffect } from 'react';
 import {
-  Modal,
   TextInput,
   TextArea,
-  DatePicker,
-  DatePickerInput,
-  TimePicker,
   Toggle,
 } from '@carbon/react';
+import { CreateSidePanel } from '@carbon/ibm-products';
 import { calendarApi } from '../../api/calendar';
 import { useUIStore } from '../../store/uiStore';
 import type { CalendarEvent } from '../../types/calendar';
-import { format, set as setDate, parseISO } from 'date-fns';
+import { format } from 'date-fns';
 
 interface EventModalProps {
   open: boolean;
@@ -64,7 +61,6 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
   }, [open, event, initialDate]);
 
   const buildDateTime = (dateStr: string, time: string): string => {
-    // Parse date from MM/dd/yyyy format
     const parts = dateStr.split('/');
     if (parts.length !== 3) return new Date().toISOString();
     const [month, day, year] = parts.map(Number);
@@ -104,88 +100,97 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
   };
 
   return (
-    <Modal
+    <CreateSidePanel
       open={open}
-      modalHeading={event ? 'Edit Event' : 'New Event'}
+      onRequestClose={onClose}
+      onRequestSubmit={handleSubmit}
+      title={event ? 'Edit Event' : 'New Event'}
+      subtitle={event ? 'Update event details' : 'Add a new event to your calendar'}
+      formTitle="Event details"
+      formDescription="Set the title, time, and location for your event."
       primaryButtonText={event ? 'Save Changes' : 'Create Event'}
       secondaryButtonText="Cancel"
-      onRequestSubmit={handleSubmit}
-      onRequestClose={onClose}
-      primaryButtonDisabled={!title.trim() || loading}
+      disableSubmit={!title.trim() || loading}
+      selectorPageContent=".app-content"
+      selectorPrimaryFocus="#event-title"
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <TextInput
+        id="event-title"
+        labelText="Title"
+        placeholder="Event title"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        invalid={open && title.length > 0 && !title.trim()}
+        invalidText="Title is required"
+        className="create-side-panel__form-item"
+      />
+
+      <Toggle
+        id="event-allday"
+        labelText="All day event"
+        labelA="No"
+        labelB="Yes"
+        toggled={isAllDay}
+        onToggle={(checked: boolean) => setIsAllDay(checked)}
+        className="create-side-panel__form-item"
+      />
+
+      <TextInput
+        id="event-start-date"
+        labelText="Start Date"
+        placeholder="MM/DD/YYYY"
+        value={startDateStr}
+        onChange={(e) => setStartDateStr(e.target.value)}
+        className="create-side-panel__form-item"
+      />
+      {!isAllDay && (
         <TextInput
-          id="event-title"
-          labelText="Title"
-          placeholder="Event title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
+          id="event-start-time"
+          labelText="Start Time"
+          placeholder="HH:MM"
+          value={startTime}
+          onChange={(e) => setStartTime(e.target.value)}
+          className="create-side-panel__form-item"
         />
+      )}
 
-        <Toggle
-          id="event-allday"
-          labelText="All day event"
-          labelA="No"
-          labelB="Yes"
-          toggled={isAllDay}
-          onToggle={(checked: boolean) => setIsAllDay(checked)}
-        />
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-          <TextInput
-            id="event-start-date"
-            labelText="Start Date"
-            placeholder="MM/DD/YYYY"
-            value={startDateStr}
-            onChange={(e) => setStartDateStr(e.target.value)}
-          />
-          {!isAllDay && (
-            <TextInput
-              id="event-start-time"
-              labelText="Start Time"
-              placeholder="HH:MM"
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-            />
-          )}
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-          <TextInput
-            id="event-end-date"
-            labelText="End Date"
-            placeholder="MM/DD/YYYY"
-            value={endDateStr}
-            onChange={(e) => setEndDateStr(e.target.value)}
-          />
-          {!isAllDay && (
-            <TextInput
-              id="event-end-time"
-              labelText="End Time"
-              placeholder="HH:MM"
-              value={endTime}
-              onChange={(e) => setEndTime(e.target.value)}
-            />
-          )}
-        </div>
-
+      <TextInput
+        id="event-end-date"
+        labelText="End Date"
+        placeholder="MM/DD/YYYY"
+        value={endDateStr}
+        onChange={(e) => setEndDateStr(e.target.value)}
+        className="create-side-panel__form-item"
+      />
+      {!isAllDay && (
         <TextInput
-          id="event-location"
-          labelText="Location"
-          placeholder="Add location"
-          value={location}
-          onChange={(e) => setLocation(e.target.value)}
+          id="event-end-time"
+          labelText="End Time"
+          placeholder="HH:MM"
+          value={endTime}
+          onChange={(e) => setEndTime(e.target.value)}
+          className="create-side-panel__form-item"
         />
+      )}
 
-        <TextArea
-          id="event-description"
-          labelText="Description"
-          placeholder="Add description"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          rows={3}
-        />
-      </div>
-    </Modal>
+      <TextInput
+        id="event-location"
+        labelText="Location"
+        placeholder="Add location"
+        value={location}
+        onChange={(e) => setLocation(e.target.value)}
+        className="create-side-panel__form-item"
+      />
+
+      <TextArea
+        id="event-description"
+        labelText="Description"
+        placeholder="Add description"
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        rows={3}
+        className="create-side-panel__form-item"
+      />
+    </CreateSidePanel>
   );
 }

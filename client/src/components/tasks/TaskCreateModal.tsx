@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Modal,
   TextInput,
   TextArea,
   Dropdown,
@@ -8,6 +7,7 @@ import {
   DatePickerInput,
   MultiSelect,
 } from '@carbon/react';
+import { CreateSidePanel } from '@carbon/ibm-products';
 import { tasksApi } from '../../api/tasks';
 import { customersApi } from '../../api/customers';
 import { taskStatusesApi } from '../../api/taskStatuses';
@@ -98,100 +98,102 @@ export function TaskCreateModal({ open, onClose, onCreated, labels }: TaskCreate
   };
 
   return (
-    <Modal
+    <CreateSidePanel
       open={open}
-      onRequestClose={() => {
-        resetForm();
-        onClose();
-      }}
+      onRequestClose={() => { resetForm(); onClose(); }}
       onRequestSubmit={handleSubmit}
-      modalHeading="Create New Task"
+      title="Create New Task"
+      subtitle="Add a task to track your work"
+      formTitle="Task details"
+      formDescription="Fill in the required fields to create a new task."
       primaryButtonText={loading ? 'Creating...' : 'Create'}
       secondaryButtonText="Cancel"
-      primaryButtonDisabled={!title.trim() || loading}
+      disableSubmit={!title.trim() || loading}
+      selectorPageContent=".app-content"
+      selectorPrimaryFocus="#task-title"
     >
-      <div className="modal-form">
-        <TextInput
-          id="task-title"
-          labelText="Title"
-          placeholder="Enter task title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          required
+      <TextInput
+        id="task-title"
+        labelText="Title"
+        placeholder="Enter task title"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        invalid={open && title.length > 0 && !title.trim()}
+        invalidText="Title is required"
+        className="create-side-panel__form-item"
+      />
+      <TextArea
+        id="task-description"
+        labelText="Description"
+        placeholder="Enter task description (optional)"
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        className="create-side-panel__form-item"
+      />
+      <Dropdown
+        id="task-status"
+        titleText="Status"
+        label="Select status"
+        items={statusItems}
+        itemToString={(item) => item?.text || ''}
+        selectedItem={statusItems.find((s) => s.id === status)}
+        onChange={({ selectedItem }) => {
+          if (selectedItem) setStatus(selectedItem.id as TaskStatus);
+        }}
+        className="create-side-panel__form-item"
+      />
+      <Dropdown
+        id="task-priority"
+        titleText="Priority"
+        label="Select priority"
+        items={priorityItems}
+        itemToString={(item) => item?.text || ''}
+        selectedItem={priorityItems.find((p) => p.id === priority)}
+        onChange={({ selectedItem }) => {
+          if (selectedItem) setPriority(selectedItem.id as TaskPriority);
+        }}
+        className="create-side-panel__form-item"
+      />
+      <DatePicker
+        datePickerType="single"
+        onChange={([date]: Date[]) => {
+          setDueDate(date ? date.toISOString() : null);
+        }}
+      >
+        <DatePickerInput
+          id="task-due-date"
+          labelText="Due Date"
+          placeholder="mm/dd/yyyy"
+          className="create-side-panel__form-item"
         />
-        <TextArea
-          id="task-description"
-          labelText="Description"
-          placeholder="Enter task description (optional)"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-        />
-        <div className="modal-form__row">
-          <div style={{ flex: 1 }}>
-            <Dropdown
-              id="task-status"
-              titleText="Status"
-              label="Select status"
-              items={statusItems}
-              itemToString={(item) => item?.text || ''}
-              selectedItem={statusItems.find((s) => s.id === status)}
-              onChange={({ selectedItem }) => {
-                if (selectedItem) setStatus(selectedItem.id as TaskStatus);
-              }}
-            />
-          </div>
-          <div style={{ flex: 1 }}>
-            <Dropdown
-              id="task-priority"
-              titleText="Priority"
-              label="Select priority"
-              items={priorityItems}
-              itemToString={(item) => item?.text || ''}
-              selectedItem={priorityItems.find((p) => p.id === priority)}
-              onChange={({ selectedItem }) => {
-                if (selectedItem) setPriority(selectedItem.id as TaskPriority);
-              }}
-            />
-          </div>
-        </div>
-        <DatePicker
-          datePickerType="single"
-          onChange={([date]: Date[]) => {
-            setDueDate(date ? date.toISOString() : null);
+      </DatePicker>
+      {customers.length > 0 && (
+        <Dropdown
+          id="task-customer"
+          titleText="Customer"
+          label="Select customer (optional)"
+          items={[{ id: '', text: 'None' }, ...customers.map((c) => ({ id: c.id, text: c.name }))]}
+          itemToString={(item) => item?.text || ''}
+          selectedItem={customerId ? { id: customerId, text: customers.find((c) => c.id === customerId)?.name || '' } : { id: '', text: 'None' }}
+          onChange={({ selectedItem }) => {
+            setCustomerId(selectedItem?.id || null);
           }}
-        >
-          <DatePickerInput
-            id="task-due-date"
-            labelText="Due Date"
-            placeholder="mm/dd/yyyy"
-          />
-        </DatePicker>
-        {customers.length > 0 && (
-          <Dropdown
-            id="task-customer"
-            titleText="Customer"
-            label="Select customer (optional)"
-            items={[{ id: '', text: 'None' }, ...customers.map((c) => ({ id: c.id, text: c.name }))]}
-            itemToString={(item) => item?.text || ''}
-            selectedItem={customerId ? { id: customerId, text: customers.find((c) => c.id === customerId)?.name || '' } : { id: '', text: 'None' }}
-            onChange={({ selectedItem }) => {
-              setCustomerId(selectedItem?.id || null);
-            }}
-          />
-        )}
-        {labels.length > 0 && (
-          <MultiSelect
-            id="task-labels"
-            titleText="Labels"
-            label="Select labels"
-            items={labels.map((l) => ({ id: l.id, text: l.name }))}
-            itemToString={(item) => item?.text || ''}
-            onChange={({ selectedItems }) => {
-              setSelectedLabels(selectedItems.map((item) => item.id));
-            }}
-          />
-        )}
-      </div>
-    </Modal>
+          className="create-side-panel__form-item"
+        />
+      )}
+      {labels.length > 0 && (
+        <MultiSelect
+          id="task-labels"
+          titleText="Labels"
+          label="Select labels"
+          items={labels.map((l) => ({ id: l.id, text: l.name }))}
+          itemToString={(item) => item?.text || ''}
+          onChange={({ selectedItems }) => {
+            setSelectedLabels(selectedItems.map((item) => item.id));
+          }}
+          className="create-side-panel__form-item"
+        />
+      )}
+    </CreateSidePanel>
   );
 }

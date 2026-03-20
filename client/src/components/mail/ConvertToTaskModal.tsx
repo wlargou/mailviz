@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Modal,
   TextInput,
   TextArea,
   Dropdown,
   Tag,
 } from '@carbon/react';
+import { CreateSidePanel } from '@carbon/ibm-products';
 import { emailsApi } from '../../api/emails';
 import { useUIStore } from '../../store/uiStore';
 import type { EmailMessage } from '../../types/email';
@@ -52,59 +52,63 @@ export function ConvertToTaskModal({ email, open, onClose, onConverted }: Conver
   };
 
   return createPortal(
-    <Modal
+    <CreateSidePanel
       open={open}
       onRequestClose={onClose}
       onRequestSubmit={handleSubmit}
-      modalHeading="Convert Email to Task"
+      title="Convert Email to Task"
+      subtitle="Create a task linked to this email"
+      formTitle="Task details"
+      formDescription={`From: ${email.fromName || email.from}`}
       primaryButtonText={submitting ? 'Creating...' : 'Create Task'}
       secondaryButtonText="Cancel"
-      primaryButtonDisabled={!title.trim() || submitting}
+      disableSubmit={!title.trim() || submitting}
+      selectorPageContent=".app-content"
+      selectorPrimaryFocus="#convert-task-title"
     >
-      <div className="modal-form">
-        <TextInput
-          id="task-title"
-          labelText="Task title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          required
-        />
-        <Dropdown
-          id="task-priority"
-          titleText="Priority"
-          label="Priority"
-          items={priorityItems}
-          itemToString={(item: { id: string; text: string } | null) => item?.text || ''}
-          selectedItem={priorityItems.find((p) => p.id === priority) || priorityItems[1]}
-          onChange={({ selectedItem }: { selectedItem: { id: string; text: string } | null }) => {
-            setPriority(selectedItem?.id || 'MEDIUM');
-          }}
-        />
-        <div className="modal-form__row">
-          <div style={{ flex: 1 }}>
-            <p className="modal-form__label">Status</p>
-            <Tag type="blue" size="md">To Do</Tag>
-          </div>
-          {email.customer && (
-            <div style={{ flex: 1 }}>
-              <p className="modal-form__label">Customer</p>
-              <Tag type="teal" size="md">{email.customer.name}</Tag>
-            </div>
-          )}
+      <TextInput
+        id="convert-task-title"
+        labelText="Task title"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        invalid={open && title.length > 0 && !title.trim()}
+        invalidText="Title is required"
+        className="create-side-panel__form-item"
+      />
+      <Dropdown
+        id="convert-task-priority"
+        titleText="Priority"
+        label="Priority"
+        items={priorityItems}
+        itemToString={(item: { id: string; text: string } | null) => item?.text || ''}
+        selectedItem={priorityItems.find((p) => p.id === priority) || priorityItems[1]}
+        onChange={({ selectedItem }: { selectedItem: { id: string; text: string } | null }) => {
+          setPriority(selectedItem?.id || 'MEDIUM');
+        }}
+        className="create-side-panel__form-item"
+      />
+      <div className="create-side-panel__form-item" style={{ display: 'flex', gap: '1rem' }}>
+        <div>
+          <p style={{ fontSize: '0.75rem', color: 'var(--cds-text-secondary)', marginBottom: '0.25rem' }}>Status</p>
+          <Tag type="blue" size="md">To Do</Tag>
         </div>
-        <TextArea
-          id="task-notes"
-          labelText="Notes"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Additional context..."
-          rows={3}
-        />
-        <p className="modal-form__helper">
-          From: {email.fromName || email.from} · {email.snippet?.slice(0, 100)}
-        </p>
+        {email.customer && (
+          <div>
+            <p style={{ fontSize: '0.75rem', color: 'var(--cds-text-secondary)', marginBottom: '0.25rem' }}>Customer</p>
+            <Tag type="teal" size="md">{email.customer.name}</Tag>
+          </div>
+        )}
       </div>
-    </Modal>,
+      <TextArea
+        id="convert-task-notes"
+        labelText="Notes"
+        value={notes}
+        onChange={(e) => setNotes(e.target.value)}
+        placeholder="Additional context..."
+        rows={3}
+        className="create-side-panel__form-item"
+      />
+    </CreateSidePanel>,
     document.body,
   );
 }
