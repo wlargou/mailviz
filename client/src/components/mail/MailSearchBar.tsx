@@ -291,6 +291,7 @@ export function MailSearchBar({ filters, onFiltersChange, customers }: MailSearc
               onChange={(e) => setDraft({ ...draft, subject: e.target.value })}
             />
             <FilterableMultiSelect
+              key={`company-filter-${panelOpen}`}
               id="filter-company"
               titleText="Company"
               placeholder="Filter by company"
@@ -298,7 +299,7 @@ export function MailSearchBar({ filters, onFiltersChange, customers }: MailSearc
               itemToString={(item: { id: string; text: string }) => item?.text || ''}
               initialSelectedItems={customerItems.filter((i) => draft.customerIds.includes(i.id))}
               onChange={({ selectedItems }: { selectedItems: { id: string; text: string }[] }) => {
-                setDraft({ ...draft, customerIds: selectedItems.map((i) => i.id) });
+                setDraft((prev) => ({ ...prev, customerIds: selectedItems.map((i) => i.id) }));
               }}
               size="sm"
             />

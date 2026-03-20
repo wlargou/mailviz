@@ -17,9 +17,11 @@ const GOV_EDU_SLDS = new Set([
 const CCTLD_PATTERN = /^[a-z]{2}$/;
 
 export function extractDomain(email: string): string | null {
-  const at = email.lastIndexOf('@');
+  // Strip angle brackets, quotes, and whitespace that may trail from malformed email headers
+  const cleaned = email.replace(/[<>"';\s]+/g, '');
+  const at = cleaned.lastIndexOf('@');
   if (at < 1) return null;
-  return email.slice(at + 1).toLowerCase().trim() || null;
+  return cleaned.slice(at + 1).toLowerCase().trim() || null;
 }
 
 /**
