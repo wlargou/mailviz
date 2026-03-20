@@ -6,7 +6,7 @@ export const emailController = {
   async findAllThreads(req: Request, res: Response, next: NextFunction) {
     try {
       const { search, customerId, contactEmail, isRead, hasAttachment, folder, from, to, subject, dateAfter, dateBefore, page, limit } = req.query as Record<string, string>;
-      const result = await emailService.findAllThreads(req.user!.id, { search, customerId, contactEmail, isRead, hasAttachment, folder, from, to, subject, dateAfter, dateBefore, page, limit });
+      const result = await emailService.findAllThreads({ search, customerId, contactEmail, isRead, hasAttachment, folder, from, to, subject, dateAfter, dateBefore, page, limit }, req.user!.id);
       res.json(result);
     } catch (err) {
       next(err);
@@ -15,7 +15,7 @@ export const emailController = {
 
   async findThread(req: Request, res: Response, next: NextFunction) {
     try {
-      const emails = await emailService.findThread(req.user!.id, req.params.threadId);
+      const emails = await emailService.findThread(req.params.threadId, req.user!.id);
       res.json({ data: emails });
     } catch (err) {
       next(err);
@@ -24,7 +24,7 @@ export const emailController = {
 
   async findById(req: Request, res: Response, next: NextFunction) {
     try {
-      const email = await emailService.findById(req.user!.id, req.params.id);
+      const email = await emailService.findById(req.params.id, req.user!.id);
       res.json({ data: email });
     } catch (err) {
       next(err);
@@ -34,9 +34,9 @@ export const emailController = {
   async getAttachment(req: Request, res: Response, next: NextFunction) {
     try {
       const { data, mimeType, filename } = await emailService.getAttachment(
-        req.user!.id,
         req.params.id,
-        req.params.aid
+        req.params.aid,
+        req.user!.id
       );
       const disposition = req.query.inline === 'true' ? 'inline' : 'attachment';
       // Sanitize filename to prevent header injection (S3)
@@ -60,7 +60,7 @@ export const emailController = {
 
   async markAsRead(req: Request, res: Response, next: NextFunction) {
     try {
-      await emailService.markAsRead(req.user!.id, req.params.id);
+      await emailService.markAsRead(req.params.id, req.user!.id);
       res.json({ success: true });
     } catch (err) {
       next(err);
@@ -69,7 +69,7 @@ export const emailController = {
 
   async markAsUnread(req: Request, res: Response, next: NextFunction) {
     try {
-      await emailService.markAsUnread(req.user!.id, req.params.id);
+      await emailService.markAsUnread(req.params.id, req.user!.id);
       res.json({ success: true });
     } catch (err) {
       next(err);
@@ -78,7 +78,7 @@ export const emailController = {
 
   async toggleStar(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await emailService.toggleStar(req.user!.id, req.params.id);
+      const result = await emailService.toggleStar(req.params.id, req.user!.id);
       res.json({ data: result });
     } catch (err) {
       next(err);
@@ -87,7 +87,7 @@ export const emailController = {
 
   async archive(req: Request, res: Response, next: NextFunction) {
     try {
-      await emailService.archive(req.user!.id, req.params.id);
+      await emailService.archive(req.params.id, req.user!.id);
       res.json({ success: true });
     } catch (err) {
       next(err);
@@ -96,7 +96,7 @@ export const emailController = {
 
   async unarchive(req: Request, res: Response, next: NextFunction) {
     try {
-      await emailService.unarchive(req.user!.id, req.params.id);
+      await emailService.unarchive(req.params.id, req.user!.id);
       res.json({ success: true });
     } catch (err) {
       next(err);
@@ -105,7 +105,7 @@ export const emailController = {
 
   async trash(req: Request, res: Response, next: NextFunction) {
     try {
-      await emailService.trash(req.user!.id, req.params.id);
+      await emailService.trash(req.params.id, req.user!.id);
       res.json({ success: true });
     } catch (err) {
       next(err);
@@ -114,7 +114,7 @@ export const emailController = {
 
   async untrash(req: Request, res: Response, next: NextFunction) {
     try {
-      await emailService.untrash(req.user!.id, req.params.id);
+      await emailService.untrash(req.params.id, req.user!.id);
       res.json({ success: true });
     } catch (err) {
       next(err);
@@ -128,7 +128,7 @@ export const emailController = {
         res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'ids array required' } });
         return;
       }
-      const result = await emailService.batchMarkAsRead(req.user!.id, ids);
+      const result = await emailService.batchMarkAsRead(ids, req.user!.id);
       res.json({ data: result });
     } catch (err) {
       next(err);
@@ -142,7 +142,7 @@ export const emailController = {
         res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'ids array required' } });
         return;
       }
-      const result = await emailService.batchMarkAsUnread(req.user!.id, ids);
+      const result = await emailService.batchMarkAsUnread(ids, req.user!.id);
       res.json({ data: result });
     } catch (err) {
       next(err);
@@ -156,7 +156,7 @@ export const emailController = {
         res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'ids array required' } });
         return;
       }
-      const result = await emailService.batchArchive(req.user!.id, ids);
+      const result = await emailService.batchArchive(ids, req.user!.id);
       res.json({ data: result });
     } catch (err) {
       next(err);
@@ -170,7 +170,7 @@ export const emailController = {
         res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'ids array required' } });
         return;
       }
-      const result = await emailService.batchTrash(req.user!.id, ids);
+      const result = await emailService.batchTrash(ids, req.user!.id);
       res.json({ data: result });
     } catch (err) {
       next(err);
@@ -179,7 +179,7 @@ export const emailController = {
 
   async convertToTask(req: Request, res: Response, next: NextFunction) {
     try {
-      const task = await emailService.convertToTask(req.user!.id, req.params.id, req.body);
+      const task = await emailService.convertToTask(req.params.id, req.body, req.user!.id);
       res.status(201).json({ data: task });
     } catch (err) {
       next(err);
@@ -201,7 +201,7 @@ export const emailController = {
 
   async sendEmail(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await emailService.sendEmail(req.user!.id, req.body);
+      const result = await emailService.sendEmail(req.body, req.user!.id);
       res.status(201).json({ data: result });
     } catch (err) {
       next(err);
@@ -210,7 +210,7 @@ export const emailController = {
 
   async replyToEmail(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await emailService.replyToEmail(req.user!.id, req.params.id, req.body);
+      const result = await emailService.replyToEmail(req.params.id, req.body, req.user!.id);
       res.status(201).json({ data: result });
     } catch (err) {
       next(err);
@@ -219,7 +219,7 @@ export const emailController = {
 
   async forwardEmail(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await emailService.forwardEmail(req.user!.id, req.params.id, req.body);
+      const result = await emailService.forwardEmail(req.params.id, req.body, req.user!.id);
       res.status(201).json({ data: result });
     } catch (err) {
       next(err);
