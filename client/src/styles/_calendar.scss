@@ -644,7 +644,13 @@
   }
 }
 
-// Event detail modal
+// Event detail side panel
+.event-detail-panel {
+  .cds--side-panel__body-content {
+    padding: 0 1rem 1rem;
+  }
+}
+
 .event-detail {
   display: flex;
   flex-direction: column;

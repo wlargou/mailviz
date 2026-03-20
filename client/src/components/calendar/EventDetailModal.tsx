@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import {
   Modal,
@@ -7,6 +8,7 @@ import {
   RadioButtonGroup,
   RadioButton,
 } from '@carbon/react';
+import { SidePanel } from '@carbon/ibm-products';
 import { Edit, TrashCan, Location, Time, UserMultiple, Launch, Checkmark, Close, Help, EventSchedule, Repeat, User, Enterprise, ChevronDown, ChevronUp } from '@carbon/icons-react';
 import { format } from 'date-fns';
 import type { CalendarEvent, EventAttendee } from '../../types/calendar';
@@ -227,12 +229,14 @@ export function EventDetailModal({ event, open, onClose, onEdit, onDelete, onRes
 
   return (
     <>
-      <Modal
+      <SidePanel
         open={open && !confirmDelete}
-        modalHeading={event.title}
-        passiveModal
         onRequestClose={onClose}
+        title={event.title}
         size="md"
+        slideIn
+        selectorPageContent=".app-content"
+        className="event-detail-panel"
       >
         <div className="event-detail">
           {/* Meta info grid */}
@@ -426,10 +430,10 @@ export function EventDetailModal({ event, open, onClose, onEdit, onDelete, onRes
             </div>
           </div>
         </div>
-      </Modal>
+      </SidePanel>
 
-      {/* Delete confirmation modal */}
-      <Modal
+      {/* Delete confirmation modal (portalled to escape SidePanel z-index) */}
+      {createPortal(<Modal
         open={confirmDelete}
         modalHeading="Delete event"
         danger
@@ -463,7 +467,7 @@ export function EventDetailModal({ event, open, onClose, onEdit, onDelete, onRes
             <p>Are you sure you want to delete &quot;{event.title}&quot;?</p>
           )}
         </div>
-      </Modal>
+      </Modal>, document.body)}
     </>
   );
 }
