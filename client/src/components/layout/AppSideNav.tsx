@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { SideNav, SideNavItems, SideNavLink, Tag } from '@carbon/react';
-import { Dashboard, TaskComplete, UserMultiple, Events, Calendar, Email, Settings } from '@carbon/icons-react';
+import { Dashboard, TaskComplete, UserMultiple, Events, Calendar, Email, Settings, Partnership } from '@carbon/icons-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useUIStore } from '../../store/uiStore';
 import { emailsApi } from '../../api/emails';
@@ -68,6 +68,13 @@ export function AppSideNav() {
           onClick={() => navigate('/contacts')}
         >
           Contacts
+        </SideNavLink>
+        <SideNavLink
+          renderIcon={Partnership}
+          isActive={location.pathname.startsWith('/deals')}
+          onClick={() => navigate('/deals')}
+        >
+          Deals
         </SideNavLink>
         <SideNavLink
           renderIcon={Calendar}

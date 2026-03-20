@@ -36,9 +36,11 @@ import { useSearchParams } from 'react-router-dom';
 import { authApi } from '../../api/auth';
 import { taskStatusesApi } from '../../api/taskStatuses';
 import { companyCategoriesApi } from '../../api/companyCategories';
+import { dealPartnersApi } from '../../api/dealPartners';
 import { useUIStore } from '../../store/uiStore';
 import type { TaskStatusConfig } from '../../types/task';
 import type { CompanyCategory } from '../../types/customer';
+import type { DealPartner } from '../../types/deal';
 import type { GoogleStatus } from '../../types/calendar';
 import { format } from 'date-fns';
 
@@ -78,6 +80,13 @@ export function SettingsPage() {
   const [editCategoryLabel, setEditCategoryLabel] = useState('');
   const [categoryColorPickerOpen, setCategoryColorPickerOpen] = useState<string | null>(null);
 
+  const [dealPartners, setDealPartners] = useState<DealPartner[]>([]);
+  const [newPartnerName, setNewPartnerName] = useState('');
+  const [newPartnerUrl, setNewPartnerUrl] = useState('');
+  const [editingPartnerId, setEditingPartnerId] = useState<string | null>(null);
+  const [editPartnerName, setEditPartnerName] = useState('');
+  const [editPartnerUrl, setEditPartnerUrl] = useState('');
+
   const fetchTaskStatuses = useCallback(async () => {
     try {
       const { data: res } = await taskStatusesApi.getAll();
@@ -92,10 +101,18 @@ export function SettingsPage() {
     } catch { /* ignore */ }
   }, []);
 
+  const fetchDealPartners = useCallback(async () => {
+    try {
+      const { data: res } = await dealPartnersApi.getAll();
+      setDealPartners(res.data);
+    } catch { /* ignore */ }
+  }, []);
+
   useEffect(() => {
     fetchStatus();
     fetchTaskStatuses();
     fetchCategories();
+    fetchDealPartners();
   }, []);
 
   // WebSocket listener for sync progress
@@ -274,6 +291,56 @@ export function SettingsPage() {
     await companyCategoriesApi.update(id, { label: editCategoryLabel.trim() });
     setEditingCategoryId(null);
     fetchCategories();
+  };
+
+  // ── Deal Partner handlers ──
+  const handleAddPartner = async () => {
+    if (!newPartnerName.trim()) return;
+    try {
+      await dealPartnersApi.create({
+        name: newPartnerName.trim(),
+        registrationUrl: newPartnerUrl.trim() || undefined,
+      });
+      setNewPartnerName('');
+      setNewPartnerUrl('');
+      addNotification({ kind: 'success', title: 'Partner added' });
+      fetchDealPartners();
+    } catch (err: any) {
+      addNotification({
+        kind: 'error',
+        title: err?.response?.data?.error?.message || 'Failed to add partner',
+      });
+    }
+  };
+
+  const handleDeletePartner = async (p: DealPartner) => {
+    try {
+      await dealPartnersApi.delete(p.id);
+      addNotification({ kind: 'success', title: `Partner "${p.name}" deleted` });
+      fetchDealPartners();
+    } catch (err: any) {
+      addNotification({
+        kind: 'error',
+        title: err?.response?.data?.error?.message || 'Cannot delete partner',
+      });
+    }
+  };
+
+  const handleSaveEditPartner = async (id: string) => {
+    if (!editPartnerName.trim()) return;
+    try {
+      await dealPartnersApi.update(id, {
+        name: editPartnerName.trim(),
+        registrationUrl: editPartnerUrl.trim() || undefined,
+      });
+      setEditingPartnerId(null);
+      fetchDealPartners();
+    } catch (err: any) {
+      addNotification({
+        kind: 'error',
+        title: err?.response?.data?.error?.message || 'Failed to update partner',
+      });
+    }
   };
 
   return (
@@ -645,6 +712,116 @@ export function SettingsPage() {
                 onKeyDown={(e) => { if (e.key === 'Enter') handleAddCategory(); }}
               />
               <Button kind="primary" size="sm" renderIcon={Add} disabled={!newCategoryLabel.trim()} onClick={handleAddCategory}>
+                Add
+              </Button>
+            </div>
+          </Stack>
+        </Tile>
+
+        {/* ─── Deal Partners ─── */}
+        <Tile className="settings-tile">
+          <Stack gap={5}>
+            <div className="settings-tile__header">
+              <div className="settings-tile__icon">
+                <svg viewBox="0 0 32 32" width="20" height="20" fill="var(--cds-icon-primary)">
+                  <path d="M8 9H4a2 2 0 0 0-2 2v14h2v-6h4v6h2V11a2 2 0 0 0-2-2zm-4 8v-6h4v6zm24-8h-4a2 2 0 0 0-2 2v14h2v-6h4v6h2V11a2 2 0 0 0-2-2zm-4 8v-6h4v6zm-2-8h-8a2 2 0 0 0-2 2v14h2v-6h8v6h2V11a2 2 0 0 0-2-2zm-8 8v-6h8v6z" />
+                </svg>
+              </div>
+              <div>
+                <h4 className="settings-tile__title">Deal Partners</h4>
+                <p className="settings-tile__desc">Manage partners for deal registration (IBM, Red Hat, etc.)</p>
+              </div>
+            </div>
+
+            <StructuredListWrapper isCondensed>
+              <StructuredListHead>
+                <StructuredListRow head>
+                  <StructuredListCell head>Name</StructuredListCell>
+                  <StructuredListCell head>Registration URL</StructuredListCell>
+                  <StructuredListCell head>{''}</StructuredListCell>
+                </StructuredListRow>
+              </StructuredListHead>
+              <StructuredListBody>
+                {dealPartners.map((p) => (
+                  <StructuredListRow key={p.id}>
+                    <StructuredListCell>
+                      {editingPartnerId === p.id ? (
+                        <TextInput
+                          id={`edit-partner-name-${p.id}`}
+                          labelText=""
+                          hideLabel
+                          size="sm"
+                          value={editPartnerName}
+                          onChange={(e) => setEditPartnerName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSaveEditPartner(p.id);
+                            if (e.key === 'Escape') setEditingPartnerId(null);
+                          }}
+                          autoFocus
+                        />
+                      ) : (
+                        <span>{p.name}</span>
+                      )}
+                    </StructuredListCell>
+                    <StructuredListCell>
+                      {editingPartnerId === p.id ? (
+                        <TextInput
+                          id={`edit-partner-url-${p.id}`}
+                          labelText=""
+                          hideLabel
+                          size="sm"
+                          value={editPartnerUrl}
+                          onChange={(e) => setEditPartnerUrl(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSaveEditPartner(p.id);
+                            if (e.key === 'Escape') setEditingPartnerId(null);
+                          }}
+                        />
+                      ) : (
+                        <span className="settings-partner-url">{p.registrationUrl || '—'}</span>
+                      )}
+                    </StructuredListCell>
+                    <StructuredListCell>
+                      <div className="settings-status-actions">
+                        {editingPartnerId === p.id ? (
+                          <Button kind="primary" size="sm" onClick={() => handleSaveEditPartner(p.id)}>
+                            Save
+                          </Button>
+                        ) : (
+                          <Button kind="ghost" size="sm" hasIconOnly iconDescription="Edit" renderIcon={Edit}
+                            onClick={() => { setEditingPartnerId(p.id); setEditPartnerName(p.name); setEditPartnerUrl(p.registrationUrl || ''); }}
+                          />
+                        )}
+                        <Button kind="ghost" size="sm" hasIconOnly iconDescription="Delete" renderIcon={TrashCan}
+                          onClick={() => handleDeletePartner(p)}
+                        />
+                      </div>
+                    </StructuredListCell>
+                  </StructuredListRow>
+                ))}
+              </StructuredListBody>
+            </StructuredListWrapper>
+
+            <div className="settings-status-add">
+              <TextInput
+                id="new-partner-name"
+                labelText="Partner name"
+                placeholder="e.g. Oracle, Cisco..."
+                size="sm"
+                value={newPartnerName}
+                onChange={(e) => setNewPartnerName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && newPartnerName.trim()) handleAddPartner(); }}
+              />
+              <TextInput
+                id="new-partner-url"
+                labelText="Registration URL"
+                placeholder="https://partner-portal.com/register"
+                size="sm"
+                value={newPartnerUrl}
+                onChange={(e) => setNewPartnerUrl(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && newPartnerName.trim()) handleAddPartner(); }}
+              />
+              <Button kind="primary" size="sm" renderIcon={Add} disabled={!newPartnerName.trim()} onClick={handleAddPartner}>
                 Add
               </Button>
             </div>

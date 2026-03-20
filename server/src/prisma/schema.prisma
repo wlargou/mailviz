@@ -90,6 +90,7 @@ model Customer {
   tasks          Task[]
   calendarEvents CalendarEventCustomer[]
   emails         Email[]
+  deals          Deal[]
 
   @@unique([userId, domain])
   @@index([categoryId])
@@ -167,6 +168,8 @@ model User {
   calendarEvents    CalendarEvent[]
   taskStatuses      TaskStatus[]      @relation("UserTaskStatuses")
   companyCategories CompanyCategory[] @relation("UserCompanyCategories")
+  dealPartners      DealPartner[]     @relation("UserDealPartners")
+  deals             Deal[]
 
   @@map("users")
 }
@@ -301,4 +304,46 @@ model MailToTask {
   task  Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@map("mail_to_tasks")
+}
+
+// ─── DEAL REGISTRATION MODELS ─────────────────────
+
+model DealPartner {
+  id              String   @id @default(uuid())
+  name            String   @db.VarChar(255)
+  registrationUrl String?  @map("registration_url") @db.VarChar(500)
+  logoUrl         String?  @map("logo_url") @db.VarChar(500)
+  userId          String   @map("user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  deals Deal[]
+  user  User   @relation("UserDealPartners", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@map("deal_partners")
+}
+
+model Deal {
+  id         String    @id @default(uuid())
+  title      String    @db.VarChar(255)
+  partnerId  String    @map("partner_id")
+  customerId String?   @map("customer_id")
+  products   String?   @db.Text
+  status     String    @default("TO_CHALLENGE") @db.VarChar(50)
+  expiryDate DateTime? @map("expiry_date")
+  notes      String?   @db.Text
+  userId     String    @map("user_id")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  partner  DealPartner @relation(fields: [partnerId], references: [id], onDelete: Restrict)
+  customer Customer?   @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([partnerId])
+  @@index([customerId])
+  @@index([status])
+  @@index([userId])
+  @@map("deals")
 }

@@ -20,6 +20,8 @@ import { dashboardRoutes } from './routes/dashboard.js';
 import { searchRoutes } from './routes/search.js';
 import { taskStatusRoutes } from './routes/taskStatuses.js';
 import { companyCategoryRoutes } from './routes/companyCategories.js';
+import { dealPartnerRoutes } from './routes/dealPartners.js';
+import { dealRoutes } from './routes/deals.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -64,6 +66,8 @@ app.use('/api/v1/dashboard', requireAuth, dashboardRoutes);
 app.use('/api/v1/search', requireAuth, searchRoutes);
 app.use('/api/v1/task-statuses', requireAuth, taskStatusRoutes);
 app.use('/api/v1/company-categories', requireAuth, companyCategoryRoutes);
+app.use('/api/v1/deal-partners', requireAuth, dealPartnerRoutes);
+app.use('/api/v1/deals', requireAuth, dealRoutes);
 
 // Serve client static files in production
 if (env.NODE_ENV === 'production') {

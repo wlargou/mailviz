@@ -137,7 +137,25 @@ async function main() {
     });
   }
 
-  console.log('Seed completed: 6 labels, 10 tasks created');
+  // Create default deal partners
+  const defaultPartners = [
+    { name: 'IBM', registrationUrl: 'https://www.ibm.com/partnerworld/deal-registration' },
+    { name: 'Red Hat', registrationUrl: 'https://connect.redhat.com/' },
+    { name: 'EDB', registrationUrl: 'https://www.enterprisedb.com/partners' },
+    { name: 'Lenovo', registrationUrl: 'https://partner.lenovo.com/' },
+    { name: 'Dell EMC', registrationUrl: 'https://www.dell.com/partner' },
+    { name: 'Huawei', registrationUrl: 'https://e.huawei.com/en/partner' },
+  ];
+
+  for (const partner of defaultPartners) {
+    await prisma.dealPartner.upsert({
+      where: { userId_name: { userId, name: partner.name } },
+      create: { ...partner, userId },
+      update: {},
+    });
+  }
+
+  console.log('Seed completed: 6 labels, 10 tasks, 6 deal partners created');
 }
 
 main()

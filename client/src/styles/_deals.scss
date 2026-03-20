@@ -1,0 +1,49 @@
+// ─── Deal Registration Page ─────────────────────
+
+.deals-table {
+  .cds--data-table {
+    th:nth-child(1) { width: 22%; }  // Title
+    th:nth-child(2) { width: 16%; }  // Partner
+    th:nth-child(3) { width: 14%; }  // Customer
+    th:nth-child(4) { width: 16%; }  // Products
+    th:nth-child(5) { width: 10%; }  // Status
+    th:nth-child(6) { width: 12%; }  // Expiry
+    th:nth-child(7) { width: 10%; }  // Actions
+  }
+}
+
+.deal-partner-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.deal-partner-link {
+  flex-shrink: 0;
+}
+
+.deal-customer-link {
+  color: var(--cds-link-primary);
+  cursor: pointer;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.deal-products-cell {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deal-expiry--expired {
+  color: var(--cds-support-error);
+  font-weight: 600;
+}
+
+.deal-expiry--soon {
+  color: var(--cds-support-warning);
+}

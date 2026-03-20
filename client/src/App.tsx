@@ -11,6 +11,7 @@ import { ContactDetailPage } from './components/contacts/ContactDetailPage';
 import { CalendarPage } from './components/calendar/CalendarPage';
 import { MailPage } from './components/mail/MailPage';
 import { SettingsPage } from './components/settings/SettingsPage';
+import { DealsPage } from './components/deals/DealsPage';
 
 export function App() {
   return (
@@ -25,6 +26,7 @@ export function App() {
             <Route path="/customers/:id" element={<CustomerDetailPage />} />
             <Route path="/contacts" element={<ContactsPage />} />
             <Route path="/contacts/:id" element={<ContactDetailPage />} />
+            <Route path="/deals" element={<DealsPage />} />
             <Route path="/calendar" element={<CalendarPage />} />
             <Route path="/mail" element={<MailPage />} />
             <Route path="/settings" element={<SettingsPage />} />
