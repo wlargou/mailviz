@@ -3,7 +3,7 @@ import { TextInput, TextArea, Dropdown, DatePicker, DatePickerInput } from '@car
 import { CreateSidePanel } from '@carbon/ibm-products';
 import { dealsApi } from '../../api/deals';
 import { dealPartnersApi } from '../../api/dealPartners';
-import { customersApi } from '../../api/customers';
+import { CompanyComboBox } from '../shared/CompanyComboBox';
 import { useUIStore } from '../../store/uiStore';
 import type { Deal, DealPartner, DealStatus } from '../../types/deal';
 import { DEAL_STATUS_LABELS } from '../../types/deal';
@@ -31,7 +31,6 @@ export function DealCreateModal({ open, onClose, onCreated, editDeal }: DealCrea
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [partners, setPartners] = useState<DealPartner[]>([]);
-  const [customers, setCustomers] = useState<{ id: string; name: string }[]>([]);
   const addNotification = useUIStore((s) => s.addNotification);
 
   const resetForm = () => {
@@ -50,10 +49,6 @@ export function DealCreateModal({ open, onClose, onCreated, editDeal }: DealCrea
 
     dealPartnersApi.getAll().then(({ data: res }) => {
       setPartners(res.data);
-    }).catch(() => {});
-
-    customersApi.getAll({ limit: '500' }).then(({ data: res }) => {
-      setCustomers(res.data.map((c) => ({ id: c.id, name: c.name })));
     }).catch(() => {});
 
     // Pre-fill form in edit mode
@@ -101,11 +96,6 @@ export function DealCreateModal({ open, onClose, onCreated, editDeal }: DealCrea
     }
   };
 
-  const customerItems = [
-    { id: '__none__', text: 'None' },
-    ...customers.map((c) => ({ id: c.id, text: c.name })),
-  ];
-
   return (
     <CreateSidePanel
       open={open}
@@ -147,23 +137,15 @@ export function DealCreateModal({ open, onClose, onCreated, editDeal }: DealCrea
         }}
         className="create-side-panel__form-item"
       />
-      <Dropdown
-        id="deal-customer"
-        titleText="Customer"
-        label="Select a customer (optional)"
-        items={customerItems}
-        itemToString={(item: { id: string; text: string } | null) => item?.text || ''}
-        selectedItem={
-          customerId
-            ? customerItems.find((c) => c.id === customerId) || null
-            : { id: '__none__', text: 'None' }
-        }
-        onChange={({ selectedItem }: { selectedItem: { id: string; text: string } | null }) => {
-          const id = selectedItem?.id === '__none__' ? null : selectedItem?.id || null;
-          setCustomerId(id);
-        }}
-        className="create-side-panel__form-item"
-      />
+      <div className="create-side-panel__form-item">
+        <CompanyComboBox
+          id="deal-customer"
+          titleText="Customer"
+          selectedId={customerId}
+          onChange={(id) => setCustomerId(id)}
+          allowNone
+        />
+      </div>
       <Dropdown
         id="deal-status"
         titleText="Status"

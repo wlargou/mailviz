@@ -12,13 +12,12 @@ import {
 import { SidePanel } from '@carbon/ibm-products';
 import { Save, Share } from '@carbon/icons-react';
 import { tasksApi } from '../../api/tasks';
-import { customersApi } from '../../api/customers';
 import { taskStatusesApi } from '../../api/taskStatuses';
 import { authApi } from '../../api/auth';
 import { ShareDialog } from '../shared/ShareDialog';
+import { CompanyComboBox } from '../shared/CompanyComboBox';
 import { useUIStore } from '../../store/uiStore';
 import type { Task, Label, TaskPriority, TaskStatus, TaskStatusConfig } from '../../types/task';
-import type { Customer } from '../../types/customer';
 
 const priorityItems = [
   { id: 'LOW', text: 'Low' },
@@ -63,20 +62,12 @@ export function TaskDetailModal({ task, open, onClose, onUpdated, labels }: Task
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [assignedToId, setAssignedToId] = useState<string | null>(null);
   const [effortIndex, setEffortIndex] = useState(0);
-  const [customers, setCustomers] = useState<Customer[]>([]);
   const [users, setUsers] = useState<Array<{ id: string; name: string | null; email: string }>>([]);
   const [statusItems, setStatusItems] = useState<{ id: string; text: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [taskShares, setTaskShares] = useState<any[]>([]);
   const addNotification = useUIStore((s) => s.addNotification);
-
-  const fetchCustomers = useCallback(async () => {
-    try {
-      const { data: res } = await customersApi.getAll({ limit: '100' });
-      setCustomers(res.data);
-    } catch { /* ignore */ }
-  }, []);
 
   const fetchStatuses = useCallback(async () => {
     try {
@@ -94,11 +85,10 @@ export function TaskDetailModal({ task, open, onClose, onUpdated, labels }: Task
 
   useEffect(() => {
     if (open) {
-      fetchCustomers();
       fetchStatuses();
       fetchUsers();
     }
-  }, [open, fetchCustomers, fetchStatuses, fetchUsers]);
+  }, [open, fetchStatuses, fetchUsers]);
 
   useEffect(() => {
     if (task) {
@@ -213,19 +203,13 @@ export function TaskDetailModal({ task, open, onClose, onUpdated, labels }: Task
             placeholder="mm/dd/yyyy"
           />
         </DatePicker>
-        {customers.length > 0 && (
-          <Dropdown
-            id="edit-task-customer"
-            titleText="Company"
-            label="Select company (optional)"
-            items={[{ id: '', text: 'None' }, ...customers.map((c) => ({ id: c.id, text: c.name }))]}
-            itemToString={(item) => item?.text || ''}
-            selectedItem={customerId ? { id: customerId, text: customers.find((c) => c.id === customerId)?.name || '' } : { id: '', text: 'None' }}
-            onChange={({ selectedItem }) => {
-              setCustomerId(selectedItem?.id || null);
-            }}
-          />
-        )}
+        <CompanyComboBox
+          id="edit-task-customer"
+          titleText="Company"
+          selectedId={customerId}
+          onChange={(id) => setCustomerId(id)}
+          allowNone
+        />
         <Dropdown
           id="edit-task-assigned"
           titleText="Assigned to"

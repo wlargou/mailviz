@@ -2,7 +2,6 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   ComboBox,
   TextInput,
-  FilterableMultiSelect,
   Dropdown,
   DatePicker,
   DatePickerInput,
@@ -13,7 +12,7 @@ import {
 } from '@carbon/react';
 import { Search as SearchIcon, Close, Filter } from '@carbon/icons-react';
 import { contactsApi } from '../../api/customers';
-import type { Customer } from '../../types/customer';
+import { CompanyComboBox } from '../shared/CompanyComboBox';
 
 export interface MailFilters {
   search: string;
@@ -46,10 +45,9 @@ type EmailItem = { id: string; text: string; email: string };
 interface MailSearchBarProps {
   filters: MailFilters;
   onFiltersChange: (filters: MailFilters) => void;
-  customers: Customer[];
 }
 
-export function MailSearchBar({ filters, onFiltersChange, customers }: MailSearchBarProps) {
+export function MailSearchBar({ filters, onFiltersChange }: MailSearchBarProps) {
   const [panelOpen, setPanelOpen] = useState(false);
   const [draft, setDraft] = useState<MailFilters>(filters);
   const [contactItems, setContactItems] = useState<EmailItem[]>([]);
@@ -83,9 +81,6 @@ export function MailSearchBar({ filters, onFiltersChange, customers }: MailSearc
       }
     }, 300);
   }, []);
-
-  // Customer items for FilterableMultiSelect
-  const customerItems = customers.map((c) => ({ id: c.id, text: c.name }));
 
   // Sync draft with external filters
   useEffect(() => {
@@ -154,8 +149,7 @@ export function MailSearchBar({ filters, onFiltersChange, customers }: MailSearc
   if (filters.dateAfter) activeTags.push({ key: 'dateAfter', label: `After: ${filters.dateAfter}` });
   if (filters.dateBefore) activeTags.push({ key: 'dateBefore', label: `Before: ${filters.dateBefore}` });
   if (filters.customerIds.length > 0) {
-    const names = filters.customerIds.map((id) => customers.find((c) => c.id === id)?.name || '...').join(', ');
-    activeTags.push({ key: 'customerIds', label: `Company: ${names}` });
+    activeTags.push({ key: 'customerIds', label: `Company filter active` });
   }
   if (filters.isRead !== null) activeTags.push({ key: 'isRead', label: filters.isRead === 'true' ? 'Read' : 'Unread' });
   if (filters.hasAttachment) activeTags.push({ key: 'hasAttachment', label: 'Has attachment' });
@@ -290,18 +284,15 @@ export function MailSearchBar({ filters, onFiltersChange, customers }: MailSearc
               value={draft.subject}
               onChange={(e) => setDraft({ ...draft, subject: e.target.value })}
             />
-            <FilterableMultiSelect
-              key={`company-filter-${panelOpen}`}
+            <CompanyComboBox
               id="filter-company"
               titleText="Company"
-              placeholder="Filter by company"
-              items={customerItems}
-              itemToString={(item: { id: string; text: string }) => item?.text || ''}
-              initialSelectedItems={customerItems.filter((i) => draft.customerIds.includes(i.id))}
-              onChange={({ selectedItems }: { selectedItems: { id: string; text: string }[] }) => {
-                setDraft((prev) => ({ ...prev, customerIds: selectedItems.map((i) => i.id) }));
+              selectedId={draft.customerIds[0] || null}
+              onChange={(id) => {
+                setDraft((prev) => ({ ...prev, customerIds: id ? [id] : [] }));
               }}
               size="sm"
+              allowNone
             />
             <div className="mail-search__date-row">
               <DatePicker

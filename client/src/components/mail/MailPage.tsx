@@ -14,7 +14,6 @@ import { SidePanel } from '@carbon/ibm-products';
 import { formatDistanceToNow } from 'date-fns';
 import { useSearchParams } from 'react-router-dom';
 import { emailsApi } from '../../api/emails';
-import { customersApi } from '../../api/customers';
 import { useUIStore } from '../../store/uiStore';
 import { useAuthStore } from '../../store/authStore';
 import { useEmailWebSocket } from '../../hooks/useEmailWebSocket';
@@ -25,7 +24,6 @@ import { MailComposeModal } from './MailComposeModal';
 import { ConvertToTaskModal } from './ConvertToTaskModal';
 import type { MailFilters } from './MailSearchBar';
 import type { EmailThread } from '../../types/email';
-import type { Customer } from '../../types/customer';
 import type { PaginationMeta } from '../../types/api';
 
 const defaultFilters: MailFilters = {
@@ -60,7 +58,6 @@ export function MailPage() {
     if (search) initial.search = search;
     return initial;
   });
-  const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedThread, setSelectedThread] = useState<string | null>(null);
   const [composeOpen, setComposeOpen] = useState(false);
   const [convertEmail, setConvertEmail] = useState<EmailThread | null>(null);
@@ -96,12 +93,6 @@ export function MailPage() {
 
   // Ref to fetchThreads so WS handlers don't need it as a dependency
   const fetchThreadsRef = useRef<((silent?: boolean) => void) | null>(null);
-
-  useEffect(() => {
-    customersApi.getAll({ limit: '500' }).then(({ data: res }) => {
-      setCustomers(res.data);
-    }).catch(() => {});
-  }, []);
 
   const fetchThreads = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -424,7 +415,6 @@ export function MailPage() {
           <MailSearchBar
             filters={filters}
             onFiltersChange={handleFiltersChange}
-            customers={customers}
           />
         </div>
 

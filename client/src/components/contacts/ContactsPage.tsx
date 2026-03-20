@@ -14,17 +14,17 @@ import {
   Pagination,
   DataTableSkeleton,
   Tag,
-  Dropdown,
   Grid,
   Column,
 } from '@carbon/react';
 import { Copy } from '@carbon/icons-react';
 import { useNavigate } from 'react-router-dom';
-import { contactsApi, customersApi } from '../../api/customers';
+import { contactsApi } from '../../api/customers';
 import { useUIStore } from '../../store/uiStore';
 import { EmptyState } from '../shared/EmptyState';
 import { TableFilterFlyout } from '../shared/TableFilterFlyout';
-import type { Contact, Customer } from '../../types/customer';
+import { CompanyComboBox } from '../shared/CompanyComboBox';
+import type { Contact } from '../../types/customer';
 import type { PaginationMeta } from '../../types/api';
 
 const headers = [
@@ -35,7 +35,6 @@ const headers = [
 
 export function ContactsPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [meta, setMeta] = useState<PaginationMeta | null>(null);
   const [page, setPage] = useState(1);
@@ -51,13 +50,6 @@ export function ContactsPage() {
     const timer = setTimeout(() => setDebouncedSearch(search), 300);
     return () => clearTimeout(timer);
   }, [search]);
-
-  // Load customers for the filter dropdown
-  useEffect(() => {
-    customersApi.getAll({ limit: '500' }).then(({ data: res }) => {
-      setCustomers(res.data);
-    }).catch(() => {});
-  }, []);
 
   const fetchContacts = useCallback(async () => {
     setLoading(true);
@@ -89,11 +81,6 @@ export function ContactsPage() {
   useEffect(() => {
     fetchContacts();
   }, [fetchContacts]);
-
-  const dropdownItems = [
-    { id: '__all__', text: 'All companies' },
-    ...customers.map((c) => ({ id: c.id, text: c.name })),
-  ];
 
   return (
     <div>
@@ -132,19 +119,13 @@ export function ContactsPage() {
                         activeFilterCount={selectedCustomerId ? 1 : 0}
                         onReset={() => { setSelectedCustomerId(null); setPage(1); }}
                       >
-                        <Dropdown
+                        <CompanyComboBox
                           id="company-filter"
                           titleText="Company"
-                          label="All companies"
-                          items={dropdownItems}
-                          itemToString={(item: { id: string; text: string } | null) => item?.text || ''}
-                          selectedItem={dropdownItems.find((d) => d.id === (selectedCustomerId || '__all__')) || dropdownItems[0]}
-                          onChange={({ selectedItem }: { selectedItem: { id: string; text: string } | null }) => {
-                            const id = selectedItem?.id === '__all__' ? null : selectedItem?.id || null;
-                            setSelectedCustomerId(id);
-                            setPage(1);
-                          }}
+                          selectedId={selectedCustomerId}
+                          onChange={(id) => { setSelectedCustomerId(id); setPage(1); }}
                           size="sm"
+                          allowNone
                         />
                       </TableFilterFlyout>
                     </TableToolbarContent>

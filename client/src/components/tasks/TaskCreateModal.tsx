@@ -9,11 +9,10 @@ import {
 } from '@carbon/react';
 import { CreateSidePanel } from '@carbon/ibm-products';
 import { tasksApi } from '../../api/tasks';
-import { customersApi } from '../../api/customers';
 import { taskStatusesApi } from '../../api/taskStatuses';
+import { CompanyComboBox } from '../shared/CompanyComboBox';
 import { useUIStore } from '../../store/uiStore';
 import type { Label, TaskPriority, TaskStatus, TaskStatusConfig } from '../../types/task';
-import type { Customer } from '../../types/customer';
 
 const priorityItems = [
   { id: 'LOW', text: 'Low' },
@@ -37,17 +36,9 @@ export function TaskCreateModal({ open, onClose, onCreated, labels }: TaskCreate
   const [dueDate, setDueDate] = useState<string | null>(null);
   const [selectedLabels, setSelectedLabels] = useState<string[]>([]);
   const [customerId, setCustomerId] = useState<string | null>(null);
-  const [customers, setCustomers] = useState<Customer[]>([]);
   const [statusItems, setStatusItems] = useState<{ id: string; text: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const addNotification = useUIStore((s) => s.addNotification);
-
-  const fetchCustomers = useCallback(async () => {
-    try {
-      const { data: res } = await customersApi.getAll({ limit: '100' });
-      setCustomers(res.data);
-    } catch { /* ignore */ }
-  }, []);
 
   const fetchStatuses = useCallback(async () => {
     try {
@@ -58,10 +49,9 @@ export function TaskCreateModal({ open, onClose, onCreated, labels }: TaskCreate
 
   useEffect(() => {
     if (open) {
-      fetchCustomers();
       fetchStatuses();
     }
-  }, [open, fetchCustomers, fetchStatuses]);
+  }, [open, fetchStatuses]);
 
   const resetForm = () => {
     setTitle('');
@@ -167,20 +157,15 @@ export function TaskCreateModal({ open, onClose, onCreated, labels }: TaskCreate
           className="create-side-panel__form-item"
         />
       </DatePicker>
-      {customers.length > 0 && (
-        <Dropdown
+      <div className="create-side-panel__form-item">
+        <CompanyComboBox
           id="task-customer"
           titleText="Company"
-          label="Select company (optional)"
-          items={[{ id: '', text: 'None' }, ...customers.map((c) => ({ id: c.id, text: c.name }))]}
-          itemToString={(item) => item?.text || ''}
-          selectedItem={customerId ? { id: customerId, text: customers.find((c) => c.id === customerId)?.name || '' } : { id: '', text: 'None' }}
-          onChange={({ selectedItem }) => {
-            setCustomerId(selectedItem?.id || null);
-          }}
-          className="create-side-panel__form-item"
+          selectedId={customerId}
+          onChange={(id) => setCustomerId(id)}
+          allowNone
         />
-      )}
+      </div>
       {labels.length > 0 && (
         <MultiSelect
           id="task-labels"
