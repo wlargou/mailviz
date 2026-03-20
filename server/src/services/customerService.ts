@@ -16,10 +16,10 @@ interface CustomerQueryParams {
 }
 
 export const customerService = {
-  async findAll(query: CustomerQueryParams) {
+  async findAll(userId: string, query: CustomerQueryParams) {
     const pagination = parsePagination(query);
 
-    const where: Prisma.CustomerWhereInput = {};
+    const where: Prisma.CustomerWhereInput = { userId };
     if (query.search) {
       where.OR = [
         { name: { contains: query.search, mode: 'insensitive' } },
@@ -54,9 +54,9 @@ export const customerService = {
     };
   },
 
-  async findById(id: string) {
-    const customer = await prisma.customer.findUnique({
-      where: { id },
+  async findById(userId: string, id: string) {
+    const customer = await prisma.customer.findFirst({
+      where: { id, userId },
       include: {
         contacts: { orderBy: { firstName: 'asc' } },
         category: true,
@@ -69,16 +69,16 @@ export const customerService = {
     return customer;
   },
 
-  async create(data: CreateCustomerInput) {
+  async create(userId: string, data: CreateCustomerInput) {
     const cleaned = cleanEmptyStrings(data);
     return prisma.customer.create({
-      data: cleaned as any,
+      data: { ...cleaned, userId } as any,
       include: { category: true, _count: { select: { contacts: true, tasks: true, emails: true } } },
     });
   },
 
-  async update(id: string, data: UpdateCustomerInput) {
-    const existing = await prisma.customer.findUnique({ where: { id } });
+  async update(userId: string, id: string, data: UpdateCustomerInput) {
+    const existing = await prisma.customer.findFirst({ where: { id, userId } });
     if (!existing) {
       throw new AppError(404, 'CUSTOMER_NOT_FOUND', 'Customer not found');
     }
@@ -90,8 +90,8 @@ export const customerService = {
     });
   },
 
-  async delete(id: string) {
-    const existing = await prisma.customer.findUnique({ where: { id } });
+  async delete(userId: string, id: string) {
+    const existing = await prisma.customer.findFirst({ where: { id, userId } });
     if (!existing) {
       throw new AppError(404, 'CUSTOMER_NOT_FOUND', 'Customer not found');
     }
@@ -99,8 +99,10 @@ export const customerService = {
     return { success: true };
   },
 
-  async findOrCreateByDomain(domain: string) {
-    const existing = await prisma.customer.findUnique({ where: { domain } });
+  async findOrCreateByDomain(userId: string, domain: string) {
+    const existing = await prisma.customer.findUnique({
+      where: { userId_domain: { userId, domain } },
+    });
     if (existing) return { customer: existing, created: false };
 
     const name = domainToCompanyName(domain);
@@ -111,13 +113,16 @@ export const customerService = {
         domain,
         website: `https://${domain}`,
         logoUrl: getLogoUrl(domain),
+        userId,
       },
     });
     return { customer, created: true };
   },
 
-  async findOrCreateContact(email: string, displayName: string | null, customerId: string) {
-    const existing = await prisma.contact.findFirst({ where: { email } });
+  async findOrCreateContact(userId: string, email: string, displayName: string | null, customerId: string) {
+    const existing = await prisma.contact.findFirst({
+      where: { email, customer: { userId } },
+    });
     if (existing) return { contact: existing, created: false };
 
     const { firstName, lastName } = parseName(displayName, email);
@@ -127,9 +132,9 @@ export const customerService = {
     return { contact, created: true };
   },
 
-  async findAttachments(customerId: string) {
+  async findAttachments(userId: string, customerId: string) {
     return prisma.emailAttachment.findMany({
-      where: { email: { customerId } },
+      where: { email: { customerId, customer: { userId } } },
       include: {
         email: {
           select: { id: true, subject: true, from: true, fromName: true, receivedAt: true, customerId: true },
@@ -139,9 +144,9 @@ export const customerService = {
     });
   },
 
-  async findLinkedEvents(customerId: string) {
+  async findLinkedEvents(userId: string, customerId: string) {
     const links = await prisma.calendarEventCustomer.findMany({
-      where: { customerId },
+      where: { customerId, customer: { userId } },
       include: { calendarEvent: true },
       orderBy: { calendarEvent: { startTime: 'desc' } },
     });

@@ -45,7 +45,7 @@ interface SearchResults {
 const EMPTY: SearchResults = { emails: [], tasks: [], events: [], customers: [], contacts: [] };
 
 export const searchService = {
-  async search(query: string): Promise<SearchResults> {
+  async search(query: string, userId: string): Promise<SearchResults> {
     const q = query.trim();
     if (q.length < 2) return EMPTY;
 
@@ -53,6 +53,7 @@ export const searchService = {
       // Emails — distinct by threadId, newest first, exclude trashed
       prisma.email.findMany({
         where: {
+          userId,
           isTrashed: false,
           OR: [
             { subject: { contains: q, mode: 'insensitive' } },
@@ -78,6 +79,7 @@ export const searchService = {
       // Tasks — search title and description
       prisma.task.findMany({
         where: {
+          userId,
           OR: [
             { title: { contains: q, mode: 'insensitive' } },
             { description: { contains: q, mode: 'insensitive' } },
@@ -97,6 +99,7 @@ export const searchService = {
       // Calendar events — search title and description (new capability)
       prisma.calendarEvent.findMany({
         where: {
+          userId,
           OR: [
             { title: { contains: q, mode: 'insensitive' } },
             { description: { contains: q, mode: 'insensitive' } },
@@ -116,6 +119,7 @@ export const searchService = {
       // Customers — search name, company, email
       prisma.customer.findMany({
         where: {
+          userId,
           OR: [
             { name: { contains: q, mode: 'insensitive' } },
             { company: { contains: q, mode: 'insensitive' } },
@@ -136,6 +140,7 @@ export const searchService = {
       // Contacts — search firstName, lastName, email
       prisma.contact.findMany({
         where: {
+          customer: { userId },
           OR: [
             { firstName: { contains: q, mode: 'insensitive' } },
             { lastName: { contains: q, mode: 'insensitive' } },

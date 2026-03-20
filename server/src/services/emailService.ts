@@ -19,9 +19,9 @@ import {
 } from '../utils/emailHelpers.js';
 
 export const emailService = {
-  async syncFromGmail() {
-    const gmail = await getGmailClient();
-    const auth = await prisma.googleAuth.findFirst();
+  async syncFromGmail(userId: string) {
+    const gmail = await getGmailClient(userId);
+    const auth = await prisma.googleAuth.findFirst({ where: { userId } });
     if (!auth) throw Object.assign(new Error('Google not connected'), { status: 400 });
 
     let synced = 0;
@@ -32,14 +32,14 @@ export const emailService = {
     try {
       if (auth.lastHistoryId) {
         // Incremental sync
-        const result = await this.incrementalSync(gmail, auth.lastHistoryId);
+        const result = await this.incrementalSync(gmail, auth.lastHistoryId, userId);
         synced = result.synced;
         customersCreated = result.customersCreated;
         contactsCreated = result.contactsCreated;
         labelsChanged = result.labelsChanged;
       } else {
         // Initial sync — last 3 months
-        const result = await this.initialSync(gmail);
+        const result = await this.initialSync(gmail, userId);
         synced = result.synced;
         customersCreated = result.customersCreated;
         contactsCreated = result.contactsCreated;
@@ -69,7 +69,7 @@ export const emailService = {
     return { synced, customersCreated, contactsCreated, labelsChanged };
   },
 
-  async initialSync(gmail: ReturnType<typeof google.gmail>) {
+  async initialSync(gmail: ReturnType<typeof google.gmail>, userId: string) {
     let synced = 0;
     let customersCreated = 0;
     let contactsCreated = 0;
@@ -116,7 +116,7 @@ export const emailService = {
       for (const res of results) {
         if (!res) continue;
         const msg = res.data;
-        const result = await this.upsertMessage(msg);
+        const result = await this.upsertMessage(msg, userId);
         if (result) {
           synced++;
           customersCreated += result.customersCreated;
@@ -134,7 +134,7 @@ export const emailService = {
       // Force-refresh Gmail client every 500 messages to get a fresh token
       if (messagesSinceRefresh >= 500) {
         try {
-          currentGmail = await getGmailClient(undefined, true);
+          currentGmail = await getGmailClient(userId, true);
           messagesSinceRefresh = 0;
         } catch (err: any) {
           console.warn('[EmailSync] Auth/token error:', err?.message || err);
@@ -147,7 +147,7 @@ export const emailService = {
     return { synced, customersCreated, contactsCreated, labelsChanged: 0 };
   },
 
-  async incrementalSync(gmail: ReturnType<typeof google.gmail>, startHistoryId: string) {
+  async incrementalSync(gmail: ReturnType<typeof google.gmail>, startHistoryId: string, userId: string) {
     let synced = 0;
     let customersCreated = 0;
     let contactsCreated = 0;
@@ -177,7 +177,7 @@ export const emailService = {
                   id: added.message.id,
                   format: 'full',
                 });
-                const result = await this.upsertMessage(msgRes.data);
+                const result = await this.upsertMessage(msgRes.data, userId);
                 if (result) {
                   synced++;
                   customersCreated += result.customersCreated;
@@ -193,7 +193,7 @@ export const emailService = {
           if (history.messagesDeleted) {
             for (const deleted of history.messagesDeleted) {
               if (!deleted.message?.id) continue;
-              await prisma.email.deleteMany({ where: { gmailMessageId: deleted.message.id } });
+              await prisma.email.deleteMany({ where: { gmailMessageId: deleted.message.id, userId } });
             }
           }
 
@@ -209,17 +209,17 @@ export const emailService = {
               if (labels.includes('TRASH')) updates.isTrashed = true;
               if (Object.keys(updates).length > 0) {
                 const result = await prisma.email.updateMany({
-                  where: { gmailMessageId: labelChange.message.id },
+                  where: { gmailMessageId: labelChange.message.id, userId },
                   data: updates,
                 });
                 if (result.count > 0) labelsChanged++;
               }
               // Also update the stored labelIds array
-              const existing = await prisma.email.findFirst({ where: { gmailMessageId: labelChange.message.id } });
+              const existing = await prisma.email.findFirst({ where: { gmailMessageId: labelChange.message.id, userId } });
               if (existing) {
                 const newLabels = [...new Set([...existing.labelIds, ...labels])];
                 await prisma.email.updateMany({
-                  where: { gmailMessageId: labelChange.message.id },
+                  where: { gmailMessageId: labelChange.message.id, userId },
                   data: { labelIds: newLabels },
                 });
               }
@@ -237,17 +237,17 @@ export const emailService = {
               if (labels.includes('TRASH')) updates.isTrashed = false;
               if (Object.keys(updates).length > 0) {
                 const result = await prisma.email.updateMany({
-                  where: { gmailMessageId: labelChange.message.id },
+                  where: { gmailMessageId: labelChange.message.id, userId },
                   data: updates,
                 });
                 if (result.count > 0) labelsChanged++;
               }
               // Also update the stored labelIds array
-              const existing = await prisma.email.findFirst({ where: { gmailMessageId: labelChange.message.id } });
+              const existing = await prisma.email.findFirst({ where: { gmailMessageId: labelChange.message.id, userId } });
               if (existing) {
                 const newLabels = existing.labelIds.filter((l) => !labels.includes(l));
                 await prisma.email.updateMany({
-                  where: { gmailMessageId: labelChange.message.id },
+                  where: { gmailMessageId: labelChange.message.id, userId },
                   data: { labelIds: newLabels },
                 });
               }
@@ -259,7 +259,7 @@ export const emailService = {
       // If historyId is too old, fall back to initial sync
       if (err?.code === 404) {
         console.warn('History ID expired, falling back to initial sync');
-        return this.initialSync(gmail);
+        return this.initialSync(gmail, userId);
       }
       throw err;
     }
@@ -267,7 +267,7 @@ export const emailService = {
     return { synced, customersCreated, contactsCreated, labelsChanged };
   },
 
-  async upsertMessage(msg: any) {
+  async upsertMessage(msg: any, userId: string) {
     if (!msg.id) return null;
 
     const headers: Record<string, string> = {};
@@ -307,14 +307,14 @@ export const emailService = {
       const domain = normalizeDomain(rawDomain);
 
       try {
-        const { customer, created: cCreated } = await customerService.findOrCreateByDomain(domain);
+        const { customer, created: cCreated } = await customerService.findOrCreateByDomain(userId, domain);
         if (!customerId) customerId = customer.id;
         if (cCreated) customersCreated++;
 
         // Try to find display name for this email
         let displayName: string | null = null;
         if (email === fromEmail) displayName = fromName;
-        const { created: contactCreated } = await customerService.findOrCreateContact(email, displayName, customer.id);
+        const { created: contactCreated } = await customerService.findOrCreateContact(userId, email, displayName, customer.id);
         if (contactCreated) contactsCreated++;
       } catch (err: any) {
         console.warn('[EmailSync] Customer/contact creation failed:', err?.message || err);
@@ -352,10 +352,11 @@ export const emailService = {
     };
 
     const email = await prisma.email.upsert({
-      where: { gmailMessageId: msg.id },
+      where: { userId_gmailMessageId: { userId, gmailMessageId: msg.id } },
       update: emailData,
       create: {
         gmailMessageId: msg.id,
+        userId,
         ...emailData,
       },
     });
@@ -378,10 +379,10 @@ export const emailService = {
     return { customersCreated, contactsCreated };
   },
 
-  async findAllThreads(query: EmailQueryParams) {
+  async findAllThreads(query: EmailQueryParams, userId: string) {
     const pagination = parsePagination(query);
 
-    const where: Prisma.EmailWhereInput = {};
+    const where: Prisma.EmailWhereInput = { userId };
     // By default, hide trashed emails unless explicitly viewing trash folder
     if (query.folder !== 'trash') {
       where.isTrashed = false;
@@ -451,7 +452,8 @@ export const emailService = {
     // P4: Use COUNT(DISTINCT) instead of fetching all thread IDs
     const totalResult: Array<{ count: bigint }> = await prisma.$queryRaw`
       SELECT COUNT(DISTINCT thread_id) as count FROM emails
-      WHERE is_trashed = ${where.isTrashed === true}
+      WHERE user_id = ${userId}
+      AND is_trashed = ${where.isTrashed === true}
       ${query.isRead === 'true' ? Prisma.sql`AND is_read = true` : query.isRead === 'false' ? Prisma.sql`AND is_read = false` : Prisma.empty}
       ${query.folder === 'inbox' ? Prisma.sql`AND 'INBOX' = ANY(label_ids)` : Prisma.empty}
       ${query.folder === 'sent' ? Prisma.sql`AND 'SENT' = ANY(label_ids)` : Prisma.empty}
@@ -476,7 +478,7 @@ export const emailService = {
       }),
       prisma.email.groupBy({
         by: ['threadId'],
-        where: { threadId: { in: threadIdList }, isRead: false },
+        where: { threadId: { in: threadIdList }, isRead: false, userId },
         _count: { id: true },
       }),
     ]);
@@ -498,9 +500,9 @@ export const emailService = {
     };
   },
 
-  async findThread(threadId: string) {
+  async findThread(threadId: string, userId: string) {
     const emails = await prisma.email.findMany({
-      where: { threadId },
+      where: { threadId, userId },
       orderBy: { receivedAt: 'asc' },
       include: {
         attachments: true,
@@ -516,9 +518,9 @@ export const emailService = {
     return emails;
   },
 
-  async findById(id: string) {
-    const email = await prisma.email.findUnique({
-      where: { id },
+  async findById(id: string, userId: string) {
+    const email = await prisma.email.findFirst({
+      where: { id, userId },
       include: {
         attachments: true,
         customer: { select: { id: true, name: true, domain: true, logoUrl: true } },
@@ -531,7 +533,7 @@ export const emailService = {
     // On-demand body fetch if body is null
     if (email.body === null && email.gmailMessageId) {
       try {
-        const gmail = await getGmailClient();
+        const gmail = await getGmailClient(userId);
         const msgRes = await gmail.users.messages.get({
           userId: 'me',
           id: email.gmailMessageId,
@@ -550,9 +552,9 @@ export const emailService = {
     return email;
   },
 
-  async getAttachment(emailId: string, attachmentId: string) {
+  async getAttachment(emailId: string, attachmentId: string, userId: string) {
     const attachment = await prisma.emailAttachment.findFirst({
-      where: { id: attachmentId, emailId },
+      where: { id: attachmentId, emailId, email: { userId } },
       include: { email: true },
     });
 
@@ -560,7 +562,7 @@ export const emailService = {
       throw Object.assign(new Error('Attachment not found'), { status: 404 });
     }
 
-    const gmail = await getGmailClient();
+    const gmail = await getGmailClient(userId);
     const res = await gmail.users.messages.attachments.get({
       userId: 'me',
       messageId: attachment.email.gmailMessageId,
@@ -575,8 +577,8 @@ export const emailService = {
     };
   },
 
-  async markAsRead(id: string) {
-    const email = await prisma.email.findUnique({ where: { id } });
+  async markAsRead(id: string, userId: string) {
+    const email = await prisma.email.findFirst({ where: { id, userId } });
     if (!email) throw Object.assign(new Error('Email not found'), { status: 404 });
 
     await prisma.email.update({ where: { id }, data: { isRead: true } });
@@ -585,7 +587,7 @@ export const emailService = {
     // Sync to Gmail (best effort)
     if (email.gmailMessageId) {
       try {
-        const gmail = await getGmailClient();
+        const gmail = await getGmailClient(userId);
         await gmail.users.messages.modify({
           userId: 'me', id: email.gmailMessageId,
           requestBody: { removeLabelIds: ['UNREAD'] },
@@ -594,8 +596,8 @@ export const emailService = {
     }
   },
 
-  async markAsUnread(id: string) {
-    const email = await prisma.email.findUnique({ where: { id } });
+  async markAsUnread(id: string, userId: string) {
+    const email = await prisma.email.findFirst({ where: { id, userId } });
     if (!email) throw Object.assign(new Error('Email not found'), { status: 404 });
 
     await prisma.email.update({ where: { id }, data: { isRead: false } });
@@ -603,7 +605,7 @@ export const emailService = {
 
     if (email.gmailMessageId) {
       try {
-        const gmail = await getGmailClient();
+        const gmail = await getGmailClient(userId);
         await gmail.users.messages.modify({
           userId: 'me', id: email.gmailMessageId,
           requestBody: { addLabelIds: ['UNREAD'] },
@@ -612,8 +614,8 @@ export const emailService = {
     }
   },
 
-  async toggleStar(id: string) {
-    const email = await prisma.email.findUnique({ where: { id } });
+  async toggleStar(id: string, userId: string) {
+    const email = await prisma.email.findFirst({ where: { id, userId } });
     if (!email) throw Object.assign(new Error('Email not found'), { status: 404 });
 
     const newStarred = !email.isStarred;
@@ -622,7 +624,7 @@ export const emailService = {
 
     if (email.gmailMessageId) {
       try {
-        const gmail = await getGmailClient();
+        const gmail = await getGmailClient(userId);
         await gmail.users.messages.modify({
           userId: 'me', id: email.gmailMessageId,
           requestBody: newStarred
@@ -635,13 +637,13 @@ export const emailService = {
     return { isStarred: newStarred };
   },
 
-  async archive(id: string) {
-    const email = await prisma.email.findUnique({ where: { id } });
+  async archive(id: string, userId: string) {
+    const email = await prisma.email.findFirst({ where: { id, userId } });
     if (!email) throw Object.assign(new Error('Email not found'), { status: 404 });
 
     if (email.gmailMessageId) {
       try {
-        const gmail = await getGmailClient();
+        const gmail = await getGmailClient(userId);
         await gmail.users.messages.modify({
           userId: 'me', id: email.gmailMessageId,
           requestBody: { removeLabelIds: ['INBOX'] },
@@ -656,13 +658,13 @@ export const emailService = {
     wsEmit('email:updated', { id, isArchived: true });
   },
 
-  async unarchive(id: string) {
-    const email = await prisma.email.findUnique({ where: { id } });
+  async unarchive(id: string, userId: string) {
+    const email = await prisma.email.findFirst({ where: { id, userId } });
     if (!email) throw Object.assign(new Error('Email not found'), { status: 404 });
 
     if (email.gmailMessageId) {
       try {
-        const gmail = await getGmailClient();
+        const gmail = await getGmailClient(userId);
         await gmail.users.messages.modify({
           userId: 'me', id: email.gmailMessageId,
           requestBody: { addLabelIds: ['INBOX'] },
@@ -677,13 +679,13 @@ export const emailService = {
     wsEmit('email:updated', { id, isArchived: false });
   },
 
-  async trash(id: string) {
-    const email = await prisma.email.findUnique({ where: { id } });
+  async trash(id: string, userId: string) {
+    const email = await prisma.email.findFirst({ where: { id, userId } });
     if (!email) throw Object.assign(new Error('Email not found'), { status: 404 });
 
     if (email.gmailMessageId) {
       try {
-        const gmail = await getGmailClient();
+        const gmail = await getGmailClient(userId);
         await gmail.users.messages.trash({ userId: 'me', id: email.gmailMessageId });
       } catch (err: any) { console.warn('[EmailSync] Gmail API call failed:', err?.message || err); }
     }
@@ -695,13 +697,13 @@ export const emailService = {
     wsEmit('email:updated', { id, isTrashed: true });
   },
 
-  async untrash(id: string) {
-    const email = await prisma.email.findUnique({ where: { id } });
+  async untrash(id: string, userId: string) {
+    const email = await prisma.email.findFirst({ where: { id, userId } });
     if (!email) throw Object.assign(new Error('Email not found'), { status: 404 });
 
     if (email.gmailMessageId) {
       try {
-        const gmail = await getGmailClient();
+        const gmail = await getGmailClient(userId);
         await gmail.users.messages.untrash({ userId: 'me', id: email.gmailMessageId });
       } catch (err: any) { console.warn('[EmailSync] Gmail API call failed:', err?.message || err); }
     }
@@ -713,15 +715,15 @@ export const emailService = {
     wsEmit('email:updated', { id, isTrashed: false });
   },
 
-  async batchMarkAsRead(ids: string[]) {
+  async batchMarkAsRead(ids: string[], userId: string) {
     // Get thread IDs for selected emails, then mark ALL emails in those threads as read
-    const selectedEmails = await prisma.email.findMany({ where: { id: { in: ids } }, select: { threadId: true } });
+    const selectedEmails = await prisma.email.findMany({ where: { id: { in: ids }, userId }, select: { threadId: true } });
     const threadIds = [...new Set(selectedEmails.map((e) => e.threadId).filter((id): id is string => id != null))];
-    const allEmails = await prisma.email.findMany({ where: { threadId: { in: threadIds }, isRead: false } });
-    await prisma.email.updateMany({ where: { threadId: { in: threadIds } }, data: { isRead: true } });
+    const allEmails = await prisma.email.findMany({ where: { threadId: { in: threadIds }, userId, isRead: false } });
+    await prisma.email.updateMany({ where: { threadId: { in: threadIds }, userId }, data: { isRead: true } });
 
     try {
-      const gmail = await getGmailClient();
+      const gmail = await getGmailClient(userId);
       for (const email of allEmails) {
         if (email.gmailMessageId) {
           try {
@@ -738,14 +740,14 @@ export const emailService = {
     return { count: threadIds.length };
   },
 
-  async batchMarkAsUnread(ids: string[]) {
-    const selectedEmails = await prisma.email.findMany({ where: { id: { in: ids } }, select: { threadId: true } });
+  async batchMarkAsUnread(ids: string[], userId: string) {
+    const selectedEmails = await prisma.email.findMany({ where: { id: { in: ids }, userId }, select: { threadId: true } });
     const threadIds = [...new Set(selectedEmails.map((e) => e.threadId).filter((id): id is string => id != null))];
-    const allEmails = await prisma.email.findMany({ where: { threadId: { in: threadIds }, isRead: true } });
-    await prisma.email.updateMany({ where: { threadId: { in: threadIds } }, data: { isRead: false } });
+    const allEmails = await prisma.email.findMany({ where: { threadId: { in: threadIds }, userId, isRead: true } });
+    await prisma.email.updateMany({ where: { threadId: { in: threadIds }, userId }, data: { isRead: false } });
 
     try {
-      const gmail = await getGmailClient();
+      const gmail = await getGmailClient(userId);
       for (const email of allEmails) {
         if (email.gmailMessageId) {
           try {
@@ -762,13 +764,13 @@ export const emailService = {
     return { count: threadIds.length };
   },
 
-  async batchArchive(ids: string[]) {
-    const selectedEmails = await prisma.email.findMany({ where: { id: { in: ids } }, select: { threadId: true } });
+  async batchArchive(ids: string[], userId: string) {
+    const selectedEmails = await prisma.email.findMany({ where: { id: { in: ids }, userId }, select: { threadId: true } });
     const threadIds = [...new Set(selectedEmails.map((e) => e.threadId).filter((id): id is string => id != null))];
-    const allEmails = await prisma.email.findMany({ where: { threadId: { in: threadIds } } });
+    const allEmails = await prisma.email.findMany({ where: { threadId: { in: threadIds }, userId } });
 
     try {
-      const gmail = await getGmailClient();
+      const gmail = await getGmailClient(userId);
       for (const email of allEmails) {
         if (email.gmailMessageId) {
           try {
@@ -792,13 +794,13 @@ export const emailService = {
     return { count: threadIds.length };
   },
 
-  async batchTrash(ids: string[]) {
-    const selectedEmails = await prisma.email.findMany({ where: { id: { in: ids } }, select: { threadId: true } });
+  async batchTrash(ids: string[], userId: string) {
+    const selectedEmails = await prisma.email.findMany({ where: { id: { in: ids }, userId }, select: { threadId: true } });
     const threadIds = [...new Set(selectedEmails.map((e) => e.threadId).filter((id): id is string => id != null))];
-    const allEmails = await prisma.email.findMany({ where: { threadId: { in: threadIds } } });
+    const allEmails = await prisma.email.findMany({ where: { threadId: { in: threadIds }, userId } });
 
     try {
-      const gmail = await getGmailClient();
+      const gmail = await getGmailClient(userId);
       for (const email of allEmails) {
         if (email.gmailMessageId) {
           try {
@@ -819,8 +821,8 @@ export const emailService = {
     return { count: threadIds.length };
   },
 
-  async convertToTask(emailId: string, data: { title?: string; priority?: string; notes?: string }) {
-    const email = await prisma.email.findUnique({ where: { id: emailId } });
+  async convertToTask(emailId: string, data: { title?: string; priority?: string; notes?: string }, userId: string) {
+    const email = await prisma.email.findFirst({ where: { id: emailId, userId } });
     if (!email) throw Object.assign(new Error('Email not found'), { status: 404 });
 
     // Check if already converted
@@ -833,6 +835,7 @@ export const emailService = {
         description: email.snippet || undefined,
         priority: (data.priority as any) || 'MEDIUM',
         customerId: email.customerId,
+        userId,
       },
     });
 
@@ -847,13 +850,13 @@ export const emailService = {
     return task;
   },
 
-  async getUnreadCount() {
-    return prisma.email.count({ where: { isRead: false } });
+  async getUnreadCount(userId: string) {
+    return prisma.email.count({ where: { isRead: false, userId } });
   },
 
-  async sendEmail(data: { to: string[]; cc?: string[]; bcc?: string[]; subject: string; htmlBody: string }) {
-    const gmail = await getGmailClient();
-    const auth = await prisma.googleAuth.findFirst();
+  async sendEmail(data: { to: string[]; cc?: string[]; bcc?: string[]; subject: string; htmlBody: string }, userId: string) {
+    const gmail = await getGmailClient(userId);
+    const auth = await prisma.googleAuth.findFirst({ where: { userId } });
     if (!auth?.email) throw Object.assign(new Error('Google not connected'), { status: 400 });
 
     const raw = await buildMimeMessage({
@@ -878,7 +881,7 @@ export const emailService = {
           id: sendRes.data.id,
           format: 'full',
         });
-        await this.upsertMessage(msgRes.data);
+        await this.upsertMessage(msgRes.data, userId);
       } catch (err: any) {
         console.warn('[EmailSync] Gmail API call failed:', err?.message || err);
       }
@@ -888,12 +891,12 @@ export const emailService = {
     return { messageId: sendRes.data.id, threadId: sendRes.data.threadId };
   },
 
-  async replyToEmail(emailId: string, data: { htmlBody: string; replyAll?: boolean; cc?: string[]; bcc?: string[] }) {
-    const gmail = await getGmailClient();
-    const auth = await prisma.googleAuth.findFirst();
+  async replyToEmail(emailId: string, data: { htmlBody: string; replyAll?: boolean; cc?: string[]; bcc?: string[] }, userId: string) {
+    const gmail = await getGmailClient(userId);
+    const auth = await prisma.googleAuth.findFirst({ where: { userId } });
     if (!auth?.email) throw Object.assign(new Error('Google not connected'), { status: 400 });
 
-    const original = await prisma.email.findUnique({ where: { id: emailId } });
+    const original = await prisma.email.findFirst({ where: { id: emailId, userId } });
     if (!original) throw Object.assign(new Error('Email not found'), { status: 404 });
 
     const userEmail = auth.email.toLowerCase();
@@ -964,7 +967,7 @@ export const emailService = {
     if (sendRes.data.id) {
       try {
         const msgRes = await gmail.users.messages.get({ userId: 'me', id: sendRes.data.id, format: 'full' });
-        await this.upsertMessage(msgRes.data);
+        await this.upsertMessage(msgRes.data, userId);
       } catch (err: any) {
         console.warn('[EmailSync] Gmail API call failed:', err?.message || err);
       }
@@ -974,12 +977,12 @@ export const emailService = {
     return { messageId: sendRes.data.id, threadId: sendRes.data.threadId };
   },
 
-  async forwardEmail(emailId: string, data: { to: string[]; cc?: string[]; bcc?: string[]; htmlBody: string }) {
-    const gmail = await getGmailClient();
-    const auth = await prisma.googleAuth.findFirst();
+  async forwardEmail(emailId: string, data: { to: string[]; cc?: string[]; bcc?: string[]; htmlBody: string }, userId: string) {
+    const gmail = await getGmailClient(userId);
+    const auth = await prisma.googleAuth.findFirst({ where: { userId } });
     if (!auth?.email) throw Object.assign(new Error('Google not connected'), { status: 400 });
 
-    const original = await prisma.email.findUnique({ where: { id: emailId } });
+    const original = await prisma.email.findFirst({ where: { id: emailId, userId } });
     if (!original) throw Object.assign(new Error('Email not found'), { status: 404 });
 
     // Subject
@@ -1024,7 +1027,7 @@ export const emailService = {
     if (sendRes.data.id) {
       try {
         const msgRes = await gmail.users.messages.get({ userId: 'me', id: sendRes.data.id, format: 'full' });
-        await this.upsertMessage(msgRes.data);
+        await this.upsertMessage(msgRes.data, userId);
       } catch (err: any) {
         console.warn('[EmailSync] Gmail API call failed:', err?.message || err);
       }

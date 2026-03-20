@@ -13,10 +13,10 @@ interface ContactQueryParams {
 }
 
 export const contactService = {
-  async findAll(query: ContactQueryParams) {
+  async findAll(userId: string, query: ContactQueryParams) {
     const pagination = parsePagination(query);
 
-    const where: Prisma.ContactWhereInput = {};
+    const where: Prisma.ContactWhereInput = { customer: { userId } };
     if (query.customerId) {
       where.customerId = query.customerId;
     }
@@ -48,9 +48,9 @@ export const contactService = {
     };
   },
 
-  async findById(id: string) {
-    const contact = await prisma.contact.findUnique({
-      where: { id },
+  async findById(userId: string, id: string) {
+    const contact = await prisma.contact.findFirst({
+      where: { id, customer: { userId } },
       include: {
         customer: { select: { id: true, name: true, domain: true, logoUrl: true, company: true, website: true } },
       },
@@ -61,8 +61,10 @@ export const contactService = {
     return contact;
   },
 
-  async findContactEvents(id: string) {
-    const contact = await prisma.contact.findUnique({ where: { id } });
+  async findContactEvents(userId: string, id: string) {
+    const contact = await prisma.contact.findFirst({
+      where: { id, customer: { userId } },
+    });
     if (!contact) {
       throw new AppError(404, 'CONTACT_NOT_FOUND', 'Contact not found');
     }
@@ -71,6 +73,7 @@ export const contactService = {
     // Find events where this contact's email appears in the JSON attendees array
     const events = await prisma.calendarEvent.findMany({
       where: {
+        userId,
         attendees: {
           path: [],
           array_contains: [{ email: contact.email }],
@@ -83,7 +86,7 @@ export const contactService = {
     // Fallback: if JSON path query doesn't work, filter via customer's events
     if (events.length === 0) {
       const customerEvents = await prisma.calendarEventCustomer.findMany({
-        where: { customerId: contact.customerId },
+        where: { customerId: contact.customerId, customer: { userId } },
         include: { calendarEvent: true },
         orderBy: { calendarEvent: { startTime: 'desc' } },
         take: 50,
@@ -101,8 +104,10 @@ export const contactService = {
     return events;
   },
 
-  async findAttachments(id: string) {
-    const contact = await prisma.contact.findUnique({ where: { id } });
+  async findAttachments(userId: string, id: string) {
+    const contact = await prisma.contact.findFirst({
+      where: { id, customer: { userId } },
+    });
     if (!contact) {
       throw new AppError(404, 'CONTACT_NOT_FOUND', 'Contact not found');
     }
@@ -111,6 +116,7 @@ export const contactService = {
     return prisma.emailAttachment.findMany({
       where: {
         email: {
+          userId,
           OR: [
             { from: contact.email },
             { to: { has: contact.email } },
@@ -127,16 +133,18 @@ export const contactService = {
     });
   },
 
-  async findByCustomerId(customerId: string) {
+  async findByCustomerId(userId: string, customerId: string) {
     return prisma.contact.findMany({
-      where: { customerId },
+      where: { customerId, customer: { userId } },
       orderBy: { firstName: 'asc' },
     });
   },
 
-  async create(data: CreateContactInput) {
-    // Verify customer exists
-    const customer = await prisma.customer.findUnique({ where: { id: data.customerId } });
+  async create(userId: string, data: CreateContactInput) {
+    // Verify customer exists and belongs to user
+    const customer = await prisma.customer.findFirst({
+      where: { id: data.customerId, userId },
+    });
     if (!customer) {
       throw new AppError(404, 'CUSTOMER_NOT_FOUND', 'Customer not found');
     }
@@ -144,8 +152,10 @@ export const contactService = {
     return prisma.contact.create({ data: cleaned as any });
   },
 
-  async update(id: string, data: UpdateContactInput) {
-    const existing = await prisma.contact.findUnique({ where: { id } });
+  async update(userId: string, id: string, data: UpdateContactInput) {
+    const existing = await prisma.contact.findFirst({
+      where: { id, customer: { userId } },
+    });
     if (!existing) {
       throw new AppError(404, 'CONTACT_NOT_FOUND', 'Contact not found');
     }
@@ -153,8 +163,10 @@ export const contactService = {
     return prisma.contact.update({ where: { id }, data: cleaned });
   },
 
-  async delete(id: string) {
-    const existing = await prisma.contact.findUnique({ where: { id } });
+  async delete(userId: string, id: string) {
+    const existing = await prisma.contact.findFirst({
+      where: { id, customer: { userId } },
+    });
     if (!existing) {
       throw new AppError(404, 'CONTACT_NOT_FOUND', 'Contact not found');
     }

@@ -18,41 +18,53 @@ model Task {
   dueDate     DateTime?    @map("due_date")
   position    Int          @default(0)
   customerId  String?      @map("customer_id")
+  userId      String       @map("user_id")
   createdAt   DateTime     @default(now()) @map("created_at")
   updatedAt   DateTime     @updatedAt @map("updated_at")
 
   labels     TaskLabel[]
   mailToTask MailToTask?
   customer   Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([status])
   @@index([priority])
   @@index([dueDate])
   @@index([customerId])
+  @@index([userId])
   @@map("tasks")
 }
 
 model TaskStatus {
   id        String   @id @default(uuid())
-  name      String   @unique @db.VarChar(100)
+  name      String   @db.VarChar(100)
   label     String   @db.VarChar(100)
   color     String   @default("#4589ff") @db.VarChar(7)
   position  Int      @default(0)
+  userId    String   @map("user_id")
   createdAt DateTime @default(now()) @map("created_at")
 
+  user User @relation("UserTaskStatuses", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
+  @@index([userId])
   @@map("task_statuses")
 }
 
 model CompanyCategory {
   id        String   @id @default(uuid())
-  name      String   @unique @db.VarChar(100)
+  name      String   @db.VarChar(100)
   label     String   @db.VarChar(100)
   color     String   @default("#4589ff") @db.VarChar(7)
   position  Int      @default(0)
+  userId    String   @map("user_id")
   createdAt DateTime @default(now()) @map("created_at")
 
   customers Customer[]
+  user      User       @relation("UserCompanyCategories", fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([userId, name])
+  @@index([userId])
   @@map("company_categories")
 }
 
@@ -63,21 +75,25 @@ model Customer {
   phone      String?  @db.VarChar(50)
   company    String?  @db.VarChar(255)
   website    String?  @db.VarChar(255)
-  domain     String?  @unique @db.VarChar(255)
+  domain     String?  @db.VarChar(255)
   logoUrl    String?  @map("logo_url") @db.VarChar(500)
   notes      String?  @db.Text
   categoryId String?  @map("category_id")
   isVip      Boolean  @default(false) @map("is_vip")
+  userId     String   @map("user_id")
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
 
   category       CompanyCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   contacts       Contact[]
   tasks          Task[]
   calendarEvents CalendarEventCustomer[]
   emails         Email[]
 
+  @@unique([userId, domain])
   @@index([categoryId])
+  @@index([userId])
   @@map("customers")
 }
 
@@ -102,12 +118,16 @@ model Contact {
 
 model Label {
   id        String   @id @default(uuid())
-  name      String   @unique @db.VarChar(100)
+  name      String   @db.VarChar(100)
   color     String   @db.VarChar(7)
+  userId    String   @map("user_id")
   createdAt DateTime @default(now()) @map("created_at")
 
   tasks TaskLabel[]
+  user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([userId, name])
+  @@index([userId])
   @@map("labels")
 }
 
@@ -139,7 +159,14 @@ model User {
   createdAt DateTime    @default(now()) @map("created_at")
   updatedAt DateTime    @updatedAt @map("updated_at")
 
-  googleAuth GoogleAuth?
+  googleAuth        GoogleAuth?
+  tasks             Task[]
+  customers         Customer[]
+  labels            Label[]
+  emails            Email[]
+  calendarEvents    CalendarEvent[]
+  taskStatuses      TaskStatus[]      @relation("UserTaskStatuses")
+  companyCategories CompanyCategory[] @relation("UserCompanyCategories")
 
   @@map("users")
 }
@@ -168,7 +195,7 @@ model GoogleAuth {
 
 model CalendarEvent {
   id            String    @id @default(uuid())
-  googleEventId String?   @unique @map("google_event_id")
+  googleEventId String?   @map("google_event_id")
   title         String    @db.VarChar(255)
   description   String?   @db.Text
   startTime     DateTime  @map("start_time")
@@ -182,12 +209,16 @@ model CalendarEvent {
   recurringEventId  String?   @map("recurring_event_id")
   recurrence        String[]  @default([])
   syncedAt          DateTime? @map("synced_at")
+  userId        String    @map("user_id")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
   customers CalendarEventCustomer[]
+  user      User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([userId, googleEventId])
   @@index([startTime, endTime])
+  @@index([userId])
   @@map("calendar_events")
 }
 
@@ -204,7 +235,7 @@ model CalendarEventCustomer {
 
 model Email {
   id             String    @id @default(uuid())
-  gmailMessageId String?   @unique @map("gmail_message_id")
+  gmailMessageId String?   @map("gmail_message_id")
   threadId       String?   @map("thread_id")
   subject        String    @db.VarChar(500)
   from           String    @db.VarChar(255)
@@ -229,15 +260,19 @@ model Email {
   createdAt      DateTime  @default(now()) @map("created_at")
 
   customerId String?   @map("customer_id")
+  userId     String    @map("user_id")
   customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   mailToTask MailToTask?
   attachments EmailAttachment[]
 
+  @@unique([userId, gmailMessageId])
   @@index([receivedAt])
   @@index([threadId])
   @@index([customerId])
   @@index([isRead])
   @@index([from])
+  @@index([userId])
   @@map("emails")
 }
 

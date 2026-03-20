@@ -20,10 +20,10 @@ interface TaskQueryParams {
 }
 
 export const taskService = {
-  async findAll(query: TaskQueryParams) {
+  async findAll(userId: string, query: TaskQueryParams) {
     const pagination = parsePagination(query);
 
-    const where: Prisma.TaskWhereInput = {};
+    const where: Prisma.TaskWhereInput = { userId };
 
     if (query.status) {
       where.status = query.status;
@@ -70,9 +70,9 @@ export const taskService = {
     };
   },
 
-  async findById(id: string) {
+  async findById(userId: string, id: string) {
     const task = await prisma.task.findUnique({
-      where: { id },
+      where: { id, userId },
       include: {
         labels: { include: { label: true } },
         customer: true,
@@ -91,20 +91,22 @@ export const taskService = {
     return formatTask(task);
   },
 
-  async getSummary() {
+  async getSummary(userId: string) {
     const now = new Date();
 
     const [total, completed, overdue, byPriority] = await Promise.all([
-      prisma.task.count(),
-      prisma.task.count({ where: { status: 'DONE' } }),
+      prisma.task.count({ where: { userId } }),
+      prisma.task.count({ where: { userId, status: 'DONE' } }),
       prisma.task.count({
         where: {
+          userId,
           status: { not: 'DONE' },
           dueDate: { lt: now },
         },
       }),
       prisma.task.groupBy({
         by: ['priority'],
+        where: { userId },
         _count: { priority: true },
       }),
     ]);
@@ -123,12 +125,12 @@ export const taskService = {
     };
   },
 
-  async create(data: CreateTaskInput) {
+  async create(userId: string, data: CreateTaskInput) {
     const { labelIds, customerId, ...taskData } = data;
 
     // Get max position for the status column
     const maxPos = await prisma.task.findFirst({
-      where: { status: taskData.status || 'TODO' },
+      where: { userId, status: taskData.status || 'TODO' },
       orderBy: { position: 'desc' },
       select: { position: true },
     });
@@ -137,6 +139,7 @@ export const taskService = {
     const task = await prisma.task.create({
       data: {
         ...taskData,
+        userId,
         dueDate: taskData.dueDate ? new Date(taskData.dueDate) : null,
         position,
         customerId: customerId || null,
@@ -150,8 +153,8 @@ export const taskService = {
     return formatTask(task);
   },
 
-  async update(id: string, data: UpdateTaskInput) {
-    const existing = await prisma.task.findUnique({ where: { id } });
+  async update(userId: string, id: string, data: UpdateTaskInput) {
+    const existing = await prisma.task.findUnique({ where: { id, userId } });
     if (!existing) {
       throw new AppError(404, 'TASK_NOT_FOUND', 'Task not found');
     }
@@ -189,10 +192,10 @@ export const taskService = {
     return formatTask(task);
   },
 
-  async reorder(data: ReorderInput) {
+  async reorder(userId: string, data: ReorderInput) {
     const operations = data.items.map((item) =>
       prisma.task.update({
-        where: { id: item.id },
+        where: { id: item.id, userId },
         data: { status: item.status, position: item.position },
       })
     );
@@ -200,12 +203,12 @@ export const taskService = {
     return { success: true };
   },
 
-  async delete(id: string) {
-    const existing = await prisma.task.findUnique({ where: { id } });
+  async delete(userId: string, id: string) {
+    const existing = await prisma.task.findUnique({ where: { id, userId } });
     if (!existing) {
       throw new AppError(404, 'TASK_NOT_FOUND', 'Task not found');
     }
-    await prisma.task.delete({ where: { id } });
+    await prisma.task.delete({ where: { id, userId } });
     return { success: true };
   },
 };

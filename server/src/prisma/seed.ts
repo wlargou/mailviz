@@ -6,19 +6,27 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function main() {
+  // Get the first user (required for multi-tenant data)
+  const user = await prisma.user.findFirst();
+  if (!user) {
+    console.log('No user found. Please log in first before seeding.');
+    return;
+  }
+  const userId = user.id;
+
   // Clear existing data
   await prisma.taskLabel.deleteMany();
   await prisma.task.deleteMany();
   await prisma.label.deleteMany();
 
-  // Create labels
+  // Create labels (S1: now scoped to userId)
   const labels = await Promise.all([
-    prisma.label.create({ data: { name: 'Bug', color: '#da1e28' } }),
-    prisma.label.create({ data: { name: 'Feature', color: '#0f62fe' } }),
-    prisma.label.create({ data: { name: 'Documentation', color: '#8a3ffc' } }),
-    prisma.label.create({ data: { name: 'Design', color: '#ff832b' } }),
-    prisma.label.create({ data: { name: 'Backend', color: '#198038' } }),
-    prisma.label.create({ data: { name: 'Frontend', color: '#1192e8' } }),
+    prisma.label.create({ data: { name: 'Bug', color: '#da1e28', userId } }),
+    prisma.label.create({ data: { name: 'Feature', color: '#0f62fe', userId } }),
+    prisma.label.create({ data: { name: 'Documentation', color: '#8a3ffc', userId } }),
+    prisma.label.create({ data: { name: 'Design', color: '#ff832b', userId } }),
+    prisma.label.create({ data: { name: 'Backend', color: '#198038', userId } }),
+    prisma.label.create({ data: { name: 'Frontend', color: '#1192e8', userId } }),
   ]);
 
   const [bug, feature, docs, design, backend, frontend] = labels;
@@ -121,6 +129,7 @@ async function main() {
     await prisma.task.create({
       data: {
         ...taskData,
+        userId,
         labels: {
           create: labelIds.map((labelId) => ({ labelId })),
         },

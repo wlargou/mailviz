@@ -18,7 +18,7 @@ export const dashboardService = {
    * Batch 2: Raw SQL aggregates (email volume, needs attention, frequent contacts)
    * Batch 3: Post-processing lookups (top customer details)
    */
-  async getStats() {
+  async getStats(userId: string) {
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const endOfToday = new Date(startOfToday);
@@ -36,7 +36,7 @@ export const dashboardService = {
     startOfWeek.setDate(startOfWeek.getDate() - ((dayOfWeek + 6) % 7));
 
     // Get user email for sent/received distinction
-    const authRecord = await prisma.googleAuth.findFirst({ select: { email: true } });
+    const authRecord = await prisma.googleAuth.findFirst({ where: { userId }, select: { email: true } });
     const userEmail = authRecord?.email ?? '';
 
     // ── Batch 1: Core Prisma queries (7 queries, within Prisma pool limits) ──
@@ -68,10 +68,12 @@ export const dashboardService = {
           COUNT(*) FILTER (WHERE priority = 'HIGH') as high,
           COUNT(*) FILTER (WHERE priority = 'URGENT') as urgent
         FROM tasks
+        WHERE user_id = ${userId}
       `,
 
       // Recent tasks (needs include, can't be raw)
       prisma.task.findMany({
+        where: { userId },
         take: 5,
         orderBy: { createdAt: 'desc' },
         include: {
@@ -83,6 +85,7 @@ export const dashboardService = {
       // Tasks due today
       prisma.task.findMany({
         where: {
+          userId,
           status: { not: 'DONE' },
           dueDate: { gte: startOfToday, lt: endOfToday },
         },
@@ -101,11 +104,12 @@ export const dashboardService = {
           COUNT(*) FILTER (WHERE is_read = false AND received_at >= ${startOfToday}) as unread_today_count,
           COUNT(*) as total_synced
         FROM emails
+        WHERE user_id = ${userId}
       `,
 
       // Recent unread (needs distinct, better as Prisma query)
       prisma.email.findMany({
-        where: { isRead: false },
+        where: { userId, isRead: false },
         distinct: ['threadId'],
         orderBy: { receivedAt: 'desc' },
         take: 5,
@@ -122,7 +126,7 @@ export const dashboardService = {
       // Single query for all calendar data this week (replaces 5 separate queries)
       // We fetch all events from startOfToday to endOfWeek, then filter in JS
       prisma.calendarEvent.findMany({
-        where: { startTime: { gte: startOfWeek, lt: endOfWeek } },
+        where: { userId, startTime: { gte: startOfWeek, lt: endOfWeek } },
         orderBy: { startTime: 'asc' },
         select: {
           id: true,
@@ -141,8 +145,8 @@ export const dashboardService = {
         total_contacts: bigint;
       }>>`
         SELECT
-          (SELECT COUNT(*) FROM customers) as total_customers,
-          (SELECT COUNT(*) FROM contacts) as total_contacts
+          (SELECT COUNT(*) FROM customers WHERE user_id = ${userId}) as total_customers,
+          (SELECT COUNT(*) FROM contacts WHERE user_id = ${userId}) as total_contacts
       `,
     ]);
 
@@ -175,6 +179,7 @@ export const dashboardService = {
     // Task status counts for donut chart (derive from task aggregates + separate groupBy)
     const taskStatusRaw = await prisma.task.groupBy({
       by: ['status'],
+      where: { userId },
       _count: { status: true },
     });
     const taskStatusCounts: Record<string, number> = {};
@@ -202,7 +207,7 @@ export const dashboardService = {
     const [topCustomersRaw, emailVolumeResult, needsAttentionResult, frequentContactsResult] = await Promise.all([
       prisma.email.groupBy({
         by: ['customerId'],
-        where: { customerId: { not: null } },
+        where: { userId, customerId: { not: null } },
         _count: { id: true },
         orderBy: { _count: { id: 'desc' } },
         take: 5,
@@ -215,7 +220,7 @@ export const dashboardService = {
           COUNT(*) FILTER (WHERE "from" LIKE '%' || ${userEmail} || '%') as sent,
           COUNT(*) FILTER (WHERE "from" NOT LIKE '%' || ${userEmail} || '%') as received
         FROM emails
-        WHERE "received_at" >= ${fourteenDaysAgo}
+        WHERE "received_at" >= ${fourteenDaysAgo} AND user_id = ${userId}
         GROUP BY DATE("received_at")
         ORDER BY date ASC
       `.catch(() => [] as Array<{ date: Date; sent: string; received: string }>),
@@ -237,8 +242,9 @@ export const dashboardService = {
           EXTRACT(DAY FROM NOW() - MAX(e.received_at))::int as "lastContactedDaysAgo",
           COUNT(DISTINCT t.id) FILTER (WHERE t.status != 'DONE')::int as "openTaskCount"
         FROM customers c
-        LEFT JOIN emails e ON e.customer_id = c.id
-        LEFT JOIN tasks t ON t.customer_id = c.id
+        LEFT JOIN emails e ON e.customer_id = c.id AND e.user_id = ${userId}
+        LEFT JOIN tasks t ON t.customer_id = c.id AND t.user_id = ${userId}
+        WHERE c.user_id = ${userId}
         GROUP BY c.id, c.name, c.domain, c.logo_url
         HAVING
           (MAX(e.received_at) < NOW() - INTERVAL '14 days' AND COUNT(DISTINCT t.id) FILTER (WHERE t.status != 'DONE') > 0)
@@ -255,7 +261,7 @@ export const dashboardService = {
           "from_name" as name,
           COUNT(*)::int as "messageCount"
         FROM emails
-        WHERE "from" NOT LIKE '%' || ${userEmail} || '%'
+        WHERE "from" NOT LIKE '%' || ${userEmail} || '%' AND user_id = ${userId}
         GROUP BY "from", "from_name"
         ORDER BY COUNT(*) DESC
         LIMIT 5
@@ -290,18 +296,18 @@ export const dashboardService = {
 
     const [customerDetails, taskCountsByCustomer, contactLookup] = await Promise.all([
       prisma.customer.findMany({
-        where: { id: { in: customerIds } },
+        where: { id: { in: customerIds }, userId },
         select: { id: true, name: true, domain: true, logoUrl: true },
       }),
       prisma.task.groupBy({
         by: ['customerId'],
-        where: { customerId: { in: customerIds } },
+        where: { userId, customerId: { in: customerIds } },
         _count: { id: true },
       }),
       // Enrich frequent contacts
       frequentContactsResult.length > 0
         ? prisma.contact.findMany({
-            where: { email: { in: frequentContactsResult.map((f) => f.email) } },
+            where: { customer: { userId }, email: { in: frequentContactsResult.map((f) => f.email) } },
             select: { id: true, email: true, customer: { select: { company: true } } },
           })
         : Promise.resolve([]),

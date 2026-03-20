@@ -33,8 +33,8 @@ function extractMeetingLink(description: string | null | undefined): string | nu
 }
 
 export const calendarService = {
-  async findAll(query: { start?: string; end?: string }) {
-    const where: Prisma.CalendarEventWhereInput = {};
+  async findAll(query: { start?: string; end?: string }, userId: string) {
+    const where: Prisma.CalendarEventWhereInput = { userId };
 
     if (query.start) {
       where.startTime = { gte: new Date(query.start) };
@@ -56,9 +56,9 @@ export const calendarService = {
     return { data: events };
   },
 
-  async findById(id: string) {
+  async findById(id: string, userId: string) {
     const event = await prisma.calendarEvent.findUnique({
-      where: { id },
+      where: { id, userId },
       include: {
         customers: {
           include: { customer: { select: { id: true, name: true, domain: true, logoUrl: true } } },
@@ -76,9 +76,10 @@ export const calendarService = {
     endTime: string;
     location?: string;
     isAllDay?: boolean;
-  }) {
+  }, userId: string) {
     const event = await prisma.calendarEvent.create({
       data: {
+        userId,
         title: data.title,
         description: data.description,
         startTime: new Date(data.startTime),
@@ -89,7 +90,7 @@ export const calendarService = {
     });
 
     // Sync to Google if connected
-    await this.pushToGoogle(event.id, 'create');
+    await this.pushToGoogle(event.id, 'create', userId);
 
     return event;
   },
@@ -101,7 +102,7 @@ export const calendarService = {
     endTime?: string;
     location?: string;
     isAllDay?: boolean;
-  }) {
+  }, userId: string) {
     const updateData: Prisma.CalendarEventUpdateInput = {};
     if (data.title !== undefined) updateData.title = data.title;
     if (data.description !== undefined) updateData.description = data.description;
@@ -111,22 +112,22 @@ export const calendarService = {
     if (data.isAllDay !== undefined) updateData.isAllDay = data.isAllDay;
 
     const event = await prisma.calendarEvent.update({
-      where: { id },
+      where: { id, userId },
       data: updateData,
     });
 
-    await this.pushToGoogle(event.id, 'update');
+    await this.pushToGoogle(event.id, 'update', userId);
 
     return event;
   },
 
-  async delete(id: string, mode: 'single' | 'all' = 'single') {
-    const event = await prisma.calendarEvent.findUnique({ where: { id } });
+  async delete(id: string, userId: string, mode: 'single' | 'all' = 'single') {
+    const event = await prisma.calendarEvent.findUnique({ where: { id, userId } });
     if (!event) throw Object.assign(new Error('Event not found'), { status: 404 });
 
     if (mode === 'all' && event.recurringEventId && event.googleEventId) {
       // Delete the entire recurring series via Google Calendar API
-      const oauth2Client = await googleAuthService.getAuthenticatedClient();
+      const oauth2Client = await googleAuthService.getAuthenticatedClient(userId);
       if (oauth2Client) {
         const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
         try {
@@ -140,23 +141,23 @@ export const calendarService = {
       }
       // Delete all local instances of this recurring series
       await prisma.calendarEvent.deleteMany({
-        where: { recurringEventId: event.recurringEventId },
+        where: { recurringEventId: event.recurringEventId, userId },
       });
     } else {
       // Delete single instance from Google
       if (event.googleEventId) {
-        await this.pushToGoogle(id, 'delete');
+        await this.pushToGoogle(id, 'delete', userId);
       }
-      await prisma.calendarEvent.delete({ where: { id } });
+      await prisma.calendarEvent.delete({ where: { id, userId } });
     }
   },
 
-  async syncFromGoogle(retried = false) {
-    const oauth2Client = await googleAuthService.getAuthenticatedClient();
+  async syncFromGoogle(retried = false, userId: string): Promise<{ synced: number; deleted: number; customersCreated: number; contactsCreated: number }> {
+    const oauth2Client = await googleAuthService.getAuthenticatedClient(userId);
     if (!oauth2Client) throw Object.assign(new Error('Google Calendar not connected'), { status: 400 });
 
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
-    const auth = await prisma.googleAuth.findFirst();
+    const auth = await prisma.googleAuth.findFirst({ where: { userId } });
     if (!auth) throw Object.assign(new Error('Google Calendar not connected'), { status: 400 });
 
     let synced = 0;
@@ -224,13 +225,13 @@ export const calendarService = {
           // Handle cancelled/deleted events
           if (gEvent.status === 'cancelled') {
             const result = await prisma.calendarEvent.deleteMany({
-              where: { googleEventId: gEvent.id },
+              where: { googleEventId: gEvent.id, userId },
             });
             if (result.count > 0) deleted++;
             continue;
           }
 
-          const result = await this.upsertGoogleEvent(calendar, gEvent, recurrenceCache, getRecurrence);
+          const result = await this.upsertGoogleEvent(calendar, gEvent, recurrenceCache, getRecurrence, userId);
           synced++;
           customersCreated += result.customersCreated;
           contactsCreated += result.contactsCreated;
@@ -248,7 +249,7 @@ export const calendarService = {
           data: { calendarSyncToken: null, lastSyncAt: new Date() },
         });
         // Recursive call will do a full sync since token is now null (retried=true prevents infinite loop)
-        return this.syncFromGoogle(true);
+        return this.syncFromGoogle(true, userId);
       }
       throw err;
     }
@@ -272,6 +273,7 @@ export const calendarService = {
     gEvent: any,
     recurrenceCache: Map<string, string[]>,
     getRecurrence: (id: string) => Promise<string[]>,
+    userId: string,
   ) {
     let customersCreated = 0;
     let contactsCreated = 0;
@@ -326,9 +328,10 @@ export const calendarService = {
     };
 
     const localEvent = await prisma.calendarEvent.upsert({
-      where: { googleEventId: gEvent.id },
+      where: { userId_googleEventId: { userId, googleEventId: gEvent.id } },
       update: eventData,
       create: {
+        userId,
         googleEventId: gEvent.id,
         calendarId: 'primary',
         ...eventData,
@@ -345,11 +348,11 @@ export const calendarService = {
         if (!rawDomain || isPersonalDomain(rawDomain)) continue;
         const domain = normalizeDomain(rawDomain);
 
-        const { customer, created: customerCreated } = await customerService.findOrCreateByDomain(domain);
+        const { customer, created: customerCreated } = await customerService.findOrCreateByDomain(userId, domain);
         customerIds.add(customer.id);
         if (customerCreated) customersCreated++;
 
-        const { created: contactCreated } = await customerService.findOrCreateContact(att.email, att.displayName, customer.id);
+        const { created: contactCreated } = await customerService.findOrCreateContact(userId, att.email, att.displayName, customer.id);
         if (contactCreated) contactsCreated++;
       }
 
@@ -365,12 +368,12 @@ export const calendarService = {
     return { customersCreated, contactsCreated };
   },
 
-  async respond(id: string, response: 'accepted' | 'declined' | 'tentative') {
-    const event = await prisma.calendarEvent.findUnique({ where: { id } });
+  async respond(id: string, response: 'accepted' | 'declined' | 'tentative', userId: string) {
+    const event = await prisma.calendarEvent.findUnique({ where: { id, userId } });
     if (!event) throw Object.assign(new Error('Event not found'), { status: 404 });
     if (!event.googleEventId) throw Object.assign(new Error('Cannot respond to non-Google events'), { status: 400 });
 
-    const oauth2Client = await googleAuthService.getAuthenticatedClient();
+    const oauth2Client = await googleAuthService.getAuthenticatedClient(userId);
     if (!oauth2Client) throw Object.assign(new Error('Google Calendar not connected'), { status: 400 });
 
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
@@ -419,8 +422,8 @@ export const calendarService = {
     return updated;
   },
 
-  async pushToGoogle(eventId: string, action: 'create' | 'update' | 'delete') {
-    const oauth2Client = await googleAuthService.getAuthenticatedClient();
+  async pushToGoogle(eventId: string, action: 'create' | 'update' | 'delete', userId: string) {
+    const oauth2Client = await googleAuthService.getAuthenticatedClient(userId);
     if (!oauth2Client) return; // Not connected, skip
 
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
