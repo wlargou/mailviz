@@ -9,10 +9,12 @@ import {
   Button,
 } from '@carbon/react';
 import { SidePanel } from '@carbon/ibm-products';
-import { Save } from '@carbon/icons-react';
+import { Save, Share } from '@carbon/icons-react';
 import { tasksApi } from '../../api/tasks';
 import { customersApi } from '../../api/customers';
 import { taskStatusesApi } from '../../api/taskStatuses';
+import { authApi } from '../../api/auth';
+import { ShareDialog } from '../shared/ShareDialog';
 import { useUIStore } from '../../store/uiStore';
 import type { Task, Label, TaskPriority, TaskStatus, TaskStatusConfig } from '../../types/task';
 import type { Customer } from '../../types/customer';
@@ -40,9 +42,13 @@ export function TaskDetailModal({ task, open, onClose, onUpdated, labels }: Task
   const [dueDate, setDueDate] = useState<string | null>(null);
   const [selectedLabels, setSelectedLabels] = useState<string[]>([]);
   const [customerId, setCustomerId] = useState<string | null>(null);
+  const [assignedToId, setAssignedToId] = useState<string | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [users, setUsers] = useState<Array<{ id: string; name: string | null; email: string }>>([]);
   const [statusItems, setStatusItems] = useState<{ id: string; text: string }[]>([]);
   const [loading, setLoading] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [taskShares, setTaskShares] = useState<any[]>([]);
   const addNotification = useUIStore((s) => s.addNotification);
 
   const fetchCustomers = useCallback(async () => {
@@ -59,12 +65,20 @@ export function TaskDetailModal({ task, open, onClose, onUpdated, labels }: Task
     } catch { /* ignore */ }
   }, []);
 
+  const fetchUsers = useCallback(async () => {
+    try {
+      const { data: res } = await authApi.getUsers();
+      setUsers(res.data);
+    } catch { /* ignore */ }
+  }, []);
+
   useEffect(() => {
     if (open) {
       fetchCustomers();
       fetchStatuses();
+      fetchUsers();
     }
-  }, [open, fetchCustomers, fetchStatuses]);
+  }, [open, fetchCustomers, fetchStatuses, fetchUsers]);
 
   useEffect(() => {
     if (task) {
@@ -75,6 +89,7 @@ export function TaskDetailModal({ task, open, onClose, onUpdated, labels }: Task
       setDueDate(task.dueDate);
       setSelectedLabels(task.labels.map((l) => l.id));
       setCustomerId(task.customerId);
+      setAssignedToId(task.assignedToId || null);
     }
   }, [task]);
 
@@ -90,6 +105,7 @@ export function TaskDetailModal({ task, open, onClose, onUpdated, labels }: Task
         dueDate,
         labelIds: selectedLabels,
         customerId,
+        assignedToId,
       });
       addNotification({ kind: 'success', title: 'Task updated' });
       onUpdated();
@@ -188,6 +204,17 @@ export function TaskDetailModal({ task, open, onClose, onUpdated, labels }: Task
             }}
           />
         )}
+        <Dropdown
+          id="edit-task-assigned"
+          titleText="Assigned to"
+          label="Unassigned"
+          items={[{ id: '', text: 'Unassigned' }, ...users.map((u) => ({ id: u.id, text: u.name || u.email }))]}
+          itemToString={(item: any) => item?.text || ''}
+          selectedItem={assignedToId ? { id: assignedToId, text: users.find((u) => u.id === assignedToId)?.name || users.find((u) => u.id === assignedToId)?.email || '' } : { id: '', text: 'Unassigned' }}
+          onChange={({ selectedItem }: any) => {
+            setAssignedToId(selectedItem?.id || null);
+          }}
+        />
         {labels.length > 0 && (
           <MultiSelect
             id="edit-task-labels"
@@ -243,7 +270,48 @@ export function TaskDetailModal({ task, open, onClose, onUpdated, labels }: Task
             </div>
           </div>
         )}
+        <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid var(--cds-border-subtle)' }}>
+          <Button
+            kind="tertiary"
+            size="sm"
+            renderIcon={Share}
+            onClick={async () => {
+              if (!task) return;
+              try {
+                const { data: res } = await tasksApi.getTaskShares(task.id);
+                setTaskShares(res.data);
+              } catch { setTaskShares([]); }
+              setShareOpen(true);
+            }}
+          >
+            Share task
+          </Button>
+        </div>
       </div>
+
+      <ShareDialog
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        title={task?.title || ''}
+        currentShares={taskShares}
+        onShare={async (userIds) => {
+          if (!task) return;
+          await tasksApi.shareTask(task.id, userIds);
+          addNotification({ kind: 'success', title: 'Task shared' });
+        }}
+        onUnshare={async (userId) => {
+          if (!task) return;
+          await tasksApi.unshareTask(task.id, userId);
+          addNotification({ kind: 'success', title: 'Share removed' });
+        }}
+        onRefresh={async () => {
+          if (!task) return;
+          try {
+            const { data: res } = await tasksApi.getTaskShares(task.id);
+            setTaskShares(res.data);
+          } catch { setTaskShares([]); }
+        }}
+      />
     </SidePanel>
   );
 }

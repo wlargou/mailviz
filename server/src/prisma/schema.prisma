@@ -10,21 +10,24 @@ datasource db {
 // ─── PHASE 1 MODELS ────────────────────────────────
 
 model Task {
-  id          String       @id @default(uuid())
-  title       String       @db.VarChar(255)
-  description String?      @db.Text
-  status      String       @default("TODO") @db.VarChar(100)
-  priority    TaskPriority @default(MEDIUM)
-  dueDate     DateTime?    @map("due_date")
-  position    Int          @default(0)
-  customerId  String?      @map("customer_id")
-  userId      String       @map("user_id")
-  createdAt   DateTime     @default(now()) @map("created_at")
-  updatedAt   DateTime     @updatedAt @map("updated_at")
+  id             String       @id @default(uuid())
+  title          String       @db.VarChar(255)
+  description    String?      @db.Text
+  status         String       @default("TODO") @db.VarChar(100)
+  priority       TaskPriority @default(MEDIUM)
+  dueDate        DateTime?    @map("due_date")
+  position       Int          @default(0)
+  customerId     String?      @map("customer_id")
+  assignedToId   String?      @map("assigned_to_id")
+  userId         String       @map("user_id")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
 
   labels     TaskLabel[]
   mailToTask MailToTask?
+  shares     TaskShare[]
   customer   Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  assignedTo User?        @relation("TaskAssignments", fields: [assignedToId], references: [id], onDelete: SetNull)
   user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([status])
@@ -32,6 +35,7 @@ model Task {
   @@index([dueDate])
   @@index([customerId])
   @@index([userId])
+  @@index([assignedToId])
   @@map("tasks")
 }
 
@@ -174,6 +178,9 @@ model User {
   emailSharesReceived EmailThreadShare[] @relation("EmailSharesReceived")
   dealSharesSent      DealShare[]        @relation("DealSharesSent")
   dealSharesReceived  DealShare[]        @relation("DealSharesReceived")
+  taskSharesSent      TaskShare[]        @relation("TaskSharesSent")
+  taskSharesReceived  TaskShare[]        @relation("TaskSharesReceived")
+  taskAssignments     Task[]             @relation("TaskAssignments")
 
   @@map("users")
 }
@@ -388,4 +395,22 @@ model DealShare {
   @@index([sharedByUserId])
   @@index([dealId])
   @@map("deal_shares")
+}
+
+model TaskShare {
+  id               String   @id @default(uuid())
+  taskId           String   @map("task_id")
+  sharedByUserId   String   @map("shared_by_user_id")
+  sharedWithUserId String   @map("shared_with_user_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  task       Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  sharedBy   User @relation("TaskSharesSent", fields: [sharedByUserId], references: [id], onDelete: Cascade)
+  sharedWith User @relation("TaskSharesReceived", fields: [sharedWithUserId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, sharedWithUserId])
+  @@index([sharedWithUserId])
+  @@index([sharedByUserId])
+  @@index([taskId])
+  @@map("task_shares")
 }

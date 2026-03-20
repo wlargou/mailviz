@@ -40,3 +40,29 @@ export async function isDealOwner(dealId: string, userId: string): Promise<boole
   const deal = await prisma.deal.findFirst({ where: { id: dealId, userId } });
   return !!deal;
 }
+
+export async function getSharedTaskIds(userId: string): Promise<string[]> {
+  const shares = await prisma.taskShare.findMany({
+    where: { sharedWithUserId: userId },
+    select: { taskId: true },
+  });
+  return [...new Set(shares.map(s => s.taskId))];
+}
+
+export async function canAccessTask(taskId: string, userId: string): Promise<boolean> {
+  // Check ownership or assignment
+  const task = await prisma.task.findFirst({
+    where: { id: taskId, OR: [{ userId }, { assignedToId: userId }] },
+  });
+  if (task) return true;
+  // Check shared access
+  const share = await prisma.taskShare.findFirst({
+    where: { taskId, sharedWithUserId: userId },
+  });
+  return !!share;
+}
+
+export async function isTaskOwner(taskId: string, userId: string): Promise<boolean> {
+  const task = await prisma.task.findFirst({ where: { id: taskId, userId } });
+  return !!task;
+}

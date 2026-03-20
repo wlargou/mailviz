@@ -8,6 +8,7 @@ export const createTaskSchema = z.object({
   dueDate: z.string().datetime().nullable().optional(),
   labelIds: z.array(z.string().uuid()).optional(),
   customerId: z.string().uuid().nullable().optional(),
+  assignedToId: z.string().uuid().nullable().optional(),
 });
 
 export const updateTaskSchema = createTaskSchema.partial();

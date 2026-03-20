@@ -24,6 +24,13 @@ export interface TaskCustomer {
   company: string | null;
 }
 
+export interface TaskAssignee {
+  id: string;
+  name: string | null;
+  email: string;
+  avatarUrl: string | null;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -33,6 +40,9 @@ export interface Task {
   dueDate: string | null;
   position: number;
   customerId: string | null;
+  assignedToId: string | null;
+  assignedTo: TaskAssignee | null;
+  userId: string;
   createdAt: string;
   updatedAt: string;
   labels: Label[];
@@ -67,6 +77,7 @@ export interface CreateTaskInput {
   dueDate?: string | null;
   labelIds?: string[];
   customerId?: string | null;
+  assignedToId?: string | null;
 }
 
 export interface UpdateTaskInput extends Partial<CreateTaskInput> {}

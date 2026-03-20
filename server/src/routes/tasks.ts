@@ -12,5 +12,9 @@ router.post('/', validate(createTaskSchema), taskController.create);
 router.patch('/reorder', validate(reorderSchema), taskController.reorder);
 router.patch('/:id', validate(updateTaskSchema), taskController.update);
 router.delete('/:id', taskController.delete);
+router.post('/:id/share', taskController.shareTask);
+router.delete('/:id/shares/:recipientId', taskController.unshareTask);
+router.get('/:id/shares', taskController.getTaskShares);
+router.patch('/:id/assign', taskController.assignTask);
 
 export { router as taskRoutes };

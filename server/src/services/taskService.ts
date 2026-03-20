@@ -3,6 +3,8 @@ import { prisma } from '../lib/prisma.js';
 import { CreateTaskInput, UpdateTaskInput, ReorderInput } from '../validators/taskValidator.js';
 import { parsePagination, paginationMeta } from '../utils/pagination.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { getSharedTaskIds, canAccessTask, isTaskOwner } from '../utils/accessControl.js';
+import { wsEmitToUsers, wsEmitToUser } from '../websocket.js';
 
 interface TaskQueryParams {
   status?: string;
@@ -23,7 +25,15 @@ export const taskService = {
   async findAll(userId: string, query: TaskQueryParams) {
     const pagination = parsePagination(query);
 
-    const where: Prisma.TaskWhereInput = { userId };
+    // Include shared + assigned tasks
+    const sharedTaskIds = await getSharedTaskIds(userId);
+    const where: Prisma.TaskWhereInput = {
+      OR: [
+        { userId },
+        ...(sharedTaskIds.length > 0 ? [{ id: { in: sharedTaskIds } }] : []),
+        { assignedToId: userId },
+      ],
+    };
 
     if (query.status) {
       where.status = query.status;
@@ -71,8 +81,12 @@ export const taskService = {
   },
 
   async findById(userId: string, id: string) {
+    const hasAccess = await canAccessTask(id, userId);
+    if (!hasAccess) {
+      throw new AppError(404, 'TASK_NOT_FOUND', 'Task not found');
+    }
     const task = await prisma.task.findUnique({
-      where: { id, userId },
+      where: { id },
       include: {
         labels: { include: { label: true } },
         customer: true,
@@ -94,19 +108,29 @@ export const taskService = {
   async getSummary(userId: string) {
     const now = new Date();
 
+    // Include shared + assigned tasks in summary
+    const sharedTaskIds = await getSharedTaskIds(userId);
+    const summaryWhere: Prisma.TaskWhereInput = {
+      OR: [
+        { userId },
+        ...(sharedTaskIds.length > 0 ? [{ id: { in: sharedTaskIds } }] : []),
+        { assignedToId: userId },
+      ],
+    };
+
     const [total, completed, overdue, byPriority] = await Promise.all([
-      prisma.task.count({ where: { userId } }),
-      prisma.task.count({ where: { userId, status: 'DONE' } }),
+      prisma.task.count({ where: summaryWhere }),
+      prisma.task.count({ where: { ...summaryWhere, status: 'DONE' } }),
       prisma.task.count({
         where: {
-          userId,
+          ...summaryWhere,
           status: { not: 'DONE' },
           dueDate: { lt: now },
         },
       }),
       prisma.task.groupBy({
         by: ['priority'],
-        where: { userId },
+        where: summaryWhere,
         _count: { priority: true },
       }),
     ]);
@@ -126,7 +150,7 @@ export const taskService = {
   },
 
   async create(userId: string, data: CreateTaskInput) {
-    const { labelIds, customerId, ...taskData } = data;
+    const { labelIds, customerId, assignedToId, ...taskData } = data;
 
     // Get max position for the status column
     const maxPos = await prisma.task.findFirst({
@@ -143,6 +167,7 @@ export const taskService = {
         dueDate: taskData.dueDate ? new Date(taskData.dueDate) : null,
         position,
         customerId: customerId || null,
+        assignedToId: assignedToId || null,
         labels: labelIds?.length
           ? { create: labelIds.map((labelId) => ({ labelId })) }
           : undefined,
@@ -154,7 +179,11 @@ export const taskService = {
   },
 
   async update(userId: string, id: string, data: UpdateTaskInput) {
-    const existing = await prisma.task.findUnique({ where: { id, userId } });
+    const hasAccess = await canAccessTask(id, userId);
+    if (!hasAccess) {
+      throw new AppError(404, 'TASK_NOT_FOUND', 'Task not found');
+    }
+    const existing = await prisma.task.findUnique({ where: { id } });
     if (!existing) {
       throw new AppError(404, 'TASK_NOT_FOUND', 'Task not found');
     }
@@ -204,12 +233,88 @@ export const taskService = {
   },
 
   async delete(userId: string, id: string) {
-    const existing = await prisma.task.findUnique({ where: { id, userId } });
-    if (!existing) {
+    const owner = await isTaskOwner(id, userId);
+    if (!owner) {
       throw new AppError(404, 'TASK_NOT_FOUND', 'Task not found');
     }
-    await prisma.task.delete({ where: { id, userId } });
+    await prisma.task.delete({ where: { id } });
     return { success: true };
+  },
+
+  async shareTask(userId: string, taskId: string, recipientUserIds: string[]) {
+    const owner = await isTaskOwner(taskId, userId);
+    if (!owner) throw Object.assign(new Error('Task not found'), { status: 404 });
+
+    const validIds = recipientUserIds.filter(id => id !== userId);
+    if (validIds.length === 0) throw Object.assign(new Error('Cannot share with yourself'), { status: 400 });
+
+    await prisma.taskShare.createMany({
+      data: validIds.map(recipientId => ({
+        taskId,
+        sharedByUserId: userId,
+        sharedWithUserId: recipientId,
+      })),
+      skipDuplicates: true,
+    });
+
+    // Get sharer's name for notification
+    const [sharer, task] = await Promise.all([
+      prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true } }),
+      prisma.task.findFirst({ where: { id: taskId }, select: { title: true } }),
+    ]);
+
+    wsEmitToUsers(validIds, 'task:shared', {
+      taskId,
+      sharedBy: { name: sharer?.name, email: sharer?.email },
+      title: task?.title,
+    });
+
+    return { success: true, sharedWith: validIds.length };
+  },
+
+  async unshareTask(userId: string, taskId: string, recipientUserId: string) {
+    await prisma.taskShare.deleteMany({
+      where: { taskId, sharedByUserId: userId, sharedWithUserId: recipientUserId },
+    });
+    return { success: true };
+  },
+
+  async getTaskShares(userId: string, taskId: string) {
+    const owner = await isTaskOwner(taskId, userId);
+    if (!owner) throw Object.assign(new Error('Task not found'), { status: 404 });
+
+    const shares = await prisma.taskShare.findMany({
+      where: { taskId, sharedByUserId: userId },
+      include: { sharedWith: { select: { id: true, name: true, email: true, avatarUrl: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+    return shares;
+  },
+
+  async assignTask(userId: string, taskId: string, assignedToId: string | null) {
+    const hasAccess = await canAccessTask(taskId, userId);
+    if (!hasAccess) throw Object.assign(new Error('Task not found'), { status: 404 });
+
+    const task = await prisma.task.update({
+      where: { id: taskId },
+      data: { assignedToId },
+      include: { labels: { include: { label: true } }, customer: true },
+    });
+
+    // Notify the assignee if assigned to someone else
+    if (assignedToId && assignedToId !== userId) {
+      const assigner = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { name: true, email: true },
+      });
+      wsEmitToUser(assignedToId, 'task:assigned', {
+        taskId,
+        title: task.title,
+        assignedBy: { name: assigner?.name, email: assigner?.email },
+      });
+    }
+
+    return formatTask(task);
   },
 };
 
