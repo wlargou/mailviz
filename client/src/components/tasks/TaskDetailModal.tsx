@@ -1,13 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Modal,
   TextInput,
   TextArea,
   Dropdown,
   DatePicker,
   DatePickerInput,
   MultiSelect,
+  Button,
 } from '@carbon/react';
+import { SidePanel } from '@carbon/ibm-products';
+import { Save } from '@carbon/icons-react';
 import { tasksApi } from '../../api/tasks';
 import { customersApi } from '../../api/customers';
 import { taskStatusesApi } from '../../api/taskStatuses';
@@ -102,14 +104,21 @@ export function TaskDetailModal({ task, open, onClose, onUpdated, labels }: Task
   if (!task) return null;
 
   return (
-    <Modal
+    <SidePanel
       open={open}
       onRequestClose={onClose}
-      onRequestSubmit={handleSubmit}
-      modalHeading="Edit Task"
-      primaryButtonText={loading ? 'Saving...' : 'Save'}
-      secondaryButtonText="Cancel"
-      primaryButtonDisabled={!title.trim() || loading}
+      title="Edit Task"
+      size="md"
+      className="task-detail-panel"
+      actions={[
+        {
+          label: loading ? 'Saving...' : 'Save',
+          onClick: handleSubmit,
+          kind: 'primary' as const,
+          disabled: !title.trim() || loading,
+          icon: Save,
+        },
+      ]}
     >
       <div className="modal-form">
         <TextInput
@@ -235,6 +244,6 @@ export function TaskDetailModal({ task, open, onClose, onUpdated, labels }: Task
           </div>
         )}
       </div>
-    </Modal>
+    </SidePanel>
   );
 }
