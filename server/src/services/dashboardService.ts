@@ -146,7 +146,7 @@ export const dashboardService = {
       }>>`
         SELECT
           (SELECT COUNT(*) FROM customers WHERE user_id = ${userId}) as total_customers,
-          (SELECT COUNT(*) FROM contacts WHERE user_id = ${userId}) as total_contacts
+          (SELECT COUNT(*) FROM contacts co JOIN customers cu ON co.customer_id = cu.id WHERE cu.user_id = ${userId}) as total_contacts
       `,
     ]);
 
