@@ -113,9 +113,9 @@
   padding-bottom: 0.1em;
   margin-top: 1rem;
   animation:
-    typing-reveal2 2.5s steps(50, end) 3s forwards,
-    blink-caret2 0.75s step-end 3s 5,
-    fade-caret 0.5s ease 6s forwards;
+    typing-reveal2 2.5s steps(50, end) 4s forwards,
+    blink-caret2 0.75s step-end 4s 5,
+    fade-caret 0.5s ease 7.5s forwards;
 }
 
 @keyframes typing-reveal {
