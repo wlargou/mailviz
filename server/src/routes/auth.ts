@@ -19,4 +19,7 @@ router.get('/google/url', requireAuth, authController.getGoogleUrl);
 router.get('/google/status', requireAuth, authController.getGoogleStatus);
 router.post('/google/disconnect', requireAuth, authController.disconnectGoogle);
 
+// Users list (for sharing features)
+router.get('/users', requireAuth, authController.listUsers);
+
 export { router as authRoutes };

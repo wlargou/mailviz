@@ -225,4 +225,36 @@ export const emailController = {
       next(err);
     }
   },
+
+  async shareThread(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { userIds } = req.body;
+      if (!Array.isArray(userIds) || userIds.length === 0) {
+        res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'userIds array required' } });
+        return;
+      }
+      const result = await emailService.shareThread(req.user!.id, req.params.threadId, userIds);
+      res.json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async unshareThread(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await emailService.unshareThread(req.user!.id, req.params.threadId, req.params.recipientId);
+      res.json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async getThreadShares(req: Request, res: Response, next: NextFunction) {
+    try {
+      const shares = await emailService.getThreadShares(req.user!.id, req.params.threadId);
+      res.json({ data: shares });
+    } catch (err) {
+      next(err);
+    }
+  },
 };

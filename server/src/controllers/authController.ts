@@ -147,4 +147,18 @@ export const authController = {
       next(err);
     }
   },
+
+  async listUsers(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user!.id;
+      const users = await prisma.user.findMany({
+        where: { id: { not: userId } },
+        select: { id: true, name: true, email: true, avatarUrl: true },
+        orderBy: { name: 'asc' },
+      });
+      res.json({ data: users });
+    } catch (err) {
+      next(err);
+    }
+  },
 };

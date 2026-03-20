@@ -22,4 +22,15 @@ export const dealsApi = {
   delete(id: string) {
     return api.delete(`/deals/${id}`);
   },
+
+  // Sharing
+  shareDeal(id: string, userIds: string[]) {
+    return api.post(`/deals/${id}/share`, { userIds });
+  },
+  unshareDeal(id: string, recipientId: string) {
+    return api.delete(`/deals/${id}/shares/${recipientId}`);
+  },
+  getDealShares(id: string) {
+    return api.get<{ data: Array<{ id: string; createdAt: string; sharedWith: { id: string; name: string | null; email: string; avatarUrl: string | null } }> }>(`/deals/${id}/shares`);
+  },
 };

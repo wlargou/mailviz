@@ -1,0 +1,103 @@
+// ─── Sharing UI ──────────────────────────────────
+
+.share-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--cds-text-secondary);
+
+  .share-badge__icon {
+    color: var(--cds-support-info);
+  }
+}
+
+// Share dialog
+.share-dialog {
+  .share-dialog__search {
+    margin-bottom: 1rem;
+  }
+
+  .share-dialog__users {
+    max-height: 240px;
+    overflow-y: auto;
+    border: 1px solid var(--cds-border-subtle);
+    border-radius: 2px;
+  }
+
+  .share-dialog__user {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    cursor: pointer;
+    border-bottom: 1px solid var(--cds-border-subtle);
+
+    &:last-child {
+      border-bottom: none;
+    }
+
+    &:hover {
+      background: var(--cds-layer-hover);
+    }
+
+    &--selected {
+      background: var(--cds-layer-selected);
+    }
+  }
+
+  .share-dialog__user-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .share-dialog__user-name {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--cds-text-primary);
+  }
+
+  .share-dialog__user-email {
+    font-size: 0.75rem;
+    color: var(--cds-text-secondary);
+  }
+
+  .share-dialog__avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: var(--cds-layer-02);
+  }
+
+  .share-dialog__divider {
+    margin: 1rem 0 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--cds-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.32px;
+  }
+
+  .share-dialog__current-shares {
+    margin-top: 0.5rem;
+  }
+
+  .share-dialog__share-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.375rem 0;
+    border-bottom: 1px solid var(--cds-border-subtle);
+
+    &:last-child {
+      border-bottom: none;
+    }
+  }
+
+  .share-dialog__share-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+}

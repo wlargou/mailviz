@@ -17,6 +17,7 @@ import {
   extractBody,
   type EmailQueryParams,
 } from '../utils/emailHelpers.js';
+import { getSharedThreadIds, canAccessThread } from '../utils/accessControl.js';
 
 export const emailService = {
   async syncFromGmail(userId: string) {
@@ -382,7 +383,12 @@ export const emailService = {
   async findAllThreads(query: EmailQueryParams, userId: string) {
     const pagination = parsePagination(query);
 
-    const where: Prisma.EmailWhereInput = { userId };
+    // Include shared threads
+    const sharedThreadIds = await getSharedThreadIds(userId);
+    const ownershipFilter: Prisma.EmailWhereInput = sharedThreadIds.length > 0
+      ? { OR: [{ userId }, { threadId: { in: sharedThreadIds } }] }
+      : { userId };
+    const where: Prisma.EmailWhereInput = { ...ownershipFilter };
     // By default, hide trashed emails unless explicitly viewing trash folder
     if (query.folder !== 'trash') {
       where.isTrashed = false;
@@ -450,16 +456,27 @@ export const emailService = {
     });
 
     // P4: Use COUNT(DISTINCT) instead of fetching all thread IDs
-    const totalResult: Array<{ count: bigint }> = await prisma.$queryRaw`
-      SELECT COUNT(DISTINCT thread_id) as count FROM emails
-      WHERE user_id = ${userId}
-      AND is_trashed = ${where.isTrashed === true}
-      ${query.isRead === 'true' ? Prisma.sql`AND is_read = true` : query.isRead === 'false' ? Prisma.sql`AND is_read = false` : Prisma.empty}
-      ${query.folder === 'inbox' ? Prisma.sql`AND 'INBOX' = ANY(label_ids)` : Prisma.empty}
-      ${query.folder === 'sent' ? Prisma.sql`AND 'SENT' = ANY(label_ids)` : Prisma.empty}
-      ${query.folder === 'starred' ? Prisma.sql`AND is_starred = true` : Prisma.empty}
-      ${query.folder === 'archived' ? Prisma.sql`AND is_archived = true` : Prisma.empty}
-    `;
+    const totalResult: Array<{ count: bigint }> = sharedThreadIds.length > 0
+      ? await prisma.$queryRaw`
+          SELECT COUNT(DISTINCT thread_id) as count FROM emails
+          WHERE (user_id = ${userId} OR thread_id = ANY(${sharedThreadIds}))
+          AND is_trashed = ${where.isTrashed === true}
+          ${query.isRead === 'true' ? Prisma.sql`AND is_read = true` : query.isRead === 'false' ? Prisma.sql`AND is_read = false` : Prisma.empty}
+          ${query.folder === 'inbox' ? Prisma.sql`AND 'INBOX' = ANY(label_ids)` : Prisma.empty}
+          ${query.folder === 'sent' ? Prisma.sql`AND 'SENT' = ANY(label_ids)` : Prisma.empty}
+          ${query.folder === 'starred' ? Prisma.sql`AND is_starred = true` : Prisma.empty}
+          ${query.folder === 'archived' ? Prisma.sql`AND is_archived = true` : Prisma.empty}
+        `
+      : await prisma.$queryRaw`
+          SELECT COUNT(DISTINCT thread_id) as count FROM emails
+          WHERE user_id = ${userId}
+          AND is_trashed = ${where.isTrashed === true}
+          ${query.isRead === 'true' ? Prisma.sql`AND is_read = true` : query.isRead === 'false' ? Prisma.sql`AND is_read = false` : Prisma.empty}
+          ${query.folder === 'inbox' ? Prisma.sql`AND 'INBOX' = ANY(label_ids)` : Prisma.empty}
+          ${query.folder === 'sent' ? Prisma.sql`AND 'SENT' = ANY(label_ids)` : Prisma.empty}
+          ${query.folder === 'starred' ? Prisma.sql`AND is_starred = true` : Prisma.empty}
+          ${query.folder === 'archived' ? Prisma.sql`AND is_archived = true` : Prisma.empty}
+        `;
     const total = Number(totalResult[0]?.count ?? 0);
 
     // P1: Batch-fetch latest email per thread + unread counts (2 queries instead of 2*N)
@@ -501,8 +518,14 @@ export const emailService = {
   },
 
   async findThread(threadId: string, userId: string) {
+    // Check access: ownership or shared
+    const hasAccess = await canAccessThread(threadId, userId);
+    if (!hasAccess) {
+      throw Object.assign(new Error('Thread not found'), { status: 404 });
+    }
+
     const emails = await prisma.email.findMany({
-      where: { threadId, userId },
+      where: { threadId },
       orderBy: { receivedAt: 'asc' },
       include: {
         attachments: true,
@@ -519,7 +542,8 @@ export const emailService = {
   },
 
   async findById(id: string, userId: string) {
-    const email = await prisma.email.findFirst({
+    // First try owned emails
+    let email = await prisma.email.findFirst({
       where: { id, userId },
       include: {
         attachments: true,
@@ -528,10 +552,25 @@ export const emailService = {
       },
     });
 
+    // If not owned, check shared access via thread
+    if (!email) {
+      const candidate = await prisma.email.findFirst({
+        where: { id },
+        include: {
+          attachments: true,
+          customer: { select: { id: true, name: true, domain: true, logoUrl: true } },
+          mailToTask: { include: { task: true } },
+        },
+      });
+      if (candidate?.threadId && await canAccessThread(candidate.threadId, userId)) {
+        email = candidate;
+      }
+    }
+
     if (!email) throw Object.assign(new Error('Email not found'), { status: 404 });
 
-    // On-demand body fetch if body is null
-    if (email.body === null && email.gmailMessageId) {
+    // On-demand body fetch if body is null (only for owned emails)
+    if (email.body === null && email.gmailMessageId && email.userId === userId) {
       try {
         const gmail = await getGmailClient(userId);
         const msgRes = await gmail.users.messages.get({
@@ -578,14 +617,21 @@ export const emailService = {
   },
 
   async markAsRead(id: string, userId: string) {
-    const email = await prisma.email.findFirst({ where: { id, userId } });
+    let email = await prisma.email.findFirst({ where: { id, userId } });
+    if (!email) {
+      // Check shared access
+      const candidate = await prisma.email.findFirst({ where: { id } });
+      if (candidate?.threadId && await canAccessThread(candidate.threadId, userId)) {
+        email = candidate;
+      }
+    }
     if (!email) throw Object.assign(new Error('Email not found'), { status: 404 });
 
     await prisma.email.update({ where: { id }, data: { isRead: true } });
     wsEmit('email:updated', { id, isRead: true });
 
-    // Sync to Gmail (best effort)
-    if (email.gmailMessageId) {
+    // Sync to Gmail (best effort) — only if user owns the email
+    if (email.gmailMessageId && email.userId === userId) {
       try {
         const gmail = await getGmailClient(userId);
         await gmail.users.messages.modify({
@@ -597,13 +643,19 @@ export const emailService = {
   },
 
   async markAsUnread(id: string, userId: string) {
-    const email = await prisma.email.findFirst({ where: { id, userId } });
+    let email = await prisma.email.findFirst({ where: { id, userId } });
+    if (!email) {
+      const candidate = await prisma.email.findFirst({ where: { id } });
+      if (candidate?.threadId && await canAccessThread(candidate.threadId, userId)) {
+        email = candidate;
+      }
+    }
     if (!email) throw Object.assign(new Error('Email not found'), { status: 404 });
 
     await prisma.email.update({ where: { id }, data: { isRead: false } });
     wsEmit('email:updated', { id, isRead: false });
 
-    if (email.gmailMessageId) {
+    if (email.gmailMessageId && email.userId === userId) {
       try {
         const gmail = await getGmailClient(userId);
         await gmail.users.messages.modify({
@@ -615,14 +667,20 @@ export const emailService = {
   },
 
   async toggleStar(id: string, userId: string) {
-    const email = await prisma.email.findFirst({ where: { id, userId } });
+    let email = await prisma.email.findFirst({ where: { id, userId } });
+    if (!email) {
+      const candidate = await prisma.email.findFirst({ where: { id } });
+      if (candidate?.threadId && await canAccessThread(candidate.threadId, userId)) {
+        email = candidate;
+      }
+    }
     if (!email) throw Object.assign(new Error('Email not found'), { status: 404 });
 
     const newStarred = !email.isStarred;
     await prisma.email.update({ where: { id }, data: { isStarred: newStarred } });
     wsEmit('email:updated', { id, isStarred: newStarred });
 
-    if (email.gmailMessageId) {
+    if (email.gmailMessageId && email.userId === userId) {
       try {
         const gmail = await getGmailClient(userId);
         await gmail.users.messages.modify({
@@ -638,10 +696,16 @@ export const emailService = {
   },
 
   async archive(id: string, userId: string) {
-    const email = await prisma.email.findFirst({ where: { id, userId } });
+    let email = await prisma.email.findFirst({ where: { id, userId } });
+    if (!email) {
+      const candidate = await prisma.email.findFirst({ where: { id } });
+      if (candidate?.threadId && await canAccessThread(candidate.threadId, userId)) {
+        email = candidate;
+      }
+    }
     if (!email) throw Object.assign(new Error('Email not found'), { status: 404 });
 
-    if (email.gmailMessageId) {
+    if (email.gmailMessageId && email.userId === userId) {
       try {
         const gmail = await getGmailClient(userId);
         await gmail.users.messages.modify({
@@ -659,10 +723,16 @@ export const emailService = {
   },
 
   async unarchive(id: string, userId: string) {
-    const email = await prisma.email.findFirst({ where: { id, userId } });
+    let email = await prisma.email.findFirst({ where: { id, userId } });
+    if (!email) {
+      const candidate = await prisma.email.findFirst({ where: { id } });
+      if (candidate?.threadId && await canAccessThread(candidate.threadId, userId)) {
+        email = candidate;
+      }
+    }
     if (!email) throw Object.assign(new Error('Email not found'), { status: 404 });
 
-    if (email.gmailMessageId) {
+    if (email.gmailMessageId && email.userId === userId) {
       try {
         const gmail = await getGmailClient(userId);
         await gmail.users.messages.modify({
@@ -680,10 +750,16 @@ export const emailService = {
   },
 
   async trash(id: string, userId: string) {
-    const email = await prisma.email.findFirst({ where: { id, userId } });
+    let email = await prisma.email.findFirst({ where: { id, userId } });
+    if (!email) {
+      const candidate = await prisma.email.findFirst({ where: { id } });
+      if (candidate?.threadId && await canAccessThread(candidate.threadId, userId)) {
+        email = candidate;
+      }
+    }
     if (!email) throw Object.assign(new Error('Email not found'), { status: 404 });
 
-    if (email.gmailMessageId) {
+    if (email.gmailMessageId && email.userId === userId) {
       try {
         const gmail = await getGmailClient(userId);
         await gmail.users.messages.trash({ userId: 'me', id: email.gmailMessageId });
@@ -698,10 +774,16 @@ export const emailService = {
   },
 
   async untrash(id: string, userId: string) {
-    const email = await prisma.email.findFirst({ where: { id, userId } });
+    let email = await prisma.email.findFirst({ where: { id, userId } });
+    if (!email) {
+      const candidate = await prisma.email.findFirst({ where: { id } });
+      if (candidate?.threadId && await canAccessThread(candidate.threadId, userId)) {
+        email = candidate;
+      }
+    }
     if (!email) throw Object.assign(new Error('Email not found'), { status: 404 });
 
-    if (email.gmailMessageId) {
+    if (email.gmailMessageId && email.userId === userId) {
       try {
         const gmail = await getGmailClient(userId);
         await gmail.users.messages.untrash({ userId: 'me', id: email.gmailMessageId });
@@ -851,7 +933,11 @@ export const emailService = {
   },
 
   async getUnreadCount(userId: string) {
-    return prisma.email.count({ where: { isRead: false, userId } });
+    const sharedThreadIds = await getSharedThreadIds(userId);
+    const where: Prisma.EmailWhereInput = sharedThreadIds.length > 0
+      ? { isRead: false, OR: [{ userId }, { threadId: { in: sharedThreadIds } }] }
+      : { isRead: false, userId };
+    return prisma.email.count({ where });
   },
 
   async sendEmail(data: { to: string[]; cc?: string[]; bcc?: string[]; subject: string; htmlBody: string }, userId: string) {
@@ -1035,5 +1121,56 @@ export const emailService = {
 
     wsEmit('email:sent', { threadId: sendRes.data.threadId });
     return { messageId: sendRes.data.id, threadId: sendRes.data.threadId };
+  },
+
+  async shareThread(userId: string, threadId: string, recipientUserIds: string[]) {
+    // Verify caller owns at least one email in this thread
+    const owns = await prisma.email.findFirst({ where: { threadId, userId } });
+    if (!owns) throw Object.assign(new Error('Thread not found'), { status: 404 });
+
+    // Filter out self-sharing
+    const validIds = recipientUserIds.filter(id => id !== userId);
+    if (validIds.length === 0) throw Object.assign(new Error('Cannot share with yourself'), { status: 400 });
+
+    await prisma.emailThreadShare.createMany({
+      data: validIds.map(recipientId => ({
+        threadId,
+        sharedByUserId: userId,
+        sharedWithUserId: recipientId,
+      })),
+      skipDuplicates: true,
+    });
+
+    // Get sharer's name for notification
+    const sharer = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true } });
+
+    const { wsEmitToUsers } = await import('../websocket.js');
+    wsEmitToUsers(validIds, 'email:shared', {
+      threadId,
+      sharedBy: { name: sharer?.name, email: sharer?.email },
+      subject: owns.subject,
+    });
+
+    return { success: true, sharedWith: validIds.length };
+  },
+
+  async unshareThread(userId: string, threadId: string, recipientUserId: string) {
+    await prisma.emailThreadShare.deleteMany({
+      where: { threadId, sharedByUserId: userId, sharedWithUserId: recipientUserId },
+    });
+    return { success: true };
+  },
+
+  async getThreadShares(userId: string, threadId: string) {
+    // Verify caller owns the thread
+    const owns = await prisma.email.findFirst({ where: { threadId, userId } });
+    if (!owns) throw Object.assign(new Error('Thread not found'), { status: 404 });
+
+    const shares = await prisma.emailThreadShare.findMany({
+      where: { threadId, sharedByUserId: userId },
+      include: { sharedWith: { select: { id: true, name: true, email: true, avatarUrl: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+    return shares;
   },
 };

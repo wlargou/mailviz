@@ -10,5 +10,8 @@ router.get('/:id', dealController.findById);
 router.post('/', validate(createDealSchema), dealController.create);
 router.patch('/:id', validate(updateDealSchema), dealController.update);
 router.delete('/:id', dealController.delete);
+router.post('/:id/share', dealController.shareDeal);
+router.delete('/:id/shares/:recipientId', dealController.unshareDeal);
+router.get('/:id/shares', dealController.getDealShares);
 
 export { router as dealRoutes };

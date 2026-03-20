@@ -95,4 +95,15 @@ export const emailsApi = {
   forwardEmail(id: string, data: { to: string[]; cc?: string[]; bcc?: string[]; htmlBody: string }) {
     return api.post<ApiResponse<{ messageId: string; threadId: string }>>(`/emails/${id}/forward`, data);
   },
+
+  // Sharing
+  shareThread(threadId: string, userIds: string[]) {
+    return api.post(`/emails/threads/${threadId}/share`, { userIds });
+  },
+  unshareThread(threadId: string, recipientId: string) {
+    return api.delete(`/emails/threads/${threadId}/shares/${recipientId}`);
+  },
+  getThreadShares(threadId: string) {
+    return api.get<{ data: Array<{ id: string; createdAt: string; sharedWith: { id: string; name: string | null; email: string; avatarUrl: string | null } }> }>(`/emails/threads/${threadId}/shares`);
+  },
 };

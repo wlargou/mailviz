@@ -46,4 +46,36 @@ export const dealController = {
       next(err);
     }
   },
+
+  async shareDeal(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { userIds } = req.body;
+      if (!Array.isArray(userIds) || userIds.length === 0) {
+        res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'userIds array required' } });
+        return;
+      }
+      const result = await dealService.shareDeal(req.user!.id, req.params.id, userIds);
+      res.json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async unshareDeal(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await dealService.unshareDeal(req.user!.id, req.params.id, req.params.recipientId);
+      res.json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async getDealShares(req: Request, res: Response, next: NextFunction) {
+    try {
+      const shares = await dealService.getDealShares(req.user!.id, req.params.id);
+      res.json({ data: shares });
+    } catch (err) {
+      next(err);
+    }
+  },
 };

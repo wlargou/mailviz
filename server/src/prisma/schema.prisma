@@ -170,6 +170,10 @@ model User {
   companyCategories CompanyCategory[] @relation("UserCompanyCategories")
   dealPartners      DealPartner[]     @relation("UserDealPartners")
   deals             Deal[]
+  emailSharesSent     EmailThreadShare[] @relation("EmailSharesSent")
+  emailSharesReceived EmailThreadShare[] @relation("EmailSharesReceived")
+  dealSharesSent      DealShare[]        @relation("DealSharesSent")
+  dealSharesReceived  DealShare[]        @relation("DealSharesReceived")
 
   @@map("users")
 }
@@ -340,10 +344,48 @@ model Deal {
   partner  DealPartner @relation(fields: [partnerId], references: [id], onDelete: Restrict)
   customer Customer?   @relation(fields: [customerId], references: [id], onDelete: SetNull)
   user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shares   DealShare[]
 
   @@index([partnerId])
   @@index([customerId])
   @@index([status])
   @@index([userId])
   @@map("deals")
+}
+
+// ─── SHARING MODELS ──────────────────────────────
+
+model EmailThreadShare {
+  id               String   @id @default(uuid())
+  threadId         String   @map("thread_id")
+  sharedByUserId   String   @map("shared_by_user_id")
+  sharedWithUserId String   @map("shared_with_user_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  sharedBy   User @relation("EmailSharesSent", fields: [sharedByUserId], references: [id], onDelete: Cascade)
+  sharedWith User @relation("EmailSharesReceived", fields: [sharedWithUserId], references: [id], onDelete: Cascade)
+
+  @@unique([threadId, sharedWithUserId])
+  @@index([sharedWithUserId])
+  @@index([sharedByUserId])
+  @@index([threadId])
+  @@map("email_thread_shares")
+}
+
+model DealShare {
+  id               String   @id @default(uuid())
+  dealId           String   @map("deal_id")
+  sharedByUserId   String   @map("shared_by_user_id")
+  sharedWithUserId String   @map("shared_with_user_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  deal       Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  sharedBy   User @relation("DealSharesSent", fields: [sharedByUserId], references: [id], onDelete: Cascade)
+  sharedWith User @relation("DealSharesReceived", fields: [sharedWithUserId], references: [id], onDelete: Cascade)
+
+  @@unique([dealId, sharedWithUserId])
+  @@index([sharedWithUserId])
+  @@index([sharedByUserId])
+  @@index([dealId])
+  @@map("deal_shares")
 }

@@ -28,4 +28,8 @@ export const authApi = {
 
   disconnectGoogle: () =>
     api.post<{ data: { success: boolean } }>('/auth/google/disconnect'),
+
+  // Users list (for sharing)
+  getUsers: () =>
+    api.get<{ data: User[] }>('/auth/users'),
 };
