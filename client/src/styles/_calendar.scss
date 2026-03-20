@@ -8,6 +8,22 @@
   .page-header {
     margin-bottom: 0.75rem;
   }
+
+  // Make Carbon Grid participate in the flex height chain
+  // so day/week views can scroll internally
+  > .cds--css-grid {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+
+    > [class*='col-span'] {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+  }
 }
 
 .calendar-page__view {
