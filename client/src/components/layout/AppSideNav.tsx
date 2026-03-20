@@ -3,36 +3,45 @@ import { SideNav, SideNavItems, SideNavLink, Tag } from '@carbon/react';
 import { Dashboard, TaskComplete, UserMultiple, Events, Calendar, Email, Settings, Partnership } from '@carbon/icons-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useUIStore } from '../../store/uiStore';
-import { emailsApi } from '../../api/emails';
+import { dashboardApi, type NavCounts } from '../../api/dashboard';
 import { useEmailWebSocket } from '../../hooks/useEmailWebSocket';
 import { MailvizLogo } from '../shared/MailvizLogo';
+
+function formatBadge(count: number): string {
+  if (count >= 1000) return `${Math.floor(count / 1000)}k`;
+  return String(count);
+}
 
 export function AppSideNav() {
   const navigate = useNavigate();
   const location = useLocation();
   const sideNavOpen = useUIStore((s) => s.sideNavOpen);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const [counts, setCounts] = useState<NavCounts>({
+    unreadEmails: 0, overdueTasks: 0, expiringDeals: 0, eventsToday: 0,
+  });
 
-  const refreshUnread = useCallback(() => {
-    emailsApi.getUnreadCount().then(({ data: res }) => {
-      setUnreadCount(res.data.count);
+  const refreshCounts = useCallback(() => {
+    dashboardApi.getNavCounts().then(({ data: res }) => {
+      setCounts(res.data);
     }).catch(() => {});
   }, []);
 
-  // Real-time: refresh unread count on any email event
+  // Real-time: refresh on email/calendar/task/deal events
   const wsHandlers = useMemo(() => ({
-    'emails:synced': () => refreshUnread(),
-    'email:updated': () => refreshUnread(),
-    'email:deleted': () => refreshUnread(),
-  }), [refreshUnread]);
+    'emails:synced': () => refreshCounts(),
+    'email:updated': () => refreshCounts(),
+    'email:deleted': () => refreshCounts(),
+    'calendar:synced': () => refreshCounts(),
+    'task:shared': () => refreshCounts(),
+    'deal:shared': () => refreshCounts(),
+  }), [refreshCounts]);
   useEmailWebSocket(wsHandlers);
 
   useEffect(() => {
-    refreshUnread();
-    // Fallback polling every 60s in case WebSocket disconnects
-    const interval = setInterval(refreshUnread, 60_000);
+    refreshCounts();
+    const interval = setInterval(refreshCounts, 60_000);
     return () => clearInterval(interval);
-  }, [refreshUnread]);
+  }, [refreshCounts]);
 
   return (
     <SideNav
@@ -54,6 +63,11 @@ export function AppSideNav() {
           onClick={() => navigate('/tasks')}
         >
           Tasks
+          {counts.overdueTasks > 0 && (
+            <Tag size="sm" type="red" className="nav-badge">
+              {formatBadge(counts.overdueTasks)}
+            </Tag>
+          )}
         </SideNavLink>
         <SideNavLink
           renderIcon={UserMultiple}
@@ -75,6 +89,11 @@ export function AppSideNav() {
           onClick={() => navigate('/deals')}
         >
           Deals
+          {counts.expiringDeals > 0 && (
+            <Tag size="sm" type="warm-gray" className="nav-badge">
+              {formatBadge(counts.expiringDeals)}
+            </Tag>
+          )}
         </SideNavLink>
         <SideNavLink
           renderIcon={Calendar}
@@ -82,6 +101,11 @@ export function AppSideNav() {
           onClick={() => navigate('/calendar')}
         >
           Calendar
+          {counts.eventsToday > 0 && (
+            <Tag size="sm" type="teal" className="nav-badge">
+              {formatBadge(counts.eventsToday)}
+            </Tag>
+          )}
         </SideNavLink>
         <SideNavLink
           renderIcon={Email}
@@ -89,9 +113,9 @@ export function AppSideNav() {
           onClick={() => navigate('/mail')}
         >
           Mail
-          {unreadCount > 0 && (
-            <Tag size="sm" type="blue" className="mail-unread-badge">
-              {unreadCount > 99 ? '99+' : unreadCount}
+          {counts.unreadEmails > 0 && (
+            <Tag size="sm" type="blue" className="nav-badge">
+              {formatBadge(counts.unreadEmails)}
             </Tag>
           )}
         </SideNavLink>
