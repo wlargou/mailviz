@@ -1,6 +1,6 @@
 import { SkeletonText, Button } from '@carbon/react';
 import { useNavigate } from 'react-router-dom';
-import { Calendar, ArrowRight } from '@carbon/icons-react';
+import { Calendar, ArrowRight, Launch } from '@carbon/icons-react';
 import { format, isToday } from 'date-fns';
 import type { DashboardStats } from '../../types/dashboard';
 
@@ -66,6 +66,20 @@ export function UpcomingEvents({ stats, loading, onEventClick }: UpcomingEventsP
                 <span className="upcoming-event__location">{event.location}</span>
               )}
             </div>
+            {event.conferenceLink && (
+              <Button
+                kind="primary"
+                size="sm"
+                renderIcon={Launch}
+                className="upcoming-event__join-btn"
+                onClick={(e: React.MouseEvent) => {
+                  e.stopPropagation();
+                  window.open(event.conferenceLink!, '_blank');
+                }}
+              >
+                Join
+              </Button>
+            )}
           </div>
         );
       })}

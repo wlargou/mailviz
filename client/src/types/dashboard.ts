@@ -34,6 +34,7 @@ export interface DashboardStats {
       endTime: string;
       isAllDay: boolean;
       location: string | null;
+      conferenceLink: string | null;
     }>;
   };
   customers: {
@@ -60,6 +61,7 @@ export interface DashboardStats {
       endTime: string;
       isAllDay: boolean;
       location: string | null;
+      conferenceLink: string | null;
     }>;
     tasksDueToday: Array<{
       id: string;

@@ -1,5 +1,5 @@
-import { SkeletonText, Tag } from '@carbon/react';
-import { Calendar, TaskComplete, Email } from '@carbon/icons-react';
+import { SkeletonText, Tag, Button } from '@carbon/react';
+import { Calendar, TaskComplete, Email, Launch } from '@carbon/icons-react';
 import { format } from 'date-fns';
 import { PriorityBadge } from '../shared/PriorityBadge';
 import type { DashboardStats } from '../../types/dashboard';
@@ -21,6 +21,7 @@ interface TimelineItem {
   priority?: string;
   location?: string | null;
   isAllDay?: boolean;
+  conferenceLink?: string | null;
 }
 
 export function MyDaySummary({ stats, loading, onEventClick, onTaskClick }: MyDaySummaryProps) {
@@ -51,6 +52,7 @@ export function MyDaySummary({ stats, loading, onEventClick, onTaskClick }: MyDa
       sortTime: event.isAllDay ? 0 : start.getTime(),
       location: event.location,
       isAllDay: event.isAllDay,
+      conferenceLink: event.conferenceLink,
     });
   }
 
@@ -117,6 +119,20 @@ export function MyDaySummary({ stats, loading, onEventClick, onTaskClick }: MyDa
                   <span className="my-day__location">{item.location}</span>
                 )}
               </div>
+              {item.type === 'event' && item.conferenceLink && (
+                <Button
+                  kind="ghost"
+                  size="sm"
+                  renderIcon={Launch}
+                  className="my-day__join-btn"
+                  onClick={(e: React.MouseEvent) => {
+                    e.stopPropagation();
+                    window.open(item.conferenceLink!, '_blank');
+                  }}
+                >
+                  Join
+                </Button>
+              )}
             </div>
           ))}
         </div>

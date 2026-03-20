@@ -126,6 +126,7 @@ export const dashboardService = {
           endTime: true,
           isAllDay: true,
           location: true,
+          conferenceLink: true,
         },
       }),
       // Today's events (detailed for My Day)
@@ -139,6 +140,7 @@ export const dashboardService = {
           endTime: true,
           isAllDay: true,
           location: true,
+          conferenceLink: true,
         },
       }),
       // Meeting load this week (non-all-day)
