@@ -43,94 +43,51 @@
   }
 }
 
-// Dashboard styles - metric tiles inspired by DCViz
-.metric-tiles {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 1rem;
-  margin-bottom: 1.5rem;
+// Dashboard metric tiles — uses Carbon Grid
+.dashboard-metrics {
+  margin-bottom: 1rem;
 }
 
 .metric-tile {
-  background: var(--cds-layer-01);
-  border: 1px solid var(--cds-border-subtle);
-  border-radius: 2px;
   border-top: 3px solid var(--cds-border-subtle-01);
-  padding: 1rem;
-  min-height: 120px;
+  min-height: 7.5rem; // 120px in rem
   cursor: pointer;
   transition: background-color 0.15s ease;
   display: flex;
   flex-direction: column;
 
   &:hover {
-    background: var(--cds-layer-02);
-  }
-
-  &--tasks {
-    border-top-color: var(--accent-tasks);
-  }
-
-  &--completed {
-    border-top-color: var(--accent-completed);
-  }
-
-  &--overdue {
-    border-top-color: var(--accent-overdue);
-  }
-
-  &--priority {
-    border-top-color: var(--accent-priority);
-  }
-
-  &--customers {
-    border-top-color: var(--accent-customers);
-  }
-
-  &--email {
-    border-top-color: var(--cds-link-primary);
-  }
-
-  &--calendar {
-    border-top-color: var(--accent-calendar);
+    background: var(--cds-layer-hover);
   }
 
   .metric-tile__header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 0.75rem;
+    margin-bottom: 0.75rem; // $spacing-03
   }
 
   .metric-tile__label {
-    font-size: 0.75rem;
+    font-size: 0.75rem; // $label-01
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.32px; // Carbon letter-spacing
     color: var(--cds-text-secondary);
   }
 
-  .metric-tile__icon {
-    display: flex;
-    align-items: center;
-  }
-
   .metric-tile__value {
-    font-size: 2rem;
+    font-size: 2.25rem; // $display-01
     font-weight: 300;
     font-family: 'IBM Plex Mono', monospace;
     color: var(--cds-text-primary);
     margin-top: auto;
-  }
-
-  .metric-tile__value--danger {
-    color: var(--cds-support-error);
+    line-height: 1.2;
   }
 
   .metric-tile__helper {
-    font-size: 0.75rem;
-    color: var(--cds-text-secondary);
-    margin-top: 0.25rem;
+    font-size: 0.75rem; // $helper-text-01
+    color: var(--cds-text-helper);
+    margin-top: 0.25rem; // $spacing-02
   }
 }
 
