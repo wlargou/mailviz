@@ -70,7 +70,7 @@ export function CustomerCreateModal({ open, onClose, onCreated }: CustomerCreate
       <TextInput
         id="customer-name"
         labelText="Name"
-        placeholder="Customer name"
+        placeholder="Company name"
         value={name}
         onChange={(e) => setName(e.target.value)}
         invalid={open && name.length > 0 && !name.trim()}

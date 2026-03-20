@@ -29,7 +29,7 @@ const headers = [
   { key: 'status', header: 'Status' },
   { key: 'priority', header: 'Priority' },
   { key: 'dueDate', header: 'Due Date' },
-  { key: 'customer', header: 'Customer' },
+  { key: 'customer', header: 'Company' },
   { key: 'labels', header: 'Labels' },
   { key: 'actions', header: '' },
 ];

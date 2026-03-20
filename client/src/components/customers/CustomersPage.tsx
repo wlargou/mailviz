@@ -117,8 +117,6 @@ export function CustomersPage() {
         <Column lg={16} md={8} sm={4}>
           {loading && customers.length === 0 ? (
             <DataTableSkeleton headers={headers} rowCount={5} />
-          ) : customers.length === 0 && !search ? (
-            <EmptyState title="No companies yet" description="Create your first company to get started" />
           ) : (
             <>
               <DataTable rows={customers.map((c) => ({ id: c.id }))} headers={headers}>
@@ -158,6 +156,12 @@ export function CustomersPage() {
                       )}
                     </TableToolbarContent>
                   </TableToolbar>
+                  {customers.length === 0 ? (
+                    <EmptyState
+                      title="No companies"
+                      description={search || selectedCategoryId ? 'No companies match your filters' : 'Create your first company to get started'}
+                    />
+                  ) : (
                   <Table {...getTableProps()} size="lg">
                     <TableHead>
                       <TableRow>
@@ -224,6 +228,7 @@ export function CustomersPage() {
                     ))}
                   </TableBody>
                 </Table>
+                  )}
               </TableContainer>
                 )}
               </DataTable>

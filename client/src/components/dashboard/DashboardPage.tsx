@@ -178,7 +178,7 @@ export function DashboardPage() {
         <Column lg={6} md={4} sm={4}>
           <Tile className="card">
             <div className="card__header">
-              <h4 className="card__title">Top Customers</h4>
+              <h4 className="card__title">Top Companies</h4>
             </div>
             <div className="card__content">
               <TopCustomers stats={stats} loading={loading} />

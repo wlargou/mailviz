@@ -169,8 +169,8 @@ export function TaskDetailModal({ task, open, onClose, onUpdated, labels }: Task
         {customers.length > 0 && (
           <Dropdown
             id="edit-task-customer"
-            titleText="Customer"
-            label="Select customer (optional)"
+            titleText="Company"
+            label="Select company (optional)"
             items={[{ id: '', text: 'None' }, ...customers.map((c) => ({ id: c.id, text: c.name }))]}
             itemToString={(item) => item?.text || ''}
             selectedItem={customerId ? { id: customerId, text: customers.find((c) => c.id === customerId)?.name || '' } : { id: '', text: 'None' }}

@@ -27,7 +27,7 @@ export function NeedsAttention({ customers, loading }: NeedsAttentionProps) {
     return (
       <div className="card-empty">
         <Checkmark size={20} />
-        <p>All customers are engaged</p>
+        <p>All companies are engaged</p>
       </div>
     );
   }
