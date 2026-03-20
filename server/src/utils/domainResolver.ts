@@ -122,7 +122,7 @@ export function parseName(
 }
 
 export function getLogoUrl(domain: string): string {
-  return `https://logo.clearbit.com/${domain}`;
+  return `https://img.logo.dev/${domain}?token=pk_fUKO-TNBQ3SBr89r_dj_6Q`;
 }
 
 function capitalize(s: string): string {

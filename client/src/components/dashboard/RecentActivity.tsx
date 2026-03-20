@@ -1,4 +1,5 @@
-import { Tabs, TabList, Tab, TabPanels, TabPanel, SkeletonText } from '@carbon/react';
+import { Tabs, TabList, Tab, TabPanels, TabPanel, SkeletonText, Button } from '@carbon/react';
+import { ArrowRight } from '@carbon/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { TaskStatusTag } from '../shared/TaskStatusTag';
@@ -80,9 +81,9 @@ export function RecentActivity({ stats, loading, onEmailClick, onTaskClick }: Re
                   </div>
                 </div>
               ))}
-              <button className="recent-activity__view-all" onClick={() => navigate('/mail')}>
+              <Button kind="ghost" size="sm" renderIcon={ArrowRight} className="recent-activity__view-all" onClick={() => navigate('/mail')}>
                 View all emails
-              </button>
+              </Button>
             </div>
           )}
         </TabPanel>
@@ -120,9 +121,9 @@ export function RecentActivity({ stats, loading, onEmailClick, onTaskClick }: Re
                   </div>
                 </div>
               ))}
-              <button className="recent-activity__view-all" onClick={() => navigate('/tasks')}>
+              <Button kind="ghost" size="sm" renderIcon={ArrowRight} className="recent-activity__view-all" onClick={() => navigate('/tasks')}>
                 View all tasks
-              </button>
+              </Button>
             </div>
           )}
         </TabPanel>

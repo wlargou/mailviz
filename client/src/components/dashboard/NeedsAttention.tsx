@@ -48,7 +48,12 @@ export function NeedsAttention({ customers, loading }: NeedsAttentionProps) {
               <img
                 src={customer.logoUrl}
                 alt=""
-                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                onError={(e) => {
+                  const img = e.target as HTMLImageElement;
+                  const fallback = document.createElement('span');
+                  fallback.textContent = customer.name.substring(0, 2).toUpperCase();
+                  img.parentNode?.replaceChild(fallback, img);
+                }}
               />
             ) : (
               <span>{customer.name.substring(0, 2).toUpperCase()}</span>

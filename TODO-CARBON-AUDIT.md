@@ -110,8 +110,8 @@
 
 | Priority | Total | Done | Remaining |
 |----------|-------|------|-----------|
-| P0 Critical | 3 | 0 | 3 |
-| P1 High | 4 | 0 | 4 |
-| P2 Medium | 8 | 0 | 8 |
+| P0 Critical | 3 | 3 | 0 |
+| P1 High | 4 | 4 | 0 |
+| P2 Medium | 8 | 5 | 3 |
 | P3 Low | 8 | 0 | 8 |
-| **Total** | **23** | **0** | **23** |
+| **Total** | **23** | **12** | **11** |

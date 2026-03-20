@@ -3,6 +3,7 @@
 @use '@carbon/react/scss/theme' with (
   $theme: themes.$g100
 );
+@use '@carbon/react/scss/type' as type;
 @use '@carbon/react';
 @use '@carbon/ibm-products/css/index';
 @use '@carbon/colors';
@@ -98,13 +99,12 @@ body {
 
   .page-header__info {
     h1 {
+      @include type.type-style('productive-heading-05');
       margin: 0 0 0.25rem;
-      font-size: 1.75rem;
-      font-weight: 400;
     }
 
     .page-header__subtitle {
-      font-size: 0.875rem;
+      @include type.type-style('helper-text-02');
       color: var(--cds-text-secondary);
       margin: 0;
     }

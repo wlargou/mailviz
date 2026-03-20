@@ -10,7 +10,7 @@ interface TopCustomersProps {
 
 function getLogoUrl(domain: string | null, logoUrl: string | null): string | null {
   if (logoUrl) return logoUrl;
-  if (domain) return `https://logo.clearbit.com/${domain}`;
+  if (domain) return `https://img.logo.dev/${domain}?token=pk_fUKO-TNBQ3SBr89r_dj_6Q`;
   return null;
 }
 

@@ -1,6 +1,6 @@
 import { SkeletonText, Button } from '@carbon/react';
 import { useNavigate } from 'react-router-dom';
-import { Calendar } from '@carbon/icons-react';
+import { Calendar, ArrowRight } from '@carbon/icons-react';
 import { format, isToday } from 'date-fns';
 import type { DashboardStats } from '../../types/dashboard';
 
@@ -69,7 +69,7 @@ export function UpcomingEvents({ stats, loading, onEventClick }: UpcomingEventsP
           </div>
         );
       })}
-      <Button kind="ghost" size="sm" onClick={() => navigate('/calendar')} style={{ marginTop: '0.5rem' }}>
+      <Button kind="ghost" size="sm" renderIcon={ArrowRight} onClick={() => navigate('/calendar')} className="recent-activity__view-all">
         View all events
       </Button>
     </div>

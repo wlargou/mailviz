@@ -827,17 +827,8 @@
 }
 
 .recent-activity__view-all {
-  background: none;
-  border: none;
-  color: var(--cds-link-primary);
-  font-size: 0.8125rem;
-  padding: 0.625rem 1rem;
-  cursor: pointer;
-  text-align: left;
-
-  &:hover {
-    text-decoration: underline;
-  }
+  width: 100%;
+  justify-content: flex-start;
 }
 
 // Top Customers widget
@@ -997,8 +988,7 @@
   }
 
   .card__title {
-    font-size: 1rem;
-    font-weight: 600;
+    @include type.type-style('productive-heading-02');
     color: var(--cds-text-primary);
     margin: 0;
   }
