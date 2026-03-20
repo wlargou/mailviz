@@ -70,6 +70,79 @@
   max-width: 100%;
 }
 
+// Typing animation overlay in center of background
+.login-typing-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-30%, -50%);
+  z-index: 1;
+  pointer-events: none;
+  text-align: center;
+}
+
+.login-typing__line1 {
+  font-size: 3rem;
+  font-weight: 300;
+  color: var(--cds-text-primary);
+  opacity: 0.6;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  border-right: 2px solid var(--cds-text-primary);
+  width: 0;
+  animation:
+    typing-line1 2s steps(16, end) 0.5s forwards,
+    blink-caret 0.75s step-end 0.5s 4;
+}
+
+.login-typing__line2 {
+  font-size: 1.25rem;
+  font-weight: 300;
+  color: var(--cds-text-secondary);
+  opacity: 0;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  overflow: hidden;
+  border-right: 2px solid var(--cds-text-secondary);
+  width: 0;
+  margin-top: 0.75rem;
+  animation:
+    typing-line2 2.5s steps(39, end) 3s forwards,
+    blink-caret2 0.75s step-end 3s 5,
+    fade-caret 0.5s ease 6s forwards;
+}
+
+@keyframes typing-line1 {
+  from { width: 0; opacity: 0.6; }
+  to { width: 16ch; opacity: 0.6; border-right-color: transparent; }
+}
+
+@keyframes typing-line2 {
+  0% { width: 0; opacity: 0.5; }
+  100% { width: 39ch; opacity: 0.5; }
+}
+
+@keyframes blink-caret {
+  from, to { border-color: transparent; }
+  50% { border-color: var(--cds-text-primary); }
+}
+
+@keyframes blink-caret2 {
+  from, to { border-color: transparent; }
+  50% { border-color: var(--cds-text-secondary); }
+}
+
+@keyframes fade-caret {
+  to { border-color: transparent; }
+}
+
+@media (max-width: 900px) {
+  .login-typing-overlay {
+    display: none;
+  }
+}
+
 // Floating animated logo on login page
 .login-logo-float {
   position: absolute;

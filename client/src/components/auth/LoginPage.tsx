@@ -134,6 +134,10 @@ export function LoginPage() {
     <Theme theme="g100">
       <div className="login-page">
         <WaterBackground />
+        <div className="login-typing-overlay">
+          <div className="login-typing__line1">Productivity Hub</div>
+          <div className="login-typing__line2">From inbox to insight. All in one place.</div>
+        </div>
         <div className="login-logo-float">
           <MailvizLogo size={320} variant="animated" />
         </div>
