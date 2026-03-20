@@ -42,6 +42,7 @@ export interface Task {
   customerId: string | null;
   assignedToId: string | null;
   assignedTo: TaskAssignee | null;
+  estimatedMinutes: number | null;
   userId: string;
   createdAt: string;
   updatedAt: string;
@@ -78,6 +79,7 @@ export interface CreateTaskInput {
   labelIds?: string[];
   customerId?: string | null;
   assignedToId?: string | null;
+  estimatedMinutes?: number | null;
 }
 
 export interface UpdateTaskInput extends Partial<CreateTaskInput> {}

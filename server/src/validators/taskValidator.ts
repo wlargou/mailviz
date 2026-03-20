@@ -9,6 +9,7 @@ export const createTaskSchema = z.object({
   labelIds: z.array(z.string().uuid()).optional(),
   customerId: z.string().uuid().nullable().optional(),
   assignedToId: z.string().uuid().nullable().optional(),
+  estimatedMinutes: z.number().int().min(0).nullable().optional(),
 });
 
 export const updateTaskSchema = createTaskSchema.partial();

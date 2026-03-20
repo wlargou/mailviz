@@ -17,6 +17,7 @@ model Task {
   priority       TaskPriority @default(MEDIUM)
   dueDate        DateTime?    @map("due_date")
   position       Int          @default(0)
+  estimatedMinutes Int?       @map("estimated_minutes")
   customerId     String?      @map("customer_id")
   assignedToId   String?      @map("assigned_to_id")
   userId         String       @map("user_id")
