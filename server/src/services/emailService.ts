@@ -84,7 +84,7 @@ export const emailService = {
     do {
       const listRes = await currentGmail.users.messages.list({
         userId: 'me',
-        q: `newer_than:${env.EMAIL_SYNC_MONTHS}m`,
+        ...(env.EMAIL_SYNC_MONTHS > 0 ? { q: `newer_than:${env.EMAIL_SYNC_MONTHS}m` } : {}),
         maxResults: 500,
         pageToken,
       });
