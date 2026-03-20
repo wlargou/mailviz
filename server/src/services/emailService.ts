@@ -235,10 +235,10 @@ export const emailService = {
         messagesSinceRefresh += batch.length;
       }
 
-      // Refresh Gmail client every 500 messages to prevent token expiry during long syncs
+      // Force-refresh Gmail client every 500 messages to get a fresh token
       if (messagesSinceRefresh >= 500) {
         try {
-          currentGmail = await getGmailClient();
+          currentGmail = await getGmailClient(undefined, true);
           messagesSinceRefresh = 0;
         } catch {
           // If refresh fails, continue with existing client

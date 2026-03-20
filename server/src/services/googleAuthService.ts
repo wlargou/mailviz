@@ -176,8 +176,9 @@ export const googleAuthService = {
   /**
    * Get an authenticated Google OAuth2 client.
    * Can be called with userId (from requests) or without (from background jobs).
+   * Set forceRefresh=true to always get a fresh token (for long-running operations).
    */
-  async getAuthenticatedClient(userId?: string) {
+  async getAuthenticatedClient(userId?: string, forceRefresh = false) {
     const where = userId ? { userId } : {};
     const auth = await prisma.googleAuth.findFirst({ where });
     if (!auth) return null;
@@ -207,10 +208,10 @@ export const googleAuthService = {
       }
     });
 
-    // Proactive refresh if within 10 minutes of expiry
+    // Proactive refresh if forced or within 10 minutes of expiry
     const now = Date.now();
     const expiresIn = auth.tokenExpiry.getTime() - now;
-    if (expiresIn < 10 * 60 * 1000) {
+    if (forceRefresh || expiresIn < 10 * 60 * 1000) {
       try {
         const { credentials } = await oauth2Client.refreshAccessToken();
         await prisma.googleAuth.update({
