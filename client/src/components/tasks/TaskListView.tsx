@@ -16,15 +16,18 @@ import {
   DataTableSkeleton,
   Dropdown,
 } from '@carbon/react';
-import { Add, Edit, TrashCan } from '@carbon/icons-react';
+import { Add, Edit, TrashCan, Share } from '@carbon/icons-react';
 import { format } from 'date-fns';
 import { TaskStatusTag } from '../shared/TaskStatusTag';
 import { PriorityBadge } from '../shared/PriorityBadge';
 import { LabelTag } from '../shared/LabelTag';
 import { EmptyState } from '../shared/EmptyState';
 import { TableFilterFlyout } from '../shared/TableFilterFlyout';
+import { ShareDialog } from '../shared/ShareDialog';
 import { useTaskStore } from '../../store/taskStore';
 import { taskStatusesApi } from '../../api/taskStatuses';
+import { tasksApi } from '../../api/tasks';
+import { useUIStore } from '../../store/uiStore';
 import type { Task, Label, TaskStatusConfig } from '../../types/task';
 
 const headers = [
@@ -60,6 +63,9 @@ export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreat
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const [statuses, setStatuses] = useState<{ id: string; text: string }[]>([{ id: '', text: 'All Statuses' }]);
+  const [shareTask, setShareTask] = useState<Task | null>(null);
+  const [taskShares, setTaskShares] = useState<any[]>([]);
+  const addNotification = useUIStore((s) => s.addNotification);
 
   useEffect(() => {
     taskStatusesApi.getAll().then(({ data: res }) => {
@@ -214,6 +220,15 @@ export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreat
                     </TableCell>
                     <TableCell>
                       <div className="table-actions">
+                        <Button kind="ghost" size="sm" hasIconOnly renderIcon={Share} iconDescription="Share"
+                          onClick={async () => {
+                            try {
+                              const { data: res } = await tasksApi.getTaskShares(task.id);
+                              setTaskShares(res.data);
+                            } catch { setTaskShares([]); }
+                            setShareTask(task);
+                          }}
+                        />
                         <Button kind="ghost" size="sm" hasIconOnly renderIcon={Edit} iconDescription="Edit" onClick={() => onEdit(task)} />
                         <Button kind="danger--ghost" size="sm" hasIconOnly renderIcon={TrashCan} iconDescription="Delete" onClick={() => onDelete(task)} />
                       </div>
@@ -234,6 +249,30 @@ export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreat
           onChange={({ page }: { page: number }) => setPage(page)}
         />
       )}
+
+      <ShareDialog
+        open={!!shareTask}
+        onClose={() => setShareTask(null)}
+        title={shareTask?.title || ''}
+        currentShares={taskShares}
+        onShare={async (userIds) => {
+          if (!shareTask) return;
+          await tasksApi.shareTask(shareTask.id, userIds);
+          addNotification({ kind: 'success', title: 'Task shared' });
+        }}
+        onUnshare={async (userId) => {
+          if (!shareTask) return;
+          await tasksApi.unshareTask(shareTask.id, userId);
+          addNotification({ kind: 'success', title: 'Share removed' });
+        }}
+        onRefresh={async () => {
+          if (!shareTask) return;
+          try {
+            const { data: res } = await tasksApi.getTaskShares(shareTask.id);
+            setTaskShares(res.data);
+          } catch { setTaskShares([]); }
+        }}
+      />
     </>
   );
 }
