@@ -381,11 +381,13 @@ export function SettingsPage() {
                         </span>
                       </div>
                       {syncingMail ? (
-                        emailProgress && emailProgress.total > 0 ? (
-                          <div style={{ minWidth: '180px' }}>
+                        emailProgress?.phase === 'counting' ? (
+                          <InlineLoading description="Counting emails..." />
+                        ) : emailProgress && emailProgress.total > 0 ? (
+                          <div style={{ minWidth: '200px' }}>
                             <ProgressBar
                               label={`${emailProgress.synced} / ${emailProgress.total} emails`}
-                              helperText="Syncing emails..."
+                              helperText={`${Math.round((emailProgress.synced / emailProgress.total) * 100)}% complete`}
                               value={Math.round((emailProgress.synced / emailProgress.total) * 100)}
                               max={100}
                             />

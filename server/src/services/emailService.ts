@@ -193,65 +193,62 @@ export const emailService = {
     let synced = 0;
     let customersCreated = 0;
     let contactsCreated = 0;
-    let pageToken: string | undefined;
     let currentGmail = gmail;
     let messagesSinceRefresh = 0;
 
-    // First, estimate total message count for progress tracking
-    let totalEstimate = 0;
-    try {
-      const countRes = await currentGmail.users.messages.list({
-        userId: 'me',
-        q: `newer_than:${env.EMAIL_SYNC_MONTHS}m`,
-        maxResults: 1,
-      });
-      totalEstimate = countRes.data.resultSizeEstimate || 0;
-      wsEmit('sync:progress', { type: 'email', synced: 0, total: totalEstimate, phase: 'syncing' });
-    } catch {
-      // If count fails, continue without progress tracking
-    }
+    // Phase 1: Collect ALL message IDs (cheap — only IDs, no content)
+    wsEmit('sync:progress', { type: 'email', synced: 0, total: 0, phase: 'counting' });
+    const allMessageIds: string[] = [];
+    let pageToken: string | undefined;
 
     do {
       const listRes = await currentGmail.users.messages.list({
         userId: 'me',
         q: `newer_than:${env.EMAIL_SYNC_MONTHS}m`,
-        maxResults: 100,
+        maxResults: 500,
         pageToken,
       });
 
       const messages = listRes.data.messages || [];
       pageToken = listRes.data.nextPageToken || undefined;
+      for (const msg of messages) {
+        if (msg.id) allMessageIds.push(msg.id);
+      }
+    } while (pageToken);
 
-      // Process in batches of 10 for rate limiting
-      for (let i = 0; i < messages.length; i += 10) {
-        const batch = messages.slice(i, i + 10);
-        const results = await Promise.all(
-          batch.map((msg) =>
-            currentGmail.users.messages.get({
-              userId: 'me',
-              id: msg.id!,
-              format: 'full',
-            }).catch(() => null)
-          )
-        );
+    const total = allMessageIds.length;
+    wsEmit('sync:progress', { type: 'email', synced: 0, total, phase: 'syncing' });
+    console.log(`[EmailSync] Initial sync: ${total} messages to process`);
 
-        for (const res of results) {
-          if (!res) continue;
-          const msg = res.data;
-          const result = await this.upsertMessage(msg);
-          if (result) {
-            synced++;
-            customersCreated += result.customersCreated;
-            contactsCreated += result.contactsCreated;
-          }
+    // Phase 2: Process messages in batches of 10
+    for (let i = 0; i < allMessageIds.length; i += 10) {
+      const batch = allMessageIds.slice(i, i + 10);
+      const results = await Promise.all(
+        batch.map((id) =>
+          currentGmail.users.messages.get({
+            userId: 'me',
+            id,
+            format: 'full',
+          }).catch(() => null)
+        )
+      );
+
+      for (const res of results) {
+        if (!res) continue;
+        const msg = res.data;
+        const result = await this.upsertMessage(msg);
+        if (result) {
+          synced++;
+          customersCreated += result.customersCreated;
+          contactsCreated += result.contactsCreated;
         }
+      }
 
-        messagesSinceRefresh += batch.length;
+      messagesSinceRefresh += batch.length;
 
-        // Emit progress every 50 messages
-        if (synced % 50 < 10 && totalEstimate > 0) {
-          wsEmit('sync:progress', { type: 'email', synced, total: totalEstimate, phase: 'syncing' });
-        }
+      // Emit progress every 50 messages
+      if (synced % 50 < 10) {
+        wsEmit('sync:progress', { type: 'email', synced, total, phase: 'syncing' });
       }
 
       // Force-refresh Gmail client every 500 messages to get a fresh token
@@ -263,9 +260,9 @@ export const emailService = {
           // If refresh fails, continue with existing client
         }
       }
-    } while (pageToken);
+    }
 
-    wsEmit('sync:progress', { type: 'email', synced, total: totalEstimate || synced, phase: 'complete' });
+    wsEmit('sync:progress', { type: 'email', synced, total, phase: 'complete' });
     return { synced, customersCreated, contactsCreated, labelsChanged: 0 };
   },
 
