@@ -97,9 +97,14 @@ export function SettingsPage() {
 
   useEffect(() => {
     if (searchParams.get('connected') === 'true') {
-      addNotification({ kind: 'success', title: 'Google account connected successfully' });
+      addNotification({ kind: 'success', title: 'Google account connected — starting initial sync...' });
       setSearchParams({}, { replace: true });
       fetchStatus();
+      // Auto-trigger both syncs after connecting
+      setTimeout(() => {
+        handleMailSync();
+        handleSync();
+      }, 500);
     }
   }, [searchParams, setSearchParams, addNotification]);
 
@@ -301,28 +306,40 @@ export function SettingsPage() {
                       <div className="settings-sync-item__info">
                         <span className="settings-sync-item__label">Calendar</span>
                         <span className="settings-sync-item__time">
-                          {status.lastSyncAt
-                            ? `Last synced ${format(new Date(status.lastSyncAt), 'MMM d, h:mm a')}`
-                            : 'Not synced yet'}
+                          {syncing
+                            ? ''
+                            : status.lastSyncAt
+                              ? `Last synced ${format(new Date(status.lastSyncAt), 'MMM d, h:mm a')}`
+                              : 'Not synced yet'}
                         </span>
                       </div>
-                      <Button kind="tertiary" size="sm" renderIcon={Renew} onClick={handleSync} disabled={syncing}>
-                        {syncing ? 'Syncing...' : 'Sync'}
-                      </Button>
+                      {syncing ? (
+                        <InlineLoading description="Syncing calendar..." />
+                      ) : (
+                        <Button kind="tertiary" size="sm" renderIcon={Renew} onClick={handleSync}>
+                          Sync
+                        </Button>
+                      )}
                     </div>
                     <div className="settings-sync-item">
                       <Email size={16} />
                       <div className="settings-sync-item__info">
                         <span className="settings-sync-item__label">Gmail</span>
                         <span className="settings-sync-item__time">
-                          {status.lastMailSyncAt
-                            ? `Last synced ${format(new Date(status.lastMailSyncAt), 'MMM d, h:mm a')}`
-                            : 'Auto-syncs every 60s'}
+                          {syncingMail
+                            ? ''
+                            : status.lastMailSyncAt
+                              ? `Last synced ${format(new Date(status.lastMailSyncAt), 'MMM d, h:mm a')}`
+                              : 'Auto-syncs every 60s'}
                         </span>
                       </div>
-                      <Button kind="tertiary" size="sm" renderIcon={Renew} onClick={handleMailSync} disabled={syncingMail}>
-                        {syncingMail ? 'Syncing...' : 'Sync'}
-                      </Button>
+                      {syncingMail ? (
+                        <InlineLoading description="Syncing emails..." />
+                      ) : (
+                        <Button kind="tertiary" size="sm" renderIcon={Renew} onClick={handleMailSync}>
+                          Sync
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </Layer>
