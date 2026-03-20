@@ -92,8 +92,9 @@
   overflow: hidden;
   border-right: 3px solid var(--cds-text-primary);
   width: 0;
+  max-width: fit-content;
   animation:
-    typing-line1 2s steps(16, end) 0.5s forwards,
+    typing-reveal 2s steps(30, end) 0.5s forwards,
     blink-caret 0.75s step-end 0.5s 4;
 }
 
@@ -107,21 +108,22 @@
   overflow: hidden;
   border-right: 2px solid var(--cds-text-secondary);
   width: 0;
+  max-width: fit-content;
   margin-top: 1rem;
   animation:
-    typing-line2 2.5s steps(39, end) 3s forwards,
+    typing-reveal2 2.5s steps(50, end) 3s forwards,
     blink-caret2 0.75s step-end 3s 5,
     fade-caret 0.5s ease 6s forwards;
 }
 
-@keyframes typing-line1 {
+@keyframes typing-reveal {
   from { width: 0; opacity: 0.85; }
-  to { width: 16ch; opacity: 0.85; border-right-color: transparent; }
+  to { width: 100%; opacity: 0.85; border-right-color: transparent; }
 }
 
-@keyframes typing-line2 {
+@keyframes typing-reveal2 {
   0% { width: 0; opacity: 0.7; }
-  100% { width: 39ch; opacity: 0.7; }
+  100% { width: 100%; opacity: 0.7; }
 }
 
 @keyframes blink-caret {
