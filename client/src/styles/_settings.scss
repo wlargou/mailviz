@@ -52,6 +52,18 @@
       padding-right: 1.5rem;
     }
   }
+
+  // StructuredList: add horizontal padding to first/last cells so rows align with tile content
+  .cds--structured-list {
+    .cds--structured-list-th:first-child,
+    .cds--structured-list-td:first-child {
+      padding-left: 1.5rem;
+    }
+    .cds--structured-list-th:last-child,
+    .cds--structured-list-td:last-child {
+      padding-right: 1.5rem;
+    }
+  }
 }
 
 // ─── Connection status ───
