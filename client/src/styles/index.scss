@@ -60,13 +60,13 @@ body {
   overflow: hidden;
 }
 
-// Sidebar floating animated logo (fixed to viewport bottom-left)
+// Sidebar floating animated logo (portalled to body, fixed position)
 .sidebar-logo-float {
   position: fixed;
-  bottom: 0.5rem;
-  left: 58px;
-  z-index: 5999;
-  opacity: 0.2;
+  bottom: 1rem;
+  left: 55px;
+  z-index: 6001;
+  opacity: 0.25;
   pointer-events: none;
   animation: sidebar-logo-float 10s ease-in-out infinite;
 }

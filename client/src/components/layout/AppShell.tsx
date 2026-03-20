@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Outlet } from 'react-router-dom';
 import { Theme } from '@carbon/react';
 import { AppHeader } from './AppHeader';
@@ -26,10 +27,13 @@ export function AppShell() {
           </main>
         </div>
         <NotificationContainer />
+      </div>
+      {createPortal(
         <div className="sidebar-logo-float">
           <MailvizLogo size={140} variant="animated" />
-        </div>
-      </div>
+        </div>,
+        document.body
+      )}
     </Theme>
   );
 }
