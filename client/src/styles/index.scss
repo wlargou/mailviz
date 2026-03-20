@@ -60,6 +60,12 @@ body {
   overflow: hidden;
 }
 
+// Remove focus outline on SideNavLink after mouse click (keep for keyboard nav)
+.cds--side-nav__link:focus:not(:focus-visible) {
+  outline: none;
+  box-shadow: none;
+}
+
 // Sidebar animated logo (rendered inside Carbon SideNav)
 .sidebar-logo-container {
   position: absolute;
