@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   DataTable,
   Table,
@@ -55,6 +55,7 @@ export function CustomersPage() {
   const [deleteCustomer, setDeleteCustomer] = useState<Customer | null>(null);
   const navigate = useNavigate();
   const addNotification = useUIStore((s) => s.addNotification);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   // Debounce search input
   useEffect(() => {
@@ -82,8 +83,21 @@ export function CustomersPage() {
       addNotification({ kind: 'error', title: 'Failed to load companies' });
     } finally {
       setLoading(false);
+      // Refocus search input after results update to prevent losing focus
+      if (search) {
+        requestAnimationFrame(() => {
+          const input = searchRef.current?.querySelector?.('input') ?? searchRef.current;
+          if (input && typeof input.focus === 'function') {
+            input.focus();
+            // Move cursor to end
+            if ('setSelectionRange' in input && typeof input.value === 'string') {
+              (input as HTMLInputElement).setSelectionRange(input.value.length, input.value.length);
+            }
+          }
+        });
+      }
     }
-  }, [page, debouncedSearch, selectedCategoryId, addNotification]);
+  }, [page, debouncedSearch, selectedCategoryId, addNotification, search]);
 
   useEffect(() => {
     fetchCustomers();
@@ -115,7 +129,7 @@ export function CustomersPage() {
 
       <Grid fullWidth>
         <Column lg={16} md={8} sm={4}>
-          {loading && customers.length === 0 ? (
+          {loading && customers.length === 0 && !search ? (
             <DataTableSkeleton headers={headers} rowCount={5} />
           ) : (
             <>
@@ -125,10 +139,12 @@ export function CustomersPage() {
                   <TableToolbar>
                     <TableToolbarContent>
                       <TableToolbarSearch
+                        ref={searchRef}
                         placeholder="Search companies..."
                         defaultValue={search}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                          setSearch(e.target.value || '');
+                        onChange={(e: any) => {
+                          const val = typeof e === 'string' ? e : (e?.target?.value ?? '');
+                          setSearch(val);
                           setPage(1);
                         }}
                         persistent
