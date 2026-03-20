@@ -22,7 +22,7 @@ export function MailvizLogo({ size = 24, variant = 'icon' }: MailvizLogoProps) {
       >
         <defs>
           <radialGradient id="core-glow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#4589ff" stopOpacity="0.4" />
+            <stop offset="0%" stopColor="#4589ff" stopOpacity="0.6" />
             <stop offset="100%" stopColor="#4589ff" stopOpacity="0" />
           </radialGradient>
         </defs>
@@ -33,7 +33,7 @@ export function MailvizLogo({ size = 24, variant = 'icon' }: MailvizLogoProps) {
         {/* Orbit 1 */}
         <ellipse
           cx="100" cy="100" rx="80" ry="28"
-          stroke="#4589ff" strokeWidth="1.2" opacity="0.4"
+          stroke="#4589ff" strokeWidth="2" opacity="0.7"
           transform="rotate(-25, 100, 100)"
           className="mailviz-orbit mailviz-orbit--1"
         />
@@ -42,7 +42,7 @@ export function MailvizLogo({ size = 24, variant = 'icon' }: MailvizLogoProps) {
         {/* Orbit 2 */}
         <ellipse
           cx="100" cy="100" rx="70" ry="24"
-          stroke="#08bdba" strokeWidth="1.2" opacity="0.4"
+          stroke="#08bdba" strokeWidth="2" opacity="0.7"
           transform="rotate(35, 100, 100)"
           className="mailviz-orbit mailviz-orbit--2"
         />
@@ -51,7 +51,7 @@ export function MailvizLogo({ size = 24, variant = 'icon' }: MailvizLogoProps) {
         {/* Orbit 3 */}
         <ellipse
           cx="100" cy="100" rx="60" ry="20"
-          stroke="#8a3ffc" strokeWidth="1.2" opacity="0.4"
+          stroke="#8a3ffc" strokeWidth="2" opacity="0.7"
           transform="rotate(-70, 100, 100)"
           className="mailviz-orbit mailviz-orbit--3"
         />

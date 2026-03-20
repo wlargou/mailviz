@@ -63,10 +63,10 @@ body {
 // Sidebar floating animated logo (portalled to body, fixed position)
 .sidebar-logo-float {
   position: fixed;
-  bottom: 1rem;
+  bottom: 2rem;
   left: 55px;
   z-index: 6001;
-  opacity: 0.25;
+  opacity: 0.5;
   pointer-events: none;
   animation: sidebar-logo-float 10s ease-in-out infinite;
 }
