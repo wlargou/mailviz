@@ -27,7 +27,8 @@ import {
   TextInput,
   Modal,
 } from '@carbon/react';
-import { ArrowLeft, Edit, Calendar, Email, Enterprise, Attachment } from '@carbon/icons-react';
+import { Edit, Calendar, Email, Enterprise, Attachment } from '@carbon/icons-react';
+import { PageHeader } from '../shared/PageHeader';
 import { SidePanel } from '@carbon/ibm-products';
 import { format } from 'date-fns';
 import { EmptyState } from '../shared/EmptyState';
@@ -150,15 +151,10 @@ export function ContactDetailPage() {
 
   return (
     <div>
-      <Button
-        kind="ghost"
-        size="sm"
-        renderIcon={ArrowLeft}
-        onClick={() => navigate('/contacts')}
-        style={{ marginBottom: '1rem' }}
-      >
-        Back to Contacts
-      </Button>
+      <PageHeader
+        title={contact ? `${contact.firstName} ${contact.lastName}` : 'Contact'}
+        breadcrumbs={[{ label: 'Contacts', href: '/contacts' }]}
+      />
 
       <Grid fullWidth>
         <Column lg={16} md={8} sm={4} className="row-spacing">

@@ -30,7 +30,8 @@ import {
   TextArea,
   Modal,
 } from '@carbon/react';
-import { Add, ArrowLeft, Edit, UserMultiple, TaskComplete, Calendar, Email, Attachment } from '@carbon/icons-react';
+import { Add, Edit, UserMultiple, TaskComplete, Calendar, Email, Attachment } from '@carbon/icons-react';
+import { PageHeader } from '../shared/PageHeader';
 import { SidePanel } from '@carbon/ibm-products';
 import { format } from 'date-fns';
 import { ContactModal } from './ContactModal';
@@ -202,15 +203,10 @@ export function CustomerDetailPage() {
 
   return (
     <div>
-      <Button
-        kind="ghost"
-        size="sm"
-        renderIcon={ArrowLeft}
-        onClick={() => navigate('/customers')}
-        style={{ marginBottom: '1rem' }}
-      >
-        Back to Customers
-      </Button>
+      <PageHeader
+        title={customer?.name || 'Customer'}
+        breadcrumbs={[{ label: 'Customers', href: '/customers' }]}
+      />
 
       <Grid fullWidth>
         <Column lg={16} md={8} sm={4} className="row-spacing">
