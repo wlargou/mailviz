@@ -420,39 +420,62 @@
   }
 }
 
-// ─── Expiring Deals ─────────────────────
-.expiring-deals {
+// ─── Unified dashboard item list (matches Upcoming Events style) ─────
+.dashboard-item-list {
   display: flex;
   flex-direction: column;
+  gap: 0.5rem;
 }
 
-.expiring-deals__item {
+.dashboard-item-list__view-all {
+  margin-top: 0.25rem;
+}
+
+.dashboard-item {
   display: flex;
-  align-items: center;
   gap: 0.75rem;
-  padding: 0.5rem 0;
-  border-bottom: 1px solid var(--cds-border-subtle);
+  align-items: flex-start;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid var(--cds-border-subtle);
+  border-radius: 2px;
+  background: var(--cds-layer-02);
   cursor: pointer;
+  transition: background-color 0.1s;
 
-  &:last-child { border-bottom: none; }
-  &:hover { background: var(--cds-layer-hover); margin: 0 -1rem; padding: 0.5rem 1rem; }
+  &:hover {
+    background: var(--cds-layer-selected-hover);
+  }
+
+  // Variant colors for left border
+  &--email { border-left-color: var(--cds-link-primary); }
+  &--task { border-left-color: var(--cds-support-info); }
+  &--deal { border-left-color: var(--cds-support-warning); }
+  &--urgent { border-left-color: var(--cds-support-error); }
 }
 
-.expiring-deals__icon {
-  flex-shrink: 0;
+.dashboard-item__time {
+  font-size: 0.75rem;
+  font-weight: 600;
   color: var(--cds-text-secondary);
-
-  &--urgent { color: var(--cds-support-error); }
+  min-width: 55px;
+  flex-shrink: 0;
+  padding-top: 1px;
 }
 
-.expiring-deals__info {
+.dashboard-item__badge {
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.dashboard-item__info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
   flex: 1;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
 }
 
-.expiring-deals__title {
+.dashboard-item__title {
   font-size: 0.875rem;
   font-weight: 500;
   color: var(--cds-text-primary);
@@ -461,13 +484,14 @@
   white-space: nowrap;
 }
 
-.expiring-deals__meta {
+.dashboard-item__sub {
   font-size: 0.75rem;
   color: var(--cds-text-secondary);
 }
 
-.expiring-deals__expiry {
+.dashboard-item__tag {
   flex-shrink: 0;
+  margin-left: auto;
 }
 
 // Cards containing charts should stretch to fill grid cell

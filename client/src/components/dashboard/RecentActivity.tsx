@@ -14,26 +14,13 @@ interface RecentActivityProps {
   onTaskClick?: (task: Task) => void;
 }
 
-function getInitials(name: string | null, email: string): string {
-  if (name) {
-    const parts = name.trim().split(/\s+/);
-    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-    return parts[0].substring(0, 2).toUpperCase();
-  }
-  return email.substring(0, 2).toUpperCase();
-}
-
 export function RecentActivity({ stats, loading, onEmailClick, onTaskClick }: RecentActivityProps) {
   const navigate = useNavigate();
 
   if (loading || !stats) {
     return (
       <div>
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="skeleton-row--lg">
-            <SkeletonText paragraph lineCount={2} />
-          </div>
-        ))}
+        <SkeletonText paragraph lineCount={3} />
       </div>
     );
   }
@@ -53,35 +40,26 @@ export function RecentActivity({ stats, loading, onEmailClick, onTaskClick }: Re
           {emails.recentUnread.length === 0 ? (
             <div className="card-empty">No unread emails</div>
           ) : (
-            <div className="recent-activity__list">
+            <div className="dashboard-item-list">
               {emails.recentUnread.map((email, idx) => (
                 <div
                   key={email.threadId || idx}
-                  className="recent-activity__item"
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (onEmailClick && email.threadId) onEmailClick(email.threadId, email.subject || '(No subject)'); else navigate('/mail'); } }}
+                  className="dashboard-item dashboard-item--email"
                   onClick={() => {
-                    if (onEmailClick && email.threadId) {
-                      onEmailClick(email.threadId, email.subject || '(No subject)');
-                    } else {
-                      navigate('/mail');
-                    }
+                    if (onEmailClick && email.threadId) onEmailClick(email.threadId, email.subject || '(No subject)');
+                    else navigate('/mail');
                   }}
                 >
-                  <div className="recent-activity__avatar">
-                    {getInitials(email.fromName, email.from)}
+                  <div className="dashboard-item__time">
+                    {formatDistanceToNow(new Date(email.receivedAt), { addSuffix: false })}
                   </div>
-                  <div className="recent-activity__info">
-                    <div className="recent-activity__title">{email.subject || '(No subject)'}</div>
-                    <div className="recent-activity__sub">{email.fromName || email.from}</div>
-                  </div>
-                  <div className="recent-activity__time">
-                    {formatDistanceToNow(new Date(email.receivedAt), { addSuffix: true })}
+                  <div className="dashboard-item__info">
+                    <span className="dashboard-item__title">{email.subject || '(No subject)'}</span>
+                    <span className="dashboard-item__sub">{email.fromName || email.from}</span>
                   </div>
                 </div>
               ))}
-              <Button kind="ghost" size="sm" renderIcon={ArrowRight} className="recent-activity__view-all" onClick={() => navigate('/mail')}>
+              <Button kind="ghost" size="sm" renderIcon={ArrowRight} className="dashboard-item-list__view-all" onClick={() => navigate('/mail')}>
                 View all emails
               </Button>
             </div>
@@ -91,37 +69,29 @@ export function RecentActivity({ stats, loading, onEmailClick, onTaskClick }: Re
           {tasks.recentTasks.length === 0 ? (
             <div className="card-empty">No tasks yet</div>
           ) : (
-            <div className="recent-activity__list">
+            <div className="dashboard-item-list">
               {tasks.recentTasks.map((task) => (
                 <div
                   key={task.id}
-                  className="recent-activity__item"
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (onTaskClick) onTaskClick(task as Task); else navigate('/tasks'); } }}
+                  className="dashboard-item dashboard-item--task"
                   onClick={() => {
-                    if (onTaskClick) {
-                      onTaskClick(task as Task);
-                    } else {
-                      navigate('/tasks');
-                    }
+                    if (onTaskClick) onTaskClick(task as Task);
+                    else navigate('/tasks');
                   }}
                 >
-                  <div className="recent-activity__task-indicators">
+                  <div className="dashboard-item__badge">
                     <PriorityBadge priority={task.priority} />
                   </div>
-                  <div className="recent-activity__info">
-                    <div className="recent-activity__title">{task.title}</div>
-                    <div className="recent-activity__sub">
-                      {task.customer?.name || 'No company'}
-                    </div>
+                  <div className="dashboard-item__info">
+                    <span className="dashboard-item__title">{task.title}</span>
+                    <span className="dashboard-item__sub">{task.customer?.name || 'No company'}</span>
                   </div>
-                  <div className="recent-activity__status">
+                  <div className="dashboard-item__tag">
                     <TaskStatusTag status={task.status} />
                   </div>
                 </div>
               ))}
-              <Button kind="ghost" size="sm" renderIcon={ArrowRight} className="recent-activity__view-all" onClick={() => navigate('/tasks')}>
+              <Button kind="ghost" size="sm" renderIcon={ArrowRight} className="dashboard-item-list__view-all" onClick={() => navigate('/tasks')}>
                 View all tasks
               </Button>
             </div>
