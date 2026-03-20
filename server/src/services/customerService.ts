@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { CreateCustomerInput, UpdateCustomerInput } from '../validators/customerValidator.js';
 import { parsePagination, paginationMeta } from '../utils/pagination.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { cleanEmptyStrings } from '../utils/shared.js';
 import { domainToCompanyName, getLogoUrl, parseName } from '../utils/domainResolver.js';
 
 interface CustomerQueryParams {
@@ -147,11 +148,3 @@ export const customerService = {
     return links.map((l) => l.calendarEvent);
   },
 };
-
-function cleanEmptyStrings(data: Record<string, any>) {
-  const cleaned: Record<string, any> = {};
-  for (const [key, value] of Object.entries(data)) {
-    cleaned[key] = value === '' ? null : value;
-  }
-  return cleaned;
-}

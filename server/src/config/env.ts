@@ -29,4 +29,5 @@ export const env = {
   JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET || devSecret('mailviz-jwt-refresh-dev'),
   ALLOWED_EMAILS: (process.env.ALLOWED_EMAILS || '').split(',').map(e => e.trim()).filter(Boolean),
   TOKEN_ENCRYPTION_KEY: process.env.TOKEN_ENCRYPTION_KEY || '',
+  LOGO_DEV_TOKEN: process.env.LOGO_DEV_TOKEN || 'pk_fUKO-TNBQ3SBr89r_dj_6Q',
 };

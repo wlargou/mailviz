@@ -2,7 +2,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import type { Server } from 'http';
 import type { IncomingMessage } from 'http';
 import cookie from 'cookie';
-import { verifyAccessToken } from './utils/jwt.js';
+import { verifyAccessToken, verifyRefreshToken } from './utils/jwt.js';
 
 let wss: WebSocketServer | null = null;
 const clients = new Set<WebSocket>();
@@ -11,9 +11,21 @@ function authenticateWs(req: IncomingMessage): boolean {
   try {
     const cookies = cookie.parse(req.headers.cookie || '');
     const accessToken = cookies.access_token;
-    if (!accessToken) return false;
-    verifyAccessToken(accessToken);
-    return true;
+    if (accessToken) {
+      try {
+        verifyAccessToken(accessToken);
+        return true;
+      } catch {
+        // Access token expired — try refresh token
+      }
+    }
+    // Fall back to refresh token (S6: prevents WS auth failures after 15min)
+    const refreshToken = cookies.refresh_token;
+    if (refreshToken) {
+      verifyRefreshToken(refreshToken);
+      return true;
+    }
+    return false;
   } catch {
     return false;
   }
@@ -37,7 +49,8 @@ export function initWebSocket(server: Server) {
       console.log(`[WS] Client disconnected (${clients.size} total)`);
     });
 
-    ws.on('error', () => {
+    ws.on('error', (err) => {
+      console.warn('[WS] Client error:', err.message);
       clients.delete(ws);
     });
 
@@ -63,4 +76,17 @@ export function wsEmit(event: string, data: unknown) {
 /** Get the number of connected clients */
 export function wsClientCount(): number {
   return clients.size;
+}
+
+/** Gracefully close all WebSocket connections */
+export function shutdownWebSocket() {
+  for (const client of clients) {
+    client.close(1001, 'Server shutting down');
+  }
+  clients.clear();
+  if (wss) {
+    wss.close();
+    wss = null;
+  }
+  console.log('[WS] WebSocket server shut down');
 }

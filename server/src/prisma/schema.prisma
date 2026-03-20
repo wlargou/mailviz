@@ -96,6 +96,7 @@ model Contact {
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
   @@index([customerId])
+  @@index([email])
   @@map("contacts")
 }
 
@@ -236,6 +237,7 @@ model Email {
   @@index([threadId])
   @@index([customerId])
   @@index([isRead])
+  @@index([from])
   @@map("emails")
 }
 

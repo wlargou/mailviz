@@ -13,7 +13,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       const payload = verifyAccessToken(accessToken);
       const user = await prisma.user.findUnique({ where: { id: payload.sub } });
       if (user) {
-        (req as any).user = { id: user.id, email: user.email };
+        req.user = { id: user.id, email: user.email };
         return next();
       }
     } catch {
@@ -30,7 +30,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         // Issue new access token
         const newAccessToken = signAccessToken(user.id);
         setAuthCookies(res, newAccessToken, refreshToken);
-        (req as any).user = { id: user.id, email: user.email };
+        req.user = { id: user.id, email: user.email };
         return next();
       }
     } catch {

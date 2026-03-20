@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { CreateContactInput, UpdateContactInput } from '../validators/contactValidator.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { parsePagination, paginationMeta } from '../utils/pagination.js';
+import { cleanEmptyStrings } from '../utils/shared.js';
 
 interface ContactQueryParams {
   search?: string;
@@ -161,11 +162,3 @@ export const contactService = {
     return { success: true };
   },
 };
-
-function cleanEmptyStrings(data: Record<string, any>) {
-  const cleaned: Record<string, any> = {};
-  for (const [key, value] of Object.entries(data)) {
-    cleaned[key] = value === '' ? null : value;
-  }
-  return cleaned;
-}

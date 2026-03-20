@@ -256,7 +256,8 @@ export const emailService = {
         try {
           currentGmail = await getGmailClient(undefined, true);
           messagesSinceRefresh = 0;
-        } catch {
+        } catch (err: any) {
+          console.warn('[EmailSync] Auth/token error:', err?.message || err);
           // If refresh fails, continue with existing client
         }
       }
@@ -435,8 +436,8 @@ export const emailService = {
         if (email === fromEmail) displayName = fromName;
         const { created: contactCreated } = await customerService.findOrCreateContact(email, displayName, customer.id);
         if (contactCreated) contactsCreated++;
-      } catch {
-        // Skip on error
+      } catch (err: any) {
+        console.warn('[EmailSync] Customer/contact creation failed:', err?.message || err);
       }
     }
 
@@ -556,8 +557,7 @@ export const emailService = {
       }
     }
 
-    // Get distinct threads: for each threadId, get the most recent email
-    // First get all matching thread IDs with count
+    // P1: Get distinct threads with counts — eliminates N+1 queries
     const threadIds = await prisma.email.groupBy({
       by: ['threadId'],
       where,
@@ -568,37 +568,49 @@ export const emailService = {
       take: pagination.limit,
     });
 
-    const totalResult = await prisma.email.groupBy({
-      by: ['threadId'],
-      where,
-    });
-    const total = totalResult.length;
+    // P4: Use COUNT(DISTINCT) instead of fetching all thread IDs
+    const totalResult: Array<{ count: bigint }> = await prisma.$queryRaw`
+      SELECT COUNT(DISTINCT thread_id) as count FROM emails
+      WHERE is_trashed = ${where.isTrashed === true}
+      ${query.isRead === 'true' ? Prisma.sql`AND is_read = true` : query.isRead === 'false' ? Prisma.sql`AND is_read = false` : Prisma.empty}
+      ${query.folder === 'inbox' ? Prisma.sql`AND 'INBOX' = ANY(label_ids)` : Prisma.empty}
+      ${query.folder === 'sent' ? Prisma.sql`AND 'SENT' = ANY(label_ids)` : Prisma.empty}
+      ${query.folder === 'starred' ? Prisma.sql`AND is_starred = true` : Prisma.empty}
+      ${query.folder === 'archived' ? Prisma.sql`AND is_archived = true` : Prisma.empty}
+    `;
+    const total = Number(totalResult[0]?.count ?? 0);
 
-    // For each thread, get the latest email + unread count
-    const threads = await Promise.all(
-      threadIds.map(async (t) => {
-        const [latestEmail, unreadCount] = await Promise.all([
-          prisma.email.findFirst({
-            where: { ...where, threadId: t.threadId },
-            orderBy: { receivedAt: 'desc' },
-            include: {
-              customer: { select: { id: true, name: true, domain: true, logoUrl: true } },
-              attachments: true,
-            },
-          }),
-          prisma.email.count({
-            where: { threadId: t.threadId, isRead: false },
-          }),
-        ]);
+    // P1: Batch-fetch latest email per thread + unread counts (2 queries instead of 2*N)
+    const threadIdList = threadIds.map((t) => t.threadId).filter((id): id is string => id !== null);
+    const threadCountMap = new Map(threadIds.map((t) => [t.threadId, t._count.id]));
 
-        return {
-          threadId: t.threadId,
-          messageCount: t._count.id,
-          unreadCount,
-          latestEmail,
-        };
-      })
-    );
+    const [latestEmails, unreadCounts] = await Promise.all([
+      prisma.email.findMany({
+        where: { ...where, threadId: { in: threadIdList } },
+        orderBy: { receivedAt: 'desc' },
+        distinct: ['threadId'],
+        include: {
+          customer: { select: { id: true, name: true, domain: true, logoUrl: true } },
+          attachments: true,
+        },
+      }),
+      prisma.email.groupBy({
+        by: ['threadId'],
+        where: { threadId: { in: threadIdList }, isRead: false },
+        _count: { id: true },
+      }),
+    ]);
+
+    const unreadMap = new Map(unreadCounts.map((u) => [u.threadId, u._count.id]));
+    const emailMap = new Map(latestEmails.map((e) => [e.threadId, e]));
+
+    // Build thread list preserving sort order from groupBy
+    const threads = threadIdList.map((threadId) => ({
+      threadId,
+      messageCount: threadCountMap.get(threadId) ?? 0,
+      unreadCount: unreadMap.get(threadId) ?? 0,
+      latestEmail: emailMap.get(threadId) ?? null,
+    }));
 
     return {
       data: threads.filter((t) => t.latestEmail),
@@ -650,8 +662,8 @@ export const emailService = {
           await prisma.email.update({ where: { id }, data: { body } });
           return { ...email, body };
         }
-      } catch {
-        // Could not fetch body
+      } catch (err: any) {
+        console.warn('[EmailSync] Gmail API call failed:', err?.message || err);
       }
     }
 
@@ -698,7 +710,7 @@ export const emailService = {
           userId: 'me', id: email.gmailMessageId,
           requestBody: { removeLabelIds: ['UNREAD'] },
         });
-      } catch { /* best effort */ }
+      } catch (err: any) { console.warn('[EmailSync] Gmail API call failed:', err?.message || err); }
     }
   },
 
@@ -716,7 +728,7 @@ export const emailService = {
           userId: 'me', id: email.gmailMessageId,
           requestBody: { addLabelIds: ['UNREAD'] },
         });
-      } catch { /* best effort */ }
+      } catch (err: any) { console.warn('[EmailSync] Gmail API call failed:', err?.message || err); }
     }
   },
 
@@ -737,7 +749,7 @@ export const emailService = {
             ? { addLabelIds: ['STARRED'] }
             : { removeLabelIds: ['STARRED'] },
         });
-      } catch { /* best effort */ }
+      } catch (err: any) { console.warn('[EmailSync] Gmail API call failed:', err?.message || err); }
     }
 
     return { isStarred: newStarred };
@@ -754,7 +766,7 @@ export const emailService = {
           userId: 'me', id: email.gmailMessageId,
           requestBody: { removeLabelIds: ['INBOX'] },
         });
-      } catch { /* best effort */ }
+      } catch (err: any) { console.warn('[EmailSync] Gmail API call failed:', err?.message || err); }
     }
 
     await prisma.email.update({
@@ -775,7 +787,7 @@ export const emailService = {
           userId: 'me', id: email.gmailMessageId,
           requestBody: { addLabelIds: ['INBOX'] },
         });
-      } catch { /* best effort */ }
+      } catch (err: any) { console.warn('[EmailSync] Gmail API call failed:', err?.message || err); }
     }
 
     await prisma.email.update({
@@ -793,7 +805,7 @@ export const emailService = {
       try {
         const gmail = await getGmailClient();
         await gmail.users.messages.trash({ userId: 'me', id: email.gmailMessageId });
-      } catch { /* best effort */ }
+      } catch (err: any) { console.warn('[EmailSync] Gmail API call failed:', err?.message || err); }
     }
 
     await prisma.email.update({
@@ -811,7 +823,7 @@ export const emailService = {
       try {
         const gmail = await getGmailClient();
         await gmail.users.messages.untrash({ userId: 'me', id: email.gmailMessageId });
-      } catch { /* best effort */ }
+      } catch (err: any) { console.warn('[EmailSync] Gmail API call failed:', err?.message || err); }
     }
 
     await prisma.email.update({
@@ -837,10 +849,10 @@ export const emailService = {
               userId: 'me', id: email.gmailMessageId,
               requestBody: { removeLabelIds: ['UNREAD'] },
             });
-          } catch { /* best effort */ }
+          } catch (err: any) { console.warn('[EmailSync] Gmail API call failed:', err?.message || err); }
         }
       }
-    } catch { /* Gmail not connected */ }
+    } catch (err: any) { console.warn('[EmailSync] Gmail API call failed:', err?.message || err); }
 
     for (const email of allEmails) wsEmit('email:updated', { id: email.id, isRead: true });
     return { count: threadIds.length };
@@ -861,10 +873,10 @@ export const emailService = {
               userId: 'me', id: email.gmailMessageId,
               requestBody: { addLabelIds: ['UNREAD'] },
             });
-          } catch { /* best effort */ }
+          } catch (err: any) { console.warn('[EmailSync] Gmail API call failed:', err?.message || err); }
         }
       }
-    } catch { /* Gmail not connected */ }
+    } catch (err: any) { console.warn('[EmailSync] Gmail API call failed:', err?.message || err); }
 
     for (const email of allEmails) wsEmit('email:updated', { id: email.id, isRead: false });
     return { count: threadIds.length };
@@ -884,10 +896,10 @@ export const emailService = {
               userId: 'me', id: email.gmailMessageId,
               requestBody: { removeLabelIds: ['INBOX'] },
             });
-          } catch { /* best effort */ }
+          } catch (err: any) { console.warn('[EmailSync] Gmail API call failed:', err?.message || err); }
         }
       }
-    } catch { /* Gmail not connected */ }
+    } catch (err: any) { console.warn('[EmailSync] Gmail API call failed:', err?.message || err); }
 
     for (const email of allEmails) {
       await prisma.email.update({
@@ -911,10 +923,10 @@ export const emailService = {
         if (email.gmailMessageId) {
           try {
             await gmail.users.messages.trash({ userId: 'me', id: email.gmailMessageId });
-          } catch { /* best effort */ }
+          } catch (err: any) { console.warn('[EmailSync] Gmail API call failed:', err?.message || err); }
         }
       }
-    } catch { /* Gmail not connected */ }
+    } catch (err: any) { console.warn('[EmailSync] Gmail API call failed:', err?.message || err); }
 
     for (const email of allEmails) {
       await prisma.email.update({
@@ -987,8 +999,8 @@ export const emailService = {
           format: 'full',
         });
         await this.upsertMessage(msgRes.data);
-      } catch {
-        // Best effort local storage
+      } catch (err: any) {
+        console.warn('[EmailSync] Gmail API call failed:', err?.message || err);
       }
     }
 
@@ -1073,8 +1085,8 @@ export const emailService = {
       try {
         const msgRes = await gmail.users.messages.get({ userId: 'me', id: sendRes.data.id, format: 'full' });
         await this.upsertMessage(msgRes.data);
-      } catch {
-        // Best effort
+      } catch (err: any) {
+        console.warn('[EmailSync] Gmail API call failed:', err?.message || err);
       }
     }
 
@@ -1133,8 +1145,8 @@ export const emailService = {
       try {
         const msgRes = await gmail.users.messages.get({ userId: 'me', id: sendRes.data.id, format: 'full' });
         await this.upsertMessage(msgRes.data);
-      } catch {
-        // Best effort
+      } catch (err: any) {
+        console.warn('[EmailSync] Gmail API call failed:', err?.message || err);
       }
     }
 

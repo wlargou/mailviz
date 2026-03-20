@@ -151,7 +151,7 @@ export const calendarService = {
     }
   },
 
-  async syncFromGoogle() {
+  async syncFromGoogle(retried = false) {
     const oauth2Client = await googleAuthService.getAuthenticatedClient();
     if (!oauth2Client) throw Object.assign(new Error('Google Calendar not connected'), { status: 400 });
 
@@ -241,14 +241,14 @@ export const calendarService = {
       } while (pageToken);
     } catch (err: any) {
       // If syncToken is invalid/expired, fall back to full sync
-      if (err?.code === 410 || err?.status === 410) {
+      if ((err?.code === 410 || err?.status === 410) && !retried) {
         console.warn('[CalendarSync] Sync token expired, resetting for full sync');
         await prisma.googleAuth.update({
           where: { id: auth.id },
           data: { calendarSyncToken: null, lastSyncAt: new Date() },
         });
-        // Recursive call will do a full sync since token is now null
-        return this.syncFromGoogle();
+        // Recursive call will do a full sync since token is now null (retried=true prevents infinite loop)
+        return this.syncFromGoogle(true);
       }
       throw err;
     }

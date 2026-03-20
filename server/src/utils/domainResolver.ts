@@ -1,3 +1,5 @@
+import { env } from '../config/env.js';
+
 const PERSONAL_DOMAINS = new Set([
   'gmail.com', 'googlemail.com',
   'outlook.com', 'outlook.fr', 'hotmail.com', 'hotmail.fr', 'live.com', 'msn.com',
@@ -124,7 +126,7 @@ export function parseName(
 }
 
 export function getLogoUrl(domain: string): string {
-  return `https://img.logo.dev/${domain}?token=pk_fUKO-TNBQ3SBr89r_dj_6Q`;
+  return `https://img.logo.dev/${domain}?token=${env.LOGO_DEV_TOKEN}`;
 }
 
 function capitalize(s: string): string {

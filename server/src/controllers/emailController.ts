@@ -38,8 +38,10 @@ export const emailController = {
         req.params.aid
       );
       const disposition = req.query.inline === 'true' ? 'inline' : 'attachment';
+      // Sanitize filename to prevent header injection (S3)
+      const safeFilename = filename.replace(/["\r\n\\]/g, '_');
       res.setHeader('Content-Type', mimeType);
-      res.setHeader('Content-Disposition', `${disposition}; filename="${filename}"`);
+      res.setHeader('Content-Disposition', `${disposition}; filename="${safeFilename}"`);
       res.send(data);
     } catch (err) {
       next(err);

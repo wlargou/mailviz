@@ -2,6 +2,7 @@ import * as cron from 'node-cron';
 import { calendarService } from '../services/calendarService.js';
 import { env } from '../config/env.js';
 import { wsEmit } from '../websocket.js';
+import { secondsToCron } from '../utils/shared.js';
 
 let isSyncing = false;
 let syncTask: ReturnType<typeof cron.schedule> | null = null;
@@ -38,15 +39,6 @@ async function runSync() {
     isSyncing = false;
     wsEmit('calendar:sync:status', { syncing: false });
   }
-}
-
-/** Convert seconds to a cron expression. Supports 10s–3600s. */
-function secondsToCron(seconds: number): string {
-  if (seconds < 60) {
-    return `*/${seconds} * * * * *`;
-  }
-  const minutes = Math.round(seconds / 60);
-  return `*/${minutes} * * * *`;
 }
 
 export function startCalendarSyncScheduler() {

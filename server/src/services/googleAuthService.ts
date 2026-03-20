@@ -1,4 +1,5 @@
 import { google } from 'googleapis';
+import jwt from 'jsonwebtoken';
 import { env } from '../config/env.js';
 import { encrypt, decrypt } from '../utils/encryption.js';
 import { prisma } from '../lib/prisma.js';
@@ -33,7 +34,7 @@ export const googleAuthService = {
   /**
    * Generate Google OAuth URL.
    * intent='login': used for the login flow (state=login)
-   * intent='connect': used for connecting Gmail/Calendar (state=userId)
+   * intent='connect': used for connecting Gmail/Calendar (state is a signed JWT containing userId)
    */
   async getAuthUrl(intent: 'login' | 'connect' = 'login', userId?: string) {
     const oauth2Client = createOAuth2Client();
@@ -46,12 +47,32 @@ export const googleAuthService = {
       if (!existingAuth) needsConsent = true;
     }
 
+    // For the connect flow, sign the userId into a short-lived JWT to prevent state tampering (S2)
+    let state = 'login';
+    if (intent === 'connect' && userId) {
+      state = jwt.sign({ sub: userId, intent: 'connect' }, env.JWT_SECRET, { expiresIn: '10m' });
+    }
+
     return oauth2Client.generateAuthUrl({
       access_type: 'offline',
       scope: SCOPES,
       prompt: needsConsent ? 'consent' : 'select_account',
-      state: intent === 'connect' && userId ? userId : 'login',
+      state,
     });
+  },
+
+  /**
+   * Verify and extract userId from a signed OAuth state parameter.
+   * Returns null if the state is invalid or expired.
+   */
+  verifyOAuthState(state: string): string | null {
+    try {
+      const payload = jwt.verify(state, env.JWT_SECRET) as { sub: string; intent: string };
+      if (payload.intent !== 'connect' || !payload.sub) return null;
+      return payload.sub;
+    } catch {
+      return null;
+    }
   },
 
   /**

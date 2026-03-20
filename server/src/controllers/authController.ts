@@ -21,7 +21,7 @@ export const authController = {
 
   async getMe(req: Request, res: Response, next: NextFunction) {
     try {
-      const userId = (req as any).user?.id;
+      const userId = req.user!.id;
       const user = await prisma.user.findUnique({
         where: { id: userId },
         select: { id: true, email: true, name: true, avatarUrl: true },
@@ -49,7 +49,7 @@ export const authController = {
 
   async getGoogleUrl(req: Request, res: Response, next: NextFunction) {
     try {
-      const userId = (req as any).user?.id;
+      const userId = req.user!.id;
       const url = await googleAuthService.getAuthUrl('connect', userId);
       res.json({ data: { url } });
     } catch (err) {
@@ -112,8 +112,13 @@ export const authController = {
 
         res.redirect(env.CLIENT_URL);
       } else if (stateStr) {
-        // ── Connect flow — state is userId ──
-        await googleAuthService.upsertGoogleAuth(stateStr, result.tokens);
+        // ── Connect flow — verify signed state JWT to extract userId (S2 fix) ──
+        const userId = googleAuthService.verifyOAuthState(stateStr);
+        if (!userId) {
+          res.redirect(`${env.CLIENT_URL}/settings?error=invalid_state`);
+          return;
+        }
+        await googleAuthService.upsertGoogleAuth(userId, result.tokens);
         res.redirect(`${env.CLIENT_URL}/settings?connected=true`);
       } else {
         res.redirect(`${env.CLIENT_URL}/login?error=invalid_state`);
@@ -125,7 +130,7 @@ export const authController = {
 
   async getGoogleStatus(req: Request, res: Response, next: NextFunction) {
     try {
-      const userId = (req as any).user?.id;
+      const userId = req.user!.id;
       const status = await googleAuthService.getStatus(userId);
       res.json({ data: status });
     } catch (err) {
@@ -135,7 +140,7 @@ export const authController = {
 
   async disconnectGoogle(req: Request, res: Response, next: NextFunction) {
     try {
-      const userId = (req as any).user?.id;
+      const userId = req.user!.id;
       await googleAuthService.disconnect(userId);
       res.json({ data: { success: true } });
     } catch (err) {

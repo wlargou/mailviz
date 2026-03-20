@@ -33,7 +33,7 @@ app.use(cors({
   origin: env.CLIENT_URL,
   credentials: true,
 }));
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
