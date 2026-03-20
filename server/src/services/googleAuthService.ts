@@ -192,20 +192,39 @@ export const googleAuthService = {
       expiry_date: auth.tokenExpiry.getTime(),
     });
 
-    // Proactive refresh if within 5 minutes of expiry
+    // Auto-persist new tokens when Google refreshes them during long operations
+    oauth2Client.on('tokens', async (tokens) => {
+      try {
+        const updateData: Record<string, unknown> = {};
+        if (tokens.access_token) updateData.accessToken = encrypt(tokens.access_token);
+        if (tokens.refresh_token) updateData.refreshToken = encrypt(tokens.refresh_token);
+        if (tokens.expiry_date) updateData.tokenExpiry = new Date(tokens.expiry_date);
+        if (Object.keys(updateData).length > 0) {
+          await prisma.googleAuth.update({ where: { id: auth.id }, data: updateData });
+        }
+      } catch {
+        // Best effort — don't crash on token persistence failure
+      }
+    });
+
+    // Proactive refresh if within 10 minutes of expiry
     const now = Date.now();
     const expiresIn = auth.tokenExpiry.getTime() - now;
-    if (expiresIn < 5 * 60 * 1000) {
-      const { credentials } = await oauth2Client.refreshAccessToken();
-      await prisma.googleAuth.update({
-        where: { id: auth.id },
-        data: {
-          accessToken: encrypt(credentials.access_token!),
-          tokenExpiry: new Date(credentials.expiry_date!),
-          ...(credentials.refresh_token ? { refreshToken: encrypt(credentials.refresh_token) } : {}),
-        },
-      });
-      oauth2Client.setCredentials(credentials);
+    if (expiresIn < 10 * 60 * 1000) {
+      try {
+        const { credentials } = await oauth2Client.refreshAccessToken();
+        await prisma.googleAuth.update({
+          where: { id: auth.id },
+          data: {
+            accessToken: encrypt(credentials.access_token!),
+            tokenExpiry: new Date(credentials.expiry_date!),
+            ...(credentials.refresh_token ? { refreshToken: encrypt(credentials.refresh_token) } : {}),
+          },
+        });
+        oauth2Client.setCredentials(credentials);
+      } catch {
+        // If refresh fails, continue with existing token
+      }
     }
 
     return oauth2Client;
