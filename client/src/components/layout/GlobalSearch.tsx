@@ -45,11 +45,13 @@ const CATEGORY_META: Record<Category, { icon: typeof Email; label: string }> = {
   contacts: { icon: User, label: 'Contact results' },
 };
 
-function flattenResults(results: SearchResults, scope: string): FlatResult[] {
+function flattenResults(results: SearchResults, scopeIds: string[]): FlatResult[] {
   const flat: FlatResult[] = [];
-  const cats = scope === 'all'
-    ? (['emails', 'tasks', 'events', 'customers', 'contacts'] as Category[])
-    : [scope as Category];
+  const allCategories: Category[] = ['emails', 'tasks', 'events', 'customers', 'contacts'];
+  // If 'all' is selected or no scopes selected, show everything
+  const cats = scopeIds.length === 0 || scopeIds.includes('all')
+    ? allCategories
+    : scopeIds.filter((id): id is Category => allCategories.includes(id as Category));
 
   for (const cat of cats) {
     if (!results[cat]) continue;
@@ -128,13 +130,15 @@ export function GlobalSearch() {
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [focusIndex, setFocusIndex] = useState(-1);
-  const [selectedScope, setSelectedScope] = useState<Scope>(SCOPES[0]);
+  const [selectedScopes, setSelectedScopes] = useState<Scope[]>([SCOPES[0]]);
 
   const wrapperRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestIdRef = useRef(0);
 
-  const doSearch = useCallback((q: string, scope: string) => {
+  const getScopeIds = (scopes: Scope[]) => scopes.map((s) => s.id);
+
+  const doSearch = useCallback((q: string, scopeIds: string[]) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (q.trim().length < 2) {
       setResults(null);
@@ -150,7 +154,7 @@ export function GlobalSearch() {
         const { data: res } = await searchApi.search(q.trim());
         if (id !== requestIdRef.current) return;
         setResults(res.data);
-        setFlatResults(flattenResults(res.data, scope));
+        setFlatResults(flattenResults(res.data, scopeIds));
         setOpen(true);
         setFocusIndex(-1);
       } catch {
@@ -161,24 +165,24 @@ export function GlobalSearch() {
     }, 300);
   }, []);
 
-  // Re-filter when scope changes
+  // Re-filter when scopes change
   useEffect(() => {
     if (results && query.trim().length >= 2) {
-      setFlatResults(flattenResults(results, selectedScope.id));
+      setFlatResults(flattenResults(results, getScopeIds(selectedScopes)));
       setFocusIndex(-1);
     }
-  }, [selectedScope, results, query]);
+  }, [selectedScopes, results, query]);
 
   const handleChange = (e: { value: string; selectedScopes?: Scope[] }) => {
     // SearchBar onChange passes { value } for input changes, and { value, selectedScopes } for scope changes
     const val = e.value ?? '';
     setQuery(val);
 
-    if (e.selectedScopes && e.selectedScopes.length > 0) {
-      setSelectedScope(e.selectedScopes[0]);
-      doSearch(val, e.selectedScopes[0].id);
+    if (e.selectedScopes) {
+      setSelectedScopes(e.selectedScopes);
+      doSearch(val, getScopeIds(e.selectedScopes));
     } else {
-      doSearch(val, selectedScope.id);
+      doSearch(val, getScopeIds(selectedScopes));
     }
   };
 
@@ -211,8 +215,13 @@ export function GlobalSearch() {
   }, [query, navigate]);
 
   const handleSubmit = () => {
-    if (query.trim().length >= 2 && selectedScope.id !== 'all') {
-      handleViewAll(selectedScope.id as Category);
+    if (query.trim().length >= 2) {
+      const scopeIds = getScopeIds(selectedScopes);
+      // If exactly one non-all scope is selected, navigate to that page
+      const nonAll = scopeIds.filter((id) => id !== 'all');
+      if (nonAll.length === 1) {
+        handleViewAll(nonAll[0] as Category);
+      }
     }
   };
 
@@ -251,10 +260,12 @@ export function GlobalSearch() {
     return () => document.removeEventListener('mousedown', handleMouseDown);
   }, []);
 
+  const scopeIds = getScopeIds(selectedScopes);
+  const allCategories: Category[] = ['emails', 'tasks', 'events', 'customers', 'contacts'];
   const categories = results
-    ? (selectedScope.id === 'all'
-        ? (['emails', 'tasks', 'events', 'customers', 'contacts'] as const)
-        : [selectedScope.id as Category]
+    ? (scopeIds.includes('all') || scopeIds.length === 0
+        ? allCategories
+        : scopeIds.filter((id): id is Category => allCategories.includes(id as Category))
       ).filter((cat) => results[cat]?.length > 0)
     : [];
 
@@ -272,7 +283,7 @@ export function GlobalSearch() {
           onChange={handleChange}
           onSubmit={handleSubmit}
           scopes={SCOPES}
-          selectedScopes={[selectedScope]}
+          selectedScopes={selectedScopes}
           scopesTypeLabel="Scope"
           scopeToString={(scope: Scope) => scope.text}
           onFocus={() => { if (flatResults.length > 0) setOpen(true); }}
