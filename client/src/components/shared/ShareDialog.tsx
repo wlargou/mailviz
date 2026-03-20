@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Modal, TextInput, Button, Tag, InlineLoading } from '@carbon/react';
-import { TrashCan, UserAvatar, Checkmark } from '@carbon/icons-react';
+import { TextInput, Button, InlineLoading } from '@carbon/react';
+import { SidePanel } from '@carbon/ibm-products';
+import { TrashCan, UserAvatar, Checkmark, Share } from '@carbon/icons-react';
 import { authApi } from '../../api/auth';
 
 interface ShareUser {
@@ -93,15 +94,21 @@ export function ShareDialog({
   };
 
   return (
-    <Modal
+    <SidePanel
       open={open}
       onRequestClose={onClose}
-      modalHeading={`Share: ${title}`}
-      primaryButtonText={sharing ? 'Sharing...' : `Share with ${selectedIds.size} user${selectedIds.size !== 1 ? 's' : ''}`}
-      secondaryButtonText="Cancel"
-      primaryButtonDisabled={selectedIds.size === 0 || sharing}
-      onRequestSubmit={handleShare}
-      size="sm"
+      title={`Share: ${title}`}
+      size="md"
+      className="share-dialog-panel"
+      actions={selectedIds.size > 0 ? [
+        {
+          label: sharing ? 'Sharing...' : `Share with ${selectedIds.size} user${selectedIds.size !== 1 ? 's' : ''}`,
+          onClick: handleShare,
+          kind: 'primary' as const,
+          disabled: sharing,
+          icon: Share,
+        },
+      ] : []}
     >
       <div className="share-dialog">
         <TextInput
@@ -175,6 +182,6 @@ export function ShareDialog({
           </>
         )}
       </div>
-    </Modal>
+    </SidePanel>
   );
 }
