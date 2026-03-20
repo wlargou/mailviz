@@ -19,15 +19,17 @@ import {
   Column,
   Dropdown,
 } from '@carbon/react';
-import { Add, TrashCan, Launch, Edit } from '@carbon/icons-react';
+import { Add, TrashCan, Launch, Edit, Share } from '@carbon/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { DealCreateModal } from './DealCreateModal';
 import { ConfirmDeleteModal } from '../shared/ConfirmDeleteModal';
 import { EmptyState } from '../shared/EmptyState';
 import { TableFilterFlyout } from '../shared/TableFilterFlyout';
+import { ShareDialog } from '../shared/ShareDialog';
 import { dealsApi } from '../../api/deals';
 import { dealPartnersApi } from '../../api/dealPartners';
 import { useUIStore } from '../../store/uiStore';
+import { useAuthStore } from '../../store/authStore';
 import type { Deal, DealPartner, DealStatus } from '../../types/deal';
 import { DEAL_STATUS_LABELS, DEAL_STATUS_TAG_TYPE } from '../../types/deal';
 import type { PaginationMeta } from '../../types/api';
@@ -56,9 +58,12 @@ export function DealsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteDeal, setDeleteDeal] = useState<Deal | null>(null);
   const [editDeal, setEditDeal] = useState<Deal | null>(null);
+  const [shareDeal, setShareDeal] = useState<Deal | null>(null);
+  const [dealShares, setDealShares] = useState<Array<{ id: string; createdAt: string; sharedWith: { id: string; name: string | null; email: string; avatarUrl: string | null } }>>([]);
   const searchRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const addNotification = useUIStore((s) => s.addNotification);
+  const currentUser = useAuthStore((s) => s.user);
 
   // Debounce search input
   useEffect(() => {
@@ -115,6 +120,20 @@ export function DealsPage() {
     } catch {
       addNotification({ kind: 'error', title: 'Failed to delete deal' });
     }
+  };
+
+  const fetchDealShares = useCallback(async (dealId: string) => {
+    try {
+      const { data: res } = await dealsApi.getDealShares(dealId);
+      setDealShares(res.data);
+    } catch {
+      // Ignore
+    }
+  }, []);
+
+  const handleOpenShare = async (deal: Deal) => {
+    setShareDeal(deal);
+    await fetchDealShares(deal.id);
   };
 
   const statusItems = [
@@ -227,7 +246,14 @@ export function DealsPage() {
                     <TableBody>
                       {deals.map((deal) => (
                         <TableRow key={deal.id}>
-                          <TableCell>{deal.title}</TableCell>
+                          <TableCell>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                              {deal.title}
+                              {currentUser && deal.userId !== currentUser.id && (
+                                <Tag size="sm" type="purple">Shared</Tag>
+                              )}
+                            </span>
+                          </TableCell>
                           <TableCell>
                             <span className="deal-partner-cell">
                               {deal.partner.name}
@@ -286,6 +312,14 @@ export function DealsPage() {
                                 kind="ghost"
                                 size="sm"
                                 hasIconOnly
+                                renderIcon={Share}
+                                iconDescription="Share deal"
+                                onClick={() => handleOpenShare(deal)}
+                              />
+                              <Button
+                                kind="ghost"
+                                size="sm"
+                                hasIconOnly
                                 renderIcon={Edit}
                                 iconDescription="Edit deal"
                                 onClick={() => setEditDeal(deal)}
@@ -335,6 +369,22 @@ export function DealsPage() {
         onClose={() => setDeleteDeal(null)}
         onConfirm={handleDelete}
       />
+
+      {shareDeal && (
+        <ShareDialog
+          open={!!shareDeal}
+          onClose={() => { setShareDeal(null); setDealShares([]); }}
+          title={shareDeal.title}
+          currentShares={dealShares}
+          onShare={async (userIds) => {
+            await dealsApi.shareDeal(shareDeal.id, userIds);
+          }}
+          onUnshare={async (userId) => {
+            await dealsApi.unshareDeal(shareDeal.id, userId);
+          }}
+          onRefresh={() => fetchDealShares(shareDeal.id)}
+        />
+      )}
     </div>
   );
 }

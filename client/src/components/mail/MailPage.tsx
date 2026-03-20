@@ -9,13 +9,14 @@ import {
   Grid,
   Column,
 } from '@carbon/react';
-import { Renew, StarFilled, Star, Attachment, Email as EmailIcon, Archive, TrashCan, Undo, Add, CheckmarkOutline, Close, CheckboxCheckedFilled, Task } from '@carbon/icons-react';
+import { Renew, StarFilled, Star, Attachment, Email as EmailIcon, Archive, TrashCan, Undo, Add, CheckmarkOutline, Close, CheckboxCheckedFilled, Task, Share } from '@carbon/icons-react';
 import { SidePanel } from '@carbon/ibm-products';
 import { formatDistanceToNow } from 'date-fns';
 import { useSearchParams } from 'react-router-dom';
 import { emailsApi } from '../../api/emails';
 import { customersApi } from '../../api/customers';
 import { useUIStore } from '../../store/uiStore';
+import { useAuthStore } from '../../store/authStore';
 import { useEmailWebSocket } from '../../hooks/useEmailWebSocket';
 import { EmptyState } from '../shared/EmptyState';
 import { ThreadDetail } from './ThreadDetail';
@@ -67,6 +68,7 @@ export function MailPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
   const addNotification = useUIStore((s) => s.addNotification);
+  const currentUser = useAuthStore((s) => s.user);
 
   // Real-time WebSocket: auto-refresh thread list when sync finds new emails or state changes
   const wsHandlers = useMemo(() => ({
@@ -82,7 +84,14 @@ export function MailPage() {
     'email:sent': () => {
       fetchThreadsRef.current?.(true);
     },
-  }), []);
+    'email:shared': () => {
+      addNotification({ kind: 'info', title: 'An email thread was shared with you' });
+      fetchThreadsRef.current?.(true);
+    },
+    'deal:shared': () => {
+      addNotification({ kind: 'info', title: 'A deal was shared with you' });
+    },
+  }), [addNotification]);
   useEmailWebSocket(wsHandlers);
 
   // Ref to fetchThreads so WS handlers don't need it as a dependency
@@ -577,6 +586,9 @@ export function MailPage() {
                         )}
                         <span>{e.customer.name}</span>
                       </div>
+                    )}
+                    {currentUser && e.userId !== currentUser.id && (
+                      <Tag size="sm" type="purple" renderIcon={Share}>Shared</Tag>
                     )}
                     </div>
                   </div>

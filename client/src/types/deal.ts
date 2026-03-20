@@ -9,6 +9,7 @@ export interface DealPartner {
 export interface Deal {
   id: string;
   title: string;
+  userId: string;
   partnerId: string;
   customerId: string | null;
   products: string | null;

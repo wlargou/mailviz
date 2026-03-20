@@ -5,7 +5,7 @@ import {
   InlineLoading,
   SkeletonText,
 } from '@carbon/react';
-import { Enterprise, StarFilled, Star, Attachment, Download, Archive, TrashCan, Undo, Email as EmailIcon, TaskComplete, Reply, ReplyAll, SendAlt } from '@carbon/icons-react';
+import { Enterprise, StarFilled, Star, Attachment, Download, Archive, TrashCan, Undo, Email as EmailIcon, TaskComplete, Reply, ReplyAll, SendAlt, Share } from '@carbon/icons-react';
 import { UserAvatar } from '@carbon/ibm-products';
 import { format, formatDistanceToNow } from 'date-fns';
 import DOMPurify from 'dompurify';
@@ -16,6 +16,7 @@ import { EmptyState } from '../shared/EmptyState';
 import { ConvertToTaskModal } from './ConvertToTaskModal';
 import { AttachmentPreviewModal } from './AttachmentPreviewModal';
 import { MailComposeModal } from './MailComposeModal';
+import { ShareDialog } from '../shared/ShareDialog';
 import { getFileTypeInfo, formatFileSize as formatSize } from '../../utils/fileTypes';
 import type { EmailMessage, EmailAttachment, ComposeMode } from '../../types/email';
 
@@ -41,6 +42,8 @@ export function ThreadDetail({ threadId, onEmailAction }: ThreadDetailProps) {
   const [convertEmail, setConvertEmail] = useState<EmailMessage | null>(null);
   const [previewAttachment, setPreviewAttachment] = useState<{ attachment: EmailAttachment; emailId: string } | null>(null);
   const [composeState, setComposeState] = useState<{ mode: ComposeMode; email: EmailMessage } | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [threadShares, setThreadShares] = useState<Array<{ id: string; createdAt: string; sharedWith: { id: string; name: string | null; email: string; avatarUrl: string | null } }>>([]);
   const navigate = useNavigate();
   const addNotification = useUIStore((s) => s.addNotification);
 
@@ -174,6 +177,20 @@ export function ThreadDetail({ threadId, onEmailAction }: ThreadDetailProps) {
     }
   };
 
+  const fetchShares = useCallback(async () => {
+    try {
+      const { data: res } = await emailsApi.getThreadShares(threadId);
+      setThreadShares(res.data);
+    } catch {
+      // Ignore
+    }
+  }, [threadId]);
+
+  const handleOpenShare = async () => {
+    await fetchShares();
+    setShareOpen(true);
+  };
+
   if (loading) {
     return (
       <div style={{ padding: '1rem' }}>
@@ -217,6 +234,14 @@ export function ThreadDetail({ threadId, onEmailAction }: ThreadDetailProps) {
             {customer.name}
           </Tag>
         )}
+        <Button
+          kind="ghost"
+          size="sm"
+          renderIcon={Share}
+          onClick={handleOpenShare}
+        >
+          Share
+        </Button>
         <div className="thread-detail__participants">
           {Array.from(participants).slice(0, 5).map((email) => (
             <Tag key={email} type="cool-gray" size="sm">{email}</Tag>
@@ -443,6 +468,20 @@ export function ThreadDetail({ threadId, onEmailAction }: ThreadDetailProps) {
         }}
         mode={composeState?.mode || 'reply'}
         replyToEmail={composeState?.email}
+      />
+
+      <ShareDialog
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        title={messages[0]?.subject || 'Thread'}
+        currentShares={threadShares}
+        onShare={async (userIds) => {
+          await emailsApi.shareThread(threadId, userIds);
+        }}
+        onUnshare={async (userId) => {
+          await emailsApi.unshareThread(threadId, userId);
+        }}
+        onRefresh={fetchShares}
       />
     </div>
   );

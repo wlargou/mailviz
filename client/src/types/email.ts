@@ -11,6 +11,7 @@ export interface EmailMessage {
   id: string;
   gmailMessageId: string | null;
   threadId: string | null;
+  userId: string;
   subject: string;
   from: string;
   fromName: string | null;
