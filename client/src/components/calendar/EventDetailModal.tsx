@@ -234,8 +234,6 @@ export function EventDetailModal({ event, open, onClose, onEdit, onDelete, onRes
         onRequestClose={onClose}
         title={event.title}
         size="md"
-        slideIn
-        selectorPageContent=".app-content"
         className="event-detail-panel"
       >
         <div className="event-detail">
