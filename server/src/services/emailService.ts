@@ -9,134 +9,14 @@ import { wsEmit } from '../websocket.js';
 import { buildMimeMessage } from '../utils/mimeBuilder.js';
 import { env } from '../config/env.js';
 import { format } from 'date-fns';
-
-// Parse "Display Name <email@domain.com>" format
-function parseEmailAddress(raw: string): { email: string; name: string | null } {
-  const match = raw.match(/^(.+?)\s*<([^>]+)>$/);
-  if (match) {
-    let name = match[1].trim()
-      .replace(/^["']+|["']+$/g, '')  // Strip leading/trailing quotes (single and double)
-      .replace(/\[.*?\]/g, '')         // Strip bracketed suffixes like [C]
-      .trim();
-    return { name: name || null, email: match[2].toLowerCase() };
-  }
-  // Fallback: try to extract email from angle brackets anywhere in the string
-  const emailMatch = raw.match(/<([^>]+@[^>]+)>/);
-  if (emailMatch) {
-    return { name: null, email: emailMatch[1].toLowerCase() };
-  }
-  return { name: null, email: raw.trim().toLowerCase() };
-}
-
-// Parse comma-separated email addresses
-function parseEmailList(raw: string | undefined): string[] {
-  if (!raw) return [];
-  return raw.split(',').map((s) => {
-    const { email } = parseEmailAddress(s.trim());
-    return email;
-  }).filter(Boolean);
-}
-
-// Extract attachment metadata from Gmail message payload
-function extractAttachments(payload: any): Array<{ filename: string; mimeType: string; size: number; attachmentId: string }> {
-  const attachments: Array<{ filename: string; mimeType: string; size: number; attachmentId: string }> = [];
-
-  function walk(parts: any[]) {
-    if (!parts) return;
-    for (const part of parts) {
-      if (part.body?.attachmentId && part.filename) {
-        attachments.push({
-          filename: part.filename,
-          mimeType: part.mimeType || 'application/octet-stream',
-          size: part.body.size || 0,
-          attachmentId: part.body.attachmentId,
-        });
-      }
-      if (part.parts) walk(part.parts);
-    }
-  }
-
-  if (payload.parts) walk(payload.parts);
-  return attachments;
-}
-
-// Convert plain text to basic HTML: escape, linkify, preserve line breaks
-function plainTextToHtml(text: string): string {
-  // HTML-escape special characters
-  let html = text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-
-  // Convert URLs to clickable links
-  html = html.replace(
-    /(https?:\/\/[^\s<>"')\]]+)/g,
-    '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
-  );
-
-  // Convert email addresses to mailto links
-  html = html.replace(
-    /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g,
-    '<a href="mailto:$1">$1</a>'
-  );
-
-  // Convert newlines to <br> tags
-  html = html.replace(/\n/g, '<br>');
-
-  return html;
-}
-
-// Extract HTML or plain text body from Gmail message payload
-function extractBody(payload: any): string | null {
-  function findPart(parts: any[], mimeType: string): string | null {
-    if (!parts) return null;
-    for (const part of parts) {
-      if (part.mimeType === mimeType && part.body?.data) {
-        return Buffer.from(part.body.data, 'base64url').toString('utf-8');
-      }
-      if (part.parts) {
-        const found = findPart(part.parts, mimeType);
-        if (found) return found;
-      }
-    }
-    return null;
-  }
-
-  // Prefer HTML, fall back to plain text (converted to HTML)
-  if (payload.parts) {
-    const html = findPart(payload.parts, 'text/html');
-    if (html) return html;
-    const plain = findPart(payload.parts, 'text/plain');
-    if (plain) return plainTextToHtml(plain);
-  }
-
-  // Single-part message
-  if (payload.body?.data) {
-    const raw = Buffer.from(payload.body.data, 'base64url').toString('utf-8');
-    // If single-part and not HTML, treat as plain text
-    if (payload.mimeType === 'text/html') return raw;
-    return plainTextToHtml(raw);
-  }
-
-  return null;
-}
-
-interface EmailQueryParams {
-  search?: string;
-  customerId?: string;
-  contactEmail?: string;
-  isRead?: string;
-  hasAttachment?: string;
-  folder?: string; // 'inbox' | 'sent' | 'starred'
-  from?: string;
-  to?: string;
-  subject?: string;
-  dateAfter?: string;
-  dateBefore?: string;
-  page?: string;
-  limit?: string;
-}
+// A4: Helper functions extracted to shared module
+import {
+  parseEmailAddress,
+  parseEmailList,
+  extractAttachments,
+  extractBody,
+  type EmailQueryParams,
+} from '../utils/emailHelpers.js';
 
 export const emailService = {
   async syncFromGmail() {

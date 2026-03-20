@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma.js';
+import { AppError } from '../middleware/errorHandler.js';
 
 export const companyCategoryService = {
   async findAll() {
@@ -42,15 +43,12 @@ export const companyCategoryService = {
 
   async delete(id: string) {
     const category = await prisma.companyCategory.findUnique({ where: { id } });
-    if (!category) throw Object.assign(new Error('Category not found'), { status: 404 });
+    if (!category) throw new AppError(404, 'NOT_FOUND', 'Category not found');
 
     // Check if any customers use this category
     const customerCount = await prisma.customer.count({ where: { categoryId: id } });
     if (customerCount > 0) {
-      throw Object.assign(
-        new Error(`Cannot delete category "${category.label}" — ${customerCount} company(ies) still use it. Reassign them first.`),
-        { status: 409 }
-      );
+      throw new AppError(409, 'CONFLICT', `Cannot delete category "${category.label}" — ${customerCount} company(ies) still use it. Reassign them first.`);
     }
 
     return prisma.companyCategory.delete({ where: { id } });

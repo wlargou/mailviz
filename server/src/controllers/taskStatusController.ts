@@ -13,13 +13,10 @@ export const taskStatusController = {
 
   async create(req: Request, res: Response, next: NextFunction) {
     try {
+      // Body already validated by Zod middleware (A3)
       const { label, color } = req.body;
-      if (!label || typeof label !== 'string' || !label.trim()) {
-        res.status(400).json({ error: { code: 'VALIDATION', message: 'Label is required' } });
-        return;
-      }
-      const name = label.trim().toUpperCase().replace(/\s+/g, '_');
-      const status = await taskStatusService.create({ name, label: label.trim(), color });
+      const name = label.toUpperCase().replace(/\s+/g, '_');
+      const status = await taskStatusService.create({ name, label, color });
       res.status(201).json({ data: status });
     } catch (err: any) {
       if (err?.code === 'P2002') {
@@ -43,12 +40,8 @@ export const taskStatusController = {
 
   async reorder(req: Request, res: Response, next: NextFunction) {
     try {
-      const { items } = req.body;
-      if (!Array.isArray(items)) {
-        res.status(400).json({ error: { code: 'VALIDATION', message: 'Items array required' } });
-        return;
-      }
-      await taskStatusService.reorder(items);
+      // Body already validated by Zod middleware (A3)
+      await taskStatusService.reorder(req.body.items);
       res.json({ data: { success: true } });
     } catch (err) {
       next(err);

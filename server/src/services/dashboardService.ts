@@ -12,6 +12,12 @@ function subDays(d: Date, days: number): Date {
 }
 
 export const dashboardService = {
+  /**
+   * P2: Reorganized into 3 sequential batches instead of 18+ parallel queries.
+   * Batch 1: Core stats (7 queries — tasks, emails, calendar, customers)
+   * Batch 2: Raw SQL aggregates (email volume, needs attention, frequent contacts)
+   * Batch 3: Post-processing lookups (top customer details)
+   */
   async getStats() {
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -33,41 +39,38 @@ export const dashboardService = {
     const authRecord = await prisma.googleAuth.findFirst({ select: { email: true } });
     const userEmail = authRecord?.email ?? '';
 
+    // ── Batch 1: Core Prisma queries (7 queries, within Prisma pool limits) ──
     const [
-      // Tasks
-      taskTotal,
-      taskCompleted,
-      taskOverdue,
-      taskByPriority,
+      taskAggregates,
       recentTasks,
-      taskStatusRaw,
       tasksDueToday,
-      // Emails
-      unreadCount,
-      unreadTodayCount,
-      totalSynced,
+      emailStats,
       recentUnreadEmails,
-      // Calendar
-      eventsToday,
-      eventsThisWeek,
-      upcomingEvents,
-      todayEventsDetailed,
-      weekMeetings,
-      // Customers
-      totalCustomers,
-      totalContacts,
-      topCustomersRaw,
+      calendarData,
+      customerCounts,
     ] = await Promise.all([
-      // Tasks
-      prisma.task.count(),
-      prisma.task.count({ where: { status: 'DONE' } }),
-      prisma.task.count({
-        where: { status: { not: 'DONE' }, dueDate: { lt: now } },
-      }),
-      prisma.task.groupBy({
-        by: ['priority'],
-        _count: { priority: true },
-      }),
+      // Single raw query replaces 4 separate task queries (total, completed, overdue, byPriority, byStatus)
+      prisma.$queryRaw<Array<{
+        total: bigint;
+        completed: bigint;
+        overdue: bigint;
+        low: bigint;
+        medium: bigint;
+        high: bigint;
+        urgent: bigint;
+      }>>`
+        SELECT
+          COUNT(*) as total,
+          COUNT(*) FILTER (WHERE status = 'DONE') as completed,
+          COUNT(*) FILTER (WHERE status != 'DONE' AND due_date < ${now}) as overdue,
+          COUNT(*) FILTER (WHERE priority = 'LOW') as low,
+          COUNT(*) FILTER (WHERE priority = 'MEDIUM') as medium,
+          COUNT(*) FILTER (WHERE priority = 'HIGH') as high,
+          COUNT(*) FILTER (WHERE priority = 'URGENT') as urgent
+        FROM tasks
+      `,
+
+      // Recent tasks (needs include, can't be raw)
       prisma.task.findMany({
         take: 5,
         orderBy: { createdAt: 'desc' },
@@ -76,11 +79,7 @@ export const dashboardService = {
           customer: { select: { id: true, name: true, company: true } },
         },
       }),
-      // Task status counts for donut chart
-      prisma.task.groupBy({
-        by: ['status'],
-        _count: { status: true },
-      }),
+
       // Tasks due today
       prisma.task.findMany({
         where: {
@@ -90,10 +89,21 @@ export const dashboardService = {
         orderBy: { dueDate: 'asc' },
         select: { id: true, title: true, priority: true, status: true, dueDate: true },
       }),
-      // Emails
-      prisma.email.count({ where: { isRead: false } }),
-      prisma.email.count({ where: { isRead: false, receivedAt: { gte: startOfToday } } }),
-      prisma.email.count(),
+
+      // Single raw query replaces 3 separate email count queries
+      prisma.$queryRaw<Array<{
+        unread_count: bigint;
+        unread_today_count: bigint;
+        total_synced: bigint;
+      }>>`
+        SELECT
+          COUNT(*) FILTER (WHERE is_read = false) as unread_count,
+          COUNT(*) FILTER (WHERE is_read = false AND received_at >= ${startOfToday}) as unread_today_count,
+          COUNT(*) as total_synced
+        FROM emails
+      `,
+
+      // Recent unread (needs distinct, better as Prisma query)
       prisma.email.findMany({
         where: { isRead: false },
         distinct: ['threadId'],
@@ -108,30 +118,11 @@ export const dashboardService = {
           snippet: true,
         },
       }),
-      // Calendar
-      prisma.calendarEvent.count({
-        where: { startTime: { gte: startOfToday, lt: endOfToday } },
-      }),
-      prisma.calendarEvent.count({
-        where: { startTime: { gte: startOfToday, lt: endOfWeek } },
-      }),
+
+      // Single query for all calendar data this week (replaces 5 separate queries)
+      // We fetch all events from startOfToday to endOfWeek, then filter in JS
       prisma.calendarEvent.findMany({
-        where: { startTime: { gte: now } },
-        orderBy: { startTime: 'asc' },
-        take: 5,
-        select: {
-          id: true,
-          title: true,
-          startTime: true,
-          endTime: true,
-          isAllDay: true,
-          location: true,
-          conferenceLink: true,
-        },
-      }),
-      // Today's events (detailed for My Day)
-      prisma.calendarEvent.findMany({
-        where: { startTime: { gte: startOfToday, lt: endOfToday } },
+        where: { startTime: { gte: startOfWeek, lt: endOfWeek } },
         orderBy: { startTime: 'asc' },
         select: {
           id: true,
@@ -143,17 +134,72 @@ export const dashboardService = {
           conferenceLink: true,
         },
       }),
-      // Meeting load this week (non-all-day)
-      prisma.calendarEvent.findMany({
-        where: {
-          startTime: { gte: startOfWeek, lt: endOfWeek },
-          isAllDay: false,
-        },
-        select: { startTime: true, endTime: true },
-      }),
-      // Customers
-      prisma.customer.count(),
-      prisma.contact.count(),
+
+      // Single raw query replaces 2 customer/contact counts + top customers groupBy
+      prisma.$queryRaw<Array<{
+        total_customers: bigint;
+        total_contacts: bigint;
+      }>>`
+        SELECT
+          (SELECT COUNT(*) FROM customers) as total_customers,
+          (SELECT COUNT(*) FROM contacts) as total_contacts
+      `,
+    ]);
+
+    // ── Derive calendar stats from single query ──
+    const todayEventsDetailed = calendarData.filter(
+      (e) => e.startTime >= startOfToday && e.startTime < endOfToday
+    );
+    const eventsToday = todayEventsDetailed.length;
+    const thisWeekFromToday = calendarData.filter(
+      (e) => e.startTime >= startOfToday
+    );
+    const eventsThisWeek = thisWeekFromToday.length;
+    const upcomingEvents = calendarData
+      .filter((e) => e.startTime >= now)
+      .slice(0, 5);
+    const weekMeetings = calendarData.filter((e) => !e.isAllDay);
+
+    // ── Derive task stats from single aggregate ──
+    const ta = taskAggregates[0];
+    const taskTotal = Number(ta?.total ?? 0);
+    const taskCompleted = Number(ta?.completed ?? 0);
+    const taskOverdue = Number(ta?.overdue ?? 0);
+    const priorityMap: Record<string, number> = {
+      LOW: Number(ta?.low ?? 0),
+      MEDIUM: Number(ta?.medium ?? 0),
+      HIGH: Number(ta?.high ?? 0),
+      URGENT: Number(ta?.urgent ?? 0),
+    };
+
+    // Task status counts for donut chart (derive from task aggregates + separate groupBy)
+    const taskStatusRaw = await prisma.task.groupBy({
+      by: ['status'],
+      _count: { status: true },
+    });
+    const taskStatusCounts: Record<string, number> = {};
+    taskStatusRaw.forEach((s) => {
+      taskStatusCounts[s.status] = s._count.status;
+    });
+
+    // ── Derive email stats from single aggregate ──
+    const es = emailStats[0];
+    const unreadCount = Number(es?.unread_count ?? 0);
+    const unreadTodayCount = Number(es?.unread_today_count ?? 0);
+    const totalSynced = Number(es?.total_synced ?? 0);
+
+    // ── Derive customer stats ──
+    const cc = customerCounts[0];
+    const totalCustomers = Number(cc?.total_customers ?? 0);
+    const totalContacts = Number(cc?.total_contacts ?? 0);
+
+    // Meeting load: sum hours
+    const meetingHoursThisWeek = weekMeetings.reduce((sum, e) => {
+      return sum + (new Date(e.endTime).getTime() - new Date(e.startTime).getTime()) / 3600000;
+    }, 0);
+
+    // ── Batch 2: Raw SQL aggregates (run in parallel) ──
+    const [topCustomersRaw, emailVolumeResult, needsAttentionResult, frequentContactsResult] = await Promise.all([
       prisma.email.groupBy({
         by: ['customerId'],
         where: { customerId: { not: null } },
@@ -161,66 +207,9 @@ export const dashboardService = {
         orderBy: { _count: { id: 'desc' } },
         take: 5,
       }),
-    ]);
 
-    // ── Post-processing ──
-
-    // Resolve top customer details
-    const customerIds = topCustomersRaw
-      .map((r) => r.customerId)
-      .filter((id): id is string => id !== null);
-
-    const [customerDetails, taskCounts] = await Promise.all([
-      prisma.customer.findMany({
-        where: { id: { in: customerIds } },
-        select: { id: true, name: true, domain: true, logoUrl: true },
-      }),
-      prisma.task.groupBy({
-        by: ['customerId'],
-        where: { customerId: { in: customerIds } },
-        _count: { id: true },
-      }),
-    ]);
-
-    const customerMap = new Map(customerDetails.map((c) => [c.id, c]));
-    const taskCountMap = new Map(taskCounts.map((t) => [t.customerId, t._count.id]));
-
-    const topCustomers = topCustomersRaw
-      .map((r) => {
-        const customer = customerMap.get(r.customerId!);
-        if (!customer) return null;
-        return {
-          id: customer.id,
-          name: customer.name,
-          domain: customer.domain,
-          logoUrl: customer.logoUrl,
-          emailCount: r._count.id,
-          taskCount: taskCountMap.get(customer.id) || 0,
-        };
-      })
-      .filter((c): c is NonNullable<typeof c> => c !== null);
-
-    // Build priority map
-    const priorityMap: Record<string, number> = { LOW: 0, MEDIUM: 0, HIGH: 0, URGENT: 0 };
-    taskByPriority.forEach((p) => {
-      priorityMap[p.priority] = p._count.priority;
-    });
-
-    // Build task status counts for donut
-    const taskStatusCounts: Record<string, number> = { TODO: 0, IN_PROGRESS: 0, DONE: 0 };
-    taskStatusRaw.forEach((s) => {
-      taskStatusCounts[s.status] = s._count.status;
-    });
-
-    // Meeting load: sum hours
-    const meetingHoursThisWeek = weekMeetings.reduce((sum, e) => {
-      return sum + (new Date(e.endTime).getTime() - new Date(e.startTime).getTime()) / 3600000;
-    }, 0);
-
-    // Email volume: last 14 days using Prisma query
-    let emailVolume: Array<{ date: string; sent: number; received: number }> = [];
-    try {
-      const emailVolumeRaw: Array<{ date: Date; sent: string; received: string }> = await prisma.$queryRaw`
+      // Email volume: last 14 days
+      prisma.$queryRaw<Array<{ date: Date; sent: string; received: string }>>`
         SELECT
           DATE("received_at") as date,
           COUNT(*) FILTER (WHERE "from" LIKE '%' || ${userEmail} || '%') as sent,
@@ -229,47 +218,17 @@ export const dashboardService = {
         WHERE "received_at" >= ${fourteenDaysAgo}
         GROUP BY DATE("received_at")
         ORDER BY date ASC
-      `;
+      `.catch(() => [] as Array<{ date: Date; sent: string; received: string }>),
 
-      // Build a map from raw results
-      const volumeMap = new Map<string, { sent: number; received: number }>();
-      for (const row of emailVolumeRaw) {
-        const dateStr = formatDate(new Date(row.date));
-        volumeMap.set(dateStr, { sent: Number(row.sent), received: Number(row.received) });
-      }
-
-      // Fill 14 days
-      for (let i = 13; i >= 0; i--) {
-        const d = subDays(startOfToday, i);
-        const dateStr = formatDate(d);
-        const existing = volumeMap.get(dateStr);
-        emailVolume.push({ date: dateStr, sent: existing?.sent ?? 0, received: existing?.received ?? 0 });
-      }
-    } catch (err) {
-      // Fallback: 14 zero entries if raw SQL fails
-      for (let i = 13; i >= 0; i--) {
-        emailVolume.push({ date: formatDate(subDays(startOfToday, i)), sent: 0, received: 0 });
-      }
-    }
-
-    // Needs Attention customers
-    let needsAttention: Array<{
-      id: string;
-      name: string;
-      domain: string | null;
-      logoUrl: string | null;
-      lastContactedDaysAgo: number;
-      openTaskCount: number;
-    }> = [];
-    try {
-      const needsAttentionRaw: Array<{
+      // Needs attention customers
+      prisma.$queryRaw<Array<{
         id: string;
         name: string;
         domain: string | null;
         logoUrl: string | null;
         lastContactedDaysAgo: number | null;
         openTaskCount: string;
-      }> = await prisma.$queryRaw`
+      }>>`
         SELECT
           c.id,
           c.name,
@@ -287,26 +246,10 @@ export const dashboardService = {
           OR MAX(e.received_at) IS NULL
         ORDER BY MAX(e.received_at) ASC NULLS FIRST
         LIMIT 5
-      `;
-      needsAttention = needsAttentionRaw.map((r) => ({
-        ...r,
-        lastContactedDaysAgo: r.lastContactedDaysAgo ?? 999,
-        openTaskCount: Number(r.openTaskCount),
-      }));
-    } catch {
-      // Fallback: empty
-    }
+      `.catch(() => []),
 
-    // Frequent contacts
-    let frequentContacts: Array<{
-      email: string;
-      name: string | null;
-      company: string | null;
-      contactId: string | null;
-      messageCount: number;
-    }> = [];
-    try {
-      const frequentRaw: Array<{ email: string; name: string | null; messageCount: string }> = await prisma.$queryRaw`
+      // Frequent contacts
+      prisma.$queryRaw<Array<{ email: string; name: string | null; messageCount: string }>>`
         SELECT
           "from" as email,
           "from_name" as name,
@@ -316,29 +259,85 @@ export const dashboardService = {
         GROUP BY "from", "from_name"
         ORDER BY COUNT(*) DESC
         LIMIT 5
-      `;
+      `.catch(() => []),
+    ]);
 
-      // Enrich with contact info
-      const contactEmails = frequentRaw.map((f) => f.email);
-      const contactLookup = await prisma.contact.findMany({
-        where: { email: { in: contactEmails } },
-        select: { id: true, email: true, customer: { select: { company: true } } },
-      });
-      const contactMap = new Map(contactLookup.map((c) => [c.email, c]));
-
-      frequentContacts = frequentRaw.map((f) => {
-        const contact = contactMap.get(f.email);
-        return {
-          email: f.email,
-          name: f.name,
-          company: contact?.customer?.company || null,
-          contactId: contact?.id || null,
-          messageCount: Number(f.messageCount),
-        };
-      });
-    } catch {
-      // Fallback: empty
+    // ── Build email volume ──
+    let emailVolume: Array<{ date: string; sent: number; received: number }> = [];
+    const volumeMap = new Map<string, { sent: number; received: number }>();
+    for (const row of emailVolumeResult) {
+      const dateStr = formatDate(new Date(row.date));
+      volumeMap.set(dateStr, { sent: Number(row.sent), received: Number(row.received) });
     }
+    for (let i = 13; i >= 0; i--) {
+      const d = subDays(startOfToday, i);
+      const dateStr = formatDate(d);
+      const existing = volumeMap.get(dateStr);
+      emailVolume.push({ date: dateStr, sent: existing?.sent ?? 0, received: existing?.received ?? 0 });
+    }
+
+    // ── Build needs attention ──
+    const needsAttention = needsAttentionResult.map((r) => ({
+      ...r,
+      lastContactedDaysAgo: r.lastContactedDaysAgo ?? 999,
+      openTaskCount: Number(r.openTaskCount),
+    }));
+
+    // ── Batch 3: Post-processing lookups ──
+    const customerIds = topCustomersRaw
+      .map((r) => r.customerId)
+      .filter((id): id is string => id !== null);
+
+    const [customerDetails, taskCountsByCustomer, contactLookup] = await Promise.all([
+      prisma.customer.findMany({
+        where: { id: { in: customerIds } },
+        select: { id: true, name: true, domain: true, logoUrl: true },
+      }),
+      prisma.task.groupBy({
+        by: ['customerId'],
+        where: { customerId: { in: customerIds } },
+        _count: { id: true },
+      }),
+      // Enrich frequent contacts
+      frequentContactsResult.length > 0
+        ? prisma.contact.findMany({
+            where: { email: { in: frequentContactsResult.map((f) => f.email) } },
+            select: { id: true, email: true, customer: { select: { company: true } } },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    // Top customers
+    const customerMap = new Map(customerDetails.map((c) => [c.id, c]));
+    const taskCountMap = new Map(taskCountsByCustomer.map((t) => [t.customerId, t._count.id]));
+
+    const topCustomers = topCustomersRaw
+      .map((r) => {
+        const customer = customerMap.get(r.customerId!);
+        if (!customer) return null;
+        return {
+          id: customer.id,
+          name: customer.name,
+          domain: customer.domain,
+          logoUrl: customer.logoUrl,
+          emailCount: r._count.id,
+          taskCount: taskCountMap.get(customer.id) || 0,
+        };
+      })
+      .filter((c): c is NonNullable<typeof c> => c !== null);
+
+    // Frequent contacts enrichment
+    const contactMap = new Map(contactLookup.map((c) => [c.email, c]));
+    const frequentContacts = frequentContactsResult.map((f) => {
+      const contact = contactMap.get(f.email);
+      return {
+        email: f.email,
+        name: f.name,
+        company: contact?.customer?.company || null,
+        contactId: contact?.id || null,
+        messageCount: Number(f.messageCount),
+      };
+    });
 
     return {
       tasks: {

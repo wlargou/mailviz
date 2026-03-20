@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma.js';
+import { AppError } from '../middleware/errorHandler.js';
 
 export const taskStatusService = {
   async findAll() {
@@ -42,15 +43,12 @@ export const taskStatusService = {
 
   async delete(id: string) {
     const status = await prisma.taskStatus.findUnique({ where: { id } });
-    if (!status) throw Object.assign(new Error('Status not found'), { status: 404 });
+    if (!status) throw new AppError(404, 'NOT_FOUND', 'Status not found');
 
     // Check if any tasks use this status
     const taskCount = await prisma.task.count({ where: { status: status.name } });
     if (taskCount > 0) {
-      throw Object.assign(
-        new Error(`Cannot delete status "${status.label}" — ${taskCount} task(s) still use it. Reassign them first.`),
-        { status: 409 }
-      );
+      throw new AppError(409, 'CONFLICT', `Cannot delete status "${status.label}" — ${taskCount} task(s) still use it. Reassign them first.`);
     }
 
     return prisma.taskStatus.delete({ where: { id } });
