@@ -134,12 +134,12 @@ export function LoginPage() {
     <Theme theme="g100">
       <div className="login-page">
         <WaterBackground />
+        <div className="login-logo-float">
+          <MailvizLogo size={320} variant="animated" />
+        </div>
         <div className="login-panel">
           <div className="login-panel__content">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
-              <MailvizLogo size={40} />
-              <h1 className="login-panel__title" style={{ margin: 0 }}>Mailviz</h1>
-            </div>
+            <h1 className="login-panel__title">Mailviz</h1>
             <p className="login-panel__subtitle">
               Personal CRM & Email Manager
             </p>
