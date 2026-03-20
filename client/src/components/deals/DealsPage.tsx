@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   DataTable,
   Table,
@@ -55,6 +55,7 @@ export function DealsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteDeal, setDeleteDeal] = useState<Deal | null>(null);
   const [editDeal, setEditDeal] = useState<Deal | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const addNotification = useUIStore((s) => s.addNotification);
 
@@ -85,6 +86,17 @@ export function DealsPage() {
       addNotification({ kind: 'error', title: 'Failed to load deals' });
     } finally {
       setLoading(false);
+      if (search) {
+        requestAnimationFrame(() => {
+          const input = searchRef.current?.querySelector?.('input') ?? searchRef.current;
+          if (input && typeof input.focus === 'function') {
+            input.focus();
+            if ('setSelectionRange' in input && typeof input.value === 'string') {
+              (input as HTMLInputElement).setSelectionRange(input.value.length, input.value.length);
+            }
+          }
+        });
+      }
     }
   }, [page, debouncedSearch, selectedStatus, selectedPartnerId, addNotification]);
 
@@ -130,7 +142,7 @@ export function DealsPage() {
 
       <Grid fullWidth>
         <Column lg={16} md={8} sm={4}>
-          {loading && deals.length === 0 ? (
+          {loading && deals.length === 0 && !search ? (
             <DataTableSkeleton headers={headers} rowCount={5} />
           ) : (
             <>
@@ -140,10 +152,12 @@ export function DealsPage() {
                   <TableToolbar>
                     <TableToolbarContent>
                       <TableToolbarSearch
+                        ref={searchRef}
                         placeholder="Search deals..."
                         defaultValue={search}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                          setSearch(e.target.value || '');
+                        onChange={(e: any) => {
+                          const val = typeof e === 'string' ? e : (e?.target?.value ?? '');
+                          setSearch(val);
                           setPage(1);
                         }}
                         persistent

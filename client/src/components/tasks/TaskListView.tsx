@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import {
   DataTable,
   Table,
@@ -45,9 +45,10 @@ export function TaskListView({ tasks, loading, onEdit, onDelete }: TaskListViewP
   const { meta, setPage, setFilter, filters, currentPage } = useTaskStore();
   const [localSearch, setLocalSearch] = useState(filters.search || '');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
-  const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
+  const handleSearchChange = useCallback((e: any) => {
+    const val = typeof e === 'string' ? e : (e?.target?.value ?? '');
     setLocalSearch(val);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
@@ -55,7 +56,22 @@ export function TaskListView({ tasks, loading, onEdit, onDelete }: TaskListViewP
     }, 400);
   }, [setFilter]);
 
-  if (loading && tasks.length === 0) {
+  // Refocus search input after loading completes while searching
+  useEffect(() => {
+    if (!loading && localSearch) {
+      requestAnimationFrame(() => {
+        const input = searchRef.current?.querySelector?.('input') ?? searchRef.current;
+        if (input && typeof input.focus === 'function') {
+          input.focus();
+          if ('setSelectionRange' in input && typeof input.value === 'string') {
+            (input as HTMLInputElement).setSelectionRange(input.value.length, input.value.length);
+          }
+        }
+      });
+    }
+  }, [loading, localSearch]);
+
+  if (loading && tasks.length === 0 && !localSearch) {
     return <DataTableSkeleton headers={headers} rowCount={5} />;
   }
 
@@ -81,6 +97,7 @@ export function TaskListView({ tasks, loading, onEdit, onDelete }: TaskListViewP
             <TableToolbar>
               <TableToolbarContent>
                 <TableToolbarSearch
+                  ref={searchRef}
                   placeholder="Search tasks..."
                   value={localSearch}
                   onChange={handleSearchChange}

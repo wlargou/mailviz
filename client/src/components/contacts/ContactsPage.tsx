@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   DataTable,
   Table,
@@ -41,6 +41,7 @@ export function ContactsPage() {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const addNotification = useUIStore((s) => s.addNotification);
 
@@ -70,6 +71,17 @@ export function ContactsPage() {
       addNotification({ kind: 'error', title: 'Failed to load contacts' });
     } finally {
       setLoading(false);
+      if (search) {
+        requestAnimationFrame(() => {
+          const input = searchRef.current?.querySelector?.('input') ?? searchRef.current;
+          if (input && typeof input.focus === 'function') {
+            input.focus();
+            if ('setSelectionRange' in input && typeof input.value === 'string') {
+              (input as HTMLInputElement).setSelectionRange(input.value.length, input.value.length);
+            }
+          }
+        });
+      }
     }
   }, [page, debouncedSearch, selectedCustomerId, addNotification]);
 
@@ -93,7 +105,7 @@ export function ContactsPage() {
 
       <Grid fullWidth>
         <Column lg={16} md={8} sm={4}>
-          {loading && contacts.length === 0 ? (
+          {loading && contacts.length === 0 && !search ? (
             <DataTableSkeleton headers={headers} rowCount={5} />
           ) : contacts.length === 0 && !search && !selectedCustomerId ? (
             <EmptyState title="No contacts yet" description="Contacts are created automatically when you sync your calendar" />
@@ -105,10 +117,12 @@ export function ContactsPage() {
                   <TableToolbar>
                     <TableToolbarContent>
                       <TableToolbarSearch
+                        ref={searchRef}
                         placeholder="Search contacts..."
                         defaultValue={search}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                          setSearch(e.target.value || '');
+                        onChange={(e: any) => {
+                          const val = typeof e === 'string' ? e : (e?.target?.value ?? '');
+                          setSearch(val);
                           setPage(1);
                         }}
                         persistent
