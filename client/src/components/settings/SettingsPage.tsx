@@ -13,6 +13,8 @@ import {
   StructuredListRow,
   StructuredListCell,
   Layer,
+  Grid,
+  Column,
 } from '@carbon/react';
 import {
   Checkmark,
@@ -189,6 +191,8 @@ export function SettingsPage() {
         </div>
       </div>
 
+      <Grid fullWidth>
+        <Column lg={10} md={8} sm={4}>
       <Stack gap={7}>
         {/* ─── Google Integration ─── */}
         <Tile className="settings-tile">
@@ -403,6 +407,8 @@ export function SettingsPage() {
           </Stack>
         </Tile>
       </Stack>
+        </Column>
+      </Grid>
     </div>
   );
 }

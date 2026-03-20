@@ -15,6 +15,8 @@ import {
   DataTableSkeleton,
   Tag,
   Dropdown,
+  Grid,
+  Column,
 } from '@carbon/react';
 import { Copy } from '@carbon/icons-react';
 import { useNavigate } from 'react-router-dom';
@@ -89,119 +91,123 @@ export function ContactsPage() {
         </div>
       </div>
 
-      {loading && contacts.length === 0 ? (
-        <DataTableSkeleton headers={headers} rowCount={5} />
-      ) : contacts.length === 0 && !search && !selectedCustomerId ? (
-        <EmptyState title="No contacts yet" description="Contacts are created automatically when you sync your calendar" />
-      ) : (
-        <>
-          <DataTable rows={contacts.map((c) => ({ id: c.id }))} headers={headers}>
-            {({ getTableProps }) => (
-            <TableContainer className="contacts-table">
-              <TableToolbar>
-                <TableToolbarContent>
-                  <TableToolbarSearch
-                    placeholder="Search contacts..."
-                    defaultValue={search}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                      setSearch(e.target.value || '');
-                      setPage(1);
-                    }}
-                    persistent
-                  />
-                  <Dropdown
-                    id="company-filter"
-                    titleText=""
-                    label="All companies"
-                    items={dropdownItems}
-                    itemToString={(item: { id: string; text: string } | null) => item?.text || ''}
-                    selectedItem={dropdownItems.find((d) => d.id === (selectedCustomerId || '__all__')) || dropdownItems[0]}
-                    onChange={({ selectedItem }: { selectedItem: { id: string; text: string } | null }) => {
-                      const id = selectedItem?.id === '__all__' ? null : selectedItem?.id || null;
-                      setSelectedCustomerId(id);
-                      setPage(1);
-                    }}
-                    size="sm"
-                    className="contacts-company-filter"
-                  />
-                </TableToolbarContent>
-              </TableToolbar>
-              <Table {...getTableProps()} size="lg">
-                <TableHead>
-                  <TableRow>
-                    {headers.map((header) => (
-                      <TableHeader key={header.key}>
-                        {header.header}
-                      </TableHeader>
-                    ))}
-                  </TableRow>
-                </TableHead>
-              <TableBody>
-                {contacts.map((contact) => (
-                  <TableRow key={contact.id}>
-                    <TableCell>
-                      <span
-                        className="contact-name-cell"
-                        onClick={() => navigate(`/contacts/${contact.id}`)}
-                      >
-                        {contact.customer?.logoUrl && (
-                          <img
-                            src={contact.customer.logoUrl}
-                            alt=""
-                            className="customer-logo"
-                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                          />
-                        )}
-                        {contact.firstName} {contact.lastName}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      {contact.email ? (
-                        <span className="contact-email-cell">
-                          <span>{contact.email}</span>
-                          <button
-                            className="contact-copy-btn"
-                            title="Copy email"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigator.clipboard.writeText(contact.email!);
-                            }}
+      <Grid fullWidth>
+        <Column lg={16} md={8} sm={4}>
+          {loading && contacts.length === 0 ? (
+            <DataTableSkeleton headers={headers} rowCount={5} />
+          ) : contacts.length === 0 && !search && !selectedCustomerId ? (
+            <EmptyState title="No contacts yet" description="Contacts are created automatically when you sync your calendar" />
+          ) : (
+            <>
+              <DataTable rows={contacts.map((c) => ({ id: c.id }))} headers={headers}>
+                {({ getTableProps }) => (
+                <TableContainer className="contacts-table">
+                  <TableToolbar>
+                    <TableToolbarContent>
+                      <TableToolbarSearch
+                        placeholder="Search contacts..."
+                        defaultValue={search}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                          setSearch(e.target.value || '');
+                          setPage(1);
+                        }}
+                        persistent
+                      />
+                      <Dropdown
+                        id="company-filter"
+                        titleText=""
+                        label="All companies"
+                        items={dropdownItems}
+                        itemToString={(item: { id: string; text: string } | null) => item?.text || ''}
+                        selectedItem={dropdownItems.find((d) => d.id === (selectedCustomerId || '__all__')) || dropdownItems[0]}
+                        onChange={({ selectedItem }: { selectedItem: { id: string; text: string } | null }) => {
+                          const id = selectedItem?.id === '__all__' ? null : selectedItem?.id || null;
+                          setSelectedCustomerId(id);
+                          setPage(1);
+                        }}
+                        size="sm"
+                        className="contacts-company-filter"
+                      />
+                    </TableToolbarContent>
+                  </TableToolbar>
+                  <Table {...getTableProps()} size="lg">
+                    <TableHead>
+                      <TableRow>
+                        {headers.map((header) => (
+                          <TableHeader key={header.key}>
+                            {header.header}
+                          </TableHeader>
+                        ))}
+                      </TableRow>
+                    </TableHead>
+                  <TableBody>
+                    {contacts.map((contact) => (
+                      <TableRow key={contact.id}>
+                        <TableCell>
+                          <span
+                            className="contact-name-cell"
+                            onClick={() => navigate(`/contacts/${contact.id}`)}
                           >
-                            <Copy size={14} />
-                          </button>
-                        </span>
-                      ) : '—'}
-                    </TableCell>
-                    <TableCell>
-                      {contact.customer ? (
-                        <Tag
-                          type="cyan"
-                          size="sm"
-                          className="clickable-tag"
-                          onClick={() => navigate(`/customers/${contact.customer!.id}`)}
-                        >
-                          {contact.customer.name}
-                        </Tag>
-                      ) : '—'}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-            )}
-          </DataTable>
-          {meta && meta.totalPages > 1 && (
-            <Pagination
-              totalItems={meta.total}
-              pageSize={meta.limit}
-              pageSizes={[10, 20, 50]}
-              page={page}
-              onChange={({ page: p }: { page: number }) => setPage(p)}
-            />
+                            {contact.customer?.logoUrl && (
+                              <img
+                                src={contact.customer.logoUrl}
+                                alt=""
+                                className="customer-logo"
+                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                              />
+                            )}
+                            {contact.firstName} {contact.lastName}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          {contact.email ? (
+                            <span className="contact-email-cell">
+                              <span>{contact.email}</span>
+                              <button
+                                className="contact-copy-btn"
+                                title="Copy email"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigator.clipboard.writeText(contact.email!);
+                                }}
+                              >
+                                <Copy size={14} />
+                              </button>
+                            </span>
+                          ) : '—'}
+                        </TableCell>
+                        <TableCell>
+                          {contact.customer ? (
+                            <Tag
+                              type="cyan"
+                              size="sm"
+                              className="clickable-tag"
+                              onClick={() => navigate(`/customers/${contact.customer!.id}`)}
+                            >
+                              {contact.customer.name}
+                            </Tag>
+                          ) : '—'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+                )}
+              </DataTable>
+              {meta && meta.totalPages > 1 && (
+                <Pagination
+                  totalItems={meta.total}
+                  pageSize={meta.limit}
+                  pageSizes={[10, 20, 50]}
+                  page={page}
+                  onChange={({ page: p }: { page: number }) => setPage(p)}
+                />
+              )}
+            </>
           )}
-        </>
-      )}
+        </Column>
+      </Grid>
     </div>
   );
 }

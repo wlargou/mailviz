@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
+import { Grid, Column } from '@carbon/react';
 import { useCalendarStore } from '../../store/calendarStore';
 import { calendarApi } from '../../api/calendar';
 import { useUIStore } from '../../store/uiStore';
@@ -97,19 +98,23 @@ export function CalendarPage() {
         </div>
       </div>
 
-      <CalendarToolbar onAddEvent={() => { setEditEvent(null); setInitialDate(null); setCreateOpen(true); }} />
+      <Grid fullWidth>
+        <Column lg={16} md={8} sm={4}>
+          <CalendarToolbar onAddEvent={() => { setEditEvent(null); setInitialDate(null); setCreateOpen(true); }} />
 
-      <div className="calendar-page__view">
-        {viewMode === 'month' && (
-          <CalendarMonthView onDayClick={handleDayClick} onEventClick={handleEventClick} />
-        )}
-        {viewMode === 'week' && (
-          <CalendarWeekView onSlotClick={handleSlotClick} onEventClick={handleEventClick} />
-        )}
-        {viewMode === 'day' && (
-          <CalendarDayView onSlotClick={handleSlotClick} onEventClick={handleEventClick} />
-        )}
-      </div>
+          <div className="calendar-page__view">
+            {viewMode === 'month' && (
+              <CalendarMonthView onDayClick={handleDayClick} onEventClick={handleEventClick} />
+            )}
+            {viewMode === 'week' && (
+              <CalendarWeekView onSlotClick={handleSlotClick} onEventClick={handleEventClick} />
+            )}
+            {viewMode === 'day' && (
+              <CalendarDayView onSlotClick={handleSlotClick} onEventClick={handleEventClick} />
+            )}
+          </div>
+        </Column>
+      </Grid>
 
       <EventModal
         open={createOpen}

@@ -6,6 +6,8 @@ import {
   InlineLoading,
   ContentSwitcher,
   Switch,
+  Grid,
+  Column,
 } from '@carbon/react';
 import { Renew, StarFilled, Star, Attachment, Email as EmailIcon, Archive, TrashCan, Undo, Add, CheckmarkOutline, Close, CheckboxCheckedFilled, Task } from '@carbon/icons-react';
 import { SidePanel } from '@carbon/ibm-products';
@@ -341,6 +343,8 @@ export function MailPage() {
   return (
     <div className="mail-page">
       <div className="mail-page__list">
+        <Grid fullWidth>
+          <Column lg={16} md={8} sm={4}>
         <div className="page-header page-header--padded">
           <div className="page-header__info">
             <h1>Mail</h1>
@@ -590,6 +594,8 @@ export function MailPage() {
             )}
           </>
         )}
+          </Column>
+        </Grid>
       </div>
 
       <SidePanel

@@ -15,6 +15,8 @@ import {
   Button,
   DataTableSkeleton,
   Tag,
+  Grid,
+  Column,
 } from '@carbon/react';
 import { Add, View, TrashCan } from '@carbon/icons-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -97,105 +99,109 @@ export function CustomersPage() {
         </Button>
       </div>
 
-      {loading && customers.length === 0 ? (
-        <DataTableSkeleton headers={headers} rowCount={5} />
-      ) : customers.length === 0 && !search ? (
-        <EmptyState title="No customers yet" description="Create your first customer to get started" />
-      ) : (
-        <>
-          <DataTable rows={customers.map((c) => ({ id: c.id }))} headers={headers}>
-            {({ getTableProps }) => (
-            <TableContainer className="customers-table">
-              <TableToolbar>
-                <TableToolbarContent>
-                  <TableToolbarSearch
-                    placeholder="Search customers..."
-                    defaultValue={search}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                      setSearch(e.target.value || '');
-                      setPage(1);
-                    }}
-                    persistent
-                  />
-                </TableToolbarContent>
-              </TableToolbar>
-              <Table {...getTableProps()} size="lg">
-                <TableHead>
-                  <TableRow>
-                    {headers.map((header) => (
-                      <TableHeader key={header.key}>
-                        {header.header}
-                      </TableHeader>
+      <Grid fullWidth>
+        <Column lg={16} md={8} sm={4}>
+          {loading && customers.length === 0 ? (
+            <DataTableSkeleton headers={headers} rowCount={5} />
+          ) : customers.length === 0 && !search ? (
+            <EmptyState title="No customers yet" description="Create your first customer to get started" />
+          ) : (
+            <>
+              <DataTable rows={customers.map((c) => ({ id: c.id }))} headers={headers}>
+                {({ getTableProps }) => (
+                <TableContainer className="customers-table">
+                  <TableToolbar>
+                    <TableToolbarContent>
+                      <TableToolbarSearch
+                        placeholder="Search customers..."
+                        defaultValue={search}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                          setSearch(e.target.value || '');
+                          setPage(1);
+                        }}
+                        persistent
+                      />
+                    </TableToolbarContent>
+                  </TableToolbar>
+                  <Table {...getTableProps()} size="lg">
+                    <TableHead>
+                      <TableRow>
+                        {headers.map((header) => (
+                          <TableHeader key={header.key}>
+                            {header.header}
+                          </TableHeader>
+                        ))}
+                      </TableRow>
+                    </TableHead>
+                  <TableBody>
+                    {customers.map((customer) => (
+                      <TableRow key={customer.id}>
+                        <TableCell>
+                          <span
+                            className="customer-name-cell"
+                            onClick={() => navigate(`/customers/${customer.id}`)}
+                          >
+                            {customer.logoUrl && (
+                              <img
+                                src={customer.logoUrl}
+                                alt=""
+                                className="customer-logo"
+                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                              />
+                            )}
+                            {customer.name}
+                          </span>
+                        </TableCell>
+                        <TableCell>{customer.company || '—'}</TableCell>
+                        <TableCell>
+                          <Tag type="cyan" size="sm">{customer._count?.contacts ?? 0}</Tag>
+                        </TableCell>
+                        <TableCell>
+                          <Tag type="blue" size="sm">{customer._count?.tasks ?? 0}</Tag>
+                        </TableCell>
+                        <TableCell>
+                          <Tag type="teal" size="sm">{customer._count?.emails ?? 0}</Tag>
+                        </TableCell>
+                        <TableCell>
+                          <div className="table-actions">
+                            <Button
+                              kind="ghost"
+                              size="sm"
+                              hasIconOnly
+                              renderIcon={View}
+                              iconDescription="View details"
+                              onClick={() => navigate(`/customers/${customer.id}`)}
+                            />
+                            <Button
+                              kind="danger--ghost"
+                              size="sm"
+                              hasIconOnly
+                              renderIcon={TrashCan}
+                              iconDescription="Delete"
+                              onClick={() => setDeleteCustomer(customer)}
+                            />
+                          </div>
+                        </TableCell>
+                      </TableRow>
                     ))}
-                  </TableRow>
-                </TableHead>
-              <TableBody>
-                {customers.map((customer) => (
-                  <TableRow key={customer.id}>
-                    <TableCell>
-                      <span
-                        className="customer-name-cell"
-                        onClick={() => navigate(`/customers/${customer.id}`)}
-                      >
-                        {customer.logoUrl && (
-                          <img
-                            src={customer.logoUrl}
-                            alt=""
-                            className="customer-logo"
-                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                          />
-                        )}
-                        {customer.name}
-                      </span>
-                    </TableCell>
-                    <TableCell>{customer.company || '—'}</TableCell>
-                    <TableCell>
-                      <Tag type="cyan" size="sm">{customer._count?.contacts ?? 0}</Tag>
-                    </TableCell>
-                    <TableCell>
-                      <Tag type="blue" size="sm">{customer._count?.tasks ?? 0}</Tag>
-                    </TableCell>
-                    <TableCell>
-                      <Tag type="teal" size="sm">{customer._count?.emails ?? 0}</Tag>
-                    </TableCell>
-                    <TableCell>
-                      <div className="table-actions">
-                        <Button
-                          kind="ghost"
-                          size="sm"
-                          hasIconOnly
-                          renderIcon={View}
-                          iconDescription="View details"
-                          onClick={() => navigate(`/customers/${customer.id}`)}
-                        />
-                        <Button
-                          kind="danger--ghost"
-                          size="sm"
-                          hasIconOnly
-                          renderIcon={TrashCan}
-                          iconDescription="Delete"
-                          onClick={() => setDeleteCustomer(customer)}
-                        />
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-            )}
-          </DataTable>
-          {meta && meta.totalPages > 1 && (
-            <Pagination
-              totalItems={meta.total}
-              pageSize={meta.limit}
-              pageSizes={[10, 20, 50]}
-              page={page}
-              onChange={({ page: p }: { page: number }) => setPage(p)}
-            />
+                  </TableBody>
+                </Table>
+              </TableContainer>
+                )}
+              </DataTable>
+              {meta && meta.totalPages > 1 && (
+                <Pagination
+                  totalItems={meta.total}
+                  pageSize={meta.limit}
+                  pageSizes={[10, 20, 50]}
+                  page={page}
+                  onChange={({ page: p }: { page: number }) => setPage(p)}
+                />
+              )}
+            </>
           )}
-        </>
-      )}
+        </Column>
+      </Grid>
 
       <CustomerCreateModal
         open={createOpen}

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Button, Tabs, TabList, Tab, TabPanels, TabPanel } from '@carbon/react';
+import { Button, Tabs, TabList, Tab, TabPanels, TabPanel, Grid, Column } from '@carbon/react';
 import { Add } from '@carbon/icons-react';
 import { useSearchParams } from 'react-router-dom';
 import { TaskFilters } from './TaskFilters';
@@ -85,27 +85,31 @@ export function TasksPage() {
         </Button>
       </div>
 
-      <TaskFilters labels={labels} />
+      <Grid fullWidth>
+        <Column lg={16} md={8} sm={4}>
+          <TaskFilters labels={labels} />
 
-      <Tabs>
-        <TabList aria-label="Task views">
-          <Tab>List View</Tab>
-          <Tab>Kanban Board</Tab>
-        </TabList>
-        <TabPanels>
-          <TabPanel>
-            <TaskListView
-              tasks={tasks}
-              loading={loading}
-              onEdit={setEditTask}
-              onDelete={setDeleteTask}
-            />
-          </TabPanel>
-          <TabPanel>
-            <TaskKanbanView onCardClick={setEditTask} />
-          </TabPanel>
-        </TabPanels>
-      </Tabs>
+          <Tabs>
+            <TabList aria-label="Task views">
+              <Tab>List View</Tab>
+              <Tab>Kanban Board</Tab>
+            </TabList>
+            <TabPanels>
+              <TabPanel>
+                <TaskListView
+                  tasks={tasks}
+                  loading={loading}
+                  onEdit={setEditTask}
+                  onDelete={setDeleteTask}
+                />
+              </TabPanel>
+              <TabPanel>
+                <TaskKanbanView onCardClick={setEditTask} />
+              </TabPanel>
+            </TabPanels>
+          </Tabs>
+        </Column>
+      </Grid>
 
       <TaskCreateModal
         open={createOpen}
