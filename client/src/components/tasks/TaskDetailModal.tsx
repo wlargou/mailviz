@@ -194,6 +194,46 @@ export function TaskDetailModal({ task, open, onClose, onUpdated, labels }: Task
             }}
           />
         )}
+        {task.mailToTask?.email && (
+          <div className="modal-form__source-email">
+            <p className="modal-form__label" style={{ fontSize: '0.75rem', color: 'var(--cds-text-secondary)', marginBottom: '0.25rem' }}>Created from email</p>
+            <div
+              role="button"
+              tabIndex={0}
+              className="modal-form__email-link"
+              onClick={() => {
+                onClose();
+                // Navigate to mail page — the thread will be visible
+                window.location.href = '/mail';
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  onClose();
+                  window.location.href = '/mail';
+                }
+              }}
+              style={{
+                padding: '0.5rem 0.75rem',
+                background: 'var(--cds-layer-02)',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                borderLeft: '3px solid var(--cds-link-primary)',
+              }}
+            >
+              <div style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--cds-text-primary)' }}>
+                {task.mailToTask.email.subject}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--cds-text-secondary)', marginTop: '0.125rem' }}>
+                From: {task.mailToTask.email.fromName || task.mailToTask.email.from}
+              </div>
+              {task.mailToTask.conversionNote && (
+                <div style={{ fontSize: '0.75rem', color: 'var(--cds-text-secondary)', marginTop: '0.25rem', fontStyle: 'italic' }}>
+                  Note: {task.mailToTask.conversionNote}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </Modal>
   );

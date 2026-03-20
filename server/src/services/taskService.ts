@@ -73,7 +73,17 @@ export const taskService = {
   async findById(id: string) {
     const task = await prisma.task.findUnique({
       where: { id },
-      include: { labels: { include: { label: true } }, customer: true },
+      include: {
+        labels: { include: { label: true } },
+        customer: true,
+        mailToTask: {
+          include: {
+            email: {
+              select: { id: true, subject: true, from: true, fromName: true, threadId: true, receivedAt: true },
+            },
+          },
+        },
+      },
     });
     if (!task) {
       throw new AppError(404, 'TASK_NOT_FOUND', 'Task not found');

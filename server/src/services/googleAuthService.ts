@@ -131,6 +131,7 @@ export const googleAuthService = {
     const auth = await prisma.googleAuth.findFirst({ where });
     if (!auth) return;
 
+    // Revoke Google OAuth token (best effort)
     try {
       const oauth2Client = createOAuth2Client();
       const accessToken = decrypt(auth.accessToken);
@@ -140,10 +141,32 @@ export const googleAuthService = {
       // Token may already be invalid
     }
 
-    await prisma.googleAuth.delete({ where: { id: auth.id } });
-    await prisma.calendarEvent.deleteMany({ where: { googleEventId: { not: null } } });
+    // 1. Unlink tasks from companies (keep tasks, remove company association)
+    await prisma.task.updateMany({ where: { customerId: { not: null } }, data: { customerId: null } });
+
+    // 2. Delete MailToTask links (before deleting emails to avoid cascade issues)
+    await prisma.mailToTask.deleteMany({});
+
+    // 3. Delete email attachments
     await prisma.emailAttachment.deleteMany({});
+
+    // 4. Delete all synced emails
     await prisma.email.deleteMany({ where: { gmailMessageId: { not: null } } });
+
+    // 5. Delete calendar event-customer links
+    await prisma.calendarEventCustomer.deleteMany({});
+
+    // 6. Delete all synced calendar events
+    await prisma.calendarEvent.deleteMany({ where: { googleEventId: { not: null } } });
+
+    // 7. Delete all contacts (they were auto-discovered from emails)
+    await prisma.contact.deleteMany({});
+
+    // 8. Delete all companies (they were auto-discovered from email domains)
+    await prisma.customer.deleteMany({});
+
+    // 9. Delete the GoogleAuth record
+    await prisma.googleAuth.delete({ where: { id: auth.id } });
   },
 
   /**

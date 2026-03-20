@@ -37,6 +37,18 @@ export interface Task {
   updatedAt: string;
   labels: Label[];
   customer: TaskCustomer | null;
+  mailToTask?: {
+    id: string;
+    conversionNote: string | null;
+    email: {
+      id: string;
+      subject: string;
+      from: string;
+      fromName: string | null;
+      threadId: string | null;
+      receivedAt: string;
+    };
+  } | null;
 }
 
 export interface TaskSummary {

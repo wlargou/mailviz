@@ -15,6 +15,9 @@ import {
   Layer,
   Grid,
   Column,
+  Modal,
+  UnorderedList,
+  ListItem,
 } from '@carbon/react';
 import {
   Checkmark,
@@ -56,6 +59,7 @@ export function SettingsPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncingMail, setSyncingMail] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [disconnectConfirmOpen, setDisconnectConfirmOpen] = useState(false);
   const addNotification = useUIStore((s) => s.addNotification);
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -273,8 +277,8 @@ export function SettingsPage() {
                         Reconnect
                       </Button>
                     ) : (
-                      <Button kind="danger--ghost" size="sm" renderIcon={Misuse} onClick={handleDisconnect} disabled={disconnecting}>
-                        Disconnect
+                      <Button kind="danger--ghost" size="sm" renderIcon={Misuse} onClick={() => setDisconnectConfirmOpen(true)} disabled={disconnecting}>
+                        {disconnecting ? 'Disconnecting...' : 'Disconnect'}
                       </Button>
                     )}
                   </div>
@@ -572,6 +576,33 @@ export function SettingsPage() {
       </Stack>
         </Column>
       </Grid>
+
+      <Modal
+        open={disconnectConfirmOpen}
+        danger
+        modalHeading="Disconnect Google Account"
+        primaryButtonText={disconnecting ? 'Disconnecting...' : 'Disconnect'}
+        secondaryButtonText="Cancel"
+        primaryButtonDisabled={disconnecting}
+        onRequestClose={() => setDisconnectConfirmOpen(false)}
+        onRequestSubmit={async () => {
+          await handleDisconnect();
+          setDisconnectConfirmOpen(false);
+        }}
+      >
+        <p style={{ marginBottom: '1rem' }}>
+          <strong>Warning:</strong> Disconnecting your Google account will permanently delete the following data:
+        </p>
+        <UnorderedList>
+          <ListItem>All synced emails and attachments</ListItem>
+          <ListItem>All calendar events</ListItem>
+          <ListItem>All companies and contacts (auto-discovered from emails)</ListItem>
+          <ListItem>Email-to-task links (tasks themselves will be kept but unlinked)</ListItem>
+        </UnorderedList>
+        <p style={{ marginTop: '1rem', color: 'var(--cds-support-error)' }}>
+          This action cannot be undone. Your tasks will be preserved but will lose their company and email associations.
+        </p>
+      </Modal>
     </div>
   );
 }
