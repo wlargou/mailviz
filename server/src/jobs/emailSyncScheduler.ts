@@ -30,8 +30,9 @@ async function runSync() {
     }
   } catch (err: any) {
     // Don't crash the scheduler on errors
-    if (err?.status === 400) {
-      // Google not connected — silently skip
+    if (err?.status === 400 || err?.status === 403) {
+      // Google not connected or permissions not granted — silently skip
+      // User needs to reconnect from Settings
     } else {
       console.error('[EmailSync] Sync failed:', err?.message || err);
     }

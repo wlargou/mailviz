@@ -10,7 +10,7 @@ export const authController = {
 
   async getLoginGoogleUrl(_req: Request, res: Response, next: NextFunction) {
     try {
-      const url = googleAuthService.getAuthUrl('login');
+      const url = await googleAuthService.getAuthUrl('login');
       res.json({ data: { url } });
     } catch (err) {
       next(err);
@@ -50,7 +50,7 @@ export const authController = {
   async getGoogleUrl(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = (req as any).user?.id;
-      const url = googleAuthService.getAuthUrl('connect', userId);
+      const url = await googleAuthService.getAuthUrl('connect', userId);
       res.json({ data: { url } });
     } catch (err) {
       next(err);

@@ -35,12 +35,21 @@ export const googleAuthService = {
    * intent='login': used for the login flow (state=login)
    * intent='connect': used for connecting Gmail/Calendar (state=userId)
    */
-  getAuthUrl(intent: 'login' | 'connect' = 'login', userId?: string) {
+  async getAuthUrl(intent: 'login' | 'connect' = 'login', userId?: string) {
     const oauth2Client = createOAuth2Client();
+
+    // Force consent if connecting OR if no Google auth exists (e.g., after disconnect)
+    // This ensures all scopes (including gmail.modify) are re-granted
+    let needsConsent = intent === 'connect';
+    if (!needsConsent) {
+      const existingAuth = await prisma.googleAuth.findFirst();
+      if (!existingAuth) needsConsent = true;
+    }
+
     return oauth2Client.generateAuthUrl({
       access_type: 'offline',
       scope: SCOPES,
-      prompt: intent === 'connect' ? 'consent' : 'select_account',
+      prompt: needsConsent ? 'consent' : 'select_account',
       state: intent === 'connect' && userId ? userId : 'login',
     });
   },
