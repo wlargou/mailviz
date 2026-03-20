@@ -51,7 +51,7 @@ export function RecentActivity({ stats, loading, onEmailClick, onTaskClick }: Re
       <TabPanels>
         <TabPanel>
           {emails.recentUnread.length === 0 ? (
-            <div className="recent-activity__empty">No unread emails</div>
+            <div className="card-empty">No unread emails</div>
           ) : (
             <div className="recent-activity__list">
               {emails.recentUnread.map((email, idx) => (
@@ -89,7 +89,7 @@ export function RecentActivity({ stats, loading, onEmailClick, onTaskClick }: Re
         </TabPanel>
         <TabPanel>
           {tasks.recentTasks.length === 0 ? (
-            <div className="recent-activity__empty">No tasks yet</div>
+            <div className="card-empty">No tasks yet</div>
           ) : (
             <div className="recent-activity__list">
               {tasks.recentTasks.map((task) => (

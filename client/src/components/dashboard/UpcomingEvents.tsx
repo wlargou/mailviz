@@ -25,7 +25,7 @@ export function UpcomingEvents({ stats, loading, onEventClick }: UpcomingEventsP
 
   if (upcomingEvents.length === 0) {
     return (
-      <div className="upcoming-events__empty">
+      <div className="card-empty">
         <Calendar size={20} />
         <p>No upcoming events</p>
         <Button kind="ghost" size="sm" onClick={() => navigate('/calendar')}>

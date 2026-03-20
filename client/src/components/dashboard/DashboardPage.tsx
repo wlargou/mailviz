@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Tile } from '@carbon/react';
+import { Grid, Column, Tile } from '@carbon/react';
 import { useNavigate } from 'react-router-dom';
 import { SidePanel } from '@carbon/ibm-products';
 import { TaskSummaryTiles } from './TaskSummaryTiles';
@@ -115,102 +115,109 @@ export function DashboardPage() {
       {/* Row 1: Metric tiles */}
       <TaskSummaryTiles stats={stats} loading={loading} />
 
-      {/* Row 2: My Day + Upcoming Events */}
-      <div className="dashboard-content">
-        <Tile className="card">
-          <div className="card__header">
-            <h4 className="card__title">My Day</h4>
-          </div>
-          <div className="card__content">
-            <MyDaySummary
-              stats={stats}
-              loading={loading}
-              onEventClick={handleEventClick}
-              onTaskClick={handleTaskClick}
-            />
-          </div>
-        </Tile>
+      <Grid fullWidth className="dashboard-grid">
+        {/* Row 2: My Day + Upcoming Events */}
+        <Column lg={8} md={4} sm={4}>
+          <Tile className="card">
+            <div className="card__header">
+              <h4 className="card__title">My Day</h4>
+            </div>
+            <div className="card__content">
+              <MyDaySummary
+                stats={stats}
+                loading={loading}
+                onEventClick={handleEventClick}
+                onTaskClick={handleTaskClick}
+              />
+            </div>
+          </Tile>
+        </Column>
+        <Column lg={8} md={4} sm={4}>
+          <Tile className="card">
+            <div className="card__header">
+              <h4 className="card__title">Upcoming Events</h4>
+            </div>
+            <div className="card__content">
+              <UpcomingEvents stats={stats} loading={loading} onEventClick={handleEventClick} />
+            </div>
+          </Tile>
+        </Column>
 
-        <Tile className="card">
-          <div className="card__header">
-            <h4 className="card__title">Upcoming Events</h4>
-          </div>
-          <div className="card__content">
-            <UpcomingEvents stats={stats} loading={loading} onEventClick={handleEventClick} />
-          </div>
-        </Tile>
-      </div>
+        {/* Row 3: Recent Activity + Email Volume Chart */}
+        <Column lg={8} md={4} sm={4}>
+          <Tile className="card">
+            <div className="card__header">
+              <h4 className="card__title">Recent Activity</h4>
+            </div>
+            <div className="card__content">
+              <RecentActivity
+                stats={stats}
+                loading={loading}
+                onEmailClick={handleEmailClick}
+                onTaskClick={handleTaskClick}
+              />
+            </div>
+          </Tile>
+        </Column>
+        <Column lg={8} md={4} sm={4}>
+          <Tile className="card">
+            <div className="card__content card__content--chart">
+              <EmailVolumeChart data={stats?.charts.emailVolume} loading={loading} />
+            </div>
+          </Tile>
+        </Column>
 
-      {/* Row 3: Recent Activity + Email Volume Chart */}
-      <div className="dashboard-charts-row">
-        <Tile className="card">
-          <div className="card__header">
-            <h4 className="card__title">Recent Activity</h4>
-          </div>
-          <div className="card__content">
-            <RecentActivity
-              stats={stats}
-              loading={loading}
-              onEmailClick={handleEmailClick}
-              onTaskClick={handleTaskClick}
-            />
-          </div>
-        </Tile>
+        {/* Row 4: Task Donut + Top Customers + Quick Add */}
+        <Column lg={5} md={4} sm={4}>
+          <Tile className="card">
+            <div className="card__content card__content--chart">
+              <TaskStatusDonut data={stats?.charts.taskStatusCounts} loading={loading} />
+            </div>
+          </Tile>
+        </Column>
+        <Column lg={6} md={4} sm={4}>
+          <Tile className="card">
+            <div className="card__header">
+              <h4 className="card__title">Top Customers</h4>
+            </div>
+            <div className="card__content">
+              <TopCustomers stats={stats} loading={loading} />
+            </div>
+          </Tile>
+        </Column>
+        <Column lg={5} md={4} sm={4}>
+          <Tile className="card">
+            <div className="card__header">
+              <h4 className="card__title">Quick Add Task</h4>
+            </div>
+            <div className="card__content">
+              <QuickAddTask onTaskCreated={fetchData} />
+            </div>
+          </Tile>
+        </Column>
 
-        <Tile className="card">
-          <div className="card__content card__content--chart">
-            <EmailVolumeChart data={stats?.charts.emailVolume} loading={loading} />
-          </div>
-        </Tile>
-      </div>
-
-      {/* Row 4: Task Donut + Top Customers + Quick Add */}
-      <div className="dashboard-triple">
-        <Tile className="card">
-          <div className="card__content card__content--chart">
-            <TaskStatusDonut data={stats?.charts.taskStatusCounts} loading={loading} />
-          </div>
-        </Tile>
-
-        <Tile className="card">
-          <div className="card__header">
-            <h4 className="card__title">Top Customers</h4>
-          </div>
-          <div className="card__content">
-            <TopCustomers stats={stats} loading={loading} />
-          </div>
-        </Tile>
-
-        <Tile className="card">
-          <div className="card__header">
-            <h4 className="card__title">Quick Add Task</h4>
-          </div>
-          <div className="card__content">
-            <QuickAddTask onTaskCreated={fetchData} />
-          </div>
-        </Tile>
-      </div>
-
-      {/* Row 5: Needs Attention + Frequent Contacts */}
-      <div className="dashboard-bottom">
-        <Tile className="card">
-          <div className="card__header">
-            <h4 className="card__title">Needs Attention</h4>
-          </div>
-          <div className="card__content">
-            <NeedsAttention customers={stats?.needsAttention} loading={loading} />
-          </div>
-        </Tile>
-
-        <Tile className="card">
-          <div className="card__header">
-            <h4 className="card__title">Frequent Contacts</h4>
-          </div>
-          <div className="card__content">
-            <FrequentContacts contacts={stats?.frequentContacts} loading={loading} />
-          </div>
-        </Tile>
-      </div>
+        {/* Row 5: Needs Attention + Frequent Contacts */}
+        <Column lg={8} md={4} sm={4}>
+          <Tile className="card">
+            <div className="card__header">
+              <h4 className="card__title">Needs Attention</h4>
+            </div>
+            <div className="card__content">
+              <NeedsAttention customers={stats?.needsAttention} loading={loading} />
+            </div>
+          </Tile>
+        </Column>
+        <Column lg={8} md={4} sm={4}>
+          <Tile className="card">
+            <div className="card__header">
+              <h4 className="card__title">Frequent Contacts</h4>
+            </div>
+            <div className="card__content">
+              <FrequentContacts contacts={stats?.frequentContacts} loading={loading} />
+            </div>
+          </Tile>
+        </Column>
+      </Grid>
 
       {/* Email SidePanel */}
       <SidePanel

@@ -82,7 +82,7 @@ export function MyDaySummary({ stats, loading, onEventClick, onTaskClick }: MyDa
       )}
 
       {isEmpty ? (
-        <div className="my-day__empty">
+        <div className="card-empty">
           <p>Nothing scheduled for today</p>
         </div>
       ) : (

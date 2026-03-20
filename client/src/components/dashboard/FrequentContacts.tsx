@@ -34,7 +34,7 @@ export function FrequentContacts({ contacts, loading }: FrequentContactsProps) {
 
   if (contacts.length === 0) {
     return (
-      <div className="frequent-contacts__empty">
+      <div className="card-empty">
         <Email size={20} />
         <p>No email data yet</p>
       </div>

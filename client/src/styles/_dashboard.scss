@@ -1,3 +1,19 @@
+// ─── Shared card-level empty state ───
+.card-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 2rem 1rem;
+  color: var(--cds-text-secondary);
+  text-align: center;
+  font-size: 0.875rem;
+
+  p {
+    margin: 0;
+  }
+}
+
 // ─── Shared skeleton/loading classes ───
 .skeleton-row {
   padding: 0.5rem 1rem;
@@ -16,6 +32,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+// Dashboard Carbon Grid
+.dashboard-grid {
+  row-gap: 1rem;
+
+  .card {
+    height: 100%;
+  }
 }
 
 // Dashboard styles - metric tiles inspired by DCViz
@@ -489,6 +514,34 @@
   display: inline-flex;
   align-items: center;
   gap: 0.375rem;
+}
+
+// ─── Table column widths ───
+// Customers table: Name 30% | Company 25% | Contacts 10% | Tasks 10% | Emails 10% | Actions 15%
+.customers-table {
+  th:nth-child(1), td:nth-child(1) { width: 30%; }
+  th:nth-child(2), td:nth-child(2) { width: 25%; }
+  th:nth-child(3), td:nth-child(3) { width: 10%; text-align: center; }
+  th:nth-child(4), td:nth-child(4) { width: 10%; text-align: center; }
+  th:nth-child(5), td:nth-child(5) { width: 10%; text-align: center; }
+  th:nth-child(6), td:nth-child(6) { width: 15%; }
+}
+
+// Contacts table: Name 25% | Email 45% | Company 30%
+.contacts-table {
+  th:nth-child(1), td:nth-child(1) { width: 25%; }
+  th:nth-child(2), td:nth-child(2) { width: 45%; }
+  th:nth-child(3), td:nth-child(3) { width: 30%; }
+}
+
+// Tasks table: Title 40% | Status 10% | Priority 10% | Due Date 15% | Customer 15% | Labels 10%
+.tasks-table {
+  th:nth-child(1), td:nth-child(1) { width: 40%; }
+  th:nth-child(2), td:nth-child(2) { width: 10%; }
+  th:nth-child(3), td:nth-child(3) { width: 10%; }
+  th:nth-child(4), td:nth-child(4) { width: 15%; }
+  th:nth-child(5), td:nth-child(5) { width: 15%; }
+  th:nth-child(6), td:nth-child(6) { width: 10%; }
 }
 
 .contact-copy-btn {

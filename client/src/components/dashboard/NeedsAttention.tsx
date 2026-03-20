@@ -25,7 +25,7 @@ export function NeedsAttention({ customers, loading }: NeedsAttentionProps) {
 
   if (customers.length === 0) {
     return (
-      <div className="needs-attention__empty">
+      <div className="card-empty">
         <Checkmark size={20} />
         <p>All customers are engaged</p>
       </div>

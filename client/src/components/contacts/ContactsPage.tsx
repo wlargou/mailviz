@@ -97,7 +97,7 @@ export function ContactsPage() {
         <>
           <DataTable rows={contacts.map((c) => ({ id: c.id }))} headers={headers}>
             {({ getTableProps }) => (
-            <TableContainer>
+            <TableContainer className="contacts-table">
               <TableToolbar>
                 <TableToolbarContent>
                   <TableToolbarSearch

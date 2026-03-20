@@ -105,7 +105,7 @@ export function CustomersPage() {
         <>
           <DataTable rows={customers.map((c) => ({ id: c.id }))} headers={headers}>
             {({ getTableProps }) => (
-            <TableContainer>
+            <TableContainer className="customers-table">
               <TableToolbar>
                 <TableToolbarContent>
                   <TableToolbarSearch

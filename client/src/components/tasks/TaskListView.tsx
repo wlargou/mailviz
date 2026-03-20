@@ -77,7 +77,7 @@ export function TaskListView({ tasks, loading, onEdit, onDelete }: TaskListViewP
     <>
       <DataTable rows={rows} headers={headers}>
         {({ getTableProps, getHeaderProps }) => (
-          <TableContainer>
+          <TableContainer className="tasks-table">
             <TableToolbar>
               <TableToolbarContent>
                 <TableToolbarSearch
