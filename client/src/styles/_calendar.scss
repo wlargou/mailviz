@@ -717,19 +717,37 @@
 
   // ── Description ──
   .event-detail__description {
-    max-height: 220px;
+    max-height: 280px;
     overflow-y: auto;
-    padding: 0.75rem;
+    padding: 0.75rem 1rem;
     background: var(--cds-layer-02);
     border-radius: 4px;
-    border-left: 3px solid var(--cds-border-subtle);
+    border-left: 3px solid var(--accent-calendar);
 
     p {
       font-size: 0.875rem;
-      margin: 0;
-      white-space: pre-wrap;
+      margin: 0 0 0.25rem 0;
       line-height: 1.5;
       color: var(--cds-text-secondary);
+      word-break: break-word;
+
+      &:last-child { margin-bottom: 0; }
+    }
+
+    a {
+      color: var(--cds-link-primary);
+      text-decoration: none;
+      word-break: break-all;
+
+      &:hover {
+        text-decoration: underline;
+      }
+    }
+
+    br {
+      display: block;
+      content: '';
+      margin-top: 0.25rem;
     }
   }
 

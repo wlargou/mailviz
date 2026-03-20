@@ -147,6 +147,44 @@ interface AttendeeGroup {
   attendees: EventAttendee[];
 }
 
+/** Parse description text: linkify URLs, strip angle-bracket wrappers, preserve line breaks */
+function renderDescription(text: string) {
+  // Clean up angle-bracket wrapped URLs: <https://...> → https://...
+  const cleaned = text.replace(/<(https?:\/\/[^>]+)>/g, '$1');
+
+  // Split into lines, then linkify URLs within each line
+  const urlRegex = /(https?:\/\/[^\s<]+)/g;
+
+  return cleaned.split('\n').map((line, lineIdx) => {
+    if (!line.trim()) return <br key={lineIdx} />;
+
+    const parts: (string | JSX.Element)[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    urlRegex.lastIndex = 0;
+    while ((match = urlRegex.exec(line)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(line.slice(lastIndex, match.index));
+      }
+      const url = match[1];
+      // Show a short label for long URLs
+      const label = url.length > 60 ? url.slice(0, 57) + '...' : url;
+      parts.push(
+        <a key={`${lineIdx}-${match.index}`} href={url} target="_blank" rel="noopener noreferrer">
+          {label}
+        </a>
+      );
+      lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < line.length) {
+      parts.push(line.slice(lastIndex));
+    }
+
+    return <p key={lineIdx}>{parts}</p>;
+  });
+}
+
 export function EventDetailModal({ event, open, onClose, onEdit, onDelete, onRespond }: EventDetailModalProps) {
   const navigate = useNavigate();
   const [responding, setResponding] = useState(false);
@@ -320,7 +358,7 @@ export function EventDetailModal({ event, open, onClose, onEdit, onDelete, onRes
           {/* Description */}
           {event.description && (
             <div className="event-detail__description">
-              <p>{event.description}</p>
+              {renderDescription(event.description)}
             </div>
           )}
 
