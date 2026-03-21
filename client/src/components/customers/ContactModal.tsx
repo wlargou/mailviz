@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { TextInput, Toggle } from '@carbon/react';
-import { CreateSidePanel } from '@carbon/ibm-products';
+import { SidePanel } from '@carbon/ibm-products';
 import { contactsApi } from '../../api/customers';
 import { useUIStore } from '../../store/uiStore';
 import type { Contact } from '../../types/customer';
@@ -79,19 +79,26 @@ export function ContactModal({ open, contact, customerId, onClose, onSaved }: Co
   };
 
   return (
-    <CreateSidePanel
+    <SidePanel
       open={open}
       onRequestClose={onClose}
-      onRequestSubmit={handleSubmit}
       title={isEdit ? 'Edit Contact' : 'Add Contact'}
       subtitle={isEdit ? 'Update contact information' : 'Add a new contact to this company'}
-      formTitle="Contact details"
-      formDescription="Provide the contact's name and optional details."
-      primaryButtonText={loading ? 'Saving...' : isEdit ? 'Save' : 'Add'}
-      secondaryButtonText="Cancel"
-      disableSubmit={!firstName.trim() || !lastName.trim() || loading}
-      selectorPageContent=".app-content"
-      selectorPrimaryFocus="#contact-first-name"
+      size="md"
+      actions={[
+        {
+          label: isEdit ? 'Save' : 'Add',
+          onClick: handleSubmit,
+          kind: 'primary' as const,
+          disabled: !firstName.trim() || !lastName.trim() || loading,
+          loading,
+        },
+        {
+          label: 'Cancel',
+          onClick: onClose,
+          kind: 'secondary' as const,
+        },
+      ]}
     >
       <TextInput
         id="contact-first-name"
@@ -146,6 +153,6 @@ export function ContactModal({ open, contact, customerId, onClose, onSaved }: Co
         onToggle={(checked: boolean) => setIsVip(checked)}
         className="create-side-panel__form-item"
       />
-    </CreateSidePanel>
+    </SidePanel>
   );
 }

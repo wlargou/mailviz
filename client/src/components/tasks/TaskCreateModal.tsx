@@ -7,7 +7,7 @@ import {
   DatePickerInput,
   MultiSelect,
 } from '@carbon/react';
-import { CreateSidePanel } from '@carbon/ibm-products';
+import { SidePanel } from '@carbon/ibm-products';
 import { tasksApi } from '../../api/tasks';
 import { taskStatusesApi } from '../../api/taskStatuses';
 import { CompanyComboBox } from '../shared/CompanyComboBox';
@@ -88,19 +88,26 @@ export function TaskCreateModal({ open, onClose, onCreated, labels }: TaskCreate
   };
 
   return (
-    <CreateSidePanel
+    <SidePanel
       open={open}
       onRequestClose={() => { resetForm(); onClose(); }}
-      onRequestSubmit={handleSubmit}
       title="Create New Task"
       subtitle="Add a task to track your work"
-      formTitle="Task details"
-      formDescription="Fill in the required fields to create a new task."
-      primaryButtonText={loading ? 'Creating...' : 'Create'}
-      secondaryButtonText="Cancel"
-      disableSubmit={!title.trim() || loading}
-      selectorPageContent=".app-content"
-      selectorPrimaryFocus="#task-title"
+      size="md"
+      actions={[
+        {
+          label: 'Create',
+          onClick: handleSubmit,
+          kind: 'primary' as const,
+          disabled: !title.trim() || loading,
+          loading,
+        },
+        {
+          label: 'Cancel',
+          onClick: () => { resetForm(); onClose(); },
+          kind: 'secondary' as const,
+        },
+      ]}
     >
       <TextInput
         id="task-title"
@@ -179,6 +186,6 @@ export function TaskCreateModal({ open, onClose, onCreated, labels }: TaskCreate
           className="create-side-panel__form-item"
         />
       )}
-    </CreateSidePanel>
+    </SidePanel>
   );
 }

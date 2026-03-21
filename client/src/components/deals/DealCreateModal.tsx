@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { TextInput, TextArea, Dropdown, DatePicker, DatePickerInput } from '@carbon/react';
-import { CreateSidePanel } from '@carbon/ibm-products';
+import { SidePanel } from '@carbon/ibm-products';
 import { dealsApi } from '../../api/deals';
 import { dealPartnersApi } from '../../api/dealPartners';
 import { CompanyComboBox } from '../shared/CompanyComboBox';
@@ -97,19 +97,26 @@ export function DealCreateModal({ open, onClose, onCreated, editDeal }: DealCrea
   };
 
   return (
-    <CreateSidePanel
+    <SidePanel
       open={open}
       onRequestClose={() => { resetForm(); onClose(); }}
-      onRequestSubmit={handleSubmit}
       title={editDeal ? 'Edit Deal' : 'New Deal'}
       subtitle={editDeal ? 'Update deal registration details' : 'Register a new partner deal'}
-      formTitle="Deal details"
-      formDescription="Fill in the deal registration information."
-      primaryButtonText={loading ? (editDeal ? 'Saving...' : 'Creating...') : (editDeal ? 'Save' : 'Create')}
-      secondaryButtonText="Cancel"
-      disableSubmit={!title.trim() || !partnerId || loading}
-      selectorPageContent=".app-content"
-      selectorPrimaryFocus="#deal-title"
+      size="md"
+      actions={[
+        {
+          label: loading ? (editDeal ? 'Saving...' : 'Creating...') : (editDeal ? 'Save' : 'Create'),
+          onClick: handleSubmit,
+          kind: 'primary' as const,
+          disabled: !title.trim() || !partnerId || loading,
+          loading,
+        },
+        {
+          label: 'Cancel',
+          onClick: () => { resetForm(); onClose(); },
+          kind: 'secondary' as const,
+        },
+      ]}
     >
       <TextInput
         id="deal-title"
@@ -188,6 +195,6 @@ export function DealCreateModal({ open, onClose, onCreated, editDeal }: DealCrea
         onChange={(e) => setNotes(e.target.value)}
         className="create-side-panel__form-item"
       />
-    </CreateSidePanel>
+    </SidePanel>
   );
 }

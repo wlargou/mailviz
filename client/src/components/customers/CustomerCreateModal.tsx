@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { TextInput, TextArea } from '@carbon/react';
-import { CreateSidePanel } from '@carbon/ibm-products';
+import { SidePanel } from '@carbon/ibm-products';
 import { customersApi } from '../../api/customers';
 import { useUIStore } from '../../store/uiStore';
 
@@ -53,19 +53,26 @@ export function CustomerCreateModal({ open, onClose, onCreated }: CustomerCreate
   };
 
   return (
-    <CreateSidePanel
+    <SidePanel
       open={open}
       onRequestClose={() => { resetForm(); onClose(); }}
-      onRequestSubmit={handleSubmit}
       title="New Company"
       subtitle="Add a new company to your CRM"
-      formTitle="Company details"
-      formDescription="Fill in the company information below."
-      primaryButtonText={loading ? 'Creating...' : 'Create'}
-      secondaryButtonText="Cancel"
-      disableSubmit={!name.trim() || loading}
-      selectorPageContent=".app-content"
-      selectorPrimaryFocus="#customer-name"
+      size="md"
+      actions={[
+        {
+          label: 'Create',
+          onClick: handleSubmit,
+          kind: 'primary' as const,
+          disabled: !name.trim() || loading,
+          loading,
+        },
+        {
+          label: 'Cancel',
+          onClick: () => { resetForm(); onClose(); },
+          kind: 'secondary' as const,
+        },
+      ]}
     >
       <TextInput
         id="customer-name"
@@ -117,6 +124,6 @@ export function CustomerCreateModal({ open, onClose, onCreated }: CustomerCreate
         onChange={(e) => setNotes(e.target.value)}
         className="create-side-panel__form-item"
       />
-    </CreateSidePanel>
+    </SidePanel>
   );
 }
