@@ -939,9 +939,13 @@
 // Event modal (create/edit side panel)
 .event-modal__date-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr auto;
   gap: 1rem;
   align-items: end;
+
+  .cds--time-picker {
+    min-width: 10rem;
+  }
 }
 
 .event-modal__guests {

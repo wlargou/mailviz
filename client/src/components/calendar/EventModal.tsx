@@ -257,7 +257,7 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
       onRequestClose={onClose}
       title={event ? 'Edit Event' : 'New Event'}
       subtitle={event ? 'Update event details' : 'Add a new event to your calendar'}
-      size="md"
+      size="lg"
       actions={[
         {
           label: event ? 'Save Changes' : 'Create Event',
