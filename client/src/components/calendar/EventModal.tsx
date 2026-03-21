@@ -11,7 +11,7 @@ import {
   TimePickerSelect,
   SelectItem,
 } from '@carbon/react';
-import { CreateSidePanel } from '@carbon/ibm-products';
+import { SidePanel } from '@carbon/ibm-products';
 import { Launch, VideoChat } from '@carbon/icons-react';
 import { calendarApi } from '../../api/calendar';
 import { contactsApi } from '../../api/contacts';
@@ -252,17 +252,26 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
   };
 
   return (
-    <CreateSidePanel
+    <SidePanel
       open={open}
       onRequestClose={onClose}
-      onRequestSubmit={handleSubmit}
       title={event ? 'Edit Event' : 'New Event'}
       subtitle={event ? 'Update event details' : 'Add a new event to your calendar'}
-      formTitle="Event details"
-      formDescription="Set the title, time, and location for your event."
-      primaryButtonText={event ? 'Save Changes' : 'Create Event'}
-      secondaryButtonText="Cancel"
-      disableSubmit={!title.trim() || loading}
+      size="md"
+      actions={[
+        {
+          label: event ? 'Save Changes' : 'Create Event',
+          onClick: handleSubmit,
+          kind: 'primary' as const,
+          disabled: !title.trim() || loading,
+          loading,
+        },
+        {
+          label: 'Cancel',
+          onClick: onClose,
+          kind: 'secondary' as const,
+        },
+      ]}
     >
       {/* 1. Title */}
       <TextInput
@@ -518,6 +527,6 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
         rows={3}
         className="create-side-panel__form-item"
       />
-    </CreateSidePanel>
+    </SidePanel>
   );
 }
