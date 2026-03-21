@@ -941,6 +941,11 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
+  align-items: end;
+}
+
+.event-modal__guests {
+  position: relative;
 }
 
 .event-modal__attendees {
@@ -950,13 +955,93 @@
   margin-top: 0.5rem;
 }
 
-.event-modal__conference-link {
+.event-modal__contact-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 9000;
+  background: var(--cds-layer-02);
+  border: 1px solid var(--cds-border-subtle);
+  border-radius: 0 0 4px 4px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.event-modal__contact-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 1rem;
+  border: none;
+  background: none;
+  color: var(--cds-text-primary);
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.875rem;
+
+  &:hover {
+    background: var(--cds-layer-hover);
+  }
+}
+
+.event-modal__contact-name {
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.event-modal__contact-email {
+  color: var(--cds-text-secondary);
+  font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.event-modal__contact-company {
+  color: var(--cds-text-helper);
+  font-size: 0.75rem;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.event-modal__meeting-detected {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   padding: 0.5rem 0;
+  font-size: 0.75rem;
+  color: var(--cds-support-success);
+
+  .event-modal__meeting-join {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-left: auto;
+    color: var(--cds-link-primary);
+    text-decoration: none;
+    font-weight: 500;
+
+    &:hover { text-decoration: underline; }
+  }
+}
+
+.event-modal__conference-link {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  color: var(--cds-text-secondary);
 
   a {
     color: var(--cds-link-primary);
     font-size: 0.875rem;
     text-decoration: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 
     &:hover {
       text-decoration: underline;
