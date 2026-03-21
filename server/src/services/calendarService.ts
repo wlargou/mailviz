@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { google } from 'googleapis';
 import { prisma } from '../lib/prisma.js';
 import { googleAuthService } from './googleAuthService.js';
@@ -76,6 +77,10 @@ export const calendarService = {
     endTime: string;
     location?: string;
     isAllDay?: boolean;
+    attendees?: { email: string }[];
+    sendUpdates?: 'all' | 'externalOnly' | 'none';
+    addGoogleMeet?: boolean;
+    colorId?: string;
   }, userId: string) {
     const event = await prisma.calendarEvent.create({
       data: {
@@ -86,13 +91,22 @@ export const calendarService = {
         endTime: new Date(data.endTime),
         location: data.location,
         isAllDay: data.isAllDay ?? false,
+        colorId: data.colorId || null,
+        attendees: data.attendees ? (data.attendees as unknown as Prisma.InputJsonValue) : undefined,
       },
     });
 
     // Sync to Google if connected
-    await this.pushToGoogle(event.id, 'create', userId);
+    await this.pushToGoogle(event.id, 'create', userId, {
+      attendees: data.attendees,
+      sendUpdates: data.sendUpdates,
+      addGoogleMeet: data.addGoogleMeet,
+      colorId: data.colorId,
+    });
 
-    return event;
+    // Re-fetch event after pushToGoogle updated it with Google response data
+    const updated = await prisma.calendarEvent.findUnique({ where: { id: event.id } });
+    return updated || event;
   },
 
   async update(id: string, data: {
@@ -102,6 +116,10 @@ export const calendarService = {
     endTime?: string;
     location?: string;
     isAllDay?: boolean;
+    attendees?: { email: string }[];
+    sendUpdates?: 'all' | 'externalOnly' | 'none';
+    addGoogleMeet?: boolean;
+    colorId?: string;
   }, userId: string) {
     const updateData: Prisma.CalendarEventUpdateInput = {};
     if (data.title !== undefined) updateData.title = data.title;
@@ -110,15 +128,24 @@ export const calendarService = {
     if (data.endTime !== undefined) updateData.endTime = new Date(data.endTime);
     if (data.location !== undefined) updateData.location = data.location;
     if (data.isAllDay !== undefined) updateData.isAllDay = data.isAllDay;
+    if (data.colorId !== undefined) updateData.colorId = data.colorId || null;
+    if (data.attendees !== undefined) updateData.attendees = data.attendees as unknown as Prisma.InputJsonValue;
 
     const event = await prisma.calendarEvent.update({
       where: { id, userId },
       data: updateData,
     });
 
-    await this.pushToGoogle(event.id, 'update', userId);
+    await this.pushToGoogle(event.id, 'update', userId, {
+      attendees: data.attendees,
+      sendUpdates: data.sendUpdates,
+      addGoogleMeet: data.addGoogleMeet,
+      colorId: data.colorId,
+    });
 
-    return event;
+    // Re-fetch event after pushToGoogle updated it with Google response data
+    const updated = await prisma.calendarEvent.findUnique({ where: { id: event.id } });
+    return updated || event;
   },
 
   async delete(id: string, userId: string, mode: 'single' | 'all' = 'single') {
@@ -422,7 +449,17 @@ export const calendarService = {
     return updated;
   },
 
-  async pushToGoogle(eventId: string, action: 'create' | 'update' | 'delete', userId: string) {
+  async pushToGoogle(
+    eventId: string,
+    action: 'create' | 'update' | 'delete',
+    userId: string,
+    extraData?: {
+      attendees?: { email: string }[];
+      sendUpdates?: 'all' | 'externalOnly' | 'none';
+      addGoogleMeet?: boolean;
+      colorId?: string;
+    },
+  ) {
     const oauth2Client = await googleAuthService.getAuthenticatedClient(userId);
     if (!oauth2Client) return; // Not connected, skip
 
@@ -433,48 +470,128 @@ export const calendarService = {
         const event = await prisma.calendarEvent.findUnique({ where: { id: eventId } });
         if (!event) return;
 
+        const requestBody: Record<string, any> = {
+          summary: event.title,
+          description: event.description || undefined,
+          location: event.location || undefined,
+          start: event.isAllDay
+            ? { date: event.startTime.toISOString().split('T')[0] }
+            : { dateTime: event.startTime.toISOString() },
+          end: event.isAllDay
+            ? { date: event.endTime.toISOString().split('T')[0] }
+            : { dateTime: event.endTime.toISOString() },
+        };
+
+        if (extraData?.attendees) {
+          requestBody.attendees = extraData.attendees;
+        }
+        if (extraData?.colorId) {
+          requestBody.colorId = extraData.colorId;
+        }
+        if (extraData?.addGoogleMeet) {
+          requestBody.conferenceData = {
+            createRequest: {
+              requestId: randomUUID(),
+              conferenceSolutionKey: { type: 'hangoutsMeet' },
+            },
+          };
+        }
+
         const googleEvent = await calendar.events.insert({
           calendarId: 'primary',
-          requestBody: {
-            summary: event.title,
-            description: event.description || undefined,
-            location: event.location || undefined,
-            start: event.isAllDay
-              ? { date: event.startTime.toISOString().split('T')[0] }
-              : { dateTime: event.startTime.toISOString() },
-            end: event.isAllDay
-              ? { date: event.endTime.toISOString().split('T')[0] }
-              : { dateTime: event.endTime.toISOString() },
-          },
-        });
+          sendUpdates: extraData?.sendUpdates || 'all',
+          conferenceDataVersion: extraData?.addGoogleMeet ? 1 : undefined,
+          requestBody,
+        } as any);
+
+        // Read back conference link from response
+        const hangoutLink = googleEvent.data.hangoutLink;
+        const conferenceLink = (googleEvent.data as any).conferenceData?.entryPoints?.find(
+          (ep: any) => ep.entryPointType === 'video',
+        )?.uri || hangoutLink || null;
+
+        // Read back attendees with response status
+        const returnedAttendees = googleEvent.data.attendees?.map((a: any) => ({
+          email: a.email || '',
+          displayName: a.displayName || null,
+          responseStatus: a.responseStatus || 'needsAction',
+          self: a.self || false,
+          organizer: a.organizer || false,
+        })) || null;
 
         await prisma.calendarEvent.update({
           where: { id: eventId },
-          data: { googleEventId: googleEvent.data.id, syncedAt: new Date() },
+          data: {
+            googleEventId: googleEvent.data.id,
+            syncedAt: new Date(),
+            ...(conferenceLink ? { conferenceLink } : {}),
+            ...(returnedAttendees ? { attendees: returnedAttendees as unknown as Prisma.InputJsonValue } : {}),
+          },
         });
       } else if (action === 'update') {
         const event = await prisma.calendarEvent.findUnique({ where: { id: eventId } });
         if (!event?.googleEventId) return;
 
-        await calendar.events.update({
+        const requestBody: Record<string, any> = {
+          summary: event.title,
+          description: event.description || undefined,
+          location: event.location || undefined,
+          start: event.isAllDay
+            ? { date: event.startTime.toISOString().split('T')[0] }
+            : { dateTime: event.startTime.toISOString() },
+          end: event.isAllDay
+            ? { date: event.endTime.toISOString().split('T')[0] }
+            : { dateTime: event.endTime.toISOString() },
+        };
+
+        if (extraData?.attendees) {
+          requestBody.attendees = extraData.attendees;
+        }
+        if (extraData?.colorId) {
+          requestBody.colorId = extraData.colorId;
+        }
+        if (event.colorId) {
+          requestBody.colorId = requestBody.colorId ?? event.colorId;
+        }
+        if (extraData?.addGoogleMeet) {
+          requestBody.conferenceData = {
+            createRequest: {
+              requestId: randomUUID(),
+              conferenceSolutionKey: { type: 'hangoutsMeet' },
+            },
+          };
+        }
+
+        const updatedGoogleEvent = await calendar.events.update({
           calendarId: 'primary',
           eventId: event.googleEventId,
-          requestBody: {
-            summary: event.title,
-            description: event.description || undefined,
-            location: event.location || undefined,
-            start: event.isAllDay
-              ? { date: event.startTime.toISOString().split('T')[0] }
-              : { dateTime: event.startTime.toISOString() },
-            end: event.isAllDay
-              ? { date: event.endTime.toISOString().split('T')[0] }
-              : { dateTime: event.endTime.toISOString() },
-          },
-        });
+          sendUpdates: extraData?.sendUpdates || 'all',
+          conferenceDataVersion: 1,
+          requestBody,
+        } as any);
+
+        // Read back conference link from response
+        const hangoutLink = updatedGoogleEvent.data.hangoutLink;
+        const conferenceLink = (updatedGoogleEvent.data as any).conferenceData?.entryPoints?.find(
+          (ep: any) => ep.entryPointType === 'video',
+        )?.uri || hangoutLink || null;
+
+        // Read back attendees with response status
+        const returnedAttendees = updatedGoogleEvent.data.attendees?.map((a: any) => ({
+          email: a.email || '',
+          displayName: a.displayName || null,
+          responseStatus: a.responseStatus || 'needsAction',
+          self: a.self || false,
+          organizer: a.organizer || false,
+        })) || null;
 
         await prisma.calendarEvent.update({
           where: { id: eventId },
-          data: { syncedAt: new Date() },
+          data: {
+            syncedAt: new Date(),
+            ...(conferenceLink ? { conferenceLink } : {}),
+            ...(returnedAttendees ? { attendees: returnedAttendees as unknown as Prisma.InputJsonValue } : {}),
+          },
         });
       } else if (action === 'delete') {
         const event = await prisma.calendarEvent.findUnique({ where: { id: eventId } });

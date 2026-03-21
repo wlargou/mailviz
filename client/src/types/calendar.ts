@@ -34,6 +34,10 @@ export interface CreateEventInput {
   endTime: string;
   location?: string;
   isAllDay?: boolean;
+  attendees?: Array<{ email: string }>;
+  sendUpdates?: 'all' | 'none';
+  addGoogleMeet?: boolean;
+  colorId?: string;
 }
 
 export interface UpdateEventInput extends Partial<CreateEventInput> {}

@@ -936,6 +936,34 @@
   cursor: pointer;
 }
 
+// Event modal (create/edit side panel)
+.event-modal__date-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.event-modal__attendees {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+}
+
+.event-modal__conference-link {
+  padding: 0.5rem 0;
+
+  a {
+    color: var(--cds-link-primary);
+    font-size: 0.875rem;
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+}
+
 // Responsive
 @media (max-width: 1056px) {
   .metric-tiles {

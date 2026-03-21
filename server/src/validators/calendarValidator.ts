@@ -7,6 +7,12 @@ export const createEventSchema = z.object({
   endTime: z.string().datetime(),
   location: z.string().optional(),
   isAllDay: z.boolean().optional(),
+  attendees: z.array(z.object({
+    email: z.string().email(),
+  })).optional(),
+  sendUpdates: z.enum(['all', 'externalOnly', 'none']).optional().default('all'),
+  addGoogleMeet: z.boolean().optional(),
+  colorId: z.string().max(2).optional(),
 });
 
 export const updateEventSchema = createEventSchema.partial();
