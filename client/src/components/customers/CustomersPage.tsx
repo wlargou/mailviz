@@ -187,7 +187,10 @@ export function CustomersPage() {
                     <TableHead>
                       <TableRow>
                         {headers.map((header) => (
-                          <TableHeader key={header.key}>
+                          <TableHeader
+                            key={header.key}
+                            className={['contacts', 'tasks', 'emails'].includes(header.key) ? 'table-cell--center' : undefined}
+                          >
                             {header.header}
                           </TableHeader>
                         ))}
@@ -216,13 +219,13 @@ export function CustomersPage() {
                         <TableCell>
                           <CategoryTag category={customer.category} />
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="table-cell--center">
                           <Tag type="cyan" size="sm">{customer._count?.contacts ?? 0}</Tag>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="table-cell--center">
                           <Tag type="blue" size="sm">{customer._count?.tasks ?? 0}</Tag>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="table-cell--center">
                           <Tag type="teal" size="sm">{customer._count?.emails ?? 0}</Tag>
                         </TableCell>
                         <TableCell>
