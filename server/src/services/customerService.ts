@@ -31,13 +31,17 @@ export const customerService = {
       where.categoryId = query.categoryId;
     }
 
-    const sortBy = query.sortBy || 'createdAt';
+    const sortBy = query.sortBy || 'emailCount';
     const sortOrder = (query.sortOrder || 'desc') as Prisma.SortOrder;
+
+    const orderBy = sortBy === 'emailCount'
+      ? { emails: { _count: sortOrder } }
+      : { [sortBy]: sortOrder };
 
     const [customers, total] = await Promise.all([
       prisma.customer.findMany({
         where,
-        orderBy: { [sortBy]: sortOrder },
+        orderBy,
         skip: pagination.skip,
         take: pagination.limit,
         include: {
