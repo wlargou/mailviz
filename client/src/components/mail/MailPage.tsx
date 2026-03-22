@@ -11,7 +11,8 @@ import {
 } from '@carbon/react';
 import { Renew, StarFilled, Star, Attachment, Email as EmailIcon, Archive, TrashCan, Undo, Add, CheckmarkOutline, Close, CheckboxCheckedFilled, Task, Share } from '@carbon/icons-react';
 import { SidePanel } from '@carbon/ibm-products';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, format } from 'date-fns';
+import { Time } from '@carbon/icons-react';
 import { useSearchParams } from 'react-router-dom';
 import { emailsApi } from '../../api/emails';
 import { useUIStore } from '../../store/uiStore';
@@ -64,6 +65,8 @@ export function MailPage() {
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [scheduledEmails, setScheduledEmails] = useState<any[]>([]);
+  const [scheduledLoading, setScheduledLoading] = useState(false);
   const addNotification = useUIStore((s) => s.addNotification);
   const currentUser = useAuthStore((s) => s.user);
 
@@ -118,9 +121,25 @@ export function MailPage() {
     }
   }, [page, filters, addNotification]);
 
+  const fetchScheduledEmails = useCallback(async () => {
+    setScheduledLoading(true);
+    try {
+      const { data: response } = await emailsApi.getScheduledEmails();
+      setScheduledEmails((response as any).data || []);
+    } catch {
+      // ignore
+    } finally {
+      setScheduledLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
-    fetchThreads();
-  }, [fetchThreads]);
+    if (filters.folder === 'scheduled') {
+      fetchScheduledEmails();
+    } else {
+      fetchThreads();
+    }
+  }, [fetchThreads, fetchScheduledEmails, filters.folder]);
 
   // Keep ref in sync for WebSocket handlers
   useEffect(() => {
@@ -395,10 +414,11 @@ export function MailPage() {
               : filters.folder === 'starred' ? 3
               : filters.folder === 'archived' ? 4
               : filters.folder === 'trash' ? 5
+              : filters.folder === 'scheduled' ? 6
               : 0
             }
             onChange={(e: { index: number }) => {
-              const folders = [null, 'inbox', 'sent', 'starred', 'archived', 'trash'];
+              const folders = [null, 'inbox', 'sent', 'starred', 'archived', 'trash', 'scheduled'];
               handleFolderChange(folders[e.index]);
             }}
           >
@@ -408,6 +428,7 @@ export function MailPage() {
             <Switch name="starred" text="Starred" />
             <Switch name="archived" text="Archived" />
             <Switch name="trash" text="Trash" />
+            <Switch name="scheduled" text="Scheduled" />
           </ContentSwitcher>
         </div>
 
@@ -424,7 +445,58 @@ export function MailPage() {
           </div>
         )}
 
-        {loading && !syncing ? (
+        {filters.folder === 'scheduled' ? (
+          scheduledLoading ? (
+            <div className="mail-page__loading">
+              <InlineLoading description="Loading scheduled emails..." />
+            </div>
+          ) : scheduledEmails.length === 0 ? (
+            <EmptyState
+              title="No scheduled emails"
+              description="Schedule emails from the compose window using the Schedule button"
+              icon={<Time size={48} />}
+            />
+          ) : (
+            <div className="scheduled-emails-list">
+              {scheduledEmails.map((se: any) => (
+                <div key={se.id} className="scheduled-email-item">
+                  <div className="scheduled-email-item__info">
+                    <div className="scheduled-email-item__subject">
+                      {se.subject || '(No subject)'}
+                    </div>
+                    <div className="scheduled-email-item__meta">
+                      To: {se.to?.join(', ') || '—'}
+                    </div>
+                  </div>
+                  <div className="scheduled-email-item__schedule">
+                    <Time size={14} />
+                    <span>{format(new Date(se.sendAt), 'MMM d, yyyy h:mm a')}</span>
+                  </div>
+                  <Tag size="sm" type={se.status === 'pending' ? 'blue' : se.status === 'failed' ? 'red' : 'green'}>
+                    {se.status}
+                  </Tag>
+                  {se.status === 'pending' && (
+                    <Button
+                      kind="danger--ghost"
+                      size="sm"
+                      onClick={async () => {
+                        try {
+                          await emailsApi.cancelScheduledEmail(se.id);
+                          addNotification({ kind: 'success', title: 'Scheduled email cancelled' });
+                          fetchScheduledEmails();
+                        } catch {
+                          addNotification({ kind: 'error', title: 'Failed to cancel' });
+                        }
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )
+        ) : loading && !syncing ? (
           <div className="mail-page__loading">
             <InlineLoading description="Loading emails..." />
           </div>

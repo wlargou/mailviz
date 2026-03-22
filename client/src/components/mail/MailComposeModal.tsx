@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { TextInput, Button, InlineLoading, Tag, DatePicker, DatePickerInput, TimePicker, Popover, PopoverContent, Layer } from '@carbon/react';
+import { TextInput, Button, InlineLoading, Tag, DatePicker, DatePickerInput, TimePicker } from '@carbon/react';
 import { SidePanel } from '@carbon/ibm-products';
-import { SendAlt, Attachment, Close, ChevronDown, Time } from '@carbon/icons-react';
+import { SendAlt, Attachment, Close, Time } from '@carbon/icons-react';
 import DOMPurify from 'dompurify';
 import { format } from 'date-fns';
 import { emailsApi } from '../../api/emails';
@@ -59,7 +59,6 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail }: 
   const [attachments, setAttachments] = useState<ComposeAttachment[]>([]);
   const [forwardedAttachments, setForwardedAttachments] = useState<ForwardedAttachment[]>([]);
   const [isDragging, setIsDragging] = useState(false);
-  const [sendMenuOpen, setSendMenuOpen] = useState(false);
   const [showSchedulePicker, setShowSchedulePicker] = useState(false);
   const [scheduledAt, setScheduledAt] = useState<Date | null>(null);
   const [scheduleTime, setScheduleTime] = useState('09:00');
@@ -72,7 +71,6 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail }: 
     setIsDragging(false);
     setScheduledAt(null);
     setShowSchedulePicker(false);
-    setSendMenuOpen(false);
     setScheduleTime('09:00');
 
     if (mode === 'new') {
@@ -208,6 +206,11 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail }: 
   const allAttachmentCount = attachments.length + forwardedAttachments.length;
 
   const handleSend = async () => {
+    // If scheduled, delegate to schedule handler
+    if (scheduledAt) {
+      return handleScheduleSend();
+    }
+
     const htmlBody = editorRef.current?.getHTML() || '';
     if (!htmlBody || htmlBody === '<p></p>') {
       addNotification({ kind: 'warning', title: 'Please write a message' });
@@ -435,6 +438,37 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail }: 
           </div>
         )}
 
+        <div className="compose-form__actions">
+          <Button
+            kind="primary"
+            size="md"
+            renderIcon={SendAlt}
+            onClick={handleSend}
+            disabled={sending || isUploading}
+          >
+            {sending ? 'Sending...' : isUploading ? 'Reading files...' : 'Send'}
+          </Button>
+          <Button
+            kind="secondary"
+            size="md"
+            renderIcon={Time}
+            onClick={() => setShowSchedulePicker(!showSchedulePicker)}
+            disabled={sending}
+          >
+            Schedule
+          </Button>
+          {scheduledAt && (
+            <div className="compose-schedule-info">
+              <Time size={14} />
+              <span>{format(scheduledAt, 'MMM d, h:mm a')}</span>
+              <button className="compose-schedule-info__clear" onClick={() => setScheduledAt(null)} title="Remove schedule">
+                <Close size={14} />
+              </button>
+            </div>
+          )}
+          {sending && <InlineLoading description="" />}
+        </div>
+
         {/* Schedule picker */}
         {showSchedulePicker && (
           <div className="compose-schedule-picker">
@@ -443,54 +477,11 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail }: 
             </DatePicker>
             <TimePicker id="schedule-time" labelText="Time" value={scheduleTime} size="sm"
               onChange={(e: any) => setScheduleTime(e.target.value)} />
-            <div className="compose-schedule-picker__actions">
-              <Button kind="primary" size="sm" onClick={confirmSchedule} disabled={!scheduledAt}>Confirm</Button>
-              <Button kind="ghost" size="sm" onClick={() => setShowSchedulePicker(false)}>Cancel</Button>
-            </div>
+            <Button kind="primary" size="sm" onClick={confirmSchedule} disabled={!scheduledAt}>
+              Confirm
+            </Button>
           </div>
         )}
-
-        <div className="compose-form__actions">
-          <div className="compose-form__send-group">
-            <Button
-              kind="primary"
-              size="md"
-              renderIcon={scheduledAt ? Time : SendAlt}
-              onClick={scheduledAt ? handleScheduleSend : handleSend}
-              disabled={sending || isUploading}
-            >
-              {sending ? 'Sending...' : isUploading ? 'Reading files...' : scheduledAt ? `Schedule: ${format(scheduledAt, 'MMM d, h:mm a')}` : 'Send'}
-            </Button>
-            <Layer>
-              <Popover open={sendMenuOpen} align="top-end" isTabTip onRequestClose={() => setSendMenuOpen(false)}>
-                <button
-                  type="button"
-                  className="compose-send-dropdown-trigger"
-                  onClick={() => setSendMenuOpen(!sendMenuOpen)}
-                  aria-label="Send options"
-                >
-                  <ChevronDown size={16} />
-                </button>
-                <PopoverContent>
-                  <div className="compose-send-menu">
-                    <button className="compose-send-menu__item" onClick={() => { setScheduledAt(null); setSendMenuOpen(false); }}>
-                      <SendAlt size={16} /> Send now
-                    </button>
-                    <button className="compose-send-menu__item" onClick={() => { setShowSchedulePicker(true); setSendMenuOpen(false); }}>
-                      <Time size={16} /> Schedule send
-                    </button>
-                    {scheduledAt && (
-                      <button className="compose-send-menu__item compose-send-menu__item--danger" onClick={() => { setScheduledAt(null); setSendMenuOpen(false); }}>
-                        <Close size={16} /> Remove schedule
-                      </button>
-                    )}
-                  </div>
-                </PopoverContent>
-              </Popover>
-            </Layer>
-          </div>
-          {sending && <InlineLoading description="Sending..." />}
-        </div>
 
         {replyToEmail && (mode === 'reply' || mode === 'replyAll' || mode === 'forward') && (
           <div
