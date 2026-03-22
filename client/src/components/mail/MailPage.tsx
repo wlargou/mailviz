@@ -9,7 +9,7 @@ import {
   Grid,
   Column,
 } from '@carbon/react';
-import { Renew, StarFilled, Star, Attachment, Email as EmailIcon, Archive, TrashCan, Undo, Add, CheckmarkOutline, Close, CheckboxCheckedFilled, Task, Share } from '@carbon/icons-react';
+import { Renew, StarFilled, Star, Attachment, Email as EmailIcon, MailAll, Archive, TrashCan, Undo, Add, CheckmarkOutline, Close, CheckboxCheckedFilled, Task, Share } from '@carbon/icons-react';
 import { SidePanel } from '@carbon/ibm-products';
 import { formatDistanceToNow, format } from 'date-fns';
 import { Time } from '@carbon/icons-react';
@@ -626,7 +626,7 @@ export function MailPage() {
                           size="sm"
                           hasIconOnly
                           iconDescription={isUnread ? 'Mark as read' : 'Mark as unread'}
-                          renderIcon={EmailIcon}
+                          renderIcon={isUnread ? MailAll : EmailIcon}
                           onClick={(ev: React.MouseEvent) => handleThreadAction('readToggle', thread, ev)}
                         />
                         <Button
