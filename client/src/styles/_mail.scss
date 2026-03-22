@@ -289,7 +289,8 @@
   &--unread {
     box-shadow: inset 3px 0 0 var(--cds-link-primary);
     padding-left: 0.75rem;
-    background: #78a9ff21;
+    background: #78a9ff0d;
+    border-bottom: 1px solid var(--cds-border-subtle);
 
     .thread-item__sender,
     .thread-item__subject {
@@ -297,7 +298,7 @@
     }
 
     &:hover {
-      background: #78a9ff30;
+      background: #78a9ff1a;
     }
   }
 
