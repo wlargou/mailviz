@@ -53,7 +53,7 @@ export const forwardEmailSchema = z.object({
   to: z.array(emailString).min(1, 'At least one recipient is required'),
   cc: z.array(emailString).optional().default([]),
   bcc: z.array(emailString).optional().default([]),
-  htmlBody: z.string().min(1).max(500000),
+  htmlBody: z.string().max(500000).optional().default(''),
   attachments: attachmentsField,
   forwardExistingAttachments: z.array(z.string().uuid()).optional().default([]),
 }).refine(

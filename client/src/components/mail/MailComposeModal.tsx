@@ -212,7 +212,7 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail }: 
     }
 
     const htmlBody = editorRef.current?.getHTML() || '';
-    if (!htmlBody || htmlBody === '<p></p>') {
+    if (mode !== 'forward' && (!htmlBody || htmlBody === '<p></p>')) {
       addNotification({ kind: 'warning', title: 'Please write a message' });
       return;
     }
@@ -276,7 +276,7 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail }: 
   const handleScheduleSend = async () => {
     if (!scheduledAt) return;
     const htmlBody = editorRef.current?.getHTML() || '';
-    if (!htmlBody || htmlBody === '<p></p>') {
+    if (mode !== 'forward' && (!htmlBody || htmlBody === '<p></p>')) {
       addNotification({ kind: 'warning', title: 'Please write a message' });
       return;
     }
