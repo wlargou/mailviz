@@ -550,8 +550,15 @@
   align-items: center;
 }
 
-.table-cell--center {
+td.table-cell--center,
+th.table-cell--center {
   text-align: center;
+}
+
+// Carbon Tag uses display:flex which prevents text-align from centering it.
+// Override to inline-flex so text-align works on the parent td.
+td.table-cell--center .cds--tag {
+  display: inline-flex;
 }
 
 // Contact email copy button
