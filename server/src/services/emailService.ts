@@ -6,7 +6,7 @@ import { customerService } from './customerService.js';
 import { extractDomain, isPersonalDomain, normalizeDomain, parseName } from '../utils/domainResolver.js';
 import { parsePagination, paginationMeta } from '../utils/pagination.js';
 import { wsEmit } from '../websocket.js';
-import { buildMimeMessage } from '../utils/mimeBuilder.js';
+import { buildMimeMessage, type MimeAttachment } from '../utils/mimeBuilder.js';
 import { env } from '../config/env.js';
 import { format } from 'date-fns';
 // A4: Helper functions extracted to shared module
@@ -940,7 +940,7 @@ export const emailService = {
     return prisma.email.count({ where });
   },
 
-  async sendEmail(data: { to: string[]; cc?: string[]; bcc?: string[]; subject: string; htmlBody: string }, userId: string) {
+  async sendEmail(data: { to: string[]; cc?: string[]; bcc?: string[]; subject: string; htmlBody: string; attachments?: Array<{ filename: string; content: string; contentType: string; size: number }> }, userId: string) {
     const gmail = await getGmailClient(userId);
     const auth = await prisma.googleAuth.findFirst({ where: { userId } });
     if (!auth?.email) throw Object.assign(new Error('Google not connected'), { status: 400 });
@@ -952,6 +952,7 @@ export const emailService = {
       bcc: data.bcc,
       subject: data.subject,
       htmlBody: data.htmlBody,
+      attachments: data.attachments?.map(a => ({ filename: a.filename, content: a.content, contentType: a.contentType })),
     });
 
     const sendRes = await gmail.users.messages.send({
@@ -977,7 +978,7 @@ export const emailService = {
     return { messageId: sendRes.data.id, threadId: sendRes.data.threadId };
   },
 
-  async replyToEmail(emailId: string, data: { htmlBody: string; replyAll?: boolean; cc?: string[]; bcc?: string[] }, userId: string) {
+  async replyToEmail(emailId: string, data: { htmlBody: string; replyAll?: boolean; cc?: string[]; bcc?: string[]; attachments?: Array<{ filename: string; content: string; contentType: string; size: number }> }, userId: string) {
     const gmail = await getGmailClient(userId);
     const auth = await prisma.googleAuth.findFirst({ where: { userId } });
     if (!auth?.email) throw Object.assign(new Error('Google not connected'), { status: 400 });
@@ -1043,6 +1044,7 @@ export const emailService = {
       htmlBody: fullHtml,
       inReplyTo: inReplyTo?.trim(),
       references: references?.trim(),
+      attachments: data.attachments?.map(a => ({ filename: a.filename, content: a.content, contentType: a.contentType })),
     });
 
     const sendRes = await gmail.users.messages.send({
@@ -1063,7 +1065,7 @@ export const emailService = {
     return { messageId: sendRes.data.id, threadId: sendRes.data.threadId };
   },
 
-  async forwardEmail(emailId: string, data: { to: string[]; cc?: string[]; bcc?: string[]; htmlBody: string }, userId: string) {
+  async forwardEmail(emailId: string, data: { to: string[]; cc?: string[]; bcc?: string[]; htmlBody: string; attachments?: Array<{ filename: string; content: string; contentType: string; size: number }>; forwardExistingAttachments?: string[] }, userId: string) {
     const gmail = await getGmailClient(userId);
     const auth = await prisma.googleAuth.findFirst({ where: { userId } });
     if (!auth?.email) throw Object.assign(new Error('Google not connected'), { status: 400 });
@@ -1095,6 +1097,39 @@ export const emailService = {
     const to = [...new Set(data.to.map((e) => e.toLowerCase().trim()))];
     const cc = data.cc ? [...new Set(data.cc.map((e) => e.toLowerCase().trim()))] : undefined;
 
+    // Collect attachments: new uploads + existing email attachments to forward
+    const allAttachments: MimeAttachment[] = [];
+
+    if (data.attachments) {
+      for (const a of data.attachments) {
+        allAttachments.push({ filename: a.filename, content: a.content, contentType: a.contentType });
+      }
+    }
+
+    if (data.forwardExistingAttachments && data.forwardExistingAttachments.length > 0) {
+      const existingAtts = await prisma.emailAttachment.findMany({
+        where: { id: { in: data.forwardExistingAttachments }, emailId, email: { userId } },
+        include: { email: true },
+      });
+
+      const downloaded = await Promise.all(
+        existingAtts.map(async (att) => {
+          const res = await gmail.users.messages.attachments.get({
+            userId: 'me',
+            messageId: att.email.gmailMessageId!,
+            id: att.gmailAttachmentId,
+          });
+          return {
+            filename: att.filename,
+            content: res.data.data || '',
+            contentType: att.mimeType,
+          } as MimeAttachment;
+        })
+      );
+
+      allAttachments.push(...downloaded);
+    }
+
     const raw = await buildMimeMessage({
       from: auth.email,
       to,
@@ -1102,6 +1137,7 @@ export const emailService = {
       bcc: data.bcc,
       subject,
       htmlBody: fullHtml,
+      attachments: allAttachments.length > 0 ? allAttachments : undefined,
       // No inReplyTo/references/threadId for forwards — they're new conversations
     });
 

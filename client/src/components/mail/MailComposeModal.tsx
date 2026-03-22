@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { TextInput, Button, InlineLoading } from '@carbon/react';
+import { TextInput, Button, InlineLoading, Tag } from '@carbon/react';
 import { SidePanel } from '@carbon/ibm-products';
-import { SendAlt } from '@carbon/icons-react';
+import { SendAlt, Attachment, Close } from '@carbon/icons-react';
 import DOMPurify from 'dompurify';
 import { format } from 'date-fns';
 import { emailsApi } from '../../api/emails';
@@ -11,6 +11,31 @@ import { ComposeToolbar } from './ComposeToolbar';
 import { RecipientInput } from './RecipientInput';
 import type { Editor } from '@tiptap/react';
 import type { ComposeMode, EmailMessage } from '../../types/email';
+
+interface ComposeAttachment {
+  id: string;
+  filename: string;
+  size: number;
+  contentType: string;
+  content: string;
+  status: 'reading' | 'ready' | 'error';
+}
+
+interface ForwardedAttachment {
+  id: string; // EmailAttachment ID
+  filename: string;
+  size: number;
+  mimeType: string;
+}
+
+const MAX_TOTAL_SIZE = 25 * 1024 * 1024;
+const BLOCKED_EXTENSIONS = /\.(exe|bat|cmd|com|msi|scr|pif|vbs|js|wsf|cpl)$/i;
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 interface MailComposeModalProps {
   open: boolean;
@@ -23,6 +48,7 @@ interface MailComposeModalProps {
 export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail }: MailComposeModalProps) {
   const addNotification = useUIStore((s) => s.addNotification);
   const editorRef = useRef<Editor | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
   const [sending, setSending] = useState(false);
   const [to, setTo] = useState<string[]>([]);
@@ -30,10 +56,17 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail }: 
   const [bcc, setBcc] = useState<string[]>([]);
   const [subject, setSubject] = useState('');
   const [showBcc, setShowBcc] = useState(false);
+  const [attachments, setAttachments] = useState<ComposeAttachment[]>([]);
+  const [forwardedAttachments, setForwardedAttachments] = useState<ForwardedAttachment[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
 
   // Pre-fill based on mode
   useEffect(() => {
     if (!open) return;
+    setAttachments([]);
+    setForwardedAttachments([]);
+    setIsDragging(false);
+
     if (mode === 'new') {
       setTo([]);
       setCc([]);
@@ -61,8 +94,93 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail }: 
       setBcc([]);
       setSubject(replyToEmail.subject.match(/^Fwd:/i) ? replyToEmail.subject : `Fwd: ${replyToEmail.subject}`);
       setShowBcc(false);
+      // Pre-populate original attachments for forwarding
+      if (replyToEmail.attachments?.length > 0) {
+        setForwardedAttachments(
+          replyToEmail.attachments.map((a) => ({
+            id: a.id,
+            filename: a.filename,
+            size: a.size,
+            mimeType: a.mimeType,
+          }))
+        );
+      }
     }
   }, [open, mode, replyToEmail]);
+
+  const handleFilesSelected = useCallback((files: FileList | File[]) => {
+    const fileArray = Array.from(files);
+    const currentSize = attachments.reduce((sum, a) => sum + a.size, 0)
+      + forwardedAttachments.reduce((sum, a) => sum + a.size, 0);
+
+    for (const file of fileArray) {
+      if (BLOCKED_EXTENSIONS.test(file.name)) {
+        addNotification({ kind: 'error', title: `"${file.name}" is not allowed` });
+        continue;
+      }
+      if (file.size > MAX_TOTAL_SIZE) {
+        addNotification({ kind: 'error', title: `"${file.name}" exceeds 25MB limit` });
+        continue;
+      }
+      if (currentSize + file.size > MAX_TOTAL_SIZE) {
+        addNotification({ kind: 'error', title: 'Total attachments exceed 25MB' });
+        break;
+      }
+
+      const id = crypto.randomUUID();
+      setAttachments((prev) => [
+        ...prev,
+        {
+          id,
+          filename: file.name,
+          size: file.size,
+          contentType: file.type || 'application/octet-stream',
+          content: '',
+          status: 'reading',
+        },
+      ]);
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = (reader.result as string).split(',')[1];
+        setAttachments((prev) =>
+          prev.map((a) => (a.id === id ? { ...a, content: base64, status: 'ready' as const } : a))
+        );
+      };
+      reader.onerror = () => {
+        setAttachments((prev) =>
+          prev.map((a) => (a.id === id ? { ...a, status: 'error' as const } : a))
+        );
+      };
+      reader.readAsDataURL(file);
+    }
+  }, [attachments, forwardedAttachments, addNotification]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files.length > 0) {
+      handleFilesSelected(e.dataTransfer.files);
+    }
+  }, [handleFilesSelected]);
+
+  const removeAttachment = useCallback((id: string) => {
+    setAttachments((prev) => prev.filter((a) => a.id !== id));
+  }, []);
+
+  const removeForwardedAttachment = useCallback((id: string) => {
+    setForwardedAttachments((prev) => prev.filter((a) => a.id !== id));
+  }, []);
 
   const getQuotedHtml = useCallback(() => {
     if (!replyToEmail) return '';
@@ -77,12 +195,20 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail }: 
     return `<div class="compose-quoted"><p>On ${date}, ${sender} wrote:</p>${replyToEmail.body || replyToEmail.snippet || ''}</div>`;
   }, [replyToEmail, mode]);
 
+  const isUploading = attachments.some((a) => a.status === 'reading');
+  const totalSize = attachments.reduce((s, a) => s + a.size, 0) + forwardedAttachments.reduce((s, a) => s + a.size, 0);
+  const allAttachmentCount = attachments.length + forwardedAttachments.length;
+
   const handleSend = async () => {
     const htmlBody = editorRef.current?.getHTML() || '';
     if (!htmlBody || htmlBody === '<p></p>') {
       addNotification({ kind: 'warning', title: 'Please write a message' });
       return;
     }
+
+    const attachmentPayload = attachments
+      .filter((a) => a.status === 'ready')
+      .map((a) => ({ filename: a.filename, content: a.content, contentType: a.contentType, size: a.size }));
 
     setSending(true);
     try {
@@ -98,6 +224,7 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail }: 
           bcc: bcc.length > 0 ? bcc : undefined,
           subject,
           htmlBody,
+          attachments: attachmentPayload.length > 0 ? attachmentPayload : undefined,
         });
       } else if ((mode === 'reply' || mode === 'replyAll') && replyToEmail) {
         await emailsApi.replyToEmail(replyToEmail.id, {
@@ -105,6 +232,7 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail }: 
           replyAll: mode === 'replyAll',
           cc: cc.length > 0 ? cc : undefined,
           bcc: bcc.length > 0 ? bcc : undefined,
+          attachments: attachmentPayload.length > 0 ? attachmentPayload : undefined,
         });
       } else if (mode === 'forward' && replyToEmail) {
         if (to.length === 0) {
@@ -117,6 +245,10 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail }: 
           cc: cc.length > 0 ? cc : undefined,
           bcc: bcc.length > 0 ? bcc : undefined,
           htmlBody,
+          attachments: attachmentPayload.length > 0 ? attachmentPayload : undefined,
+          forwardExistingAttachments: forwardedAttachments.length > 0
+            ? forwardedAttachments.map((a) => a.id)
+            : undefined,
         });
       }
 
@@ -138,11 +270,15 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail }: 
       onRequestClose={onClose}
       title={panelTitle}
       size="lg"
-      slideIn
-      selectorPageContent=".app-content"
       className="compose-side-panel"
     >
-      <div className="compose-form">
+      <div
+        className={`compose-form${isDragging ? ' compose-form--dragging' : ''}`}
+        onDragOver={handleDragOver}
+        onDragEnter={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
         <RecipientInput label="To" value={to} onChange={setTo} />
         <RecipientInput label="Cc" value={cc} onChange={setCc} />
 
@@ -176,8 +312,65 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail }: 
           </div>
         )}
 
-        <ComposeToolbar editor={editorInstance} />
+        <ComposeToolbar editor={editorInstance} onAttach={() => fileInputRef.current?.click()} />
         <TiptapEditor editorRef={editorRef} onEditorReady={setEditorInstance} placeholder="Write your message..." />
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            if (e.target.files) handleFilesSelected(e.target.files);
+            e.target.value = '';
+          }}
+        />
+
+        {/* Attachment list */}
+        {allAttachmentCount > 0 && (
+          <div className="compose-attachments">
+            <div className="compose-attachments__header">
+              <Attachment size={14} />
+              <span>
+                {allAttachmentCount} attachment{allAttachmentCount > 1 ? 's' : ''}
+              </span>
+              <span className="compose-attachments__size">{formatFileSize(totalSize)}</span>
+            </div>
+            {forwardedAttachments.map((att) => (
+              <div key={att.id} className="compose-attachments__item">
+                <span className="compose-attachments__name">{att.filename}</span>
+                <Tag size="sm" type="cool-gray">forwarded</Tag>
+                <span className="compose-attachments__meta">{formatFileSize(att.size)}</span>
+                <Button
+                  kind="ghost"
+                  size="sm"
+                  hasIconOnly
+                  iconDescription="Remove"
+                  renderIcon={Close}
+                  onClick={() => removeForwardedAttachment(att.id)}
+                  className="compose-attachments__remove"
+                />
+              </div>
+            ))}
+            {attachments.map((att) => (
+              <div key={att.id} className="compose-attachments__item">
+                <span className="compose-attachments__name">{att.filename}</span>
+                {att.status === 'reading' && <InlineLoading description="" />}
+                {att.status === 'error' && <Tag size="sm" type="red">error</Tag>}
+                <span className="compose-attachments__meta">{formatFileSize(att.size)}</span>
+                <Button
+                  kind="ghost"
+                  size="sm"
+                  hasIconOnly
+                  iconDescription="Remove"
+                  renderIcon={Close}
+                  onClick={() => removeAttachment(att.id)}
+                  className="compose-attachments__remove"
+                />
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="compose-form__actions">
           <Button
@@ -185,9 +378,9 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail }: 
             size="md"
             renderIcon={SendAlt}
             onClick={handleSend}
-            disabled={sending}
+            disabled={sending || isUploading}
           >
-            {sending ? 'Sending...' : 'Send'}
+            {sending ? 'Sending...' : isUploading ? 'Reading files...' : 'Send'}
           </Button>
           {sending && <InlineLoading description="Sending..." />}
         </div>

@@ -84,15 +84,15 @@ export const emailsApi = {
     return api.get<ApiResponse<{ syncing: boolean }>>('/emails/sync-status');
   },
 
-  sendEmail(data: { to: string[]; cc?: string[]; bcc?: string[]; subject: string; htmlBody: string }) {
+  sendEmail(data: { to: string[]; cc?: string[]; bcc?: string[]; subject: string; htmlBody: string; attachments?: Array<{ filename: string; content: string; contentType: string; size: number }> }) {
     return api.post<ApiResponse<{ messageId: string; threadId: string }>>('/emails/send', data);
   },
 
-  replyToEmail(id: string, data: { htmlBody: string; replyAll?: boolean; cc?: string[]; bcc?: string[] }) {
+  replyToEmail(id: string, data: { htmlBody: string; replyAll?: boolean; cc?: string[]; bcc?: string[]; attachments?: Array<{ filename: string; content: string; contentType: string; size: number }> }) {
     return api.post<ApiResponse<{ messageId: string; threadId: string }>>(`/emails/${id}/reply`, data);
   },
 
-  forwardEmail(id: string, data: { to: string[]; cc?: string[]; bcc?: string[]; htmlBody: string }) {
+  forwardEmail(id: string, data: { to: string[]; cc?: string[]; bcc?: string[]; htmlBody: string; attachments?: Array<{ filename: string; content: string; contentType: string; size: number }>; forwardExistingAttachments?: string[] }) {
     return api.post<ApiResponse<{ messageId: string; threadId: string }>>(`/emails/${id}/forward`, data);
   },
 

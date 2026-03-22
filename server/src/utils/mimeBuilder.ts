@@ -2,6 +2,12 @@ import MailComposer from 'nodemailer/lib/mail-composer/index.js';
 import sanitizeHtml from 'sanitize-html';
 import juice from 'juice';
 
+export interface MimeAttachment {
+  filename: string;
+  content: string; // base64-encoded
+  contentType: string;
+}
+
 export interface MimeOptions {
   from: string;
   to: string[];
@@ -12,6 +18,7 @@ export interface MimeOptions {
   inReplyTo?: string;
   references?: string;
   threadId?: string;
+  attachments?: MimeAttachment[];
 }
 
 const SAFE_TAGS = [
@@ -93,6 +100,14 @@ export async function buildMimeMessage(options: MimeOptions): Promise<string> {
   }
   if (options.references) {
     mailOptions.references = options.references;
+  }
+
+  if (options.attachments && options.attachments.length > 0) {
+    mailOptions.attachments = options.attachments.map((att) => ({
+      filename: att.filename,
+      content: Buffer.from(att.content, 'base64'),
+      contentType: att.contentType,
+    }));
   }
 
   const mail = new MailComposer(mailOptions);

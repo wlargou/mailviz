@@ -35,6 +35,10 @@ app.use(cors({
   origin: env.CLIENT_URL,
   credentials: true,
 }));
+// Larger body limit for email send routes (attachments up to 25MB, base64 ~33% overhead)
+app.use('/api/v1/emails/send', express.json({ limit: '35mb' }));
+app.use('/api/v1/emails/:id/reply', express.json({ limit: '35mb' }));
+app.use('/api/v1/emails/:id/forward', express.json({ limit: '35mb' }));
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev'));

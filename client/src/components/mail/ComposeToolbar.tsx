@@ -20,11 +20,13 @@ import {
   TextFont,
   TextScale,
   TextColor,
+  Attachment,
 } from '@carbon/icons-react';
 import type { Editor } from '@tiptap/react';
 
 interface ComposeToolbarProps {
   editor: Editor | null;
+  onAttach?: () => void;
 }
 
 const FONT_FAMILIES = [
@@ -81,7 +83,7 @@ function DropdownMenu({ children, trigger }: { children: React.ReactNode; trigge
   );
 }
 
-export function ComposeToolbar({ editor }: ComposeToolbarProps) {
+export function ComposeToolbar({ editor, onAttach }: ComposeToolbarProps) {
   if (!editor) return null;
 
   const handleLink = () => {
@@ -253,6 +255,14 @@ export function ComposeToolbar({ editor }: ComposeToolbarProps) {
         onClick={() => editor.chain().focus().setHorizontalRule().run()} />
       <Button kind="ghost" size="sm" hasIconOnly iconDescription="Clear formatting" renderIcon={TextClearFormat}
         onClick={handleClearFormat} />
+
+      {onAttach && (
+        <>
+          <div className="compose-toolbar__separator" />
+          <Button kind="ghost" size="sm" hasIconOnly iconDescription="Attach files" renderIcon={Attachment}
+            onClick={onAttach} />
+        </>
+      )}
     </div>
   );
 }
