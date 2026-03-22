@@ -553,6 +553,11 @@
 td.table-cell--center,
 th.table-cell--center {
   text-align: center;
+
+  .cds--table-header-label {
+    text-align: center;
+    justify-content: center;
+  }
 }
 
 // Carbon Tag uses display:flex which prevents text-align from centering it.
