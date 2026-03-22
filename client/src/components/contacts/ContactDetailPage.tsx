@@ -26,6 +26,7 @@ import {
   SkeletonText,
   TextInput,
   Modal,
+  InlineLoading,
 } from '@carbon/react';
 import { Edit, Calendar, Email, Enterprise, Attachment } from '@carbon/icons-react';
 import { VipBadge } from '../shared/VipBadge';
@@ -57,6 +58,7 @@ export function ContactDetailPage() {
   const [contact, setContact] = useState<Contact | null>(null);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [emailThreads, setEmailThreads] = useState<EmailThread[]>([]);
+  const [emailTotal, setEmailTotal] = useState(0);
   const [selectedThread, setSelectedThread] = useState<{ id: string; subject: string } | null>(null);
   const [attachments, setAttachments] = useState<AttachmentWithEmail[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,6 +70,7 @@ export function ContactDetailPage() {
   const [emailSearch, setEmailSearch] = useState('');
   const [emailPage, setEmailPage] = useState(1);
   const [emailPageSize, setEmailPageSize] = useState(20);
+  const [emailLoading, setEmailLoading] = useState(false);
 
   // Edit contact state
   const [editOpen, setEditOpen] = useState(false);
@@ -76,6 +79,25 @@ export function ContactDetailPage() {
   const [editEmail, setEditEmail] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [editRole, setEditRole] = useState('');
+
+  const fetchEmails = useCallback(async (contactEmail: string, page: number, pageSize: number, search?: string) => {
+    setEmailLoading(true);
+    try {
+      const params: Record<string, string> = {
+        contactEmail,
+        limit: String(pageSize),
+        page: String(page),
+      };
+      if (search) params.search = search;
+      const { data: res } = await emailsApi.getThreads(params);
+      setEmailThreads(res.data);
+      setEmailTotal(res.meta?.total || res.data.length);
+    } catch {
+      // ignore
+    } finally {
+      setEmailLoading(false);
+    }
+  }, []);
 
   const fetchData = useCallback(async () => {
     if (!id) return;
@@ -87,11 +109,9 @@ export function ContactDetailPage() {
       ]);
       setContact(contactRes.data.data);
       setEvents(eventsRes.data.data);
-      // Fetch emails and attachments for this contact
+      // Fetch emails for this contact (first page)
       if (contactRes.data.data.email) {
-        emailsApi.getThreads({ contactEmail: contactRes.data.data.email, limit: '20' })
-          .then(({ data: res }) => setEmailThreads(res.data))
-          .catch(() => {});
+        fetchEmails(contactRes.data.data.email, 1, emailPageSize);
       }
       contactsApi.getAttachments(id!)
         .then(({ data: res }) => setAttachments(res.data))
@@ -101,7 +121,7 @@ export function ContactDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [id, addNotification]);
+  }, [id, addNotification, fetchEmails, emailPageSize]);
 
   useEffect(() => {
     fetchData();
@@ -215,7 +235,7 @@ export function ContactDetailPage() {
           <Tabs>
             <TabList aria-label="Contact details">
               <Tab renderIcon={Calendar}>Events ({events.length})</Tab>
-              <Tab renderIcon={Email}>Emails ({emailThreads.length})</Tab>
+              <Tab renderIcon={Email}>Emails ({emailTotal})</Tab>
               <Tab renderIcon={Attachment}>Attachments ({attachments.length})</Tab>
             </TabList>
             <TabPanels>
@@ -282,20 +302,16 @@ export function ContactDetailPage() {
                 })()}
               </TabPanel>
               <TabPanel>
-                {emailThreads.length === 0 ? (
+                {emailThreads.length === 0 && !emailLoading ? (
                   <EmptyState title="No emails" description="Emails involving this contact will appear here after syncing" icon={<Email size={48} />} />
                 ) : (() => {
-                  const filteredEmails = emailSearch
-                    ? emailThreads.filter((t) => t.latestEmail.subject.toLowerCase().includes(emailSearch.toLowerCase()) || (t.latestEmail.fromName || t.latestEmail.from).toLowerCase().includes(emailSearch.toLowerCase()))
-                    : emailThreads;
-                  const paginatedEmails = filteredEmails.slice((emailPage - 1) * emailPageSize, emailPage * emailPageSize);
                   const emailHeaders = [
                     { key: 'subject', header: 'Subject' },
                     { key: 'from', header: 'From' },
                     { key: 'date', header: 'Date' },
                     { key: 'messages', header: 'Messages' },
                   ];
-                  const rows = paginatedEmails.map((t) => ({
+                  const rows = emailThreads.map((t) => ({
                     id: t.threadId || t.latestEmail.id,
                     subject: t.latestEmail.subject,
                     from: t.latestEmail.fromName || t.latestEmail.from,
@@ -309,7 +325,11 @@ export function ContactDetailPage() {
                           <TableContainer>
                             <TableToolbar>
                               <TableToolbarContent>
-                                <TableToolbarSearch placeholder="Search emails..." onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setEmailSearch(e.target.value); setEmailPage(1); }} persistent />
+                                <TableToolbarSearch placeholder="Search emails..." onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                                  setEmailSearch(e.target.value);
+                                  setEmailPage(1);
+                                  if (contact?.email) fetchEmails(contact.email, 1, emailPageSize, e.target.value || undefined);
+                                }} persistent />
                               </TableToolbarContent>
                             </TableToolbar>
                             <Table {...getTableProps()} size="lg">
@@ -341,11 +361,16 @@ export function ContactDetailPage() {
                           </TableContainer>
                         )}
                       </DataTable>
-                      {filteredEmails.length > 10 && (
-                        <Pagination totalItems={filteredEmails.length} pageSize={emailPageSize} pageSizes={[10, 20, 50]} page={emailPage}
-                          onChange={({ page: p, pageSize: ps }: { page: number; pageSize: number }) => { setEmailPage(p); setEmailPageSize(ps); }}
+                      {emailTotal > emailPageSize && (
+                        <Pagination totalItems={emailTotal} pageSize={emailPageSize} pageSizes={[10, 20, 50]} page={emailPage}
+                          onChange={({ page: p, pageSize: ps }: { page: number; pageSize: number }) => {
+                            setEmailPage(p);
+                            setEmailPageSize(ps);
+                            if (contact?.email) fetchEmails(contact.email, p, ps, emailSearch || undefined);
+                          }}
                         />
                       )}
+                      {emailLoading && <InlineLoading description="Loading emails..." />}
                     </>
                   );
                 })()}
