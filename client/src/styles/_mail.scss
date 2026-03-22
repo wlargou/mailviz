@@ -289,10 +289,15 @@
   &--unread {
     box-shadow: inset 3px 0 0 var(--cds-link-primary);
     padding-left: 0.75rem;
+    background: #78a9ff21;
 
     .thread-item__sender,
     .thread-item__subject {
       font-weight: 600;
+    }
+
+    &:hover {
+      background: #78a9ff30;
     }
   }
 
