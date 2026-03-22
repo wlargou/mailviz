@@ -31,6 +31,7 @@ const headers = [
   { key: 'name', header: 'Name' },
   { key: 'email', header: 'Email' },
   { key: 'company', header: 'Company' },
+  { key: 'emails', header: 'Emails' },
 ];
 
 export function ContactsPage() {
@@ -134,7 +135,10 @@ export function ContactsPage() {
                     <TableHead>
                       <TableRow>
                         {headers.map((header) => (
-                          <TableHeader key={header.key}>
+                          <TableHeader
+                            key={header.key}
+                            className={header.key === 'emails' ? 'table-cell--center' : undefined}
+                          >
                             {header.header}
                           </TableHeader>
                         ))}
@@ -187,6 +191,9 @@ export function ContactsPage() {
                               {contact.customer.name}
                             </Tag>
                           ) : '—'}
+                        </TableCell>
+                        <TableCell className="table-cell--center">
+                          <Tag type="teal" size="sm">{(contact as any)._emailCount ?? 0}</Tag>
                         </TableCell>
                       </TableRow>
                     ))}

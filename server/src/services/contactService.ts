@@ -29,10 +29,53 @@ export const contactService = {
       ];
     }
 
+    const sortBy = query.sortBy || 'emailCount';
+
+    // For emailCount sort, we need a raw approach since there's no direct relation
+    if (sortBy === 'emailCount') {
+      // Get contacts with email counts via raw SQL subquery
+      const [contacts, total] = await Promise.all([
+        prisma.contact.findMany({
+          where,
+          skip: pagination.skip,
+          take: pagination.limit,
+          include: {
+            customer: { select: { id: true, name: true, domain: true, logoUrl: true } },
+          },
+        }),
+        prisma.contact.count({ where }),
+      ]);
+
+      // Batch count emails for each contact by their email address
+      const contactEmails = contacts.filter(c => c.email).map(c => c.email!);
+      let emailCounts: Record<string, number> = {};
+      if (contactEmails.length > 0) {
+        const counts = await prisma.email.groupBy({
+          by: ['from'],
+          where: { from: { in: contactEmails }, userId },
+          _count: { _all: true },
+        });
+        emailCounts = Object.fromEntries(counts.map(c => [c.from, c._count._all]));
+      }
+
+      const contactsWithCount = contacts.map(c => ({
+        ...c,
+        _emailCount: c.email ? (emailCounts[c.email] || 0) : 0,
+      }));
+
+      // Sort by email count desc
+      contactsWithCount.sort((a, b) => b._emailCount - a._emailCount);
+
+      return {
+        data: contactsWithCount,
+        meta: paginationMeta(total, pagination),
+      };
+    }
+
     const [contacts, total] = await Promise.all([
       prisma.contact.findMany({
         where,
-        orderBy: { firstName: 'asc' },
+        orderBy: { [sortBy]: (query.sortOrder || 'asc') as Prisma.SortOrder },
         skip: pagination.skip,
         take: pagination.limit,
         include: {
@@ -43,7 +86,7 @@ export const contactService = {
     ]);
 
     return {
-      data: contacts,
+      data: contacts.map(c => ({ ...c, _emailCount: 0 })),
       meta: paginationMeta(total, pagination),
     };
   },
