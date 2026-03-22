@@ -645,17 +645,7 @@ export function MailPage() {
                     <div className="thread-item__subject">{decodeEntities(e.subject)}</div>
                     <div className="thread-item__snippet">{decodeEntities(e.snippet)}</div>
                     {e.customer && (
-                      <div className="thread-item__customer">
-                        {e.customer.logoUrl && (
-                          <img
-                            src={e.customer.logoUrl}
-                            alt=""
-                            className="customer-logo"
-                            onError={(ev) => { (ev.target as HTMLImageElement).style.display = 'none'; }}
-                          />
-                        )}
-                        <span>{e.customer.name}</span>
-                      </div>
+                      <Tag size="sm" type="cool-gray">{e.customer.name}</Tag>
                     )}
                     {currentUser && e.userId !== currentUser.id && (
                       <Tag size="sm" type="purple" renderIcon={Share}>Shared</Tag>
