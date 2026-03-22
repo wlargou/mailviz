@@ -264,6 +264,11 @@
   padding: 0 1rem;
 }
 
+.thread-list + .cds--pagination,
+.mail-page .cds--pagination {
+  padding: 0 1rem;
+}
+
 .thread-item {
   display: block;
   width: 100%;
