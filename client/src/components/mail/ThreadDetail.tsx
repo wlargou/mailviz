@@ -5,7 +5,7 @@ import {
   InlineLoading,
   SkeletonText,
 } from '@carbon/react';
-import { Enterprise, StarFilled, Star, Attachment, Download, Archive, TrashCan, Undo, Email as EmailIcon, TaskComplete, Reply, ReplyAll, SendAlt, Share } from '@carbon/icons-react';
+import { Enterprise, StarFilled, Star, Attachment, Download, Archive, TrashCan, Undo, Email as EmailIcon, EmailNew, TaskComplete, Reply, ReplyAll, SendAlt, Share } from '@carbon/icons-react';
 import { UserAvatar } from '@carbon/ibm-products';
 import { format, formatDistanceToNow } from 'date-fns';
 import DOMPurify from 'dompurify';
@@ -331,8 +331,8 @@ export function ThreadDetail({ threadId, onEmailAction }: ThreadDetailProps) {
                     kind="ghost"
                     size="sm"
                     hasIconOnly
-                    iconDescription="Mark unread"
-                    renderIcon={EmailIcon}
+                    iconDescription={msg.isRead ? 'Mark as unread' : 'Mark as read'}
+                    renderIcon={msg.isRead ? EmailNew : EmailIcon}
                     onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleMarkUnread(msg); }}
                   />
                   <Button
