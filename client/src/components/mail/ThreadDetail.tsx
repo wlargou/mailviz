@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Tag,
   Button,
@@ -44,6 +44,8 @@ export function ThreadDetail({ threadId, onEmailAction }: ThreadDetailProps) {
   const [composeState, setComposeState] = useState<{ mode: ComposeMode; email: EmailMessage } | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [threadShares, setThreadShares] = useState<Array<{ id: string; createdAt: string; sharedWith: { id: string; name: string | null; email: string; avatarUrl: string | null } }>>([]);
+  const scrollTargetRef = useRef<string | null>(null);
+  const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const navigate = useNavigate();
   const addNotification = useUIStore((s) => s.addNotification);
 
@@ -52,24 +54,34 @@ export function ThreadDetail({ threadId, onEmailAction }: ThreadDetailProps) {
     try {
       const { data: res } = await emailsApi.getThread(threadId);
       setMessages(res.data);
-      // Expand the latest message by default and fetch its body
+      // Find first unread message, or fall back to latest
       if (res.data.length > 0) {
-        const latestMsg = res.data[res.data.length - 1];
-        setExpandedMessages(new Set([latestMsg.id]));
-        if (!latestMsg.body) {
+        const firstUnread = res.data.find((m) => !m.isRead);
+        const targetMsg = firstUnread || res.data[res.data.length - 1];
+
+        // Expand the target message (and all unread messages)
+        const toExpand = new Set<string>([targetMsg.id]);
+        res.data.forEach((m) => { if (!m.isRead) toExpand.add(m.id); });
+        setExpandedMessages(toExpand);
+
+        // Set scroll target for after render
+        scrollTargetRef.current = targetMsg.id;
+
+        // Fetch body for expanded message
+        if (!targetMsg.body) {
           try {
-            const { data: fullMsg } = await emailsApi.getMessage(latestMsg.id);
+            const { data: fullMsg } = await emailsApi.getMessage(targetMsg.id);
             setMessages((prev) =>
-              prev.map((m) => (m.id === latestMsg.id ? { ...m, body: fullMsg.data.body } : m))
+              prev.map((m) => (m.id === targetMsg.id ? { ...m, body: fullMsg.data.body } : m))
             );
           } catch {
             // Body fetch failed, snippet will be shown
           }
         }
         // Mark as read when auto-expanding
-        if (!latestMsg.isRead) {
-          emailsApi.markAsRead(latestMsg.id).then(() => {
-            setMessages((prev) => prev.map((m) => (m.id === latestMsg.id ? { ...m, isRead: true } : m)));
+        if (!targetMsg.isRead) {
+          emailsApi.markAsRead(targetMsg.id).then(() => {
+            setMessages((prev) => prev.map((m) => (m.id === targetMsg.id ? { ...m, isRead: true } : m)));
             onEmailAction?.();
           }).catch(() => {});
         }
@@ -84,6 +96,19 @@ export function ThreadDetail({ threadId, onEmailAction }: ThreadDetailProps) {
   useEffect(() => {
     fetchThread();
   }, [fetchThread]);
+
+  // Scroll to target message (first unread) after messages render
+  useEffect(() => {
+    if (!loading && scrollTargetRef.current && messages.length > 1) {
+      const el = messageRefs.current.get(scrollTargetRef.current);
+      if (el) {
+        setTimeout(() => {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 100);
+      }
+      scrollTargetRef.current = null;
+    }
+  }, [loading, messages]);
 
   const toggleExpand = async (msg: EmailMessage) => {
     const newSet = new Set(expandedMessages);
@@ -258,7 +283,11 @@ export function ThreadDetail({ threadId, onEmailAction }: ThreadDetailProps) {
           const isLoadingBody = loadingBodies.has(msg.id);
 
           return (
-            <div key={msg.id} className={`message-bubble${!msg.isRead ? ' message-bubble--unread' : ''}`}>
+            <div
+              key={msg.id}
+              ref={(el) => { if (el) messageRefs.current.set(msg.id, el); }}
+              className={`message-bubble${!msg.isRead ? ' message-bubble--unread' : ''}`}
+            >
               <div className="message-bubble__header" onClick={() => toggleExpand(msg)}>
                 <div className="message-bubble__sender">
                   <UserAvatar
