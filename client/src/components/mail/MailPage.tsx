@@ -27,6 +27,14 @@ import type { MailFilters } from './MailSearchBar';
 import type { EmailThread } from '../../types/email';
 import type { PaginationMeta } from '../../types/api';
 
+// Decode HTML entities in snippets (Gmail API returns &#39; etc.)
+const entityEl = document.createElement('textarea');
+function decodeEntities(text: string | null | undefined): string {
+  if (!text) return '';
+  entityEl.innerHTML = text;
+  return entityEl.value;
+}
+
 const defaultFilters: MailFilters = {
   search: '',
   from: '',
@@ -634,8 +642,8 @@ export function MailPage() {
                         />
                       </div>
                     </div>
-                    <div className="thread-item__subject">{e.subject}</div>
-                    <div className="thread-item__snippet">{e.snippet}</div>
+                    <div className="thread-item__subject">{decodeEntities(e.subject)}</div>
+                    <div className="thread-item__snippet">{decodeEntities(e.snippet)}</div>
                     {e.customer && (
                       <div className="thread-item__customer">
                         {e.customer.logoUrl && (
