@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { TextInput, Button, InlineLoading, Tag, DatePicker, DatePickerInput, TimePicker } from '@carbon/react';
 import { SidePanel } from '@carbon/ibm-products';
 import { SendAlt, Attachment, Close, Time } from '@carbon/icons-react';
@@ -330,7 +331,7 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail }: 
 
   const panelTitle = mode === 'new' ? 'New Email' : mode === 'reply' ? 'Reply' : mode === 'replyAll' ? 'Reply All' : 'Forward';
 
-  return (
+  return createPortal(
     <SidePanel
       open={open}
       onRequestClose={onClose}
@@ -490,6 +491,7 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail }: 
           />
         )}
       </div>
-    </SidePanel>
+    </SidePanel>,
+    document.body
   );
 }
