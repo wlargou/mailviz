@@ -30,44 +30,63 @@ export const contactService = {
     }
 
     const sortBy = query.sortBy || 'emailCount';
+    const sortOrder = (query.sortOrder || 'desc') as Prisma.SortOrder;
 
-    // For emailCount sort, we need a raw approach since there's no direct relation
     if (sortBy === 'emailCount') {
-      // Get contacts with email counts via raw SQL subquery
-      const [contacts, total] = await Promise.all([
-        prisma.contact.findMany({
-          where,
-          skip: pagination.skip,
-          take: pagination.limit,
-          include: {
-            customer: { select: { id: true, name: true, domain: true, logoUrl: true } },
-          },
-        }),
-        prisma.contact.count({ where }),
+      // Use raw SQL to sort by email count across all pages
+      // Build WHERE clause parts
+      const whereParts: string[] = [`cu.user_id = '${userId}'`];
+      if (query.customerId) {
+        whereParts.push(`c.customer_id = '${query.customerId}'`);
+      }
+      if (query.search) {
+        const s = query.search.replace(/'/g, "''");
+        whereParts.push(`(c.first_name ILIKE '%${s}%' OR c.last_name ILIKE '%${s}%' OR c.email ILIKE '%${s}%' OR c.role ILIKE '%${s}%')`);
+      }
+      const whereClause = whereParts.join(' AND ');
+
+      const [rows, countResult] = await Promise.all([
+        prisma.$queryRawUnsafe<Array<{ id: string; email_count: bigint }>>(`
+          SELECT c.id, COALESCE(ec.cnt, 0) AS email_count
+          FROM contacts c
+          JOIN customers cu ON c.customer_id = cu.id
+          LEFT JOIN (
+            SELECT "from", COUNT(*) AS cnt FROM emails WHERE user_id = '${userId}' GROUP BY "from"
+          ) ec ON c.email = ec."from"
+          WHERE ${whereClause}
+          ORDER BY email_count DESC
+          LIMIT ${pagination.limit} OFFSET ${pagination.skip}
+        `),
+        prisma.$queryRawUnsafe<Array<{ count: bigint }>>(`
+          SELECT COUNT(*) as count FROM contacts c
+          JOIN customers cu ON c.customer_id = cu.id
+          WHERE ${whereClause}
+        `),
       ]);
 
-      // Batch count emails for each contact by their email address
-      const contactEmails = contacts.filter(c => c.email).map(c => c.email!);
-      let emailCounts: Record<string, number> = {};
-      if (contactEmails.length > 0) {
-        const counts = await prisma.email.groupBy({
-          by: ['from'],
-          where: { from: { in: contactEmails }, userId },
-          _count: { _all: true },
-        });
-        emailCounts = Object.fromEntries(counts.map(c => [c.from, c._count._all]));
-      }
+      const total = Number(countResult[0]?.count || 0);
+      const orderedIds = rows.map(r => r.id);
+      const emailCountMap = Object.fromEntries(rows.map(r => [r.id, Number(r.email_count)]));
 
-      const contactsWithCount = contacts.map(c => ({
-        ...c,
-        _emailCount: c.email ? (emailCounts[c.email] || 0) : 0,
-      }));
+      // Fetch full contact objects with includes
+      const contacts = orderedIds.length > 0
+        ? await prisma.contact.findMany({
+            where: { id: { in: orderedIds } },
+            include: {
+              customer: { select: { id: true, name: true, domain: true, logoUrl: true } },
+            },
+          })
+        : [];
 
-      // Sort by email count desc
-      contactsWithCount.sort((a, b) => b._emailCount - a._emailCount);
+      // Restore the SQL ordering
+      const contactMap = new Map(contacts.map(c => [c.id, c]));
+      const ordered = orderedIds
+        .map(id => contactMap.get(id))
+        .filter(Boolean)
+        .map(c => ({ ...c!, _emailCount: emailCountMap[c!.id] || 0 }));
 
       return {
-        data: contactsWithCount,
+        data: ordered,
         meta: paginationMeta(total, pagination),
       };
     }
@@ -75,7 +94,7 @@ export const contactService = {
     const [contacts, total] = await Promise.all([
       prisma.contact.findMany({
         where,
-        orderBy: { [sortBy]: (query.sortOrder || 'asc') as Prisma.SortOrder },
+        orderBy: { [sortBy]: sortOrder },
         skip: pagination.skip,
         take: pagination.limit,
         include: {
@@ -85,8 +104,20 @@ export const contactService = {
       prisma.contact.count({ where }),
     ]);
 
+    // Still need email counts for the column display
+    const contactEmails = contacts.filter(c => c.email).map(c => c.email!);
+    let emailCounts: Record<string, number> = {};
+    if (contactEmails.length > 0) {
+      const counts = await prisma.email.groupBy({
+        by: ['from'],
+        where: { from: { in: contactEmails }, userId },
+        _count: { _all: true },
+      });
+      emailCounts = Object.fromEntries(counts.map(c => [c.from, c._count._all]));
+    }
+
     return {
-      data: contacts.map(c => ({ ...c, _emailCount: 0 })),
+      data: contacts.map(c => ({ ...c, _emailCount: c.email ? (emailCounts[c.email] || 0) : 0 })),
       meta: paginationMeta(total, pagination),
     };
   },
