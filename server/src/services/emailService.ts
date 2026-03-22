@@ -422,26 +422,15 @@ export const emailService = {
       where.receivedAt = { ...(where.receivedAt as object), lte: new Date(query.dateBefore) };
     }
     if (query.contactEmail) {
-      where.OR = [
-        { from: query.contactEmail },
-        { to: { has: query.contactEmail } },
-        { cc: { has: query.contactEmail } },
-      ];
+      where.from = query.contactEmail;
     }
     if (query.search) {
-      const searchConditions: Prisma.EmailWhereInput[] = [
+      where.OR = [
         { subject: { contains: query.search, mode: 'insensitive' } },
         { from: { contains: query.search, mode: 'insensitive' } },
         { fromName: { contains: query.search, mode: 'insensitive' } },
         { snippet: { contains: query.search, mode: 'insensitive' } },
       ];
-      if (where.OR) {
-        // Combine with existing OR (contactEmail filter)
-        where.AND = [{ OR: where.OR }, { OR: searchConditions }];
-        delete where.OR;
-      } else {
-        where.OR = searchConditions;
-      }
     }
 
     // P1: Get distinct threads with counts — eliminates N+1 queries
@@ -466,6 +455,7 @@ export const emailService = {
           ${query.folder === 'sent' ? Prisma.sql`AND 'SENT' = ANY(label_ids)` : Prisma.empty}
           ${query.folder === 'starred' ? Prisma.sql`AND is_starred = true` : Prisma.empty}
           ${query.folder === 'archived' ? Prisma.sql`AND is_archived = true` : Prisma.empty}
+          ${query.contactEmail ? Prisma.sql`AND "from" = ${query.contactEmail}` : Prisma.empty}
         `
       : await prisma.$queryRaw`
           SELECT COUNT(DISTINCT thread_id) as count FROM emails
@@ -476,6 +466,7 @@ export const emailService = {
           ${query.folder === 'sent' ? Prisma.sql`AND 'SENT' = ANY(label_ids)` : Prisma.empty}
           ${query.folder === 'starred' ? Prisma.sql`AND is_starred = true` : Prisma.empty}
           ${query.folder === 'archived' ? Prisma.sql`AND is_archived = true` : Prisma.empty}
+          ${query.contactEmail ? Prisma.sql`AND "from" = ${query.contactEmail}` : Prisma.empty}
         `;
     const total = Number(totalResult[0]?.count ?? 0);
 
