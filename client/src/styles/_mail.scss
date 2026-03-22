@@ -84,7 +84,15 @@
 .mail-folder-switcher {
   padding: 0 1rem;
   margin-bottom: 0.75rem;
-  max-width: 600px;
+
+  .cds--content-switcher {
+    width: 100%;
+  }
+
+  .cds--content-switcher-btn {
+    flex: 1;
+    max-inline-size: none;
+  }
 }
 
 // --- Mail Search Bar ---
