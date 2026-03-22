@@ -96,6 +96,28 @@ export const emailsApi = {
     return api.post<ApiResponse<{ messageId: string; threadId: string }>>(`/emails/${id}/forward`, data);
   },
 
+  // Scheduled send
+  scheduleEmail(data: {
+    sendAt: string; mode: string; to?: string[]; cc?: string[]; bcc?: string[];
+    subject?: string; htmlBody: string; replyToEmailId?: string;
+    attachments?: Array<{ filename: string; content: string; contentType: string; size: number }>;
+    forwardExistingAttachments?: string[];
+  }) {
+    return api.post('/emails/schedule', data);
+  },
+
+  getScheduledEmails() {
+    return api.get('/emails/scheduled');
+  },
+
+  updateScheduledEmail(id: string, data: { sendAt: string }) {
+    return api.patch(`/emails/scheduled/${id}`, data);
+  },
+
+  cancelScheduledEmail(id: string) {
+    return api.delete(`/emails/scheduled/${id}`);
+  },
+
   // Sharing
   shareThread(threadId: string, userIds: string[]) {
     return api.post(`/emails/threads/${threadId}/share`, { userIds });

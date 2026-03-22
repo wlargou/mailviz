@@ -39,6 +39,7 @@ app.use(cors({
 app.use('/api/v1/emails/send', express.json({ limit: '35mb' }));
 app.use('/api/v1/emails/:id/reply', express.json({ limit: '35mb' }));
 app.use('/api/v1/emails/:id/forward', express.json({ limit: '35mb' }));
+app.use('/api/v1/emails/schedule', express.json({ limit: '35mb' }));
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev'));

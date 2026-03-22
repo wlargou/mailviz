@@ -5,7 +5,7 @@ import { getGmailClient } from '../lib/gmail.js';
 import { customerService } from './customerService.js';
 import { extractDomain, isPersonalDomain, normalizeDomain, parseName } from '../utils/domainResolver.js';
 import { parsePagination, paginationMeta } from '../utils/pagination.js';
-import { wsEmit } from '../websocket.js';
+import { wsEmit, wsEmitToUser } from '../websocket.js';
 import { buildMimeMessage, type MimeAttachment } from '../utils/mimeBuilder.js';
 import { env } from '../config/env.js';
 import { format } from 'date-fns';
@@ -1208,5 +1208,142 @@ export const emailService = {
       orderBy: { createdAt: 'desc' },
     });
     return shares;
+  },
+
+  // ── Scheduled Email Send ──
+
+  async scheduleEmail(userId: string, data: {
+    sendAt: string;
+    mode: string;
+    replyToEmailId?: string;
+    to: string[];
+    cc: string[];
+    bcc: string[];
+    subject: string;
+    htmlBody: string;
+    attachments: Array<{ filename: string; content: string; contentType: string; size: number }>;
+    forwardExistingAttachments: string[];
+  }) {
+    const scheduled = await prisma.scheduledEmail.create({
+      data: {
+        userId,
+        sendAt: new Date(data.sendAt),
+        mode: data.mode,
+        replyToEmailId: data.replyToEmailId || null,
+        to: data.to,
+        cc: data.cc,
+        bcc: data.bcc,
+        subject: data.subject,
+        htmlBody: data.htmlBody,
+        attachments: data.attachments,
+        forwardExistingAttachments: data.forwardExistingAttachments,
+      },
+    });
+    wsEmitToUser(userId, 'email:scheduled', { id: scheduled.id });
+    return scheduled;
+  },
+
+  async getScheduledEmails(userId: string) {
+    return prisma.scheduledEmail.findMany({
+      where: { userId, status: { in: ['pending', 'failed'] } },
+      orderBy: { sendAt: 'asc' },
+    });
+  },
+
+  async updateScheduledEmail(userId: string, id: string, data: { sendAt: string }) {
+    const existing = await prisma.scheduledEmail.findFirst({ where: { id, userId } });
+    if (!existing) throw Object.assign(new Error('Scheduled email not found'), { status: 404 });
+    if (existing.status !== 'pending') throw Object.assign(new Error('Only pending emails can be updated'), { status: 400 });
+
+    return prisma.scheduledEmail.update({
+      where: { id },
+      data: { sendAt: new Date(data.sendAt) },
+    });
+  },
+
+  async cancelScheduledEmail(userId: string, id: string) {
+    const existing = await prisma.scheduledEmail.findFirst({ where: { id, userId } });
+    if (!existing) throw Object.assign(new Error('Scheduled email not found'), { status: 404 });
+    if (existing.status !== 'pending') throw Object.assign(new Error('Only pending emails can be cancelled'), { status: 400 });
+
+    return prisma.scheduledEmail.update({
+      where: { id },
+      data: { status: 'cancelled' },
+    });
+  },
+
+  async processScheduledEmails() {
+    const due = await prisma.scheduledEmail.findMany({
+      where: { status: 'pending', sendAt: { lte: new Date() } },
+    });
+
+    let processed = 0;
+
+    for (const scheduled of due) {
+      try {
+        const attachments = (scheduled.attachments as Array<{ filename: string; content: string; contentType: string; size: number }>) || [];
+        let result: { messageId?: string | null; threadId?: string | null };
+
+        if (scheduled.mode === 'new') {
+          result = await this.sendEmail({
+            to: scheduled.to,
+            cc: scheduled.cc,
+            bcc: scheduled.bcc,
+            subject: scheduled.subject,
+            htmlBody: scheduled.htmlBody,
+            attachments,
+          }, scheduled.userId);
+        } else if (scheduled.mode === 'reply' || scheduled.mode === 'replyAll') {
+          result = await this.replyToEmail(scheduled.replyToEmailId!, {
+            htmlBody: scheduled.htmlBody,
+            replyAll: scheduled.mode === 'replyAll',
+            cc: scheduled.cc,
+            bcc: scheduled.bcc,
+            attachments,
+          }, scheduled.userId);
+        } else if (scheduled.mode === 'forward') {
+          result = await this.forwardEmail(scheduled.replyToEmailId!, {
+            to: scheduled.to,
+            cc: scheduled.cc,
+            bcc: scheduled.bcc,
+            htmlBody: scheduled.htmlBody,
+            attachments,
+            forwardExistingAttachments: scheduled.forwardExistingAttachments,
+          }, scheduled.userId);
+        } else {
+          throw new Error(`Unknown mode: ${scheduled.mode}`);
+        }
+
+        await prisma.scheduledEmail.update({
+          where: { id: scheduled.id },
+          data: {
+            status: 'sent',
+            sentMessageId: result.messageId || null,
+            sentThreadId: result.threadId || null,
+          },
+        });
+
+        wsEmitToUser(scheduled.userId, 'email:scheduled:sent', { id: scheduled.id });
+        processed++;
+      } catch (err: any) {
+        const newRetryCount = scheduled.retryCount + 1;
+        const update: Record<string, unknown> = {
+          retryCount: newRetryCount,
+          errorMessage: err?.message || 'Unknown error',
+        };
+        if (newRetryCount >= 3) {
+          update.status = 'failed';
+        }
+        await prisma.scheduledEmail.update({
+          where: { id: scheduled.id },
+          data: update,
+        });
+
+        wsEmitToUser(scheduled.userId, 'email:scheduled:sent', { id: scheduled.id });
+        console.error(`[ScheduledSend] Failed to send scheduled email ${scheduled.id}:`, err?.message);
+      }
+    }
+
+    return processed;
   },
 };

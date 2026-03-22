@@ -2,6 +2,7 @@ import { app } from './app.js';
 import { env } from './config/env.js';
 import { startEmailSyncScheduler, stopEmailSyncScheduler } from './jobs/emailSyncScheduler.js';
 import { startCalendarSyncScheduler, stopCalendarSyncScheduler } from './jobs/calendarSyncScheduler.js';
+import { startScheduledSendScheduler, stopScheduledSendScheduler } from './jobs/scheduledSendScheduler.js';
 import { initWebSocket, shutdownWebSocket } from './websocket.js';
 import { prisma } from './lib/prisma.js';
 
@@ -10,6 +11,7 @@ const server = app.listen(env.PORT, () => {
   initWebSocket(server);
   startEmailSyncScheduler();
   startCalendarSyncScheduler();
+  startScheduledSendScheduler();
 });
 
 // ── Graceful shutdown (E2) ──
@@ -28,6 +30,7 @@ async function gracefulShutdown(signal: string) {
   // 2. Stop background sync schedulers
   stopEmailSyncScheduler();
   stopCalendarSyncScheduler();
+  stopScheduledSendScheduler();
 
   // 3. Close WebSocket connections
   shutdownWebSocket();

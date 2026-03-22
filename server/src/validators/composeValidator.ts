@@ -61,6 +61,37 @@ export const forwardEmailSchema = z.object({
   { message: 'Attachments exceed 25MB limit or contain blocked file types', path: ['attachments'] }
 );
 
+export const scheduleEmailSchema = z.object({
+  sendAt: z.string().datetime(),
+  mode: z.enum(['new', 'reply', 'replyAll', 'forward']),
+  replyToEmailId: z.string().uuid().optional(),
+  to: z.array(emailString).optional().default([]),
+  cc: z.array(emailString).optional().default([]),
+  bcc: z.array(emailString).optional().default([]),
+  subject: z.string().max(500).optional().default(''),
+  htmlBody: z.string().min(1).max(500000),
+  attachments: attachmentsField,
+  forwardExistingAttachments: z.array(z.string().uuid()).optional().default([]),
+}).refine(
+  (data) => new Date(data.sendAt) > new Date(),
+  { message: 'Send time must be in the future', path: ['sendAt'] }
+).refine(
+  (data) => {
+    if (data.mode === 'new' || data.mode === 'forward') return data.to.length > 0;
+    return true;
+  },
+  { message: 'At least one recipient required', path: ['to'] }
+);
+
+export const updateScheduledEmailSchema = z.object({
+  sendAt: z.string().datetime(),
+}).refine(
+  (data) => new Date(data.sendAt) > new Date(),
+  { message: 'Send time must be in the future', path: ['sendAt'] }
+);
+
 export type SendEmailInput = z.infer<typeof sendEmailSchema>;
 export type ReplyEmailInput = z.infer<typeof replyEmailSchema>;
 export type ForwardEmailInput = z.infer<typeof forwardEmailSchema>;
+export type ScheduleEmailInput = z.infer<typeof scheduleEmailSchema>;
+export type UpdateScheduledEmailInput = z.infer<typeof updateScheduledEmailSchema>;

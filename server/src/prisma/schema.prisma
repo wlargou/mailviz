@@ -182,6 +182,7 @@ model User {
   taskSharesSent      TaskShare[]        @relation("TaskSharesSent")
   taskSharesReceived  TaskShare[]        @relation("TaskSharesReceived")
   taskAssignments     Task[]             @relation("TaskAssignments")
+  scheduledEmails     ScheduledEmail[]
 
   @@map("users")
 }
@@ -278,8 +279,9 @@ model Email {
   userId     String    @map("user_id")
   customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
   user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  mailToTask MailToTask?
-  attachments EmailAttachment[]
+  mailToTask      MailToTask?
+  attachments     EmailAttachment[]
+  scheduledReplies ScheduledEmail[]
 
   @@unique([userId, gmailMessageId])
   @@index([receivedAt])
@@ -414,4 +416,40 @@ model TaskShare {
   @@index([sharedByUserId])
   @@index([taskId])
   @@map("task_shares")
+}
+
+// ─── SCHEDULED EMAILS ──────────────────────────────
+
+model ScheduledEmail {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  status      String   @default("pending") @db.VarChar(20)
+  sendAt      DateTime @map("send_at")
+  mode        String   @db.VarChar(20)
+
+  to          String[]
+  cc          String[] @default([])
+  bcc         String[] @default([])
+  subject     String   @db.VarChar(500)
+  htmlBody    String   @db.Text @map("html_body")
+
+  attachments Json?    @default("[]")
+
+  replyToEmailId             String?  @map("reply_to_email_id")
+  forwardExistingAttachments String[] @default([]) @map("forward_existing_attachments")
+
+  sentMessageId String? @map("sent_message_id")
+  sentThreadId  String? @map("sent_thread_id")
+  errorMessage  String? @map("error_message") @db.Text
+  retryCount    Int     @default(0) @map("retry_count")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user         User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replyToEmail Email? @relation(fields: [replyToEmailId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([status, sendAt])
+  @@map("scheduled_emails")
 }

@@ -3,7 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { emailController } from '../controllers/emailController.js';
 import { validate } from '../middleware/validate.js';
 import { convertToTaskSchema } from '../validators/emailValidator.js';
-import { sendEmailSchema, replyEmailSchema, forwardEmailSchema } from '../validators/composeValidator.js';
+import { sendEmailSchema, replyEmailSchema, forwardEmailSchema, scheduleEmailSchema, updateScheduledEmailSchema } from '../validators/composeValidator.js';
 
 const router = Router();
 
@@ -32,6 +32,10 @@ router.get('/', emailController.findAllThreads);
 router.get('/unread-count', emailController.getUnreadCount);
 router.get('/sync-status', emailController.getSyncStatus);
 router.post('/send', sendLimiter, validate(sendEmailSchema), emailController.sendEmail);
+router.post('/schedule', sendLimiter, validate(scheduleEmailSchema), emailController.scheduleEmail);
+router.get('/scheduled', emailController.getScheduledEmails);
+router.patch('/scheduled/:id', validate(updateScheduledEmailSchema), emailController.updateScheduledEmail);
+router.delete('/scheduled/:id', emailController.cancelScheduledEmail);
 router.get('/threads/:threadId', emailController.findThread);
 router.post('/threads/:threadId/share', emailController.shareThread);
 router.delete('/threads/:threadId/shares/:recipientId', emailController.unshareThread);

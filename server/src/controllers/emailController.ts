@@ -226,6 +226,42 @@ export const emailController = {
     }
   },
 
+  async scheduleEmail(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await emailService.scheduleEmail(req.user!.id, req.body);
+      res.status(201).json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async getScheduledEmails(req: Request, res: Response, next: NextFunction) {
+    try {
+      const emails = await emailService.getScheduledEmails(req.user!.id);
+      res.json({ data: emails });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async updateScheduledEmail(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await emailService.updateScheduledEmail(req.user!.id, req.params.id, req.body);
+      res.json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async cancelScheduledEmail(req: Request, res: Response, next: NextFunction) {
+    try {
+      await emailService.cancelScheduledEmail(req.user!.id, req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async shareThread(req: Request, res: Response, next: NextFunction) {
     try {
       const { userIds } = req.body;
