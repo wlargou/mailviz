@@ -680,8 +680,6 @@ export function MailPage() {
         onRequestClose={() => setSelectedThread(null)}
         title={selectedThreadData?.latestEmail.subject || 'Thread'}
         size="lg"
-        slideIn
-        selectorPageContent=".app-content"
         className="mail-page__side-panel"
       >
         {selectedThread && (

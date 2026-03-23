@@ -421,8 +421,6 @@ export function ContactDetailPage() {
         onRequestClose={() => setSelectedThread(null)}
         title={selectedThread?.subject || 'Thread'}
         size="lg"
-        slideIn
-        selectorPageContent=".app-content"
         className="mail-page__side-panel"
       >
         {selectedThread && (
