@@ -9,7 +9,7 @@ import {
   Grid,
   Column,
 } from '@carbon/react';
-import { Renew, StarFilled, Star, Attachment, Email as EmailIcon, EmailNew, Archive, TrashCan, Undo, Add, CheckmarkOutline, Close, CheckboxCheckedFilled, Task, Share } from '@carbon/icons-react';
+import { Renew, StarFilled, Star, Attachment, Email as EmailIcon, EmailNew, ReplyAll, Archive, TrashCan, Undo, Add, CheckmarkOutline, Close, CheckboxCheckedFilled, Task, Share } from '@carbon/icons-react';
 import { SidePanel } from '@carbon/ibm-products';
 import { formatDistanceToNow, format } from 'date-fns';
 import { Time } from '@carbon/icons-react';
@@ -615,9 +615,12 @@ export function MailPage() {
                           kind="ghost"
                           size="sm"
                           hasIconOnly
-                          iconDescription={e.isArchived ? 'Unarchive' : 'Archive'}
-                          renderIcon={e.isArchived ? Undo : Archive}
-                          onClick={(ev: React.MouseEvent) => handleThreadAction('archive', thread, ev)}
+                          iconDescription="Reply All"
+                          renderIcon={ReplyAll}
+                          onClick={(ev: React.MouseEvent) => {
+                            ev.stopPropagation();
+                            setSelectedThread(thread.threadId);
+                          }}
                         />
                         <Button
                           kind="ghost"
