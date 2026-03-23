@@ -494,13 +494,31 @@ export const emailService = {
     const unreadMap = new Map(unreadCounts.map((u) => [u.threadId, u._count.id]));
     const emailMap = new Map(latestEmails.map((e) => [e.threadId, e]));
 
+    // Resolve contact names from 'from' addresses
+    const fromAddresses = [...new Set(latestEmails.map((e) => e.from).filter(Boolean))];
+    const contacts = fromAddresses.length > 0
+      ? await prisma.contact.findMany({
+          where: { email: { in: fromAddresses }, customer: { userId } },
+          select: { email: true, firstName: true, lastName: true },
+        })
+      : [];
+    const contactNameMap = new Map(
+      contacts.filter((c) => c.email).map((c) => [c.email!, `${c.firstName} ${c.lastName}`.trim()])
+    );
+
     // Build thread list preserving sort order from groupBy
-    const threads = threadIdList.map((threadId) => ({
-      threadId,
-      messageCount: threadCountMap.get(threadId) ?? 0,
-      unreadCount: unreadMap.get(threadId) ?? 0,
-      latestEmail: emailMap.get(threadId) ?? null,
-    }));
+    const threads = threadIdList.map((threadId) => {
+      const email = emailMap.get(threadId);
+      return {
+        threadId,
+        messageCount: threadCountMap.get(threadId) ?? 0,
+        unreadCount: unreadMap.get(threadId) ?? 0,
+        latestEmail: email ? {
+          ...email,
+          contactName: contactNameMap.get(email.from) || null,
+        } : null,
+      };
+    });
 
     return {
       data: threads.filter((t) => t.latestEmail),

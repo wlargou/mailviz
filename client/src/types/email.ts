@@ -15,6 +15,7 @@ export interface EmailMessage {
   subject: string;
   from: string;
   fromName: string | null;
+  contactName?: string | null;
   to: string[];
   cc: string[];
   snippet: string | null;

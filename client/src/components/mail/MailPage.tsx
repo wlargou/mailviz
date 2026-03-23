@@ -585,7 +585,7 @@ export function MailPage() {
                     >
                     <div className="thread-item__top">
                       <span className="thread-item__sender">
-                        {e.fromName || e.from}
+                        {e.contactName || e.fromName || e.from}
                       </span>
                       <span className="thread-item__subject-inline">{decodeEntities(e.subject)}</span>
                       <div className="thread-item__right">
