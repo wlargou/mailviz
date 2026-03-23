@@ -376,7 +376,6 @@ export function MailPage() {
         <div className="page-header page-header--padded">
           <div className="page-header__info">
             <h1>Mail</h1>
-            <p className="page-header__subtitle">Email threads synced from Gmail</p>
           </div>
           <div className="page-header__actions">
             <Button
