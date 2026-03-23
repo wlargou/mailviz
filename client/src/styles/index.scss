@@ -113,6 +113,17 @@ body {
   &:has(.calendar-page) {
     overflow: hidden;
   }
+
+  // Remove Carbon Grid padding so pages use full width
+  > .cds--css-grid {
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .cds--css-grid-column {
+    padding-left: 0;
+    padding-right: 0;
+  }
 }
 
 // Collapsed side nav — content takes full width
