@@ -99,7 +99,7 @@ body {
   flex: 1;
   margin-left: 256px;
   margin-top: var(--app-header-height);
-  padding: 1rem 1.5rem;
+  padding: 1rem 0;
   transition: margin-left 0.3s ease;
   background-color: var(--cds-background);
   height: calc(100vh - var(--app-header-height));
