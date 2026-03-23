@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
-import { Grid, Column } from '@carbon/react';
 import { useCalendarStore } from '../../store/calendarStore';
 import { calendarApi } from '../../api/calendar';
 import { useUIStore } from '../../store/uiStore';
@@ -98,8 +97,6 @@ export function CalendarPage() {
         </div>
       </div>
 
-      <Grid fullWidth>
-        <Column lg={16} md={8} sm={4}>
           <CalendarToolbar onAddEvent={() => { setEditEvent(null); setInitialDate(null); setCreateOpen(true); }} />
 
           <div className="calendar-page__view">
@@ -113,8 +110,6 @@ export function CalendarPage() {
               <CalendarDayView onSlotClick={handleSlotClick} onEventClick={handleEventClick} />
             )}
           </div>
-        </Column>
-      </Grid>
 
       <EventModal
         open={createOpen}

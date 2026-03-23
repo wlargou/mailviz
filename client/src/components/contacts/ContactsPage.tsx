@@ -14,8 +14,6 @@ import {
   Pagination,
   DataTableSkeleton,
   Tag,
-  Grid,
-  Column,
 } from '@carbon/react';
 import { Copy } from '@carbon/icons-react';
 import { useNavigate } from 'react-router-dom';
@@ -93,8 +91,6 @@ export function ContactsPage() {
         </div>
       </div>
 
-      <Grid fullWidth>
-        <Column lg={16} md={8} sm={4}>
           {loading && contacts.length === 0 && !search ? (
             <DataTableSkeleton headers={headers} rowCount={5} />
           ) : contacts.length === 0 && !search && !selectedCustomerId ? (
@@ -217,8 +213,6 @@ export function ContactsPage() {
               )}
             </>
           )}
-        </Column>
-      </Grid>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Tabs, TabList, Tab, TabPanels, TabPanel, Grid, Column } from '@carbon/react';
+import { Tabs, TabList, Tab, TabPanels, TabPanel } from '@carbon/react';
 import { useSearchParams } from 'react-router-dom';
 import { TaskListView } from './TaskListView';
 import { TaskKanbanView } from './TaskKanbanView';
@@ -80,8 +80,6 @@ export function TasksPage() {
         </div>
       </div>
 
-      <Grid fullWidth>
-        <Column lg={16} md={8} sm={4}>
           <Tabs>
             <TabList aria-label="Task views">
               <Tab>List View</Tab>
@@ -103,8 +101,6 @@ export function TasksPage() {
               </TabPanel>
             </TabPanels>
           </Tabs>
-        </Column>
-      </Grid>
 
       <TaskCreateModal
         open={createOpen}

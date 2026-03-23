@@ -15,8 +15,6 @@ import {
   Button,
   DataTableSkeleton,
   Tag,
-  Grid,
-  Column,
   Dropdown,
 } from '@carbon/react';
 import { Add, View, TrashCan } from '@carbon/icons-react';
@@ -126,8 +124,6 @@ export function CustomersPage() {
         </div>
       </div>
 
-      <Grid fullWidth>
-        <Column lg={16} md={8} sm={4}>
           {loading && customers.length === 0 && !search ? (
             <DataTableSkeleton headers={headers} rowCount={5} />
           ) : (
@@ -271,8 +267,6 @@ export function CustomersPage() {
               )}
             </>
           )}
-        </Column>
-      </Grid>
 
       <CustomerCreateModal
         open={createOpen}

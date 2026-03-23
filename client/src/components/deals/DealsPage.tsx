@@ -15,8 +15,6 @@ import {
   Button,
   DataTableSkeleton,
   Tag,
-  Grid,
-  Column,
   Dropdown,
 } from '@carbon/react';
 import { Add, TrashCan, Launch, Edit, Share } from '@carbon/icons-react';
@@ -158,8 +156,6 @@ export function DealsPage() {
         </div>
       </div>
 
-      <Grid fullWidth>
-        <Column lg={16} md={8} sm={4}>
           {loading && deals.length === 0 && !search ? (
             <DataTableSkeleton headers={headers} rowCount={5} />
           ) : (
@@ -357,8 +353,6 @@ export function DealsPage() {
               )}
             </>
           )}
-        </Column>
-      </Grid>
 
       <DealCreateModal
         open={createOpen || !!editDeal}
