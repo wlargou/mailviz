@@ -419,10 +419,20 @@
   }
 }
 
-// When selected, match action background to selected layer
+// Match action background to thread variant
 .thread-item--selected:hover .thread-item__actions,
 .thread-item--selected:focus-within .thread-item__actions {
   background: var(--cds-layer-selected);
+}
+
+.thread-item--unread:hover .thread-item__actions,
+.thread-item--unread:focus-within .thread-item__actions {
+  background: rgba(120, 169, 255, 0.13);
+}
+
+.thread-item--vip:hover .thread-item__actions,
+.thread-item--vip:focus-within .thread-item__actions {
+  background: rgba(255, 214, 102, 0.13);
 }
 
 .thread-item__star {
