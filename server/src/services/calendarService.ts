@@ -291,6 +291,30 @@ export const calendarService = {
       throw err;
     }
 
+    // singleEvents:true does NOT return a sync token.
+    // If we did an initial sync (no token), obtain one with a separate call.
+    if (!nextSyncToken && !auth.calendarSyncToken) {
+      try {
+        let tokenPageToken: string | undefined;
+        do {
+          const tokenRes = await calendar.events.list({
+            calendarId: 'primary',
+            timeMin: new Date().toISOString(),
+            timeMax: new Date().toISOString(), // empty range, just need the token
+            maxResults: 1,
+            pageToken: tokenPageToken,
+          } as any);
+          nextSyncToken = tokenRes.data.nextSyncToken || null;
+          tokenPageToken = tokenRes.data.nextPageToken || undefined;
+        } while (!nextSyncToken && tokenPageToken);
+        if (nextSyncToken) {
+          console.log('[CalendarSync] Obtained sync token for future incremental syncs');
+        }
+      } catch (e) {
+        console.warn('[CalendarSync] Failed to obtain sync token:', (e as Error).message);
+      }
+    }
+
     // Store the new sync token for next incremental sync
     await prisma.googleAuth.update({
       where: { id: auth.id },
