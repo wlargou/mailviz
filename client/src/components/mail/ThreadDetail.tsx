@@ -5,7 +5,7 @@ import {
   InlineLoading,
   SkeletonText,
 } from '@carbon/react';
-import { Enterprise, StarFilled, Star, Attachment, Download, Archive, TrashCan, Undo, Email as EmailIcon, EmailNew, TaskComplete, Reply, ReplyAll, SendAlt, Share } from '@carbon/icons-react';
+import { StarFilled, Star, Attachment, Download, Archive, TrashCan, Undo, Email as EmailIcon, EmailNew, TaskComplete, Reply, ReplyAll, SendAlt, Share } from '@carbon/icons-react';
 import { UserAvatar } from '@carbon/ibm-products';
 import { format, formatDistanceToNow } from 'date-fns';
 import DOMPurify from 'dompurify';
@@ -245,17 +245,11 @@ export function ThreadDetail({ threadId, onEmailAction }: ThreadDetailProps) {
       <div className="thread-detail__header">
         {customer && (
           <Tag
-            type="cyan"
+            type="cool-gray"
             size="sm"
-            renderIcon={Enterprise}
             className="clickable-tag"
             onClick={() => navigate(`/customers/${customer.id}`)}
           >
-            {customer.logoUrl && (
-              <img src={customer.logoUrl} alt="" className="customer-logo" style={{ marginRight: 4 }}
-                onError={(ev) => { (ev.target as HTMLImageElement).style.display = 'none'; }}
-              />
-            )}
             {customer.name}
           </Tag>
         )}
