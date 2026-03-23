@@ -289,16 +289,17 @@
   &--read {
     box-shadow: inset 3px 0 0 var(--cds-border-strong);
     padding-left: 0.75rem;
+    border-bottom: 1px solid var(--cds-border-strong);
   }
 
   &--unread {
     box-shadow: inset 3px 0 0 var(--cds-link-primary);
     padding-left: 0.75rem;
     background: #78a9ff0d;
-    border-bottom: 1px solid var(--cds-border-subtle);
+    border-bottom: 1px solid rgba(120, 169, 255, 0.25);
 
     .thread-item__sender,
-    .thread-item__subject {
+    .thread-item__subject-inline {
       font-weight: 600;
     }
 
