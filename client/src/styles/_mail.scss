@@ -303,6 +303,10 @@
       font-weight: 600;
     }
 
+    .thread-item__subject-inline {
+      color: var(--cds-link-primary);
+    }
+
     &:hover {
       background: #78a9ff1a;
     }
@@ -414,7 +418,7 @@
   flex: 1;
   font-size: 0.8125rem;
   font-weight: 500;
-  color: var(--cds-text-secondary);
+  color: var(--cds-border-strong, #8d8d8d);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
