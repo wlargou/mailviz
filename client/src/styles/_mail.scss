@@ -372,8 +372,15 @@
   transition: visibility 0.05s;
 }
 
+.thread-item__bottom {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .thread-item__company-tag {
-  display: inline-flex;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 .thread-item__actions {

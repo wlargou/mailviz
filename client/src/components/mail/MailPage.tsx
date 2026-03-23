@@ -597,9 +597,6 @@ export function MailPage() {
                           )}
                           <span>{formatDistanceToNow(new Date(e.receivedAt), { addSuffix: true })}</span>
                         </span>
-                        {e.customer && (
-                          <Tag size="sm" type="cool-gray" className="thread-item__company-tag">{e.customer.name}</Tag>
-                        )}
                       </div>
                       <div className="thread-item__actions">
                         <Button
@@ -651,7 +648,12 @@ export function MailPage() {
                         />
                       </div>
                     </div>
-                    <div className="thread-item__snippet">{decodeEntities(e.snippet)}</div>
+                    <div className="thread-item__bottom">
+                      <span className="thread-item__snippet">{decodeEntities(e.snippet)}</span>
+                      {e.customer && (
+                        <Tag size="sm" type="cool-gray" className="thread-item__company-tag">{e.customer.name}</Tag>
+                      )}
+                    </div>
                     {currentUser && e.userId !== currentUser.id && (
                       <Tag size="sm" type="purple" renderIcon={Share}>Shared</Tag>
                     )}
