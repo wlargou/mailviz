@@ -5,14 +5,20 @@
   margin: -1rem -1.5rem;
   overflow: hidden;
 
+  // Remove all internal horizontal padding for full-width
   .page-header {
     margin-bottom: 0.5rem;
+    padding: 0;
+  }
+
+  .cds--css-grid-column {
+    padding-left: 0;
+    padding-right: 0;
   }
 }
 
-
 .mail-page__search-wrapper {
-  padding: 0 1rem;
+  padding: 0;
   margin-bottom: 0.75rem;
 }
 
@@ -86,7 +92,7 @@
 }
 
 .mail-folder-switcher {
-  padding: 0 1rem;
+  padding: 0;
   margin-bottom: 0.75rem;
 
   .cds--content-switcher {
@@ -270,7 +276,7 @@
 
 .thread-list + .cds--pagination,
 .mail-page .cds--pagination {
-  padding: 0 1rem;
+  padding: 0;
 }
 
 .thread-item {
