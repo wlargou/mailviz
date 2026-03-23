@@ -224,7 +224,17 @@ export const calendarService = {
             conferenceDataVersion: 1,
           } as any);
         } else {
-          // Initial full sync — fetch events from -3 months to +6 months
+          // Initial/fresh full sync — clean slate to remove orphaned events
+          if (!pageToken) {
+            // First page of initial sync: delete all existing events to prevent orphans
+            // (cancelled recurring instances aren't returned by singleEvents:true)
+            const cleanResult = await prisma.calendarEvent.deleteMany({ where: { userId } });
+            if (cleanResult.count > 0) {
+              console.log(`[CalendarSync] Clean slate: removed ${cleanResult.count} existing events`);
+              deleted += cleanResult.count;
+            }
+          }
+
           const timeMin = new Date();
           timeMin.setMonth(timeMin.getMonth() - env.CALENDAR_SYNC_PAST_MONTHS);
           const timeMax = new Date();
