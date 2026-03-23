@@ -6,6 +6,7 @@ import { createContactSchema, updateContactSchema } from '../validators/contactV
 const router = Router();
 
 router.get('/', contactController.findAll);
+router.get('/lookup', contactController.findByEmail);
 router.get('/:id', contactController.findById);
 router.get('/:id/attachments', contactController.findAttachments);
 router.get('/:id/events', contactController.findContactEvents);

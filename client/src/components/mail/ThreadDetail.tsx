@@ -5,7 +5,8 @@ import {
   InlineLoading,
   SkeletonText,
 } from '@carbon/react';
-import { StarFilled, Star, Attachment, Download, Archive, TrashCan, Undo, Email as EmailIcon, EmailNew, TaskComplete, Reply, ReplyAll, SendAlt, Share } from '@carbon/icons-react';
+import { StarFilled, Star, Attachment, Download, Archive, TrashCan, Undo, Email as EmailIcon, EmailNew, TaskComplete, Reply, ReplyAll, SendAlt, Share, Launch } from '@carbon/icons-react';
+import { contactsApi } from '../../api/contacts';
 import { UserAvatar } from '@carbon/ibm-products';
 import { format, formatDistanceToNow } from 'date-fns';
 import DOMPurify from 'dompurify';
@@ -266,12 +267,35 @@ export function ThreadDetail({ threadId, onEmailAction }: ThreadDetailProps) {
               ref={(el) => { if (el) messageRefs.current.set(msg.id, el); }}
               className={`message-bubble${!msg.isRead ? ' message-bubble--unread' : ''}`}
             >
-              <div className="message-bubble__header" onClick={() => toggleExpand(msg)}>
+              <div className="message-bubble__header" onClick={(e) => {
+                // Don't toggle expand if click was on the avatar link
+                if ((e.target as HTMLElement).closest('.message-bubble__avatar-link')) return;
+                toggleExpand(msg);
+              }}>
                 <div className="message-bubble__sender">
-                  <UserAvatar
-                    name={msg.fromName || msg.from}
-                    size="sm"
-                  />
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    className="message-bubble__avatar-link"
+                    title="View contact"
+                    onClick={async () => {
+                      try {
+                        const res = await contactsApi.lookupByEmail(msg.from);
+                        if (res.data.data) {
+                          navigate(`/contacts/${res.data.data.id}`);
+                        } else if (msg.customerId) {
+                          navigate(`/companies/${msg.customerId}`);
+                        }
+                      } catch {
+                        if (msg.customerId) navigate(`/companies/${msg.customerId}`);
+                      }
+                    }}
+                  >
+                    <UserAvatar
+                      name={msg.fromName || msg.from}
+                      size="sm"
+                    />
+                  </div>
                   <div className="message-bubble__sender-info">
                     <span className="message-bubble__sender-name">{msg.fromName || msg.from}</span>
                     <span className="message-bubble__sender-email">{msg.from}</span>

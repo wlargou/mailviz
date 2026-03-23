@@ -12,6 +12,20 @@ export const contactController = {
     }
   },
 
+  async findByEmail(req: Request, res: Response, next: NextFunction) {
+    try {
+      const email = req.query.email as string;
+      if (!email) {
+        res.status(400).json({ error: 'email query parameter required' });
+        return;
+      }
+      const contact = await contactService.findByEmail(req.user!.id, email);
+      res.json({ data: contact });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async findById(req: Request, res: Response, next: NextFunction) {
     try {
       const contact = await contactService.findById(req.user!.id, req.params.id);

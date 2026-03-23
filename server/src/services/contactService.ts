@@ -122,6 +122,14 @@ export const contactService = {
     };
   },
 
+  async findByEmail(userId: string, email: string) {
+    const contact = await prisma.contact.findFirst({
+      where: { email, customer: { userId } },
+      select: { id: true, firstName: true, lastName: true, email: true, customerId: true },
+    });
+    return contact;
+  },
+
   async findById(userId: string, id: string) {
     const contact = await prisma.contact.findFirst({
       where: { id, customer: { userId } },

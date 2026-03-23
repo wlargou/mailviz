@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   DataTable,
   Table,
@@ -16,7 +16,7 @@ import {
   Tag,
 } from '@carbon/react';
 import { Copy } from '@carbon/icons-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { contactsApi } from '../../api/customers';
 import { useUIStore } from '../../store/uiStore';
 import { EmptyState } from '../shared/EmptyState';
@@ -38,8 +38,10 @@ export function ContactsPage() {
   const [meta, setMeta] = useState<PaginationMeta | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [searchParams] = useSearchParams();
+  const initialSearch = useMemo(() => searchParams.get('search') || '', []);
+  const [search, setSearch] = useState(initialSearch);
+  const [debouncedSearch, setDebouncedSearch] = useState(initialSearch);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
@@ -105,7 +107,7 @@ export function ContactsPage() {
                       <TableToolbarSearch
                         ref={searchRef}
                         placeholder="Search contacts..."
-                        defaultValue={search}
+                        value={search}
                         onChange={(e: any) => {
                           const val = typeof e === 'string' ? e : (e?.target?.value ?? '');
                           setSearch(val);
