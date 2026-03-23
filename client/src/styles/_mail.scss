@@ -532,16 +532,10 @@
   gap: 1rem;
 }
 
-.thread-detail__header {
+.thread-detail__company {
   display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.thread-detail__participants {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem;
+  justify-content: flex-end;
+  margin-bottom: 0.5rem;
 }
 
 .thread-detail__messages {

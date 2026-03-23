@@ -242,8 +242,8 @@ export function ThreadDetail({ threadId, onEmailAction }: ThreadDetailProps) {
 
   return (
     <div className="thread-detail">
-      <div className="thread-detail__header">
-        {customer && (
+      {customer && (
+        <div className="thread-detail__company">
           <Tag
             type="cool-gray"
             size="sm"
@@ -252,24 +252,8 @@ export function ThreadDetail({ threadId, onEmailAction }: ThreadDetailProps) {
           >
             {customer.name}
           </Tag>
-        )}
-        <Button
-          kind="ghost"
-          size="sm"
-          renderIcon={Share}
-          onClick={handleOpenShare}
-        >
-          Share
-        </Button>
-        <div className="thread-detail__participants">
-          {Array.from(participants).slice(0, 5).map((email) => (
-            <Tag key={email} type="cool-gray" size="sm">{email}</Tag>
-          ))}
-          {participants.size > 5 && (
-            <Tag type="cool-gray" size="sm">+{participants.size - 5} more</Tag>
-          )}
         </div>
-      </div>
+      )}
 
       <div className="thread-detail__messages">
         {messages.map((msg) => {
@@ -360,6 +344,14 @@ export function ThreadDetail({ threadId, onEmailAction }: ThreadDetailProps) {
                     iconDescription="Forward"
                     renderIcon={SendAlt}
                     onClick={(e: React.MouseEvent) => { e.stopPropagation(); setComposeState({ mode: 'forward', email: msg }); }}
+                  />
+                  <Button
+                    kind="ghost"
+                    size="sm"
+                    hasIconOnly
+                    iconDescription="Share thread"
+                    renderIcon={Share}
+                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleOpenShare(); }}
                   />
                 </div>
               </div>
