@@ -55,6 +55,7 @@ export function MailPage() {
   const [syncing, setSyncing] = useState(false);
   const [meta, setMeta] = useState<PaginationMeta | null>(null);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [filters, setFilters] = useState<MailFilters>(() => {
     const initial = { ...defaultFilters };
     const isRead = searchParams.get('isRead');
@@ -108,7 +109,7 @@ export function MailPage() {
   const fetchThreads = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const params: Record<string, string> = { page: String(page), limit: '20' };
+      const params: Record<string, string> = { page: String(page), limit: String(pageSize) };
       if (filters.search) params.search = filters.search;
       if (filters.from) params.from = filters.from;
       if (filters.to) params.to = filters.to;
@@ -127,7 +128,7 @@ export function MailPage() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [page, filters, addNotification]);
+  }, [page, pageSize, filters, addNotification]);
 
   const fetchScheduledEmails = useCallback(async () => {
     setScheduledLoading(true);
@@ -657,13 +658,16 @@ export function MailPage() {
                 );
               })}
             </div>
-            {meta && meta.totalPages > 1 && (
+            {meta && (meta.totalPages > 1 || pageSize !== 20) && (
               <Pagination
                 totalItems={meta.total}
-                pageSize={meta.limit}
+                pageSize={pageSize}
                 pageSizes={[10, 20, 50]}
                 page={page}
-                onChange={({ page: p }: { page: number }) => setPage(p)}
+                onChange={({ page: p, pageSize: ps }: { page: number; pageSize: number }) => {
+                  if (ps !== pageSize) { setPageSize(ps); setPage(1); }
+                  else setPage(p);
+                }}
               />
             )}
           </>

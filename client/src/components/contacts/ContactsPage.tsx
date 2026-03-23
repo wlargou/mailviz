@@ -39,6 +39,7 @@ export function ContactsPage() {
   const [loading, setLoading] = useState(true);
   const [meta, setMeta] = useState<PaginationMeta | null>(null);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
@@ -55,7 +56,7 @@ export function ContactsPage() {
   const fetchContacts = useCallback(async () => {
     setLoading(true);
     try {
-      const params: Record<string, string> = { page: String(page), limit: '20' };
+      const params: Record<string, string> = { page: String(page), limit: String(pageSize) };
       if (debouncedSearch) params.search = debouncedSearch;
       if (selectedCustomerId) params.customerId = selectedCustomerId;
       const { data: response } = await contactsApi.getAll(params);
@@ -77,7 +78,7 @@ export function ContactsPage() {
         });
       }
     }
-  }, [page, debouncedSearch, selectedCustomerId, addNotification]);
+  }, [page, pageSize, debouncedSearch, selectedCustomerId, addNotification]);
 
   useEffect(() => {
     fetchContacts();
@@ -202,13 +203,16 @@ export function ContactsPage() {
               </TableContainer>
                 )}
               </DataTable>
-              {meta && meta.totalPages > 1 && (
+              {meta && (meta.totalPages > 1 || pageSize !== 20) && (
                 <Pagination
                   totalItems={meta.total}
-                  pageSize={meta.limit}
+                  pageSize={pageSize}
                   pageSizes={[10, 20, 50]}
                   page={page}
-                  onChange={({ page: p }: { page: number }) => setPage(p)}
+                  onChange={({ page: p, pageSize: ps }: { page: number; pageSize: number }) => {
+                    if (ps !== pageSize) { setPageSize(ps); setPage(1); }
+                    else setPage(p);
+                  }}
                 />
               )}
             </>

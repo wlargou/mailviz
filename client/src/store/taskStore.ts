@@ -20,11 +20,13 @@ interface TaskState {
   meta: PaginationMeta | null;
   filters: TaskFilters;
   currentPage: number;
+  pageSize: number;
 
   fetchTasks: () => Promise<void>;
   fetchSummary: () => Promise<void>;
   setFilter: (key: keyof TaskFilters, value: string | undefined) => void;
   setPage: (page: number) => void;
+  setPageSize: (size: number) => void;
   resetFilters: () => void;
 }
 
@@ -40,14 +42,15 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   meta: null,
   filters: { ...defaultFilters },
   currentPage: 1,
+  pageSize: 20,
 
   fetchTasks: async () => {
     set({ loading: true });
     try {
-      const { filters, currentPage } = get();
+      const { filters, currentPage, pageSize } = get();
       const params: Record<string, string> = {
         page: String(currentPage),
-        limit: '20',
+        limit: String(pageSize),
         sortBy: filters.sortBy,
         sortOrder: filters.sortOrder,
       };
@@ -90,6 +93,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   setPage: (page) => set({ currentPage: page }),
+  setPageSize: (size) => set({ pageSize: size, currentPage: 1 }),
 
   resetFilters: () => set({ filters: { ...defaultFilters }, currentPage: 1 }),
 }));

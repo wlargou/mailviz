@@ -58,7 +58,7 @@ interface TaskListViewProps {
 }
 
 export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreateNew }: TaskListViewProps) {
-  const { meta, setPage, setFilter, filters, currentPage, resetFilters } = useTaskStore();
+  const { meta, setPage, setPageSize, setFilter, filters, currentPage, pageSize, resetFilters } = useTaskStore();
   const [localSearch, setLocalSearch] = useState(filters.search || '');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -240,13 +240,16 @@ export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreat
           </TableContainer>
         )}
       </DataTable>
-      {meta && meta.totalPages > 1 && (
+      {meta && (meta.totalPages > 1 || pageSize !== 20) && (
         <Pagination
           totalItems={meta.total}
-          pageSize={meta.limit}
+          pageSize={pageSize}
           pageSizes={[10, 20, 50]}
           page={currentPage}
-          onChange={({ page }: { page: number }) => setPage(page)}
+          onChange={({ page: p, pageSize: ps }: { page: number; pageSize: number }) => {
+            if (ps !== pageSize) setPageSize(ps);
+            else setPage(p);
+          }}
         />
       )}
 
