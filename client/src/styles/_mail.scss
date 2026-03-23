@@ -289,14 +289,14 @@
   &--read {
     box-shadow: inset 3px 0 0 var(--cds-border-strong);
     padding-left: 0.75rem;
-    border-bottom: 1px solid var(--cds-border-subtle-01, #525252);
+    border-bottom: 1px solid rgba(141, 141, 141, 0.2);
   }
 
   &--unread {
     box-shadow: inset 3px 0 0 var(--cds-link-primary);
     padding-left: 0.75rem;
     background: #78a9ff0d;
-    border-bottom: 1px solid rgba(120, 169, 255, 0.4);
+    border-bottom: 1px solid rgba(120, 169, 255, 0.15);
 
     .thread-item__sender,
     .thread-item__subject-inline {
