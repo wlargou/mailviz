@@ -648,12 +648,7 @@ export function MailPage() {
                         />
                       </div>
                     </div>
-                    <div className="thread-item__bottom">
-                      <span className="thread-item__snippet">{decodeEntities(e.snippet)}</span>
-                      {e.customer && (
-                        <Tag size="sm" type="cool-gray" className="thread-item__company-tag">{e.customer.name}</Tag>
-                      )}
-                    </div>
+                    <div className="thread-item__snippet">{decodeEntities(e.snippet)}</div>
                     {currentUser && e.userId !== currentUser.id && (
                       <Tag size="sm" type="purple" renderIcon={Share}>Shared</Tag>
                     )}
