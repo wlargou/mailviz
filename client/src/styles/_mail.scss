@@ -325,6 +325,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex-shrink: 0;
+  max-width: 200px;
 }
 
 .thread-item__right {
@@ -406,12 +408,16 @@
   color: var(--cds-link-primary);
 }
 
-.thread-item__subject {
-  font-size: 0.875rem;
-  margin-bottom: 0.125rem;
+.thread-item__subject-inline {
+  flex: 1;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--cds-text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
+  padding: 0 0.75rem;
 }
 
 .thread-item__snippet {

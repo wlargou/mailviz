@@ -587,6 +587,7 @@ export function MailPage() {
                       <span className="thread-item__sender">
                         {e.fromName || e.from}
                       </span>
+                      <span className="thread-item__subject-inline">{decodeEntities(e.subject)}</span>
                       <div className="thread-item__right">
                         <span className="thread-item__meta">
                           {e.isStarred && <StarFilled size={14} className="thread-item__star" />}
@@ -647,7 +648,6 @@ export function MailPage() {
                         />
                       </div>
                     </div>
-                    <div className="thread-item__subject">{decodeEntities(e.subject)}</div>
                     <div className="thread-item__snippet">{decodeEntities(e.snippet)}</div>
                     {currentUser && e.userId !== currentUser.id && (
                       <Tag size="sm" type="purple" renderIcon={Share}>Shared</Tag>
