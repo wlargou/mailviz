@@ -532,10 +532,12 @@
   gap: 1rem;
 }
 
-.thread-detail__company {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 0.5rem;
+// Position company tag in SidePanel header area (top-right)
+.mail-page__side-panel .thread-detail__company {
+  position: fixed;
+  top: 0.75rem;
+  right: 3rem;
+  z-index: 8001;
 }
 
 .thread-detail__messages {
