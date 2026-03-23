@@ -48,47 +48,66 @@
   margin-bottom: 1rem;
 }
 
-.metric-tile {
-  border-top: 3px solid var(--cds-border-subtle-01);
-  min-height: 7.5rem; // 120px in rem
+@keyframes kpiFadeSlideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.kpi-tile {
+  background: var(--cds-layer-01);
+  border: 1px solid var(--cds-border-subtle);
+  padding: 1rem;
+  position: relative;
+  overflow: hidden;
   cursor: pointer;
   transition: background-color 0.15s ease;
-  display: flex;
-  flex-direction: column;
+  animation: kpiFadeSlideUp 0.5s var(--cds-ease-expressive, ease) both;
 
   &:hover {
     background: var(--cds-layer-hover);
   }
+}
 
-  .metric-tile__header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 0.75rem; // $spacing-03
-  }
+.kpi-tile__accent {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+}
 
-  .metric-tile__label {
-    font-size: 0.75rem; // $label-01
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.32px; // Carbon letter-spacing
-    color: var(--cds-text-secondary);
-  }
+.kpi-tile__header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--cds-text-secondary);
+}
 
-  .metric-tile__value {
-    font-size: 2.25rem; // $display-01
-    font-weight: 300;
-    font-family: 'IBM Plex Mono', monospace;
-    color: var(--cds-text-primary);
-    margin-top: auto;
-    line-height: 1.2;
-  }
+.kpi-tile__label {
+  font-weight: 400;
+}
 
-  .metric-tile__helper {
-    font-size: 0.75rem; // $helper-text-01
-    color: var(--cds-text-helper);
-    margin-top: 0.25rem; // $spacing-02
-  }
+.kpi-tile__value {
+  font-size: 2.25rem;
+  font-weight: 300;
+  color: var(--cds-text-primary);
+  margin: 0.5rem 0;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.kpi-tile__helper {
+  font-size: 0.75rem;
+  color: var(--cds-text-helper);
+}
+
+.kpi-sparkline {
+  width: 100%;
+  height: 40px;
+  margin-top: 0.75rem;
+  overflow: visible;
 }
 
 .priority-breakdown {

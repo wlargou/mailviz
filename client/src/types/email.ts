@@ -15,6 +15,7 @@ export interface EmailMessage {
   subject: string;
   from: string;
   fromName: string | null;
+  contactName?: string | null;
   to: string[];
   cc: string[];
   snippet: string | null;
@@ -28,7 +29,7 @@ export interface EmailMessage {
   sizeEstimate: number | null;
   labelIds: string[];
   customerId: string | null;
-  customer: { id: string; name: string; domain: string | null; logoUrl: string | null } | null;
+  customer: { id: string; name: string; domain: string | null; logoUrl: string | null; isVip?: boolean } | null;
   attachments: EmailAttachment[];
   mailToTask?: { id: string; task: { id: string; title: string; status: string } } | null;
   syncedAt: string | null;

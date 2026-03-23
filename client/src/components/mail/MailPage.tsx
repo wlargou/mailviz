@@ -574,7 +574,7 @@ export function MailPage() {
                     <div
                       role="button"
                       tabIndex={0}
-                      className={`thread-item${isUnread ? ' thread-item--unread' : ' thread-item--read'}${isSelected ? ' thread-item--selected' : ''}${isChecked ? ' thread-item--checked' : ''}`}
+                      className={`thread-item${isUnread ? ' thread-item--unread' : ' thread-item--read'}${e.customer?.isVip ? ' thread-item--vip' : ''}${isSelected ? ' thread-item--selected' : ''}${isChecked ? ' thread-item--checked' : ''}`}
                       onClick={() => setSelectedThread(thread.threadId)}
                       onKeyDown={(ev) => {
                         if (ev.key === 'Enter' || ev.key === ' ') {
@@ -585,16 +585,22 @@ export function MailPage() {
                     >
                     <div className="thread-item__top">
                       <span className="thread-item__sender">
-                        {e.fromName || e.from}
+                        {e.contactName || e.fromName || e.from}
                       </span>
-                      <span className="thread-item__meta">
-                        {e.isStarred && <StarFilled size={14} className="thread-item__star" />}
-                        {e.hasAttachment && <Attachment size={14} className="thread-item__attachment" />}
-                        {thread.messageCount > 1 && (
-                          <Tag size="sm" type="cool-gray">{thread.messageCount}</Tag>
+                      <span className="thread-item__subject-inline">{decodeEntities(e.subject)}</span>
+                      <div className="thread-item__right">
+                        <span className="thread-item__meta">
+                          {e.isStarred && <StarFilled size={14} className="thread-item__star" />}
+                          {e.hasAttachment && <Attachment size={14} className="thread-item__attachment" />}
+                          {thread.messageCount > 1 && (
+                            <Tag size="sm" type="cool-gray">{thread.messageCount}</Tag>
+                          )}
+                          <span>{formatDistanceToNow(new Date(e.receivedAt), { addSuffix: true })}</span>
+                        </span>
+                        {e.customer && (
+                          <Tag size="sm" type="cool-gray" className="thread-item__company-tag">{e.customer.name}</Tag>
                         )}
-                        <span>{formatDistanceToNow(new Date(e.receivedAt), { addSuffix: true })}</span>
-                      </span>
+                      </div>
                       <div className="thread-item__actions">
                         <Button
                           kind="ghost"
@@ -642,21 +648,7 @@ export function MailPage() {
                         />
                       </div>
                     </div>
-                    <div className="thread-item__subject">{decodeEntities(e.subject)}</div>
                     <div className="thread-item__snippet">{decodeEntities(e.snippet)}</div>
-                    {e.customer && (
-                      <div className="thread-item__customer">
-                        {e.customer.logoUrl && (
-                          <img
-                            src={e.customer.logoUrl}
-                            alt=""
-                            className="customer-logo"
-                            onError={(ev) => { (ev.target as HTMLImageElement).style.display = 'none'; }}
-                          />
-                        )}
-                        <span>{e.customer.name}</span>
-                      </div>
-                    )}
                     {currentUser && e.userId !== currentUser.id && (
                       <Tag size="sm" type="purple" renderIcon={Share}>Shared</Tag>
                     )}
