@@ -312,6 +312,21 @@
     }
   }
 
+  // VIP overrides (golden accent for VIP companies)
+  &--vip {
+    box-shadow: inset 3px 0 0 #f1c21b;
+    background: rgba(241, 194, 27, 0.04);
+    border-bottom: 1px solid rgba(241, 194, 27, 0.15);
+
+    .thread-item__subject-inline {
+      color: #f1c21b;
+    }
+
+    &:hover {
+      background: rgba(241, 194, 27, 0.08);
+    }
+  }
+
   &--selected {
     background: var(--cds-layer-selected);
   }
