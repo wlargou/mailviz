@@ -312,8 +312,8 @@
     }
   }
 
-  // VIP overrides (golden accent for VIP companies)
-  &--vip {
+  // VIP overrides — only for unread VIP emails (read VIP = normal gray)
+  &--vip#{&}--unread {
     box-shadow: inset 3px 0 0 #f1c21b;
     background: rgba(241, 194, 27, 0.04);
     border-bottom: 1px solid rgba(241, 194, 27, 0.15);
