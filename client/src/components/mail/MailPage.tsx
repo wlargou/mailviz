@@ -587,14 +587,19 @@ export function MailPage() {
                       <span className="thread-item__sender">
                         {e.fromName || e.from}
                       </span>
-                      <span className="thread-item__meta">
-                        {e.isStarred && <StarFilled size={14} className="thread-item__star" />}
-                        {e.hasAttachment && <Attachment size={14} className="thread-item__attachment" />}
-                        {thread.messageCount > 1 && (
-                          <Tag size="sm" type="cool-gray">{thread.messageCount}</Tag>
+                      <div className="thread-item__right">
+                        <span className="thread-item__meta">
+                          {e.isStarred && <StarFilled size={14} className="thread-item__star" />}
+                          {e.hasAttachment && <Attachment size={14} className="thread-item__attachment" />}
+                          {thread.messageCount > 1 && (
+                            <Tag size="sm" type="cool-gray">{thread.messageCount}</Tag>
+                          )}
+                          <span>{formatDistanceToNow(new Date(e.receivedAt), { addSuffix: true })}</span>
+                        </span>
+                        {e.customer && (
+                          <Tag size="sm" type="cool-gray" className="thread-item__company-tag">{e.customer.name}</Tag>
                         )}
-                        <span>{formatDistanceToNow(new Date(e.receivedAt), { addSuffix: true })}</span>
-                      </span>
+                      </div>
                       <div className="thread-item__actions">
                         <Button
                           kind="ghost"
@@ -644,9 +649,6 @@ export function MailPage() {
                     </div>
                     <div className="thread-item__subject">{decodeEntities(e.subject)}</div>
                     <div className="thread-item__snippet">{decodeEntities(e.snippet)}</div>
-                    {e.customer && (
-                      <Tag size="sm" type="cool-gray">{e.customer.name}</Tag>
-                    )}
                     {currentUser && e.userId !== currentUser.id && (
                       <Tag size="sm" type="purple" renderIcon={Share}>Shared</Tag>
                     )}
