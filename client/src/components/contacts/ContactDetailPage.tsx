@@ -42,6 +42,7 @@ import { useUIStore } from '../../store/uiStore';
 import type { Contact } from '../../types/customer';
 import type { CalendarEvent } from '../../types/calendar';
 import type { EmailThread, AttachmentWithEmail } from '../../types/email';
+import { ThreadItemList } from '../shared/ThreadItemList';
 
 const eventHeaders = [
   { key: 'title', header: 'Title' },
@@ -304,76 +305,31 @@ export function ContactDetailPage() {
               <TabPanel>
                 {emailThreads.length === 0 && !emailLoading ? (
                   <EmptyState title="No emails" description="Emails involving this contact will appear here after syncing" icon={<Email size={48} />} />
-                ) : (() => {
-                  const emailHeaders = [
-                    { key: 'subject', header: 'Subject' },
-                    { key: 'from', header: 'From' },
-                    { key: 'date', header: 'Date' },
-                    { key: 'messages', header: 'Messages' },
-                  ];
-                  const rows = emailThreads.map((t) => ({
-                    id: t.threadId || t.latestEmail.id,
-                    subject: t.latestEmail.subject,
-                    from: t.latestEmail.fromName || t.latestEmail.from,
-                    date: format(new Date(t.latestEmail.receivedAt), 'MMM d, yyyy'),
-                    messages: String(t.messageCount),
-                  }));
-                  return (
-                    <>
-                      <DataTable rows={rows} headers={emailHeaders} isSortable>
-                        {({ rows: tableRows, headers: tableHeaders, getTableProps, getHeaderProps, getRowProps }) => (
-                          <TableContainer>
-                            <TableToolbar>
-                              <TableToolbarContent>
-                                <TableToolbarSearch placeholder="Search emails..." onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                                  setEmailSearch(e.target.value);
-                                  setEmailPage(1);
-                                  if (contact?.email) fetchEmails(contact.email, 1, emailPageSize, e.target.value || undefined);
-                                }} persistent />
-                              </TableToolbarContent>
-                            </TableToolbar>
-                            <Table {...getTableProps()} size="lg">
-                              <TableHead>
-                                <TableRow>
-                                  {tableHeaders.map((header) => (
-                                    <TableHeader {...getHeaderProps({ header })} key={header.key}>{header.header}</TableHeader>
-                                  ))}
-                                </TableRow>
-                              </TableHead>
-                              <TableBody>
-                                {tableRows.map((row) => (
-                                  <TableRow {...getRowProps({ row })} key={row.id}>
-                                    {row.cells.map((cell) => (
-                                      <TableCell key={cell.id}>
-                                        {cell.info.header === 'subject' ? (
-                                          <span style={{ cursor: 'pointer', fontWeight: 500 }} onClick={() => setSelectedThread({ id: row.id, subject: cell.value })}>{cell.value}</span>
-                                        ) : cell.info.header === 'messages' ? (
-                                          <Tag type="cool-gray" size="sm">{cell.value}</Tag>
-                                        ) : (
-                                          cell.value
-                                        )}
-                                      </TableCell>
-                                    ))}
-                                  </TableRow>
-                                ))}
-                              </TableBody>
-                            </Table>
-                          </TableContainer>
-                        )}
-                      </DataTable>
-                      {emailTotal > emailPageSize && (
-                        <Pagination totalItems={emailTotal} pageSize={emailPageSize} pageSizes={[10, 20, 50]} page={emailPage}
-                          onChange={({ page: p, pageSize: ps }: { page: number; pageSize: number }) => {
-                            setEmailPage(p);
-                            setEmailPageSize(ps);
-                            if (contact?.email) fetchEmails(contact.email, p, ps, emailSearch || undefined);
-                          }}
-                        />
-                      )}
-                      {emailLoading && <InlineLoading description="Loading emails..." />}
-                    </>
-                  );
-                })()}
+                ) : (
+                  <>
+                    <div style={{ marginBottom: '0.5rem' }}>
+                      <TableToolbar><TableToolbarContent><TableToolbarSearch placeholder="Search emails..." onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                        setEmailSearch(e.target.value);
+                        setEmailPage(1);
+                        if (contact?.email) fetchEmails(contact.email, 1, emailPageSize, e.target.value || undefined);
+                      }} persistent /></TableToolbarContent></TableToolbar>
+                    </div>
+                    <ThreadItemList
+                      threads={emailThreads}
+                      totalItems={emailTotal}
+                      page={emailPage}
+                      pageSize={emailPageSize}
+                      onPageChange={(p, ps) => {
+                        setEmailPage(p);
+                        setEmailPageSize(ps);
+                        if (contact?.email) fetchEmails(contact.email, p, ps, emailSearch || undefined);
+                      }}
+                      onThreadClick={(id, subject) => setSelectedThread({ id, subject })}
+                      loading={emailLoading}
+                    />
+                    {emailLoading && <InlineLoading description="Loading emails..." />}
+                  </>
+                )}
               </TabPanel>
               <TabPanel>
                 <AttachmentTable

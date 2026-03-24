@@ -54,6 +54,7 @@ import type { Customer, Contact } from '../../types/customer';
 import type { Task } from '../../types/task';
 import type { CalendarEvent } from '../../types/calendar';
 import type { EmailThread, AttachmentWithEmail } from '../../types/email';
+import { ThreadItemList } from '../shared/ThreadItemList';
 
 const contactHeaders = [
   { key: 'name', header: 'Name' },
@@ -405,33 +406,18 @@ export function CustomerDetailPage() {
                   const q = emailSearch.toLowerCase();
                   const filtered = q ? emailThreads.filter((t) => t.latestEmail.subject.toLowerCase().includes(q) || (t.latestEmail.fromName || t.latestEmail.from).toLowerCase().includes(q)) : emailThreads;
                   const paginated = filtered.slice((emailPage - 1) * emailPageSize, emailPage * emailPageSize);
-                  const emailHeaders = [{ key: 'subject', header: 'Subject' }, { key: 'from', header: 'From' }, { key: 'date', header: 'Date' }, { key: 'messages', header: 'Messages' }];
-                  const rows = paginated.map((t) => ({ id: t.threadId || t.latestEmail.id, subject: t.latestEmail.subject, from: t.latestEmail.fromName || t.latestEmail.from, date: format(new Date(t.latestEmail.receivedAt), 'MMM d, yyyy'), messages: String(t.messageCount) }));
                   return (<>
-                    <DataTable rows={rows} headers={emailHeaders} isSortable>
-                      {({ rows: tableRows, headers: tableHeaders, getTableProps, getHeaderProps, getRowProps }) => (
-                        <TableContainer>
-                          <TableToolbar><TableToolbarContent><TableToolbarSearch placeholder="Search emails..." onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setEmailSearch(e.target.value); setEmailPage(1); }} persistent /></TableToolbarContent></TableToolbar>
-                          <Table {...getTableProps()} size="lg">
-                            <TableHead><TableRow>{tableHeaders.map((h) => <TableHeader {...getHeaderProps({ header: h })} key={h.key}>{h.header}</TableHeader>)}</TableRow></TableHead>
-                            <TableBody>
-                              {tableRows.map((row) => (
-                                <TableRow {...getRowProps({ row })} key={row.id}>
-                                  {row.cells.map((cell) => (
-                                    <TableCell key={cell.id}>
-                                      {cell.info.header === 'subject' ? <span style={{ cursor: 'pointer', fontWeight: 500 }} onClick={() => setSelectedThread({ id: row.id, subject: cell.value })}>{cell.value}</span>
-                                        : cell.info.header === 'messages' ? <Tag type="cool-gray" size="sm">{cell.value}</Tag>
-                                        : cell.value}
-                                    </TableCell>
-                                  ))}
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </TableContainer>
-                      )}
-                    </DataTable>
-                    {filtered.length > 10 && <Pagination totalItems={filtered.length} pageSize={emailPageSize} pageSizes={[10, 20, 50]} page={emailPage} onChange={({ page: p, pageSize: ps }: { page: number; pageSize: number }) => { setEmailPage(p); setEmailPageSize(ps); }} />}
+                    <div style={{ marginBottom: '0.5rem' }}>
+                      <TableToolbar><TableToolbarContent><TableToolbarSearch placeholder="Search emails..." onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setEmailSearch(e.target.value); setEmailPage(1); }} persistent /></TableToolbarContent></TableToolbar>
+                    </div>
+                    <ThreadItemList
+                      threads={paginated}
+                      totalItems={filtered.length}
+                      page={emailPage}
+                      pageSize={emailPageSize}
+                      onPageChange={(p, ps) => { setEmailPage(p); setEmailPageSize(ps); }}
+                      onThreadClick={(id, subject) => setSelectedThread({ id, subject })}
+                    />
                   </>);
                 })()}
               </TabPanel>
