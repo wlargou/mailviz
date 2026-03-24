@@ -87,6 +87,8 @@ export function CustomerDetailPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [emailThreads, setEmailThreads] = useState<EmailThread[]>([]);
+  const [emailTotal, setEmailTotal] = useState(0);
+  const [emailLoading, setEmailLoading] = useState(false);
   const [selectedThread, setSelectedThread] = useState<{ id: string; subject: string } | null>(null);
   const [attachments, setAttachments] = useState<AttachmentWithEmail[]>([]);
   const [loading, setLoading] = useState(true);
@@ -120,6 +122,18 @@ export function CustomerDetailPage() {
   const [editCategoryId, setEditCategoryId] = useState<string | null>(null);
   const [allCategories, setAllCategories] = useState<CompanyCategory[]>([]);
 
+  const fetchCompanyEmails = useCallback(async (customerId: string, page: number, pageSize: number, search?: string) => {
+    setEmailLoading(true);
+    try {
+      const params: Record<string, string> = { customerId, page: String(page), limit: String(pageSize) };
+      if (search) params.search = search;
+      const { data: res } = await emailsApi.getThreads(params);
+      setEmailThreads(res.data);
+      setEmailTotal(res.meta?.total ?? res.data.length);
+    } catch { /* ignore */ }
+    finally { setEmailLoading(false); }
+  }, []);
+
   const fetchData = useCallback(async () => {
     if (!id) return;
     setLoading(true);
@@ -135,9 +149,7 @@ export function CustomerDetailPage() {
       setTasks(tasksRes.data.data);
       setEvents(eventsRes.data.data);
       // Fetch email threads and attachments for this customer
-      emailsApi.getThreads({ customerId: id!, limit: '20' })
-        .then(({ data: res }) => setEmailThreads(res.data))
-        .catch(() => {});
+      fetchCompanyEmails(id!, 1, emailPageSize);
       customersApi.getAttachments(id!)
         .then(({ data: res }) => setAttachments(res.data))
         .catch(() => {});
@@ -146,7 +158,7 @@ export function CustomerDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [id, addNotification]);
+  }, [id, addNotification, fetchCompanyEmails, emailPageSize]);
 
   useEffect(() => {
     fetchData();
@@ -278,7 +290,7 @@ export function CustomerDetailPage() {
               <Tab renderIcon={UserMultiple}>Contacts ({contacts.length})</Tab>
               <Tab renderIcon={TaskComplete}>Tasks ({tasks.length})</Tab>
               <Tab renderIcon={Calendar}>Events ({events.length})</Tab>
-              <Tab renderIcon={Email}>Emails ({emailThreads.length})</Tab>
+              <Tab renderIcon={Email}>Emails ({emailTotal})</Tab>
               <Tab renderIcon={Attachment}>Attachments ({attachments.length})</Tab>
             </TabList>
             <TabPanels>
@@ -400,26 +412,32 @@ export function CustomerDetailPage() {
 
               {/* ─── Emails Tab ─── */}
               <TabPanel>
-                {emailThreads.length === 0 ? (
+                {emailThreads.length === 0 && !emailLoading ? (
                   <EmptyState title="No emails" description="Emails will appear here after syncing Gmail" icon={<Email size={48} />} />
-                ) : (() => {
-                  const q = emailSearch.toLowerCase();
-                  const filtered = q ? emailThreads.filter((t) => t.latestEmail.subject.toLowerCase().includes(q) || (t.latestEmail.fromName || t.latestEmail.from).toLowerCase().includes(q)) : emailThreads;
-                  const paginated = filtered.slice((emailPage - 1) * emailPageSize, emailPage * emailPageSize);
-                  return (<>
+                ) : (
+                  <>
                     <div style={{ marginBottom: '0.5rem' }}>
-                      <TableToolbar><TableToolbarContent><TableToolbarSearch placeholder="Search emails..." onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setEmailSearch(e.target.value); setEmailPage(1); }} persistent /></TableToolbarContent></TableToolbar>
+                      <TableToolbar><TableToolbarContent><TableToolbarSearch placeholder="Search emails..." onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                        setEmailSearch(e.target.value);
+                        setEmailPage(1);
+                        if (id) fetchCompanyEmails(id, 1, emailPageSize, e.target.value || undefined);
+                      }} persistent /></TableToolbarContent></TableToolbar>
                     </div>
                     <ThreadItemList
-                      threads={paginated}
-                      totalItems={filtered.length}
+                      threads={emailThreads}
+                      totalItems={emailTotal}
                       page={emailPage}
                       pageSize={emailPageSize}
-                      onPageChange={(p, ps) => { setEmailPage(p); setEmailPageSize(ps); }}
-                      onThreadClick={(id, subject) => setSelectedThread({ id, subject })}
+                      onPageChange={(p, ps) => {
+                        setEmailPage(p);
+                        setEmailPageSize(ps);
+                        if (id) fetchCompanyEmails(id, p, ps, emailSearch || undefined);
+                      }}
+                      onThreadClick={(threadId, subject) => setSelectedThread({ id: threadId, subject })}
+                      loading={emailLoading}
                     />
-                  </>);
-                })()}
+                  </>
+                )}
               </TabPanel>
               <TabPanel>
                 <AttachmentTable
