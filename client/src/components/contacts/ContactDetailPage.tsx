@@ -393,7 +393,7 @@ export function ContactDetailPage() {
         {selectedThread && (
           <ThreadDetail
             threadId={selectedThread.id}
-            onEmailAction={() => {}}
+            onEmailAction={() => { if (contact?.email) fetchEmails(contact.email, emailPage, emailPageSize, emailSearch || undefined); }}
           />
         )}
       </SidePanel>

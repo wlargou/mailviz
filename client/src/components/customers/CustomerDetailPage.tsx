@@ -524,7 +524,7 @@ export function CustomerDetailPage() {
         {selectedThread && (
           <ThreadDetail
             threadId={selectedThread.id}
-            onEmailAction={() => {}}
+            onEmailAction={() => { if (id) fetchCompanyEmails(id, emailPage, emailPageSize, emailSearch || undefined); }}
           />
         )}
       </SidePanel>
