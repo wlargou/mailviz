@@ -100,6 +100,16 @@ export function ContactDetailPage() {
     }
   }, []);
 
+  const handleThreadAction = useCallback(async (action: string, thread: { threadId: string | null; latestEmail: { id: string; isStarred: boolean; isRead: boolean; isTrashed: boolean } }) => {
+    const emailId = thread.latestEmail.id;
+    try {
+      if (action === 'star') await emailsApi.toggleStar(emailId);
+      else if (action === 'trash') await (thread.latestEmail.isTrashed ? emailsApi.untrash(emailId) : emailsApi.trash(emailId));
+      else if (action === 'readToggle') await (thread.latestEmail.isRead ? emailsApi.markAsUnread(emailId) : emailsApi.markAsRead(emailId));
+      if (contact?.email) fetchEmails(contact.email, emailPage, emailPageSize, emailSearch || undefined);
+    } catch { addNotification({ kind: 'error', title: 'Action failed' }); }
+  }, [contact, emailPage, emailPageSize, emailSearch, addNotification, fetchEmails]);
+
   const fetchData = useCallback(async () => {
     if (!id) return;
     setLoading(true);
@@ -324,7 +334,8 @@ export function ContactDetailPage() {
                         setEmailPageSize(ps);
                         if (contact?.email) fetchEmails(contact.email, p, ps, emailSearch || undefined);
                       }}
-                      onThreadClick={(id, subject) => setSelectedThread({ id, subject })}
+                      onThreadClick={(tid, subject) => setSelectedThread({ id: tid, subject })}
+                      onThreadAction={handleThreadAction as any}
                       loading={emailLoading}
                     />
                     {emailLoading && <InlineLoading description="Loading emails..." />}
