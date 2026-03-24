@@ -134,6 +134,38 @@ export const googleAuthService = {
         data: { ...authData, email: user?.email || null },
       });
     }
+
+    // Auto-create/mark the user's own company as internal
+    if (user?.email) {
+      const domain = user.email.split('@')[1]?.toLowerCase();
+      if (domain) {
+        const existingCustomer = await prisma.customer.findUnique({
+          where: { userId_domain: { userId, domain } },
+        });
+        if (existingCustomer) {
+          if (!existingCustomer.isInternal) {
+            await prisma.customer.update({
+              where: { id: existingCustomer.id },
+              data: { isInternal: true },
+            });
+          }
+        } else {
+          const { domainToCompanyName, getLogoUrl } = await import('../utils/domainResolver.js');
+          const name = domainToCompanyName(domain);
+          await prisma.customer.create({
+            data: {
+              name,
+              company: name,
+              domain,
+              website: `https://${domain}`,
+              logoUrl: getLogoUrl(domain),
+              isInternal: true,
+              userId,
+            },
+          });
+        }
+      }
+    }
   },
 
   async getStatus(userId?: string) {

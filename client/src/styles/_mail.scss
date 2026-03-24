@@ -337,6 +337,21 @@
     }
   }
 
+  // Internal overrides — only for unread internal emails (read internal = normal gray)
+  &--internal#{&}--unread {
+    box-shadow: inset 3px 0 0 #08bdba;
+    background: rgba(8, 189, 186, 0.04);
+    border-bottom: 1px solid rgba(8, 189, 186, 0.15);
+
+    .thread-item__subject-inline {
+      color: #08bdba;
+    }
+
+    &:hover {
+      background: rgba(8, 189, 186, 0.08);
+    }
+  }
+
   &--selected {
     background: var(--cds-layer-selected);
   }
@@ -436,6 +451,11 @@
 .thread-item--vip:hover .thread-item__actions,
 .thread-item--vip:focus-within .thread-item__actions {
   background: rgba(255, 214, 102, 0.13);
+}
+
+.thread-item--internal:hover .thread-item__actions,
+.thread-item--internal:focus-within .thread-item__actions {
+  background: rgba(8, 189, 186, 0.13);
 }
 
 .thread-item__star {

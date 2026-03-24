@@ -29,7 +29,7 @@ export interface EmailMessage {
   sizeEstimate: number | null;
   labelIds: string[];
   customerId: string | null;
-  customer: { id: string; name: string; domain: string | null; logoUrl: string | null; isVip?: boolean } | null;
+  customer: { id: string; name: string; domain: string | null; logoUrl: string | null; isVip?: boolean; isInternal?: boolean } | null;
   attachments: EmailAttachment[];
   mailToTask?: { id: string; task: { id: string; title: string; status: string } } | null;
   syncedAt: string | null;

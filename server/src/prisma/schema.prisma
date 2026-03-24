@@ -85,6 +85,7 @@ model Customer {
   notes      String?  @db.Text
   categoryId String?  @map("category_id")
   isVip      Boolean  @default(false) @map("is_vip")
+  isInternal Boolean  @default(false) @map("is_internal")
   userId     String   @map("user_id")
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")

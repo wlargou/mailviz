@@ -570,7 +570,7 @@ export function MailPage() {
                     <div
                       role="button"
                       tabIndex={0}
-                      className={`thread-item${isUnread ? ' thread-item--unread' : ' thread-item--read'}${e.customer?.isVip ? ' thread-item--vip' : ''}${isSelected ? ' thread-item--selected' : ''}${isChecked ? ' thread-item--checked' : ''}`}
+                      className={`thread-item${isUnread ? ' thread-item--unread' : ' thread-item--read'}${e.customer?.isVip ? ' thread-item--vip' : e.customer?.isInternal ? ' thread-item--internal' : ''}${isSelected ? ' thread-item--selected' : ''}${isChecked ? ' thread-item--checked' : ''}`}
                       onClick={() => setSelectedThread(thread.threadId)}
                       onKeyDown={(ev) => {
                         if (ev.key === 'Enter' || ev.key === ' ') {

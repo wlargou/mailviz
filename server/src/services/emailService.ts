@@ -480,7 +480,7 @@ export const emailService = {
         orderBy: { receivedAt: 'desc' },
         distinct: ['threadId'],
         include: {
-          customer: { select: { id: true, name: true, domain: true, logoUrl: true, isVip: true } },
+          customer: { select: { id: true, name: true, domain: true, logoUrl: true, isVip: true, isInternal: true } },
           attachments: true,
         },
       }),
@@ -538,7 +538,7 @@ export const emailService = {
       orderBy: { receivedAt: 'asc' },
       include: {
         attachments: true,
-        customer: { select: { id: true, name: true, domain: true, logoUrl: true, isVip: true } },
+        customer: { select: { id: true, name: true, domain: true, logoUrl: true, isVip: true, isInternal: true } },
         mailToTask: { include: { task: true } },
       },
     });
@@ -556,7 +556,7 @@ export const emailService = {
       where: { id, userId },
       include: {
         attachments: true,
-        customer: { select: { id: true, name: true, domain: true, logoUrl: true, isVip: true } },
+        customer: { select: { id: true, name: true, domain: true, logoUrl: true, isVip: true, isInternal: true } },
         mailToTask: { include: { task: true } },
       },
     });
@@ -567,7 +567,7 @@ export const emailService = {
         where: { id },
         include: {
           attachments: true,
-          customer: { select: { id: true, name: true, domain: true, logoUrl: true, isVip: true } },
+          customer: { select: { id: true, name: true, domain: true, logoUrl: true, isVip: true, isInternal: true } },
           mailToTask: { include: { task: true } },
         },
       });
