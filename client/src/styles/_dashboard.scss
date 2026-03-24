@@ -470,6 +470,15 @@
   &--task { border-left-color: var(--cds-support-info); }
   &--deal { border-left-color: var(--cds-support-warning); }
   &--urgent { border-left-color: var(--cds-support-error); }
+
+  // Unread emails get a subtle blue tint
+  &--unread {
+    background: rgba(120, 169, 255, 0.06);
+
+    .dashboard-item__title {
+      font-weight: 600;
+    }
+  }
 }
 
 .dashboard-item__time {

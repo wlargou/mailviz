@@ -37,14 +37,14 @@ export function RecentActivity({ stats, loading, onEmailClick, onTaskClick }: Re
       </TabList>
       <TabPanels>
         <TabPanel>
-          {emails.recentUnread.length === 0 ? (
-            <div className="card-empty">No unread emails</div>
+          {emails.recentEmails.length === 0 ? (
+            <div className="card-empty">No recent emails</div>
           ) : (
             <div className="dashboard-item-list">
-              {emails.recentUnread.map((email, idx) => (
+              {emails.recentEmails.map((email, idx) => (
                 <div
                   key={email.threadId || idx}
-                  className="dashboard-item dashboard-item--email"
+                  className={`dashboard-item dashboard-item--email${!email.isRead ? ' dashboard-item--unread' : ''}`}
                   onClick={() => {
                     if (onEmailClick && email.threadId) onEmailClick(email.threadId, email.subject || '(No subject)');
                     else navigate('/mail');

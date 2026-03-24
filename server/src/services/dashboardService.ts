@@ -107,12 +107,12 @@ export const dashboardService = {
         WHERE user_id = ${userId}
       `,
 
-      // Recent unread (needs distinct, better as Prisma query)
+      // Recent emails (latest by received date, regardless of read status)
       prisma.email.findMany({
-        where: { userId, isRead: false },
+        where: { userId },
         distinct: ['threadId'],
         orderBy: { receivedAt: 'desc' },
-        take: 5,
+        take: 8,
         select: {
           threadId: true,
           subject: true,
@@ -120,6 +120,7 @@ export const dashboardService = {
           fromName: true,
           receivedAt: true,
           snippet: true,
+          isRead: true,
         },
       }),
 
@@ -391,13 +392,14 @@ export const dashboardService = {
         unreadCount,
         unreadTodayCount,
         totalSynced,
-        recentUnread: recentUnreadEmails.map((e) => ({
+        recentEmails: recentUnreadEmails.map((e) => ({
           threadId: e.threadId,
           subject: e.subject,
           from: e.from,
           fromName: e.fromName,
           receivedAt: e.receivedAt,
           snippet: e.snippet,
+          isRead: e.isRead,
         })),
       },
       calendar: {

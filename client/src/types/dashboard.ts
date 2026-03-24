@@ -13,13 +13,14 @@ export interface DashboardStats {
     unreadCount: number;
     unreadTodayCount: number;
     totalSynced: number;
-    recentUnread: Array<{
+    recentEmails: Array<{
       threadId: string | null;
       subject: string;
       from: string;
       fromName: string | null;
       receivedAt: string;
       snippet: string | null;
+      isRead: boolean;
     }>;
   };
   calendar: {
