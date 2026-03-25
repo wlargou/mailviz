@@ -12,6 +12,7 @@ import { CalendarPage } from './components/calendar/CalendarPage';
 import { MailPage } from './components/mail/MailPage';
 import { SettingsPage } from './components/settings/SettingsPage';
 import { DealsPage } from './components/deals/DealsPage';
+import { ActivityLogPage } from './components/audit/ActivityLogPage';
 
 export function App() {
   return (
@@ -29,6 +30,7 @@ export function App() {
             <Route path="/deals" element={<DealsPage />} />
             <Route path="/calendar" element={<CalendarPage />} />
             <Route path="/mail" element={<MailPage />} />
+            <Route path="/activity" element={<ActivityLogPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
         </Route>

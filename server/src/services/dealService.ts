@@ -5,6 +5,7 @@ import { CreateDealInput, UpdateDealInput } from '../validators/dealValidator.js
 import { parsePagination, paginationMeta } from '../utils/pagination.js';
 import { cleanEmptyStrings } from '../utils/shared.js';
 import { getSharedDealIds, canAccessDeal, isDealOwner } from '../utils/accessControl.js';
+import { auditService } from './auditService.js';
 
 interface DealQueryParams {
   search?: string;
@@ -90,10 +91,12 @@ export const dealService = {
     if (cleaned.expiryDate) {
       cleaned.expiryDate = new Date(cleaned.expiryDate as string);
     }
-    return prisma.deal.create({
+    const deal = await prisma.deal.create({
       data: { ...cleaned, userId } as any,
       include: dealIncludes,
     });
+    auditService.log({ userId, action: 'DEAL_CREATED', entityType: 'deal', entityId: deal.id, details: { title: data.title, partnerId: data.partnerId, status: data.status } });
+    return deal;
   },
 
   async update(userId: string, id: string, data: UpdateDealInput) {
@@ -105,11 +108,13 @@ export const dealService = {
     if (cleaned.expiryDate) {
       cleaned.expiryDate = new Date(cleaned.expiryDate as string);
     }
-    return prisma.deal.update({
+    const deal = await prisma.deal.update({
       where: { id },
       data: cleaned,
       include: dealIncludes,
     });
+    auditService.log({ userId, action: 'DEAL_UPDATED', entityType: 'deal', entityId: id, details: { changes: Object.keys(data) } });
+    return deal;
   },
 
   async delete(userId: string, id: string) {
@@ -117,7 +122,9 @@ export const dealService = {
     if (!isOwner) {
       throw new AppError(404, 'DEAL_NOT_FOUND', 'Deal not found');
     }
+    const existing = await prisma.deal.findUnique({ where: { id }, select: { title: true } });
     await prisma.deal.delete({ where: { id } });
+    auditService.log({ userId, action: 'DEAL_DELETED', entityType: 'deal', entityId: id, details: { title: existing?.title } });
     return { success: true };
   },
 
@@ -149,6 +156,8 @@ export const dealService = {
       sharedBy: { name: sharer?.name, email: sharer?.email },
       title: deal?.title,
     });
+
+    auditService.log({ userId, action: 'DEAL_SHARED', entityType: 'deal', entityId: dealId, details: { sharedWith: recipientUserIds } });
 
     return { success: true, sharedWith: validIds.length };
   },

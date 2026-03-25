@@ -5,6 +5,7 @@ import { parsePagination, paginationMeta } from '../utils/pagination.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { getSharedTaskIds, canAccessTask, isTaskOwner } from '../utils/accessControl.js';
 import { wsEmitToUsers, wsEmitToUser } from '../websocket.js';
+import { auditService } from './auditService.js';
 
 interface TaskQueryParams {
   status?: string;
@@ -175,6 +176,8 @@ export const taskService = {
       include: { labels: { include: { label: true } }, customer: true },
     });
 
+    auditService.log({ userId, action: 'TASK_CREATED', entityType: 'task', entityId: task.id, details: { title: data.title, status: data.status, priority: data.priority } });
+
     return formatTask(task);
   },
 
@@ -218,6 +221,8 @@ export const taskService = {
       include: { labels: { include: { label: true } }, customer: true },
     });
 
+    auditService.log({ userId, action: 'TASK_UPDATED', entityType: 'task', entityId: id, details: { changes: Object.keys(data) } });
+
     return formatTask(task);
   },
 
@@ -237,7 +242,9 @@ export const taskService = {
     if (!owner) {
       throw new AppError(404, 'TASK_NOT_FOUND', 'Task not found');
     }
+    const existing = await prisma.task.findUnique({ where: { id }, select: { title: true } });
     await prisma.task.delete({ where: { id } });
+    auditService.log({ userId, action: 'TASK_DELETED', entityType: 'task', entityId: id, details: { title: existing?.title } });
     return { success: true };
   },
 
@@ -268,6 +275,8 @@ export const taskService = {
       sharedBy: { name: sharer?.name, email: sharer?.email },
       title: task?.title,
     });
+
+    auditService.log({ userId, action: 'TASK_SHARED', entityType: 'task', entityId: taskId, details: { sharedWith: recipientUserIds } });
 
     return { success: true, sharedWith: validIds.length };
   },
@@ -313,6 +322,8 @@ export const taskService = {
         assignedBy: { name: assigner?.name, email: assigner?.email },
       });
     }
+
+    auditService.log({ userId, action: 'TASK_ASSIGNED', entityType: 'task', entityId: taskId, details: { assignedToId } });
 
     return formatTask(task);
   },

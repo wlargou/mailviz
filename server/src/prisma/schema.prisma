@@ -184,6 +184,7 @@ model User {
   taskSharesReceived  TaskShare[]        @relation("TaskSharesReceived")
   taskAssignments     Task[]             @relation("TaskAssignments")
   scheduledEmails     ScheduledEmail[]
+  auditLogs           AuditLog[]
 
   @@map("users")
 }
@@ -453,4 +454,26 @@ model ScheduledEmail {
   @@index([userId])
   @@index([status, sendAt])
   @@map("scheduled_emails")
+}
+
+// ─── AUDIT LOG ──────────────────────────────────
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  action      String   @db.VarChar(50)
+  entityType  String   @map("entity_type") @db.VarChar(50)
+  entityId    String?  @map("entity_id")
+  details     Json?    @db.JsonB
+  status      String   @default("success") @db.VarChar(20)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([action])
+  @@index([entityType])
+  @@index([createdAt])
+  @@index([userId, createdAt])
+  @@map("audit_logs")
 }

@@ -7,6 +7,7 @@ import { extractDomain, isPersonalDomain, normalizeDomain } from '../utils/domai
 import { wsEmit } from '../websocket.js';
 import { env } from '../config/env.js';
 import type { Prisma } from '@prisma/client';
+import { auditService } from './auditService.js';
 
 // Patterns to extract meeting links from event descriptions.
 // Order matters — first match wins.
@@ -106,6 +107,7 @@ export const calendarService = {
 
     // Re-fetch event after pushToGoogle updated it with Google response data
     const updated = await prisma.calendarEvent.findUnique({ where: { id: event.id } });
+    auditService.log({ userId, action: 'EVENT_CREATED', entityType: 'event', entityId: event.id, details: { title: data.title, startTime: data.startTime, endTime: data.endTime } });
     return updated || event;
   },
 
@@ -145,6 +147,7 @@ export const calendarService = {
 
     // Re-fetch event after pushToGoogle updated it with Google response data
     const updated = await prisma.calendarEvent.findUnique({ where: { id: event.id } });
+    auditService.log({ userId, action: 'EVENT_UPDATED', entityType: 'event', entityId: id, details: { changes: Object.keys(data) } });
     return updated || event;
   },
 
@@ -177,6 +180,7 @@ export const calendarService = {
       }
       await prisma.calendarEvent.delete({ where: { id, userId } });
     }
+    auditService.log({ userId, action: 'EVENT_DELETED', entityType: 'event', entityId: id, details: { title: event.title, startTime: event.startTime } });
   },
 
   async syncFromGoogle(retried = false, userId: string): Promise<{ synced: number; deleted: number; customersCreated: number; contactsCreated: number }> {
@@ -479,6 +483,8 @@ export const calendarService = {
         syncedAt: new Date(),
       },
     });
+
+    auditService.log({ userId, action: 'EVENT_RESPONDED', entityType: 'event', entityId: id, details: { response } });
 
     return updated;
   },

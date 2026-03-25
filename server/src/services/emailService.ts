@@ -18,6 +18,7 @@ import {
   type EmailQueryParams,
 } from '../utils/emailHelpers.js';
 import { getSharedThreadIds, canAccessThread } from '../utils/accessControl.js';
+import { auditService } from './auditService.js';
 
 export const emailService = {
   async syncFromGmail(userId: string) {
@@ -631,6 +632,8 @@ export const emailService = {
         });
       } catch (err: any) { console.warn('[EmailSync] Gmail API call failed:', err?.message || err); }
     }
+
+    auditService.log({ userId, action: 'EMAIL_MARK_READ', entityType: 'email', entityId: id, details: { subject: email.subject } });
   },
 
   async markAsUnread(id: string, userId: string) {
@@ -655,6 +658,8 @@ export const emailService = {
         });
       } catch (err: any) { console.warn('[EmailSync] Gmail API call failed:', err?.message || err); }
     }
+
+    auditService.log({ userId, action: 'EMAIL_MARK_UNREAD', entityType: 'email', entityId: id, details: { subject: email.subject } });
   },
 
   async toggleStar(id: string, userId: string) {
@@ -682,6 +687,8 @@ export const emailService = {
         });
       } catch (err: any) { console.warn('[EmailSync] Gmail API call failed:', err?.message || err); }
     }
+
+    auditService.log({ userId, action: newStarred ? 'EMAIL_STARRED' : 'EMAIL_UNSTARRED', entityType: 'email', entityId: id, details: { subject: email.subject } });
 
     return { isStarred: newStarred };
   },
@@ -711,6 +718,8 @@ export const emailService = {
       data: { isArchived: true, labelIds: email.labelIds.filter((l) => l !== 'INBOX') },
     });
     wsEmit('email:updated', { id, isArchived: true });
+
+    auditService.log({ userId, action: 'EMAIL_ARCHIVED', entityType: 'email', entityId: id, details: { subject: email.subject, from: email.from } });
   },
 
   async unarchive(id: string, userId: string) {
@@ -738,6 +747,8 @@ export const emailService = {
       data: { isArchived: false, labelIds: [...email.labelIds, 'INBOX'] },
     });
     wsEmit('email:updated', { id, isArchived: false });
+
+    auditService.log({ userId, action: 'EMAIL_UNARCHIVED', entityType: 'email', entityId: id, details: { subject: email.subject, from: email.from } });
   },
 
   async trash(id: string, userId: string) {
@@ -749,6 +760,8 @@ export const emailService = {
       }
     }
     if (!email) throw Object.assign(new Error('Email not found'), { status: 404 });
+
+    const emailDetails = { subject: email.subject, from: email.from, threadId: email.threadId, receivedAt: email.receivedAt };
 
     if (email.gmailMessageId && email.userId === userId) {
       try {
@@ -762,6 +775,8 @@ export const emailService = {
       data: { isTrashed: true, labelIds: [...email.labelIds.filter((l) => l !== 'INBOX'), 'TRASH'] },
     });
     wsEmit('email:updated', { id, isTrashed: true });
+
+    await auditService.logSync({ userId, action: 'EMAIL_TRASHED', entityType: 'email', entityId: id, details: emailDetails });
   },
 
   async untrash(id: string, userId: string) {
@@ -786,6 +801,8 @@ export const emailService = {
       data: { isTrashed: false, labelIds: email.labelIds.filter((l) => l !== 'TRASH') },
     });
     wsEmit('email:updated', { id, isTrashed: false });
+
+    auditService.log({ userId, action: 'EMAIL_UNTRASHED', entityType: 'email', entityId: id, details: { subject: email.subject, from: email.from } });
   },
 
   async batchMarkAsRead(ids: string[], userId: string) {
@@ -810,6 +827,8 @@ export const emailService = {
     } catch (err: any) { console.warn('[EmailSync] Gmail API call failed:', err?.message || err); }
 
     for (const email of allEmails) wsEmit('email:updated', { id: email.id, isRead: true });
+
+    auditService.log({ userId, action: 'EMAIL_BATCH_MARK_READ', entityType: 'email', details: { count: ids.length } });
     return { count: threadIds.length };
   },
 
@@ -834,6 +853,8 @@ export const emailService = {
     } catch (err: any) { console.warn('[EmailSync] Gmail API call failed:', err?.message || err); }
 
     for (const email of allEmails) wsEmit('email:updated', { id: email.id, isRead: false });
+
+    auditService.log({ userId, action: 'EMAIL_BATCH_MARK_UNREAD', entityType: 'email', details: { count: ids.length } });
     return { count: threadIds.length };
   },
 
@@ -864,6 +885,7 @@ export const emailService = {
       wsEmit('email:updated', { id: email.id, isArchived: true });
     }
 
+    auditService.log({ userId, action: 'EMAIL_BATCH_ARCHIVE', entityType: 'email', details: { count: ids.length } });
     return { count: threadIds.length };
   },
 
@@ -891,6 +913,7 @@ export const emailService = {
       wsEmit('email:updated', { id: email.id, isTrashed: true });
     }
 
+    await auditService.logSync({ userId, action: 'EMAIL_BATCH_TRASH', entityType: 'email', details: { count: ids.length, subjects: allEmails.map(e => e.subject).slice(0, 10) } });
     return { count: threadIds.length };
   },
 
@@ -919,6 +942,8 @@ export const emailService = {
         conversionNote: data.notes || null,
       },
     });
+
+    auditService.log({ userId, action: 'EMAIL_CONVERTED_TO_TASK', entityType: 'email', entityId: emailId, details: { taskTitle: data.title || email.subject, taskId: task.id, subject: email.subject } });
 
     return task;
   },
@@ -966,6 +991,9 @@ export const emailService = {
     }
 
     wsEmit('email:sent', { threadId: sendRes.data.threadId });
+
+    await auditService.logSync({ userId, action: 'EMAIL_SENT', entityType: 'email', entityId: sendRes.data.id || undefined, details: { to: data.to, cc: data.cc, subject: data.subject, hasAttachments: !!(data.attachments?.length) } });
+
     return { messageId: sendRes.data.id, threadId: sendRes.data.threadId };
   },
 
@@ -1053,6 +1081,9 @@ export const emailService = {
     }
 
     wsEmit('email:sent', { threadId: sendRes.data.threadId });
+
+    await auditService.logSync({ userId, action: 'EMAIL_REPLY', entityType: 'email', entityId: emailId, details: { to: to, cc: cc.length > 0 ? cc : undefined, subject: original.subject, originalFrom: original.from } });
+
     return { messageId: sendRes.data.id, threadId: sendRes.data.threadId };
   },
 
@@ -1147,6 +1178,9 @@ export const emailService = {
     }
 
     wsEmit('email:sent', { threadId: sendRes.data.threadId });
+
+    await auditService.logSync({ userId, action: 'EMAIL_FORWARD', entityType: 'email', entityId: emailId, details: { to: data.to, subject: original.subject, originalFrom: original.from } });
+
     return { messageId: sendRes.data.id, threadId: sendRes.data.threadId };
   },
 
@@ -1178,6 +1212,8 @@ export const emailService = {
       subject: owns.subject,
     });
 
+    auditService.log({ userId, action: 'EMAIL_SHARED', entityType: 'email', entityId: threadId, details: { sharedWith: validIds } });
+
     return { success: true, sharedWith: validIds.length };
   },
 
@@ -1185,6 +1221,9 @@ export const emailService = {
     await prisma.emailThreadShare.deleteMany({
       where: { threadId, sharedByUserId: userId, sharedWithUserId: recipientUserId },
     });
+
+    auditService.log({ userId, action: 'EMAIL_UNSHARED', entityType: 'email', entityId: threadId, details: { removedUser: recipientUserId } });
+
     return { success: true };
   },
 
@@ -1231,6 +1270,9 @@ export const emailService = {
       },
     });
     wsEmitToUser(userId, 'email:scheduled', { id: scheduled.id });
+
+    auditService.log({ userId, action: 'EMAIL_SCHEDULED', entityType: 'scheduled_email', entityId: scheduled.id, details: { to: data.to, subject: data.subject, sendAt: data.sendAt } });
+
     return scheduled;
   },
 
@@ -1257,10 +1299,14 @@ export const emailService = {
     if (!existing) throw Object.assign(new Error('Scheduled email not found'), { status: 404 });
     if (existing.status !== 'pending') throw Object.assign(new Error('Only pending emails can be cancelled'), { status: 400 });
 
-    return prisma.scheduledEmail.update({
+    const result = await prisma.scheduledEmail.update({
       where: { id },
       data: { status: 'cancelled' },
     });
+
+    auditService.log({ userId, action: 'EMAIL_SCHEDULE_CANCELLED', entityType: 'scheduled_email', entityId: id });
+
+    return result;
   },
 
   async processScheduledEmails() {

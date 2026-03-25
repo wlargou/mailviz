@@ -4,6 +4,7 @@ import { CreateContactInput, UpdateContactInput } from '../validators/contactVal
 import { AppError } from '../middleware/errorHandler.js';
 import { parsePagination, paginationMeta } from '../utils/pagination.js';
 import { cleanEmptyStrings } from '../utils/shared.js';
+import { auditService } from './auditService.js';
 
 interface ContactQueryParams {
   search?: string;
@@ -231,7 +232,9 @@ export const contactService = {
       throw new AppError(404, 'CUSTOMER_NOT_FOUND', 'Customer not found');
     }
     const cleaned = cleanEmptyStrings(data);
-    return prisma.contact.create({ data: cleaned as any });
+    const contact = await prisma.contact.create({ data: cleaned as any });
+    auditService.log({ userId, action: 'CONTACT_CREATED', entityType: 'contact', entityId: contact.id, details: { name: data.firstName + ' ' + data.lastName, email: data.email } });
+    return contact;
   },
 
   async update(userId: string, id: string, data: UpdateContactInput) {
@@ -242,7 +245,9 @@ export const contactService = {
       throw new AppError(404, 'CONTACT_NOT_FOUND', 'Contact not found');
     }
     const cleaned = cleanEmptyStrings(data);
-    return prisma.contact.update({ where: { id }, data: cleaned });
+    const contact = await prisma.contact.update({ where: { id }, data: cleaned });
+    auditService.log({ userId, action: 'CONTACT_UPDATED', entityType: 'contact', entityId: id, details: { changes: Object.keys(data) } });
+    return contact;
   },
 
   async delete(userId: string, id: string) {
@@ -253,6 +258,7 @@ export const contactService = {
       throw new AppError(404, 'CONTACT_NOT_FOUND', 'Contact not found');
     }
     await prisma.contact.delete({ where: { id } });
+    auditService.log({ userId, action: 'CONTACT_DELETED', entityType: 'contact', entityId: id, details: { name: existing.firstName + ' ' + existing.lastName } });
     return { success: true };
   },
 };

@@ -5,6 +5,7 @@ import { parsePagination, paginationMeta } from '../utils/pagination.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { cleanEmptyStrings } from '../utils/shared.js';
 import { domainToCompanyName, getLogoUrl, parseName } from '../utils/domainResolver.js';
+import { auditService } from './auditService.js';
 
 interface CustomerQueryParams {
   search?: string;
@@ -75,10 +76,12 @@ export const customerService = {
 
   async create(userId: string, data: CreateCustomerInput) {
     const cleaned = cleanEmptyStrings(data);
-    return prisma.customer.create({
+    const customer = await prisma.customer.create({
       data: { ...cleaned, userId } as any,
       include: { category: true, _count: { select: { contacts: true, tasks: true, emails: true } } },
     });
+    auditService.log({ userId, action: 'COMPANY_CREATED', entityType: 'company', entityId: customer.id, details: { name: data.name, domain: data.domain } });
+    return customer;
   },
 
   async update(userId: string, id: string, data: UpdateCustomerInput) {
@@ -87,11 +90,13 @@ export const customerService = {
       throw new AppError(404, 'CUSTOMER_NOT_FOUND', 'Customer not found');
     }
     const cleaned = cleanEmptyStrings(data);
-    return prisma.customer.update({
+    const customer = await prisma.customer.update({
       where: { id },
       data: cleaned,
       include: { category: true, _count: { select: { contacts: true, tasks: true, emails: true } } },
     });
+    auditService.log({ userId, action: 'COMPANY_UPDATED', entityType: 'company', entityId: id, details: { changes: Object.keys(data) } });
+    return customer;
   },
 
   async delete(userId: string, id: string) {
@@ -100,6 +105,7 @@ export const customerService = {
       throw new AppError(404, 'CUSTOMER_NOT_FOUND', 'Customer not found');
     }
     await prisma.customer.delete({ where: { id } });
+    auditService.log({ userId, action: 'COMPANY_DELETED', entityType: 'company', entityId: id, details: { name: existing.name } });
     return { success: true };
   },
 
