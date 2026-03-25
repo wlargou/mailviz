@@ -327,7 +327,7 @@ export function CustomerDetailPage() {
                               {paginated.map((contact, i) => {
                                 const row = tableRows[i]; if (!row) return null;
                                 return (<TableRow {...getRowProps({ row })} key={row.id}>
-                                  <TableCell>{contact.firstName} {contact.lastName}</TableCell>
+                                  <TableCell><span style={{ cursor: 'pointer', fontWeight: 500, color: 'var(--cds-link-primary)' }} onClick={() => navigate(`/contacts/${contact.id}`)}>{contact.firstName} {contact.lastName}</span></TableCell>
                                   <TableCell>{contact.email || '—'}</TableCell>
                                   <TableCell>{contact.phone || '—'}</TableCell>
                                   <TableCell>{contact.role || '—'}</TableCell>
