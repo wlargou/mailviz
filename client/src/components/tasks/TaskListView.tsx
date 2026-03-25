@@ -112,7 +112,17 @@ export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreat
   }
 
   if (tasks.length === 0 && !localSearch) {
-    return <EmptyState title="No tasks found" description="Try adjusting your filters or create a new task" />;
+    return (
+      <EmptyState
+        title="No tasks found"
+        description="Try adjusting your filters or create a new task"
+        action={
+          <Button kind="primary" size="sm" renderIcon={Add} onClick={onCreateNew}>
+            New Task
+          </Button>
+        }
+      />
+    );
   }
 
   const rows = tasks.map((t) => ({
