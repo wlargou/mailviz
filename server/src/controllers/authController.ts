@@ -161,4 +161,29 @@ export const authController = {
       next(err);
     }
   },
+
+  async getSignature(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: req.user!.id },
+        select: { signature: true },
+      });
+      res.json({ signature: user?.signature || null });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async updateSignature(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { signature } = req.body;
+      await prisma.user.update({
+        where: { id: req.user!.id },
+        data: { signature: signature || null },
+      });
+      res.json({ message: 'Signature updated' });
+    } catch (err) {
+      next(err);
+    }
+  },
 };

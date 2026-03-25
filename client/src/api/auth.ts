@@ -32,4 +32,11 @@ export const authApi = {
   // Users list (for sharing)
   getUsers: () =>
     api.get<{ data: User[] }>('/auth/users'),
+
+  // Email signature
+  getSignature: () =>
+    api.get<{ signature: string | null }>('/auth/signature'),
+
+  updateSignature: (signature: string | null) =>
+    api.put('/auth/signature', { signature }),
 };

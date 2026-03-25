@@ -6,6 +6,7 @@ import { SendAlt, Attachment, Close, Time } from '@carbon/icons-react';
 import DOMPurify from 'dompurify';
 import { format } from 'date-fns';
 import { emailsApi } from '../../api/emails';
+import { authApi } from '../../api/auth';
 import { useUIStore } from '../../store/uiStore';
 import { TiptapEditor } from './TiptapEditor';
 import { ComposeToolbar } from './ComposeToolbar';
@@ -114,6 +115,26 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail }: 
       }
     }
   }, [open, mode, replyToEmail]);
+
+  // Inject email signature into editor when it's ready
+  useEffect(() => {
+    if (!open || !editorInstance) return;
+
+    // Small delay to ensure editor is fully initialized after mode setup
+    const timer = setTimeout(async () => {
+      try {
+        const { data } = await authApi.getSignature();
+        if (data.signature && editorInstance && !editorInstance.isDestroyed) {
+          const sigHtml = `<p></p><p>--</p>${data.signature}`;
+          editorInstance.commands.setContent(sigHtml);
+          // Move cursor to the beginning (before the signature)
+          editorInstance.commands.focus('start');
+        }
+      } catch { /* ignore - no signature set */ }
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [open, editorInstance]);
 
   const handleFilesSelected = useCallback((files: FileList | File[]) => {
     const fileArray = Array.from(files);

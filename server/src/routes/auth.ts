@@ -22,4 +22,8 @@ router.post('/google/disconnect', requireAuth, authController.disconnectGoogle);
 // Users list (for sharing features)
 router.get('/users', requireAuth, authController.listUsers);
 
+// Email signature
+router.get('/signature', requireAuth, authController.getSignature);
+router.put('/signature', requireAuth, authController.updateSignature);
+
 export { router as authRoutes };

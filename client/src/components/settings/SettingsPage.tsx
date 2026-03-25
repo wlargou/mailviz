@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Button,
   InlineLoading,
@@ -31,9 +31,11 @@ import {
   LogoGoogle,
   Calendar,
   Email,
+  Pen,
 } from '@carbon/icons-react';
 import { useSearchParams } from 'react-router-dom';
 import { authApi } from '../../api/auth';
+import { TiptapEditor } from '../mail/TiptapEditor';
 import { taskStatusesApi } from '../../api/taskStatuses';
 import { companyCategoriesApi } from '../../api/companyCategories';
 import { dealPartnersApi } from '../../api/dealPartners';
@@ -67,6 +69,12 @@ export function SettingsPage() {
   const [calendarProgress, setCalendarProgress] = useState<{ synced: number; total: number; phase: string } | null>(null);
   const addNotification = useUIStore((s) => s.addNotification);
   const [searchParams, setSearchParams] = useSearchParams();
+
+  // Email signature
+  const [signature, setSignature] = useState<string>('');
+  const [signatureLoaded, setSignatureLoaded] = useState(false);
+  const [savingSignature, setSavingSignature] = useState(false);
+  const signatureEditorRef = useRef<any>(null);
 
   const [taskStatuses, setTaskStatuses] = useState<TaskStatusConfig[]>([]);
   const [newStatusLabel, setNewStatusLabel] = useState('');
@@ -108,11 +116,36 @@ export function SettingsPage() {
     } catch { /* ignore */ }
   }, []);
 
+  const fetchSignature = useCallback(async () => {
+    try {
+      const { data } = await authApi.getSignature();
+      setSignature(data.signature || '');
+      setSignatureLoaded(true);
+    } catch { /* ignore */ }
+  }, []);
+
+  const handleSaveSignature = async () => {
+    setSavingSignature(true);
+    try {
+      const html = signatureEditorRef.current?.getHTML() || '';
+      // Treat empty editor as no signature
+      const isEmpty = !html || html === '<p></p>' || html.trim() === '';
+      await authApi.updateSignature(isEmpty ? null : html);
+      setSignature(isEmpty ? '' : html);
+      addNotification({ kind: 'success', title: 'Signature saved' });
+    } catch {
+      addNotification({ kind: 'error', title: 'Failed to save signature' });
+    } finally {
+      setSavingSignature(false);
+    }
+  };
+
   useEffect(() => {
     fetchStatus();
     fetchTaskStatuses();
     fetchCategories();
     fetchDealPartners();
+    fetchSignature();
   }, []);
 
   // WebSocket listener for sync progress
@@ -484,6 +517,49 @@ export function SettingsPage() {
                 </div>
               </Stack>
             )}
+          </Stack>
+        </Tile>
+
+        {/* ─── Email Signature ─── */}
+        <Tile className="settings-tile">
+          <Stack gap={5}>
+            <div className="settings-tile__header">
+              <Pen size={24} />
+              <div>
+                <h4 className="settings-tile__title">Email Signature</h4>
+                <p className="settings-tile__subtitle">Automatically included in new emails, replies, and forwards</p>
+              </div>
+            </div>
+            {signatureLoaded && (
+              <div style={{ border: '1px solid var(--cds-border-subtle)', borderRadius: '4px', minHeight: '120px' }}>
+                <TiptapEditor
+                  content={signature}
+                  editorRef={signatureEditorRef}
+                  placeholder="Write your email signature..."
+                />
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <Button
+                size="sm"
+                kind="primary"
+                onClick={handleSaveSignature}
+                disabled={savingSignature}
+              >
+                {savingSignature ? 'Saving...' : 'Save Signature'}
+              </Button>
+              <Button
+                size="sm"
+                kind="ghost"
+                onClick={() => {
+                  if (signatureEditorRef.current) {
+                    signatureEditorRef.current.commands.clearContent();
+                  }
+                }}
+              >
+                Clear
+              </Button>
+            </div>
           </Stack>
         </Tile>
 
