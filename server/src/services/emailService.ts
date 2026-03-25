@@ -444,31 +444,13 @@ export const emailService = {
       take: pagination.limit,
     });
 
-    // P4: Use COUNT(DISTINCT) instead of fetching all thread IDs
-    const totalResult: Array<{ count: bigint }> = sharedThreadIds.length > 0
-      ? await prisma.$queryRaw`
-          SELECT COUNT(DISTINCT thread_id) as count FROM emails
-          WHERE (user_id = ${userId} OR thread_id = ANY(${sharedThreadIds}))
-          AND is_trashed = ${where.isTrashed === true}
-          ${query.isRead === 'true' ? Prisma.sql`AND is_read = true` : query.isRead === 'false' ? Prisma.sql`AND is_read = false` : Prisma.empty}
-          ${query.folder === 'inbox' ? Prisma.sql`AND 'INBOX' = ANY(label_ids)` : Prisma.empty}
-          ${query.folder === 'sent' ? Prisma.sql`AND 'SENT' = ANY(label_ids)` : Prisma.empty}
-          ${query.folder === 'starred' ? Prisma.sql`AND is_starred = true` : Prisma.empty}
-          ${query.folder === 'archived' ? Prisma.sql`AND is_archived = true` : Prisma.empty}
-          ${query.contactEmail ? Prisma.sql`AND "from" = ${query.contactEmail}` : Prisma.empty}
-        `
-      : await prisma.$queryRaw`
-          SELECT COUNT(DISTINCT thread_id) as count FROM emails
-          WHERE user_id = ${userId}
-          AND is_trashed = ${where.isTrashed === true}
-          ${query.isRead === 'true' ? Prisma.sql`AND is_read = true` : query.isRead === 'false' ? Prisma.sql`AND is_read = false` : Prisma.empty}
-          ${query.folder === 'inbox' ? Prisma.sql`AND 'INBOX' = ANY(label_ids)` : Prisma.empty}
-          ${query.folder === 'sent' ? Prisma.sql`AND 'SENT' = ANY(label_ids)` : Prisma.empty}
-          ${query.folder === 'starred' ? Prisma.sql`AND is_starred = true` : Prisma.empty}
-          ${query.folder === 'archived' ? Prisma.sql`AND is_archived = true` : Prisma.empty}
-          ${query.contactEmail ? Prisma.sql`AND "from" = ${query.contactEmail}` : Prisma.empty}
-        `;
-    const total = Number(totalResult[0]?.count ?? 0);
+    // P4: Count distinct threads using the same where clause as data query
+    const totalGroupBy = await prisma.email.groupBy({
+      by: ['threadId'],
+      where,
+      _count: { _all: true },
+    });
+    const total = totalGroupBy.length;
 
     // P1: Batch-fetch latest email per thread + unread counts (2 queries instead of 2*N)
     const threadIdList = threadIds.map((t) => t.threadId).filter((id): id is string => id !== null);
