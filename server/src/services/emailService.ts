@@ -19,6 +19,7 @@ import {
 } from '../utils/emailHelpers.js';
 import { getSharedThreadIds, canAccessThread } from '../utils/accessControl.js';
 import { auditService } from './auditService.js';
+import { notificationService } from './notificationService.js';
 
 export const emailService = {
   async syncFromGmail(userId: string) {
@@ -1213,6 +1214,16 @@ export const emailService = {
     });
 
     auditService.log({ userId, action: 'EMAIL_SHARED', entityType: 'email', entityId: threadId, details: { sharedWith: validIds } });
+
+    for (const recipientUserId of validIds) {
+      await notificationService.create(recipientUserId, {
+        type: 'EMAIL_SHARED',
+        title: `Email shared: ${owns.subject}`,
+        message: `shared an email thread with you`,
+        entityType: 'email',
+        entityId: threadId,
+      });
+    }
 
     return { success: true, sharedWith: validIds.length };
   },

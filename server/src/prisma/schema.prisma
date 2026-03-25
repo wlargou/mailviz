@@ -186,6 +186,7 @@ model User {
   taskAssignments     Task[]             @relation("TaskAssignments")
   scheduledEmails     ScheduledEmail[]
   auditLogs           AuditLog[]
+  notifications       Notification[]
 
   @@map("users")
 }
@@ -477,4 +478,25 @@ model AuditLog {
   @@index([createdAt])
   @@index([userId, createdAt])
   @@map("audit_logs")
+}
+
+// ─── NOTIFICATIONS ──────────────────────────────
+
+model Notification {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  type        String   @db.VarChar(50)
+  title       String   @db.VarChar(255)
+  message     String?  @db.Text
+  entityType  String?  @map("entity_type") @db.VarChar(50)
+  entityId    String?  @map("entity_id")
+  isRead      Boolean  @default(false) @map("is_read")
+  isDismissed Boolean  @default(false) @map("is_dismissed")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead, isDismissed])
+  @@index([userId, createdAt])
+  @@map("notifications")
 }

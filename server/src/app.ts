@@ -23,6 +23,7 @@ import { companyCategoryRoutes } from './routes/companyCategories.js';
 import { dealPartnerRoutes } from './routes/dealPartners.js';
 import { dealRoutes } from './routes/deals.js';
 import auditRoutes from './routes/audit.js';
+import { notificationRoutes } from './routes/notifications.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -75,6 +76,7 @@ app.use('/api/v1/company-categories', requireAuth, companyCategoryRoutes);
 app.use('/api/v1/deal-partners', requireAuth, dealPartnerRoutes);
 app.use('/api/v1/deals', requireAuth, dealRoutes);
 app.use('/api/v1/audit-logs', requireAuth, auditRoutes);
+app.use('/api/v1/notifications', requireAuth, notificationRoutes);
 
 // Serve client static files in production
 if (env.NODE_ENV === 'production') {

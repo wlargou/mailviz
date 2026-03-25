@@ -6,6 +6,7 @@ import { AppError } from '../middleware/errorHandler.js';
 import { getSharedTaskIds, canAccessTask, isTaskOwner } from '../utils/accessControl.js';
 import { wsEmitToUsers, wsEmitToUser } from '../websocket.js';
 import { auditService } from './auditService.js';
+import { notificationService } from './notificationService.js';
 
 interface TaskQueryParams {
   status?: string;
@@ -278,6 +279,16 @@ export const taskService = {
 
     auditService.log({ userId, action: 'TASK_SHARED', entityType: 'task', entityId: taskId, details: { sharedWith: recipientUserIds } });
 
+    for (const recipientUserId of validIds) {
+      await notificationService.create(recipientUserId, {
+        type: 'TASK_SHARED',
+        title: `Task shared: ${task?.title}`,
+        message: `shared a task with you`,
+        entityType: 'task',
+        entityId: taskId,
+      });
+    }
+
     return { success: true, sharedWith: validIds.length };
   },
 
@@ -324,6 +335,16 @@ export const taskService = {
     }
 
     auditService.log({ userId, action: 'TASK_ASSIGNED', entityType: 'task', entityId: taskId, details: { assignedToId } });
+
+    if (assignedToId && assignedToId !== userId) {
+      await notificationService.create(assignedToId, {
+        type: 'TASK_ASSIGNED',
+        title: `Task assigned: ${task.title}`,
+        message: `assigned a task to you`,
+        entityType: 'task',
+        entityId: taskId,
+      });
+    }
 
     return formatTask(task);
   },

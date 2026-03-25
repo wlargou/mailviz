@@ -6,6 +6,7 @@ import { parsePagination, paginationMeta } from '../utils/pagination.js';
 import { cleanEmptyStrings } from '../utils/shared.js';
 import { getSharedDealIds, canAccessDeal, isDealOwner } from '../utils/accessControl.js';
 import { auditService } from './auditService.js';
+import { notificationService } from './notificationService.js';
 
 interface DealQueryParams {
   search?: string;
@@ -158,6 +159,16 @@ export const dealService = {
     });
 
     auditService.log({ userId, action: 'DEAL_SHARED', entityType: 'deal', entityId: dealId, details: { sharedWith: recipientUserIds } });
+
+    for (const recipientUserId of validIds) {
+      await notificationService.create(recipientUserId, {
+        type: 'DEAL_SHARED',
+        title: `Deal shared: ${deal?.title}`,
+        message: `shared a deal with you`,
+        entityType: 'deal',
+        entityId: dealId,
+      });
+    }
 
     return { success: true, sharedWith: validIds.length };
   },

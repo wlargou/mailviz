@@ -9,6 +9,7 @@ import { Light, Asleep, Logout } from '@carbon/icons-react';
 import { useUIStore } from '../../store/uiStore';
 import { useAuthStore } from '../../store/authStore';
 import { GlobalSearch } from './GlobalSearch';
+import { NotificationBell } from './NotificationBell';
 import { MailvizLogo } from '../shared/MailvizLogo';
 
 export function AppHeader() {
@@ -28,6 +29,7 @@ export function AppHeader() {
       </HeaderName>
       <HeaderGlobalBar>
         <GlobalSearch />
+        <NotificationBell />
         <HeaderGlobalAction
           aria-label="Toggle theme"
           onClick={toggleTheme}
