@@ -36,7 +36,17 @@ const EVENT_COLORS = [
 
 const COLOR_ITEMS = [{ id: '', label: 'Default', hex: '' }, ...EVENT_COLORS];
 
-/** Detect if a location string is a meeting link and return the provider label */
+const DURATION_OPTIONS = [
+  { id: '15', label: '15 minutes', minutes: 15 },
+  { id: '30', label: '30 minutes', minutes: 30 },
+  { id: '45', label: '45 minutes', minutes: 45 },
+  { id: '60', label: '1 hour', minutes: 60 },
+  { id: '90', label: '1 hour 30 min', minutes: 90 },
+  { id: '120', label: '2 hours', minutes: 120 },
+  { id: '180', label: '3 hours', minutes: 180 },
+  { id: 'custom', label: 'Custom', minutes: 0 },
+];
+
 function detectMeetingProvider(url: string): string | null {
   if (!url) return null;
   const lower = url.toLowerCase();
@@ -47,7 +57,6 @@ function detectMeetingProvider(url: string): string | null {
   return null;
 }
 
-/** Convert 24h time "14:30" to 12h format { time: "2:30", ampm: "PM" } */
 function to12h(time24: string): { time: string; ampm: string } {
   const [h, m] = time24.split(':').map(Number);
   const ampm = h >= 12 ? 'PM' : 'AM';
@@ -55,7 +64,6 @@ function to12h(time24: string): { time: string; ampm: string } {
   return { time: `${h12}:${String(m).padStart(2, '0')}`, ampm };
 }
 
-/** Convert 12h format back to 24h "HH:mm" */
 function to24h(time12: string, ampm: string): string {
   const match = time12.match(/^(\d{1,2}):(\d{2})$/);
   if (!match) return '09:00';
@@ -64,6 +72,28 @@ function to24h(time12: string, ampm: string): string {
   if (ampm === 'PM' && h < 12) h += 12;
   if (ampm === 'AM' && h === 12) h = 0;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+/** Parse date string "MM/dd/yyyy" and time "HH:mm" into a Date object */
+function parseDateTime(dateStr: string, time24: string): Date {
+  const parts = dateStr.split('/');
+  if (parts.length !== 3) return new Date();
+  const [month, day, year] = parts.map(Number);
+  const [hours, minutes] = time24.split(':').map(Number);
+  return new Date(year, month - 1, day, hours || 0, minutes || 0);
+}
+
+/** Calculate duration in minutes between start and end */
+function calcDuration(startDateStr: string, startTime24: string, endDateStr: string, endTime24: string): number {
+  const start = parseDateTime(startDateStr, startTime24);
+  const end = parseDateTime(endDateStr, endTime24);
+  return Math.round((end.getTime() - start.getTime()) / 60000);
+}
+
+/** Find matching duration option or 'custom' */
+function matchDuration(minutes: number): string {
+  const match = DURATION_OPTIONS.find((d) => d.minutes === minutes);
+  return match ? match.id : 'custom';
 }
 
 interface EventModalProps {
@@ -88,6 +118,8 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
   const [endTime12, setEndTime12] = useState('10:00');
   const [endAmPm, setEndAmPm] = useState('AM');
   const [isAllDay, setIsAllDay] = useState(false);
+  const [durationId, setDurationId] = useState('60');
+  const [isCustomEnd, setIsCustomEnd] = useState(false);
 
   // Guests
   const [attendeeInput, setAttendeeInput] = useState('');
@@ -102,8 +134,21 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
   const [addGoogleMeet, setAddGoogleMeet] = useState(false);
   const [colorId, setColorId] = useState<string | null>(null);
 
-  // Detect meeting link in location
   const meetingProvider = detectMeetingProvider(location);
+
+  // Compute end time from start + duration
+  const updateEndFromDuration = useCallback(
+    (startDate: string, startT12: string, startAP: string, durMinutes: number) => {
+      const start24 = to24h(startT12, startAP);
+      const startDt = parseDateTime(startDate, start24);
+      const endDt = new Date(startDt.getTime() + durMinutes * 60000);
+      setEndDateStr(format(endDt, 'MM/dd/yyyy'));
+      const end12 = to12h(format(endDt, 'HH:mm'));
+      setEndTime12(end12.time);
+      setEndAmPm(end12.ampm);
+    },
+    []
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -124,6 +169,12 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
       setEndAmPm(e12.ampm);
       setIsAllDay(event.isAllDay);
 
+      // Detect duration
+      const durMin = Math.round((end.getTime() - start.getTime()) / 60000);
+      const matched = matchDuration(durMin);
+      setDurationId(matched);
+      setIsCustomEnd(matched === 'custom');
+
       if (event.attendees) {
         const existing = (event.attendees as any[])
           .filter((a: any) => !a.self)
@@ -137,6 +188,12 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
       setAddGoogleMeet(false);
     } else {
       const base = initialDate || new Date();
+      // Round to next 30min
+      const mins = base.getMinutes();
+      if (mins > 0 && mins <= 30) base.setMinutes(30);
+      else if (mins > 30) { base.setHours(base.getHours() + 1); base.setMinutes(0); }
+      base.setSeconds(0);
+
       setTitle('');
       setDescription('');
       setLocation('');
@@ -144,13 +201,9 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
       const s12 = to12h(format(base, 'HH:mm'));
       setStartTime12(s12.time);
       setStartAmPm(s12.ampm);
-      setEndDateStr(format(base, 'MM/dd/yyyy'));
-      const endHour = new Date(base);
-      endHour.setHours(endHour.getHours() + 1);
-      const e12 = to12h(format(endHour, 'HH:mm'));
-      setEndTime12(e12.time);
-      setEndAmPm(e12.ampm);
       setIsAllDay(false);
+      setDurationId('60');
+      setIsCustomEnd(false);
       setAttendees([]);
       setAttendeeInput('');
       setSendUpdates('all');
@@ -158,6 +211,13 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
       setColorId(null);
       setContactResults([]);
       setShowContactDropdown(false);
+
+      // Set end = start + 1h
+      const endDt = new Date(base.getTime() + 60 * 60000);
+      setEndDateStr(format(endDt, 'MM/dd/yyyy'));
+      const e12 = to12h(format(endDt, 'HH:mm'));
+      setEndTime12(e12.time);
+      setEndAmPm(e12.ampm);
     }
   }, [open, event, initialDate]);
 
@@ -184,7 +244,6 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
       try {
         const res = await contactsApi.search(query, 8);
         const contacts = res.data.data || [];
-        // Filter out contacts already added
         const filtered = contacts.filter(
           (c) => c.email && !attendees.find((a) => a.email === c.email)
         );
@@ -205,12 +264,54 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
     setContactResults([]);
   };
 
+  // When start date changes, auto-update end date to maintain same duration
+  const handleStartDateChange = (dates: Date[]) => {
+    if (!dates[0]) return;
+    const newStartDateStr = format(dates[0], 'MM/dd/yyyy');
+    setStartDateStr(newStartDateStr);
+
+    if (!isCustomEnd) {
+      const dur = DURATION_OPTIONS.find((d) => d.id === durationId);
+      if (dur && dur.minutes > 0) {
+        updateEndFromDuration(newStartDateStr, startTime12, startAmPm, dur.minutes);
+      }
+    } else {
+      // Keep end date in sync (same offset)
+      setEndDateStr(newStartDateStr);
+    }
+  };
+
+  // When start time changes, recalculate end time from duration
+  const handleStartTimeChange = (newTime12: string, newAmPm?: string) => {
+    const t = newTime12;
+    const ap = newAmPm || startAmPm;
+    setStartTime12(t);
+    if (newAmPm !== undefined) setStartAmPm(ap);
+
+    if (!isCustomEnd) {
+      const dur = DURATION_OPTIONS.find((d) => d.id === durationId);
+      if (dur && dur.minutes > 0) {
+        updateEndFromDuration(startDateStr, t, ap, dur.minutes);
+      }
+    }
+  };
+
+  // When duration selection changes
+  const handleDurationChange = (selectedId: string) => {
+    setDurationId(selectedId);
+    if (selectedId === 'custom') {
+      setIsCustomEnd(true);
+      return;
+    }
+    setIsCustomEnd(false);
+    const dur = DURATION_OPTIONS.find((d) => d.id === selectedId);
+    if (dur) {
+      updateEndFromDuration(startDateStr, startTime12, startAmPm, dur.minutes);
+    }
+  };
+
   const buildDateTime = (dateStr: string, time: string): string => {
-    const parts = dateStr.split('/');
-    if (parts.length !== 3) return new Date().toISOString();
-    const [month, day, year] = parts.map(Number);
-    const [hours, minutes] = time.split(':').map(Number);
-    const d = new Date(year, month - 1, day, hours || 0, minutes || 0);
+    const d = parseDateTime(dateStr, time);
     return d.toISOString();
   };
 
@@ -302,9 +403,7 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
           datePickerType="single"
           dateFormat="m/d/Y"
           value={startDateStr}
-          onChange={(dates: Date[]) => {
-            if (dates[0]) setStartDateStr(format(dates[0], 'MM/dd/yyyy'));
-          }}
+          onChange={handleStartDateChange}
         >
           <DatePickerInput
             id="event-start-date"
@@ -317,13 +416,13 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
             id="event-start-time"
             labelText="Start time"
             value={startTime12}
-            onChange={(e: any) => setStartTime12(e.target.value)}
+            onChange={(e: any) => handleStartTimeChange(e.target.value)}
           >
             <TimePickerSelect
               id="event-start-ampm"
               labelText="AM/PM"
               value={startAmPm}
-              onChange={(e: any) => setStartAmPm(e.target.value)}
+              onChange={(e: any) => handleStartTimeChange(startTime12, e.target.value)}
             >
               <SelectItem value="AM" text="AM" />
               <SelectItem value="PM" text="PM" />
@@ -332,41 +431,59 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
         )}
       </div>
 
-      {/* 4. End date + time */}
-      <div className="event-modal__date-row create-side-panel__form-item">
-        <DatePicker
-          datePickerType="single"
-          dateFormat="m/d/Y"
-          value={endDateStr}
-          onChange={(dates: Date[]) => {
-            if (dates[0]) setEndDateStr(format(dates[0], 'MM/dd/yyyy'));
-          }}
-        >
-          <DatePickerInput
-            id="event-end-date"
-            labelText="End date"
-            placeholder="mm/dd/yyyy"
+      {/* 4. Duration + End time */}
+      {!isAllDay && (
+        <div className="event-modal__date-row create-side-panel__form-item">
+          <Dropdown
+            id="event-duration"
+            titleText="Duration"
+            items={DURATION_OPTIONS}
+            itemToString={(item) => item?.label || ''}
+            selectedItem={DURATION_OPTIONS.find((d) => d.id === durationId) || DURATION_OPTIONS[7]}
+            onChange={({ selectedItem }) => {
+              if (selectedItem) handleDurationChange(selectedItem.id);
+            }}
           />
-        </DatePicker>
-        {!isAllDay && (
-          <TimePicker
-            id="event-end-time"
-            labelText="End time"
-            value={endTime12}
-            onChange={(e: any) => setEndTime12(e.target.value)}
-          >
-            <TimePickerSelect
-              id="event-end-ampm"
-              labelText="AM/PM"
-              value={endAmPm}
-              onChange={(e: any) => setEndAmPm(e.target.value)}
+          {isCustomEnd && (
+            <TimePicker
+              id="event-end-time"
+              labelText="End time"
+              value={endTime12}
+              onChange={(e: any) => setEndTime12(e.target.value)}
             >
-              <SelectItem value="AM" text="AM" />
-              <SelectItem value="PM" text="PM" />
-            </TimePickerSelect>
-          </TimePicker>
-        )}
-      </div>
+              <TimePickerSelect
+                id="event-end-ampm"
+                labelText="AM/PM"
+                value={endAmPm}
+                onChange={(e: any) => setEndAmPm(e.target.value)}
+              >
+                <SelectItem value="AM" text="AM" />
+                <SelectItem value="PM" text="PM" />
+              </TimePickerSelect>
+            </TimePicker>
+          )}
+        </div>
+      )}
+
+      {/* End date (for multi-day all-day events or custom end) */}
+      {(isAllDay || isCustomEnd) && (
+        <div className="event-modal__date-row create-side-panel__form-item">
+          <DatePicker
+            datePickerType="single"
+            dateFormat="m/d/Y"
+            value={endDateStr}
+            onChange={(dates: Date[]) => {
+              if (dates[0]) setEndDateStr(format(dates[0], 'MM/dd/yyyy'));
+            }}
+          >
+            <DatePickerInput
+              id="event-end-date"
+              labelText="End date"
+              placeholder="mm/dd/yyyy"
+            />
+          </DatePicker>
+        </div>
+      )}
 
       {/* 5. Add guests — contact search */}
       <div className="create-side-panel__form-item event-modal__guests" ref={dropdownRef}>
@@ -393,7 +510,6 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
           }}
           autoComplete="off"
         />
-        {/* Contact search dropdown */}
         {showContactDropdown && contactResults.length > 0 && (
           <div className="event-modal__contact-dropdown">
             {contactResults.map((contact) => (
@@ -418,7 +534,6 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
             ))}
           </div>
         )}
-        {/* Attendee tags */}
         {attendees.length > 0 && (
           <div className="event-modal__attendees">
             {attendees.map((att) => (
@@ -436,7 +551,7 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
         )}
       </div>
 
-      {/* 6. Notify attendees toggle (conditional) */}
+      {/* 6. Notify attendees toggle */}
       {attendees.length > 0 && (
         <Toggle
           id="notify-attendees"
