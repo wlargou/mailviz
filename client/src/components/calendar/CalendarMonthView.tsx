@@ -9,7 +9,7 @@ import { CalendarDayCell } from './CalendarDayCell';
 import { useCalendarStore } from '../../store/calendarStore';
 import type { CalendarEvent } from '../../types/calendar';
 
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 interface CalendarMonthViewProps {
   onDayClick: (date: Date) => void;
@@ -21,8 +21,8 @@ export function CalendarMonthView({ onDayClick, onEventClick }: CalendarMonthVie
 
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
-  const calendarStart = startOfWeek(monthStart, { weekStartsOn: 0 });
-  const calendarEnd = endOfWeek(monthEnd, { weekStartsOn: 0 });
+  const calendarStart = startOfWeek(monthStart, { weekStartsOn: 1 });
+  const calendarEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
   const days = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
 
   return (

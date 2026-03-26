@@ -115,8 +115,8 @@ export function CalendarWeekView({ onEventClick, onSlotClick }: CalendarWeekView
   const { currentDate, events } = useCalendarStore();
   const bodyRef = useRef<HTMLDivElement>(null);
 
-  const weekStart = startOfWeek(currentDate, { weekStartsOn: 0 });
-  const weekEnd = endOfWeek(currentDate, { weekStartsOn: 0 });
+  const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
+  const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
   const days = eachDayOfInterval({ start: weekStart, end: weekEnd });
   const hours = eachHourOfInterval({ start: startOfDay(weekStart), end: endOfDay(weekStart) });
 
