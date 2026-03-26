@@ -37,11 +37,6 @@ export function UpcomingEvents({ stats, loading, onEventClick }: UpcomingEventsP
 
   return (
     <div className="upcoming-events">
-      {eventsToday > 0 && (
-        <div className="upcoming-events__section-header">
-          {eventsToday} event{eventsToday !== 1 ? 's' : ''} today
-        </div>
-      )}
       {upcomingEvents.slice(0, 5).map((event) => {
         const startDate = new Date(event.startTime);
         const today = isToday(startDate);

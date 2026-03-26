@@ -3,7 +3,8 @@ import { Grid, Column, Tile } from '@carbon/react';
 import { useNavigate } from 'react-router-dom';
 import { SidePanel } from '@carbon/ibm-products';
 import { TaskSummaryTiles } from './TaskSummaryTiles';
-import { RecentActivity } from './RecentActivity';
+import { RecentEmails } from './RecentActivity';
+import { RecentTasks } from './RecentTasks';
 import { ExpiringDeals } from './ExpiringDeals';
 import { EmailVolumeChart } from './EmailVolumeChart';
 import { TaskStatusDonut } from './TaskStatusDonut';
@@ -113,19 +114,14 @@ export function DashboardPage() {
       <TaskSummaryTiles stats={stats} loading={loading} />
 
       <Grid fullWidth className="dashboard-grid">
-        {/* Row 2: Recent Activity + Upcoming Events */}
+        {/* Row 2: Recent Emails + Upcoming Events */}
         <Column lg={8} md={4} sm={4}>
           <Tile className="card">
             <div className="card__header">
-              <h4 className="card__title">Recent Activity</h4>
+              <h4 className="card__title">Recent Emails</h4>
             </div>
             <div className="card__content">
-              <RecentActivity
-                stats={stats}
-                loading={loading}
-                onEmailClick={handleEmailClick}
-                onTaskClick={handleTaskClick}
-              />
+              <RecentEmails stats={stats} loading={loading} onEmailClick={handleEmailClick} />
             </div>
           </Tile>
         </Column>
@@ -140,7 +136,7 @@ export function DashboardPage() {
           </Tile>
         </Column>
 
-        {/* Row 3: Expiring Deals + Email Volume Chart */}
+        {/* Row 3: Expiring Deals + Recent Tasks */}
         <Column lg={8} md={4} sm={4}>
           <Tile className="card">
             <div className="card__header">
@@ -152,14 +148,17 @@ export function DashboardPage() {
           </Tile>
         </Column>
         <Column lg={8} md={4} sm={4}>
-          <Tile className="card email-volume-chart">
-            <div className="card__content card__content--chart">
-              <EmailVolumeChart data={stats?.charts.emailVolume} loading={loading} />
+          <Tile className="card">
+            <div className="card__header">
+              <h4 className="card__title">Recent Tasks</h4>
+            </div>
+            <div className="card__content">
+              <RecentTasks stats={stats} loading={loading} onTaskClick={handleTaskClick} />
             </div>
           </Tile>
         </Column>
 
-        {/* Row 4: Top Companies + Tasks by Status Donut */}
+        {/* Row 4: Top Companies + Email Volume Chart */}
         <Column lg={8} md={4} sm={4}>
           <Tile className="card">
             <div className="card__header">
@@ -171,9 +170,9 @@ export function DashboardPage() {
           </Tile>
         </Column>
         <Column lg={8} md={4} sm={4}>
-          <Tile className="card">
+          <Tile className="card email-volume-chart">
             <div className="card__content card__content--chart">
-              <TaskStatusDonut data={stats?.charts.taskStatusCounts} loading={loading} />
+              <EmailVolumeChart data={stats?.charts.emailVolume} loading={loading} />
             </div>
           </Tile>
         </Column>
