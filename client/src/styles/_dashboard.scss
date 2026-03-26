@@ -37,6 +37,8 @@
 // Dashboard Carbon Grid
 .dashboard-grid {
   row-gap: 1rem;
+  padding-left: 0;
+  padding-right: 0;
 
   .card {
     height: 100%;
@@ -46,6 +48,8 @@
 // Dashboard metric tiles — uses Carbon Grid
 .dashboard-metrics {
   margin-bottom: 1rem;
+  padding-left: 0;
+  padding-right: 0;
 }
 
 .kpi-tile {
