@@ -129,6 +129,19 @@ body {
   margin-bottom: 1rem;
 }
 
+// Fix: SidePanel close button tooltip shows on mount without hover
+// Hide the tooltip by default, only show on hover/focus
+.c4p--side-panel .cds--popover {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+.c4p--side-panel .cds--popover-container:hover .cds--popover,
+.c4p--side-panel .cds--popover-container:focus-within .cds--popover {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 // Page header pattern (title + subtitle + action)
 .page-header {
   display: flex;
