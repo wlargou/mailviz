@@ -42,7 +42,7 @@ export function UpcomingEvents({ stats, loading, onEventClick }: UpcomingEventsP
           {eventsToday} event{eventsToday !== 1 ? 's' : ''} today
         </div>
       )}
-      {upcomingEvents.map((event) => {
+      {upcomingEvents.slice(0, 5).map((event) => {
         const startDate = new Date(event.startTime);
         const today = isToday(startDate);
 
@@ -59,12 +59,6 @@ export function UpcomingEvents({ stats, loading, onEventClick }: UpcomingEventsP
             </div>
             <div className="upcoming-event__info">
               <span className="upcoming-event__title">{event.title}</span>
-              <span className="upcoming-event__date">
-                {today ? 'Today' : format(startDate, 'EEE, MMM d')}
-              </span>
-              {event.location && (
-                <span className="upcoming-event__location">{event.location}</span>
-              )}
             </div>
             {event.conferenceLink && (
               <Button

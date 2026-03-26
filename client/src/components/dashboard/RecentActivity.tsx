@@ -41,7 +41,7 @@ export function RecentActivity({ stats, loading, onEmailClick, onTaskClick }: Re
             <div className="card-empty">No recent emails</div>
           ) : (
             <div className="dashboard-item-list">
-              {emails.recentEmails.map((email, idx) => (
+              {emails.recentEmails.slice(0, 5).map((email, idx) => (
                 <div
                   key={email.threadId || idx}
                   className={`dashboard-item dashboard-item--email${!email.isRead ? ' dashboard-item--unread' : ''}`}
@@ -55,8 +55,8 @@ export function RecentActivity({ stats, loading, onEmailClick, onTaskClick }: Re
                   </div>
                   <div className="dashboard-item__info">
                     <span className="dashboard-item__title">{email.subject || '(No subject)'}</span>
-                    <span className="dashboard-item__sub">{email.fromName || email.from}</span>
                   </div>
+                  <span className="dashboard-item__sender">{email.fromName || email.from}</span>
                 </div>
               ))}
               <Button kind="ghost" size="sm" renderIcon={ArrowRight} className="dashboard-item-list__view-all" onClick={() => navigate('/mail')}>
