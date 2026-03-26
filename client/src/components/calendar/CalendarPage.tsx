@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
+import { SkeletonText } from '@carbon/react';
 import { useCalendarStore } from '../../store/calendarStore';
 import { calendarApi } from '../../api/calendar';
 import { useUIStore } from '../../store/uiStore';
@@ -13,7 +14,7 @@ import { EventTooltip } from './EventTooltip';
 import type { CalendarEvent } from '../../types/calendar';
 
 export function CalendarPage() {
-  const { viewMode, fetchEvents, fetchGoogleStatus, syncing, goToDay } = useCalendarStore();
+  const { viewMode, fetchEvents, fetchGoogleStatus, syncing, goToDay, loading } = useCalendarStore();
   const addNotification = useUIStore((s) => s.addNotification);
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -100,14 +101,23 @@ export function CalendarPage() {
           <CalendarToolbar onAddEvent={() => { setEditEvent(null); setInitialDate(null); setCreateOpen(true); }} />
 
           <div className="calendar-page__view">
-            {viewMode === 'month' && (
-              <CalendarMonthView onDayClick={handleDayClick} onEventClick={handleEventClick} />
-            )}
-            {viewMode === 'week' && (
-              <CalendarWeekView onSlotClick={handleSlotClick} onEventClick={handleEventClick} />
-            )}
-            {viewMode === 'day' && (
-              <CalendarDayView onSlotClick={handleSlotClick} onEventClick={handleEventClick} />
+            {loading ? (
+              <div style={{ padding: '2rem' }}>
+                <SkeletonText heading width="30%" />
+                <SkeletonText paragraph lineCount={8} />
+              </div>
+            ) : (
+              <>
+                {viewMode === 'month' && (
+                  <CalendarMonthView onDayClick={handleDayClick} onEventClick={handleEventClick} />
+                )}
+                {viewMode === 'week' && (
+                  <CalendarWeekView onSlotClick={handleSlotClick} onEventClick={handleEventClick} />
+                )}
+                {viewMode === 'day' && (
+                  <CalendarDayView onSlotClick={handleSlotClick} onEventClick={handleEventClick} />
+                )}
+              </>
             )}
           </div>
 

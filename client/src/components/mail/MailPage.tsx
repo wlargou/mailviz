@@ -6,6 +6,7 @@ import {
   InlineLoading,
   ContentSwitcher,
   Switch,
+  SkeletonText,
 } from '@carbon/react';
 import { Renew, StarFilled, Star, Attachment, Email as EmailIcon, EmailNew, ReplyAll, Archive, TrashCan, Undo, Add, CheckmarkOutline, Close, CheckboxCheckedFilled, Task, Share } from '@carbon/icons-react';
 import { SidePanel } from '@carbon/ibm-products';
@@ -501,8 +502,13 @@ export function MailPage() {
             </div>
           )
         ) : loading && !syncing ? (
-          <div className="mail-page__loading">
-            <InlineLoading description="Loading emails..." />
+          <div className="thread-list">
+            {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+              <div key={i} className="thread-item" style={{ padding: '0.75rem 1rem' }}>
+                <SkeletonText heading width={`${30 + Math.random() * 40}%`} />
+                <SkeletonText width={`${50 + Math.random() * 30}%`} />
+              </div>
+            ))}
           </div>
         ) : threads.length === 0 ? (
           <EmptyState
