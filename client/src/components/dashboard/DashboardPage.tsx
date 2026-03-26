@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Grid, Column, Tile } from '@carbon/react';
 import { useNavigate } from 'react-router-dom';
+import { Add, Email as EmailIcon, TaskComplete, Calendar as CalendarIcon, Partnership } from '@carbon/icons-react';
 import { SidePanel } from '@carbon/ibm-products';
 import { TaskSummaryTiles } from './TaskSummaryTiles';
 import { RecentEmails } from './RecentActivity';
@@ -13,6 +14,10 @@ import { UpcomingEvents } from './UpcomingEvents';
 import { ThreadDetail } from '../mail/ThreadDetail';
 import { TaskDetailModal } from '../tasks/TaskDetailModal';
 import { EventDetailModal } from '../calendar/EventDetailModal';
+import { TaskCreateModal } from '../tasks/TaskCreateModal';
+import { DealCreateModal } from '../deals/DealCreateModal';
+import { EventModal } from '../calendar/EventModal';
+import { MailComposeModal } from '../mail/MailComposeModal';
 import { dashboardApi } from '../../api/dashboard';
 import { labelsApi } from '../../api/labels';
 import { calendarApi } from '../../api/calendar';
@@ -34,6 +39,13 @@ export function DashboardPage() {
 
   // Event Detail Modal state
   const [detailEvent, setDetailEvent] = useState<CalendarEvent | null>(null);
+
+  // Quick-create modals
+  const [showCreateTask, setShowCreateTask] = useState(false);
+  const [showCreateDeal, setShowCreateDeal] = useState(false);
+  const [showCreateEvent, setShowCreateEvent] = useState(false);
+  const [showCompose, setShowCompose] = useState(false);
+
   const navigate = useNavigate();
   const addNotification = useUIStore((s) => s.addNotification);
 
@@ -107,6 +119,28 @@ export function DashboardPage() {
         <div className="page-header__info">
           <h1>Dashboard</h1>
           <p className="page-header__subtitle">Overview of your CRM activity</p>
+        </div>
+        <div className="dashboard-create-menu">
+          <button className="dashboard-create-btn" onClick={() => {
+            const el = document.querySelector('.dashboard-create-dropdown') as HTMLElement;
+            if (el) el.style.display = el.style.display === 'block' ? 'none' : 'block';
+          }}>
+            <Add size={16} /> Create
+          </button>
+          <div className="dashboard-create-dropdown" style={{ display: 'none' }}>
+            <button onClick={() => { setShowCompose(true); (document.querySelector('.dashboard-create-dropdown') as HTMLElement).style.display = 'none'; }}>
+              <EmailIcon size={16} /> New Email
+            </button>
+            <button onClick={() => { setShowCreateTask(true); (document.querySelector('.dashboard-create-dropdown') as HTMLElement).style.display = 'none'; }}>
+              <TaskComplete size={16} /> New Task
+            </button>
+            <button onClick={() => { setShowCreateEvent(true); (document.querySelector('.dashboard-create-dropdown') as HTMLElement).style.display = 'none'; }}>
+              <CalendarIcon size={16} /> New Event
+            </button>
+            <button onClick={() => { setShowCreateDeal(true); (document.querySelector('.dashboard-create-dropdown') as HTMLElement).style.display = 'none'; }}>
+              <Partnership size={16} /> New Deal
+            </button>
+          </div>
         </div>
       </div>
 
@@ -216,6 +250,30 @@ export function DashboardPage() {
         onEdit={handleEventEdit}
         onDelete={handleEventDelete}
         onRespond={handleEventRespond}
+      />
+
+      {/* Quick-create modals */}
+      <MailComposeModal
+        open={showCompose}
+        onClose={() => setShowCompose(false)}
+        onSent={() => { setShowCompose(false); fetchData(); }}
+        mode="new"
+      />
+      <TaskCreateModal
+        open={showCreateTask}
+        onClose={() => setShowCreateTask(false)}
+        onCreated={() => { setShowCreateTask(false); fetchData(); }}
+        labels={labels}
+      />
+      <EventModal
+        open={showCreateEvent}
+        onClose={() => setShowCreateEvent(false)}
+        onSaved={() => { setShowCreateEvent(false); fetchData(); }}
+      />
+      <DealCreateModal
+        open={showCreateDeal}
+        onClose={() => setShowCreateDeal(false)}
+        onCreated={() => { setShowCreateDeal(false); fetchData(); }}
       />
     </div>
   );
