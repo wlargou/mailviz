@@ -48,32 +48,13 @@
   margin-bottom: 1rem;
 }
 
-@keyframes kpiFadeSlideUp {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
 .kpi-tile {
-  background: var(--cds-layer-01);
-  border: 1px solid var(--cds-border-subtle);
-  padding: 1rem;
-  position: relative;
-  overflow: hidden;
-  cursor: pointer;
-  transition: background-color 0.15s ease;
-  animation: kpiFadeSlideUp 0.5s var(--cds-ease-expressive, ease) both;
-
-  &:hover {
-    background: var(--cds-layer-hover);
-  }
-}
-
-.kpi-tile__accent {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
+  // Override Carbon ClickableTile defaults
+  display: flex !important;
+  flex-direction: column !important;
+  padding: var(--cds-spacing-05) !important;
+  min-height: auto !important;
+  height: 100%;
 }
 
 .kpi-tile__header {
@@ -103,65 +84,7 @@
   color: var(--cds-text-helper);
 }
 
-.kpi-sparkline {
-  width: 100%;
-  height: 40px;
-  margin-top: 0.75rem;
-  overflow: visible;
-}
 
-.priority-breakdown {
-  display: flex;
-  gap: 1rem;
-  flex-wrap: wrap;
-  margin-top: auto;
-
-  .priority-item {
-    display: flex;
-    align-items: center;
-    gap: 0.375rem;
-    font-size: 0.875rem;
-
-    .priority-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-    }
-
-    span:last-child {
-      font-family: 'IBM Plex Mono', monospace;
-      font-weight: 500;
-    }
-  }
-}
-
-// Dashboard content grid
-.dashboard-content {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-
-.dashboard-charts-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-
-.dashboard-triple {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-
-.dashboard-bottom {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-}
 
 // ─── MY DAY SUMMARY ───────────────────────────
 .my-day__unread-banner {
@@ -263,154 +186,11 @@
   }
 }
 
-// ─── NEEDS ATTENTION ───────────────────────────
-.needs-attention__list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
 
-.needs-attention__row {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.5rem 0.75rem;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background-color 0.15s;
 
-  &:hover {
-    background: var(--cds-layer-hover-01);
-  }
-}
-
-.needs-attention__logo {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: var(--cds-layer-02);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  overflow: hidden;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--cds-text-secondary);
-
-  img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-}
-
-.needs-attention__info {
-  display: flex;
-  flex-direction: column;
-  gap: 0.125rem;
-  min-width: 0;
-  flex: 1;
-}
-
-.needs-attention__name {
-  font-size: 0.875rem;
-  color: var(--cds-text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.needs-attention__subtitle {
-  font-size: 0.75rem;
-  color: var(--cds-text-secondary);
-}
-
-.needs-attention__empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 2rem 1rem;
-  color: var(--cds-text-secondary);
-  text-align: center;
-
-  svg {
-    color: var(--cds-support-success);
-  }
-}
-
-// ─── FREQUENT CONTACTS ─────────────────────────
-.frequent-contacts__list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.frequent-contacts__row {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.5rem 0.75rem;
-  border-radius: 4px;
-  transition: background-color 0.15s;
-
-  &--clickable {
-    cursor: pointer;
-
-    &:hover {
-      background: var(--cds-layer-hover-01);
-    }
-  }
-}
-
-.frequent-contacts__avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: var(--cds-link-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--cds-text-on-color);
-}
-
-.frequent-contacts__info {
-  display: flex;
-  flex-direction: column;
-  gap: 0.125rem;
-  min-width: 0;
-  flex: 1;
-}
-
-.frequent-contacts__name {
-  font-size: 0.875rem;
-  color: var(--cds-text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.frequent-contacts__company {
-  font-size: 0.75rem;
-  color: var(--cds-text-secondary);
-}
-
-.frequent-contacts__empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 2rem 1rem;
-  color: var(--cds-text-secondary);
-  text-align: center;
-
-  svg {
-    opacity: 0.5;
-  }
+// Email volume chart transparent background
+.email-volume-chart .cds--cc--chart-wrapper {
+  background: transparent !important;
 }
 
 // ─── CHART FILL ────────────────────────────────
@@ -522,34 +302,6 @@
   margin-left: auto;
 }
 
-// Cards containing charts should stretch to fill grid cell
-.dashboard-charts-row > .card,
-.dashboard-triple > .card {
-  display: flex;
-  flex-direction: column;
-
-  > .card__content {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-  }
-}
-
-// Quick add task
-.quick-add-form {
-  display: flex;
-  gap: 1rem;
-  align-items: flex-end;
-
-  .quick-add-title {
-    flex: 1;
-  }
-
-  .quick-add-priority {
-    width: 150px;
-  }
-}
 
 // Tasks page
 .tasks-header {
@@ -1126,23 +878,24 @@ td.table-cell--center .cds--tag {
   overflow: hidden;
 
   .card__header {
-    padding: 1rem 1rem 0.5rem;
+    padding: var(--cds-spacing-05) var(--cds-spacing-05) var(--cds-spacing-03);
     display: flex;
     justify-content: space-between;
     align-items: center;
   }
 
   .card__title {
-    @include type.type-style('productive-heading-02');
+    font-size: 1rem;
+    font-weight: 600;
     color: var(--cds-text-primary);
     margin: 0;
   }
 
   .card__content {
-    padding: 0 1rem 1rem;
+    padding: 0 var(--cds-spacing-05) var(--cds-spacing-05);
 
     &--chart {
-      padding: 0.5rem;
+      padding: var(--cds-spacing-03);
     }
   }
 

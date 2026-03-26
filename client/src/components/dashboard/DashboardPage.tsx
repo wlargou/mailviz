@@ -8,10 +8,7 @@ import { ExpiringDeals } from './ExpiringDeals';
 import { EmailVolumeChart } from './EmailVolumeChart';
 import { TaskStatusDonut } from './TaskStatusDonut';
 import { TopCustomers } from './TopCustomers';
-import { NeedsAttention } from './NeedsAttention';
-import { FrequentContacts } from './FrequentContacts';
 import { UpcomingEvents } from './UpcomingEvents';
-import { QuickAddTask } from './QuickAddTask';
 import { ThreadDetail } from '../mail/ThreadDetail';
 import { TaskDetailModal } from '../tasks/TaskDetailModal';
 import { EventDetailModal } from '../calendar/EventDetailModal';
@@ -112,7 +109,7 @@ export function DashboardPage() {
         </div>
       </div>
 
-      {/* Row 1: Metric tiles */}
+      {/* Row 1: KPI metric tiles */}
       <TaskSummaryTiles stats={stats} loading={loading} />
 
       <Grid fullWidth className="dashboard-grid">
@@ -155,22 +152,15 @@ export function DashboardPage() {
           </Tile>
         </Column>
         <Column lg={8} md={4} sm={4}>
-          <Tile className="card">
+          <Tile className="card email-volume-chart">
             <div className="card__content card__content--chart">
               <EmailVolumeChart data={stats?.charts.emailVolume} loading={loading} />
             </div>
           </Tile>
         </Column>
 
-        {/* Row 4: Task Donut + Top Customers + Quick Add */}
-        <Column lg={5} md={4} sm={4}>
-          <Tile className="card">
-            <div className="card__content card__content--chart">
-              <TaskStatusDonut data={stats?.charts.taskStatusCounts} loading={loading} />
-            </div>
-          </Tile>
-        </Column>
-        <Column lg={6} md={4} sm={4}>
+        {/* Row 4: Top Companies + Tasks by Status Donut */}
+        <Column lg={8} md={4} sm={4}>
           <Tile className="card">
             <div className="card__header">
               <h4 className="card__title">Top Companies</h4>
@@ -180,35 +170,10 @@ export function DashboardPage() {
             </div>
           </Tile>
         </Column>
-        <Column lg={5} md={4} sm={4}>
-          <Tile className="card">
-            <div className="card__header">
-              <h4 className="card__title">Quick Add Task</h4>
-            </div>
-            <div className="card__content">
-              <QuickAddTask onTaskCreated={fetchData} />
-            </div>
-          </Tile>
-        </Column>
-
-        {/* Row 5: Needs Attention + Frequent Contacts */}
         <Column lg={8} md={4} sm={4}>
           <Tile className="card">
-            <div className="card__header">
-              <h4 className="card__title">Needs Attention</h4>
-            </div>
-            <div className="card__content">
-              <NeedsAttention customers={stats?.needsAttention} loading={loading} />
-            </div>
-          </Tile>
-        </Column>
-        <Column lg={8} md={4} sm={4}>
-          <Tile className="card">
-            <div className="card__header">
-              <h4 className="card__title">Frequent Contacts</h4>
-            </div>
-            <div className="card__content">
-              <FrequentContacts contacts={stats?.frequentContacts} loading={loading} />
+            <div className="card__content card__content--chart">
+              <TaskStatusDonut data={stats?.charts.taskStatusCounts} loading={loading} />
             </div>
           </Tile>
         </Column>
