@@ -1,18 +1,30 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { HeaderGlobalAction } from '@carbon/react';
-import { Notification, Close } from '@carbon/icons-react';
+import {
+  Notification,
+  Close,
+  Email,
+  Task,
+  Calendar,
+  Partnership,
+  Share,
+  UserFollow,
+} from '@carbon/icons-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useNotificationStore } from '../../store/notificationStore';
 import type { AppNotification } from '../../api/notifications';
 
-// Icon mapping for notification types
-function getNotificationIcon(type: string): string {
-  if (type.startsWith('EMAIL')) return '\u2709\uFE0F';
-  if (type.startsWith('TASK')) return '\u2611\uFE0F';
-  if (type.startsWith('EVENT')) return '\uD83D\uDCC5';
-  if (type.startsWith('DEAL')) return '\uD83E\uDD1D';
-  return '\uD83D\uDD14';
+// Icon mapping for notification types using Carbon icons
+function getNotificationIcon(type: string) {
+  const size = 18;
+  if (type.includes('SHARED')) return <Share size={size} />;
+  if (type.includes('ASSIGNED')) return <UserFollow size={size} />;
+  if (type.startsWith('EMAIL')) return <Email size={size} />;
+  if (type.startsWith('TASK')) return <Task size={size} />;
+  if (type.startsWith('EVENT')) return <Calendar size={size} />;
+  if (type.startsWith('DEAL')) return <Partnership size={size} />;
+  return <Notification size={size} />;
 }
 
 function getNotificationColor(type: string): string {

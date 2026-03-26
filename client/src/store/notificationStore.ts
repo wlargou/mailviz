@@ -77,10 +77,14 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   },
 
   addRealtime: (notification) => {
-    set((s) => ({
-      notifications: [notification, ...s.notifications].slice(0, 30),
-      unreadCount: s.unreadCount + 1,
-    }));
+    set((s) => {
+      // Deduplicate — don't add if already in list
+      if (s.notifications.some((n) => n.id === notification.id)) return s;
+      return {
+        notifications: [notification, ...s.notifications].slice(0, 30),
+        unreadCount: s.unreadCount + 1,
+      };
+    });
   },
 
   togglePanel: () => set((s) => ({ panelOpen: !s.panelOpen })),
