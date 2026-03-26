@@ -241,17 +241,9 @@
 
 
 
-// Email volume chart — force transparent background at every level
-.email-volume-chart,
-.email-volume-chart-wrapper {
-  // Override all possible Carbon Charts background layers
-  div[class*="chart-wrapper"],
-  div[class*="chart-holder"],
-  div[class*="chart-wrapper"] > div,
-  [class*="cds--cc"] {
-    background: transparent !important;
-    background-color: transparent !important;
-  }
+// Email volume chart transparent background
+.email-volume-chart .cds--cc--chart-wrapper {
+  background: transparent !important;
 }
 
 // ─── CHART FILL ────────────────────────────────

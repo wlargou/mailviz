@@ -1,6 +1,7 @@
 import { SkeletonText } from '@carbon/react';
-import { StackedBarChart } from '@carbon/charts-react';
+import { GroupedBarChart } from '@carbon/charts-react';
 import { ScaleTypes } from '@carbon/charts';
+import { blue50, green40 } from '@carbon/colors';
 import { format } from 'date-fns';
 import type { DashboardStats } from '../../types/dashboard';
 
@@ -31,28 +32,20 @@ export function EmailVolumeChart({ data, loading }: EmailVolumeChartProps) {
   const options = {
     title: 'Email Volume (14 Days)',
     axes: {
-      left: {
-        mapsTo: 'value',
-        title: 'Emails',
-        stacked: true,
-      },
-      bottom: {
-        mapsTo: 'date',
-        scaleType: ScaleTypes.LABELS,
-      },
+      left: { mapsTo: 'value', title: 'Emails' },
+      bottom: { mapsTo: 'date', scaleType: ScaleTypes.LABELS },
     },
-    // Use g90 (slightly lighter than g100) for transparent-friendly dark theme
-    theme: 'g90' as const,
-    height: '280px',
+    theme: 'g100' as const,
+    height: '100%',
     resizable: true,
     color: {
       scale: {
-        Received: 'var(--cds-link-primary, #78a9ff)',
-        Sent: 'var(--cds-support-success, #42be65)',
+        Received: blue50,
+        Sent: green40,
       },
     },
     bars: {
-      maxWidth: 20,
+      maxWidth: 16,
     },
     legend: {
       alignment: 'center' as const,
@@ -60,15 +53,11 @@ export function EmailVolumeChart({ data, loading }: EmailVolumeChartProps) {
     toolbar: {
       enabled: false,
     },
-    grid: {
-      x: { enabled: false },
-      y: { enabled: true },
-    },
   };
 
   return (
-    <div className="email-volume-chart-wrapper">
-      <StackedBarChart data={chartData} options={options} />
+    <div className="chart-fill">
+      <GroupedBarChart data={chartData} options={options} />
     </div>
   );
 }
