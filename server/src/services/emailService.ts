@@ -1394,4 +1394,71 @@ export const emailService = {
 
     return processed;
   },
+
+  async getReviewSummary(dateAfter: string, dateBefore: string, userId: string) {
+    const where: Prisma.EmailWhereInput = {
+      userId,
+      isTrashed: false,
+      receivedAt: {
+        gte: new Date(dateAfter),
+        lte: new Date(dateBefore),
+      },
+    };
+
+    // Get total emails grouped by customerId
+    const totalsByCustomer = await prisma.email.groupBy({
+      by: ['customerId'],
+      where,
+      _count: { id: true },
+    });
+
+    // Get unread emails grouped by customerId
+    const unreadByCustomer = await prisma.email.groupBy({
+      by: ['customerId'],
+      where: { ...where, isRead: false },
+      _count: { id: true },
+    });
+
+    const unreadMap = new Map(
+      unreadByCustomer.map((r) => [r.customerId, r._count.id])
+    );
+
+    // Separate categorized vs uncategorized
+    const customerIds = totalsByCustomer
+      .map((r) => r.customerId)
+      .filter((id): id is string => id !== null);
+
+    const customers = customerIds.length > 0
+      ? await prisma.customer.findMany({
+          where: { id: { in: customerIds } },
+          select: { id: true, name: true, domain: true, logoUrl: true, isVip: true },
+        })
+      : [];
+
+    const customerMap = new Map(customers.map((c) => [c.id, c]));
+
+    const data = totalsByCustomer
+      .filter((r) => r.customerId !== null)
+      .map((r) => {
+        const customer = customerMap.get(r.customerId!);
+        return {
+          customerId: r.customerId!,
+          customerName: customer?.name ?? 'Unknown',
+          customerDomain: customer?.domain ?? '',
+          customerLogoUrl: customer?.logoUrl ?? null,
+          isVip: customer?.isVip ?? false,
+          totalEmails: r._count.id,
+          unreadEmails: unreadMap.get(r.customerId) ?? 0,
+        };
+      })
+      .sort((a, b) => b.totalEmails - a.totalEmails);
+
+    const uncatRow = totalsByCustomer.find((r) => r.customerId === null);
+    const uncategorized = {
+      totalEmails: uncatRow?._count.id ?? 0,
+      unreadEmails: unreadMap.get(null) ?? 0,
+    };
+
+    return { data, uncategorized };
+  },
 };

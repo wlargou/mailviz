@@ -8,11 +8,11 @@ import {
   Switch,
   SkeletonText,
 } from '@carbon/react';
-import { Renew, StarFilled, Star, Attachment, Email as EmailIcon, EmailNew, ReplyAll, Archive, TrashCan, Undo, Add, CheckmarkOutline, Close, CheckboxCheckedFilled, Task, Share } from '@carbon/icons-react';
+import { Renew, StarFilled, Star, Attachment, Email as EmailIcon, EmailNew, ReplyAll, Archive, TrashCan, Undo, Add, CheckmarkOutline, Close, CheckboxCheckedFilled, Task, Share, Review } from '@carbon/icons-react';
 import { SidePanel } from '@carbon/ibm-products';
 import { formatDistanceToNow, format } from 'date-fns';
 import { Time } from '@carbon/icons-react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { emailsApi } from '../../api/emails';
 import { useUIStore } from '../../store/uiStore';
 import { useAuthStore } from '../../store/authStore';
@@ -48,6 +48,7 @@ const defaultFilters: MailFilters = {
 };
 
 export function MailPage() {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [threads, setThreads] = useState<EmailThread[]>([]);
   const [loading, setLoading] = useState(true);
@@ -405,6 +406,14 @@ export function MailPage() {
               disabled={syncing}
             >
               {syncing ? 'Syncing...' : 'Sync'}
+            </Button>
+            <Button
+              kind="ghost"
+              size="sm"
+              renderIcon={Review}
+              onClick={() => navigate('/mail/review')}
+            >
+              Review
             </Button>
           </div>
         </div>

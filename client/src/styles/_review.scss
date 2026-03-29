@@ -1,0 +1,176 @@
+// ─── Mail Review Feature ────────────────────────────────────────────
+
+.review-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+// ─── Back button ────────────────────────────────────────────────────
+.review-back-btn {
+  margin-bottom: 0.5rem;
+}
+
+// ─── Step 1: Period Selector ────────────────────────────────────────
+.review-period__grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  padding: 0 1rem;
+  max-width: 800px;
+}
+
+.review-period__tile {
+  display: flex !important;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  min-height: 140px;
+  text-align: center;
+
+  svg {
+    color: var(--cds-icon-primary);
+  }
+}
+
+.review-period__label {
+  @include type.type-style('productive-heading-03');
+}
+
+// ─── Step 2: Customer Summary ───────────────────────────────────────
+.review-customers {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.review-customers__list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 1rem;
+}
+
+.review-customers__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 4rem 1rem;
+  color: var(--cds-text-secondary);
+
+  svg {
+    color: var(--cds-icon-secondary);
+  }
+}
+
+.review-customer-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--cds-border-subtle);
+  cursor: pointer;
+  transition: background-color 0.15s;
+
+  &:hover {
+    background-color: var(--cds-layer-hover);
+  }
+
+  &--selected {
+    background-color: var(--cds-layer-selected);
+  }
+}
+
+.review-customer-row__check {
+  flex-shrink: 0;
+}
+
+.review-customer-row__info {
+  flex: 1;
+  min-width: 0;
+}
+
+.review-customer-row__name {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  @include type.type-style('body-compact-01');
+  color: var(--cds-text-primary);
+  font-weight: 600;
+}
+
+.review-customer-row__logo {
+  width: 20px;
+  height: 20px;
+  border-radius: 2px;
+  object-fit: contain;
+}
+
+.review-customer-row__domain {
+  @include type.type-style('helper-text-02');
+  color: var(--cds-text-secondary);
+}
+
+.review-customer-row__stats {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+// ─── Step 3: Review Mail View ───────────────────────────────────────
+.review-mail {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.review-mail__skeleton {
+  padding: 1rem;
+}
+
+.review-mail__groups {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.review-group {
+  border-bottom: 1px solid var(--cds-border-subtle);
+}
+
+.review-group__header {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  background-color: var(--cds-layer-01);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+
+  &:hover {
+    background-color: var(--cds-layer-hover);
+  }
+}
+
+.review-group__title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  @include type.type-style('productive-heading-02');
+  color: var(--cds-text-primary);
+}
+
+.review-group__logo {
+  width: 20px;
+  height: 20px;
+  border-radius: 2px;
+  object-fit: contain;
+}
+
+.review-group__name {
+  font-weight: 600;
+}
+
+// Thread items in review reuse the mail page styles (.thread-item, etc.)

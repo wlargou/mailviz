@@ -186,6 +186,20 @@ export const emailController = {
     }
   },
 
+  async getReviewSummary(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { dateAfter, dateBefore } = req.query as Record<string, string>;
+      if (!dateAfter || !dateBefore) {
+        res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'dateAfter and dateBefore are required' } });
+        return;
+      }
+      const result = await emailService.getReviewSummary(dateAfter, dateBefore, req.user!.id);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async getUnreadCount(req: Request, res: Response, next: NextFunction) {
     try {
       const count = await emailService.getUnreadCount(req.user!.id);

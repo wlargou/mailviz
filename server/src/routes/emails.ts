@@ -29,6 +29,7 @@ const syncLimiter = rateLimit({
 });
 
 router.get('/', emailController.findAllThreads);
+router.get('/review-summary', emailController.getReviewSummary);
 router.get('/unread-count', emailController.getUnreadCount);
 router.get('/sync-status', emailController.getSyncStatus);
 router.post('/send', sendLimiter, validate(sendEmailSchema), emailController.sendEmail);
