@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, type ReactElement } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -158,7 +158,7 @@ function renderDescription(text: string) {
   return cleaned.split('\n').map((line, lineIdx) => {
     if (!line.trim()) return <br key={lineIdx} />;
 
-    const parts: (string | JSX.Element)[] = [];
+    const parts: (string | ReactElement)[] = [];
     let lastIndex = 0;
     let match: RegExpExecArray | null;
 

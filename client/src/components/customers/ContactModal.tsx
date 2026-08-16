@@ -105,7 +105,7 @@ export function ContactModal({ open, contact, customerId, onClose, onSaved }: Co
         labelText="First Name"
         placeholder="First name"
         value={firstName}
-        onChange={(e) => setFirstName(e.target.value)}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFirstName(e.target.value)}
         invalid={open && firstName.length > 0 && !firstName.trim()}
         invalidText="First name is required"
         className="create-side-panel__form-item"
@@ -115,7 +115,7 @@ export function ContactModal({ open, contact, customerId, onClose, onSaved }: Co
         labelText="Last Name"
         placeholder="Last name"
         value={lastName}
-        onChange={(e) => setLastName(e.target.value)}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setLastName(e.target.value)}
         invalid={open && lastName.length > 0 && !lastName.trim()}
         invalidText="Last name is required"
         className="create-side-panel__form-item"
@@ -125,7 +125,7 @@ export function ContactModal({ open, contact, customerId, onClose, onSaved }: Co
         labelText="Email"
         placeholder="email@example.com"
         value={email}
-        onChange={(e) => setEmail(e.target.value)}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
         className="create-side-panel__form-item"
       />
       <TextInput
@@ -133,7 +133,7 @@ export function ContactModal({ open, contact, customerId, onClose, onSaved }: Co
         labelText="Phone"
         placeholder="+1 234 567 890"
         value={phone}
-        onChange={(e) => setPhone(e.target.value)}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPhone(e.target.value)}
         className="create-side-panel__form-item"
       />
       <TextInput
@@ -141,7 +141,7 @@ export function ContactModal({ open, contact, customerId, onClose, onSaved }: Co
         labelText="Role"
         placeholder="e.g. CEO, CTO, Manager"
         value={role}
-        onChange={(e) => setRole(e.target.value)}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRole(e.target.value)}
         className="create-side-panel__form-item"
       />
       <Toggle

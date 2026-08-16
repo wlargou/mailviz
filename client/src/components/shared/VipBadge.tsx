@@ -19,7 +19,7 @@ export function VipBadge({ isVip, onToggle, size = 16 }: VipBadgeProps) {
     <Icon
       size={size}
       className={className}
-      onClick={(e) => {
+      onClick={(e: React.MouseEvent<SVGSVGElement>) => {
         if (onToggle) {
           e.stopPropagation();
           onToggle();

@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
+import { authApi } from '../../api/auth';
 import { useSearchParams } from 'react-router-dom';
 import { Button, InlineNotification, Theme } from '@carbon/react';
 import { ArrowRight } from '@carbon/icons-react';
-import { api } from '../../api/client';
 import { MailvizLogo } from '../shared/MailvizLogo';
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -123,7 +123,7 @@ export function LoginPage() {
   const handleLogin = async () => {
     setLoading(true);
     try {
-      const { data } = await api.get<{ data: { url: string } }>('/auth/login/google/url');
+      const { data } = await authApi.getLoginUrl();
       window.location.href = data.data.url;
     } catch {
       setLoading(false);

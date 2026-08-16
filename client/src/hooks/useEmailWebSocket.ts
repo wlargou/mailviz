@@ -16,7 +16,7 @@ type EventHandler = (data: any) => void;
 export function useEmailWebSocket(handlers: Record<string, EventHandler>) {
   const wsRef = useRef<WebSocket | null>(null);
   const handlersRef = useRef(handlers);
-  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const reconnectDelayRef = useRef(1000);
   const mountedRef = useRef(true);
 

@@ -127,7 +127,7 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
   const [sendUpdates, setSendUpdates] = useState<'all' | 'none'>('all');
   const [contactResults, setContactResults] = useState<Contact[]>([]);
   const [showContactDropdown, setShowContactDropdown] = useState(false);
-  const searchTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Conference & color
@@ -380,7 +380,7 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
         labelText="Title"
         placeholder="Event title"
         value={title}
-        onChange={(e) => setTitle(e.target.value)}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTitle(e.target.value)}
         invalid={open && title.length > 0 && !title.trim()}
         invalidText="Title is required"
         className="create-side-panel__form-item"
@@ -492,11 +492,11 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
           labelText="Add guests"
           placeholder="Search contacts or type email..."
           value={attendeeInput}
-          onChange={(e) => {
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
             setAttendeeInput(e.target.value);
             searchContacts(e.target.value);
           }}
-          onKeyDown={(e) => {
+          onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
             if (e.key === 'Enter') {
               e.preventDefault();
               const email = attendeeInput.trim();
@@ -571,7 +571,7 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
           labelText="Location"
           placeholder="Room, address, or meeting link"
           value={location}
-          onChange={(e) => setLocation(e.target.value)}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setLocation(e.target.value)}
         />
         {meetingProvider && (
           <div className="event-modal__meeting-detected">
@@ -638,7 +638,7 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
         labelText="Description"
         placeholder="Add description"
         value={description}
-        onChange={(e) => setDescription(e.target.value)}
+        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setDescription(e.target.value)}
         rows={3}
         className="create-side-panel__form-item"
       />

@@ -236,8 +236,8 @@ export function TaskKanbanView({ onCardClick }: TaskKanbanViewProps) {
                 placeholder="Status name..."
                 size="sm"
                 value={newStatusLabel}
-                onChange={(e) => setNewStatusLabel(e.target.value)}
-                onKeyDown={(e) => {
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewStatusLabel(e.target.value)}
+                onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
                   if (e.key === 'Enter') handleAddStatus();
                   if (e.key === 'Escape') { setAddingStatus(false); setNewStatusLabel(''); }
                 }}

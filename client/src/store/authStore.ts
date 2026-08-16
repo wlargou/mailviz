@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { api } from '../api/client';
+import { authApi } from '../api/auth';
 
 interface User {
   id: string;
@@ -25,7 +25,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   fetchUser: async () => {
     try {
       set({ isLoading: true });
-      const { data } = await api.get<{ data: User }>('/auth/me');
+      const { data } = await authApi.getMe();
       set({ user: data.data, isAuthenticated: true, isLoading: false });
     } catch {
       set({ user: null, isAuthenticated: false, isLoading: false });
@@ -34,7 +34,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   logout: async () => {
     try {
-      await api.post('/auth/logout');
+      await authApi.logout();
     } catch {
       // Continue even if the request fails
     }

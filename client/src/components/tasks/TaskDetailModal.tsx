@@ -44,6 +44,11 @@ function stepIndexToMinutes(index: number): number | null {
   return val === 0 ? null : val;
 }
 
+interface LabelItem {
+  id: string;
+  text: string;
+}
+
 interface TaskDetailModalProps {
   task: Task | null;
   open: boolean;
@@ -153,14 +158,14 @@ export function TaskDetailModal({ task, open, onClose, onUpdated, labels }: Task
           id="edit-task-title"
           labelText="Title"
           value={title}
-          onChange={(e) => setTitle(e.target.value)}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTitle(e.target.value)}
           required
         />
         <TextArea
           id="edit-task-description"
           labelText="Description"
           value={description}
-          onChange={(e) => setDescription(e.target.value)}
+          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setDescription(e.target.value)}
         />
         <div className="modal-form__row">
           <div style={{ flex: 1 }}>
@@ -239,12 +244,12 @@ export function TaskDetailModal({ task, open, onClose, onUpdated, labels }: Task
             titleText="Labels"
             label="Select labels"
             items={labels.map((l) => ({ id: l.id, text: l.name }))}
-            itemToString={(item) => item?.text || ''}
+            itemToString={(item: LabelItem | null) => item?.text || ''}
             initialSelectedItems={labels
               .filter((l) => selectedLabels.includes(l.id))
               .map((l) => ({ id: l.id, text: l.name }))}
-            onChange={({ selectedItems }) => {
-              setSelectedLabels(selectedItems.map((item) => item.id));
+            onChange={({ selectedItems }: { selectedItems: LabelItem[] }) => {
+              setSelectedLabels(selectedItems.map((item: LabelItem) => item.id));
             }}
           />
         )}

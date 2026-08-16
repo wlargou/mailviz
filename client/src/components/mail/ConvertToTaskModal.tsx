@@ -77,7 +77,7 @@ export function ConvertToTaskModal({ email, open, onClose, onConverted }: Conver
         id="convert-task-title"
         labelText="Task title"
         value={title}
-        onChange={(e) => setTitle(e.target.value)}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTitle(e.target.value)}
         invalid={open && title.length > 0 && !title.trim()}
         invalidText="Title is required"
         className="create-side-panel__form-item"
@@ -110,7 +110,7 @@ export function ConvertToTaskModal({ email, open, onClose, onConverted }: Conver
         id="convert-task-notes"
         labelText="Notes"
         value={notes}
-        onChange={(e) => setNotes(e.target.value)}
+        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNotes(e.target.value)}
         placeholder="Additional context..."
         rows={3}
         className="create-side-panel__form-item"

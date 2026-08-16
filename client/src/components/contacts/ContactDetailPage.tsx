@@ -365,19 +365,19 @@ export function ContactDetailPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <div style={{ display: 'flex', gap: '1rem' }}>
             <div style={{ flex: 1 }}>
-              <TextInput id="edit-contact-fn" labelText="First name" value={editFirstName} onChange={(e) => setEditFirstName(e.target.value)} required />
+              <TextInput id="edit-contact-fn" labelText="First name" value={editFirstName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditFirstName(e.target.value)} required />
             </div>
             <div style={{ flex: 1 }}>
-              <TextInput id="edit-contact-ln" labelText="Last name" value={editLastName} onChange={(e) => setEditLastName(e.target.value)} required />
+              <TextInput id="edit-contact-ln" labelText="Last name" value={editLastName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditLastName(e.target.value)} required />
             </div>
           </div>
-          <TextInput id="edit-contact-email" labelText="Email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} />
+          <TextInput id="edit-contact-email" labelText="Email" value={editEmail} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditEmail(e.target.value)} />
           <div style={{ display: 'flex', gap: '1rem' }}>
             <div style={{ flex: 1 }}>
-              <TextInput id="edit-contact-phone" labelText="Phone" value={editPhone} onChange={(e) => setEditPhone(e.target.value)} />
+              <TextInput id="edit-contact-phone" labelText="Phone" value={editPhone} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditPhone(e.target.value)} />
             </div>
             <div style={{ flex: 1 }}>
-              <TextInput id="edit-contact-role" labelText="Role" value={editRole} onChange={(e) => setEditRole(e.target.value)} />
+              <TextInput id="edit-contact-role" labelText="Role" value={editRole} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditRole(e.target.value)} />
             </div>
           </div>
         </div>

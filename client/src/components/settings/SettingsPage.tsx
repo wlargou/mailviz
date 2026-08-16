@@ -28,7 +28,6 @@ import {
   Add,
   TrashCan,
   Edit,
-  LogoGoogle,
   Calendar,
   Email,
   Pen,
@@ -632,8 +631,8 @@ export function SettingsPage() {
                           hideLabel
                           size="sm"
                           value={editLabel}
-                          onChange={(e) => setEditLabel(e.target.value)}
-                          onKeyDown={(e) => {
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditLabel(e.target.value)}
+                          onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
                             if (e.key === 'Enter') handleSaveEditStatus(s.id);
                             if (e.key === 'Escape') setEditingStatusId(null);
                           }}
@@ -669,8 +668,8 @@ export function SettingsPage() {
                 placeholder="e.g. Orders, Delivery..."
                 size="sm"
                 value={newStatusLabel}
-                onChange={(e) => setNewStatusLabel(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleAddStatus(); }}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewStatusLabel(e.target.value)}
+                onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') handleAddStatus(); }}
               />
               <Button kind="primary" size="sm" renderIcon={Add} disabled={!newStatusLabel.trim()} onClick={handleAddStatus}>
                 Add
@@ -747,8 +746,8 @@ export function SettingsPage() {
                           hideLabel
                           size="sm"
                           value={editCategoryLabel}
-                          onChange={(e) => setEditCategoryLabel(e.target.value)}
-                          onKeyDown={(e) => {
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditCategoryLabel(e.target.value)}
+                          onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
                             if (e.key === 'Enter') handleSaveEditCategory(c.id);
                             if (e.key === 'Escape') setEditingCategoryId(null);
                           }}
@@ -784,8 +783,8 @@ export function SettingsPage() {
                 placeholder="e.g. Vendors, Agencies..."
                 size="sm"
                 value={newCategoryLabel}
-                onChange={(e) => setNewCategoryLabel(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleAddCategory(); }}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewCategoryLabel(e.target.value)}
+                onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') handleAddCategory(); }}
               />
               <Button kind="primary" size="sm" renderIcon={Add} disabled={!newCategoryLabel.trim()} onClick={handleAddCategory}>
                 Add
@@ -828,8 +827,8 @@ export function SettingsPage() {
                           hideLabel
                           size="sm"
                           value={editPartnerName}
-                          onChange={(e) => setEditPartnerName(e.target.value)}
-                          onKeyDown={(e) => {
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditPartnerName(e.target.value)}
+                          onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
                             if (e.key === 'Enter') handleSaveEditPartner(p.id);
                             if (e.key === 'Escape') setEditingPartnerId(null);
                           }}
@@ -847,8 +846,8 @@ export function SettingsPage() {
                           hideLabel
                           size="sm"
                           value={editPartnerUrl}
-                          onChange={(e) => setEditPartnerUrl(e.target.value)}
-                          onKeyDown={(e) => {
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditPartnerUrl(e.target.value)}
+                          onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
                             if (e.key === 'Enter') handleSaveEditPartner(p.id);
                             if (e.key === 'Escape') setEditingPartnerId(null);
                           }}
@@ -885,8 +884,8 @@ export function SettingsPage() {
                 placeholder="e.g. Oracle, Cisco..."
                 size="sm"
                 value={newPartnerName}
-                onChange={(e) => setNewPartnerName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && newPartnerName.trim()) handleAddPartner(); }}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPartnerName(e.target.value)}
+                onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter' && newPartnerName.trim()) handleAddPartner(); }}
               />
               <TextInput
                 id="new-partner-url"
@@ -894,8 +893,8 @@ export function SettingsPage() {
                 placeholder="https://partner-portal.com/register"
                 size="sm"
                 value={newPartnerUrl}
-                onChange={(e) => setNewPartnerUrl(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && newPartnerName.trim()) handleAddPartner(); }}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPartnerUrl(e.target.value)}
+                onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter' && newPartnerName.trim()) handleAddPartner(); }}
               />
               <Button kind="primary" size="sm" renderIcon={Add} disabled={!newPartnerName.trim()} onClick={handleAddPartner}>
                 Add

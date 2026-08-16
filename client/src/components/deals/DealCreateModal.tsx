@@ -123,7 +123,7 @@ export function DealCreateModal({ open, onClose, onCreated, editDeal }: DealCrea
         labelText="Title"
         placeholder="Deal title"
         value={title}
-        onChange={(e) => setTitle(e.target.value)}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTitle(e.target.value)}
         invalid={open && title.length > 0 && !title.trim()}
         invalidText="Title is required"
         className="create-side-panel__form-item"
@@ -184,7 +184,7 @@ export function DealCreateModal({ open, onClose, onCreated, editDeal }: DealCrea
         labelText="Products"
         placeholder="Products included in this deal"
         value={products}
-        onChange={(e) => setProducts(e.target.value)}
+        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setProducts(e.target.value)}
         className="create-side-panel__form-item"
       />
       <TextArea
@@ -192,7 +192,7 @@ export function DealCreateModal({ open, onClose, onCreated, editDeal }: DealCrea
         labelText="Notes"
         placeholder="Additional notes"
         value={notes}
-        onChange={(e) => setNotes(e.target.value)}
+        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNotes(e.target.value)}
         className="create-side-panel__form-item"
       />
     </SidePanel>

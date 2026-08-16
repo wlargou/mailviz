@@ -486,13 +486,13 @@ export function CustomerDetailPage() {
         primaryButtonDisabled={!editName.trim()}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <TextInput id="edit-cust-name" labelText="Name" value={editName} onChange={(e) => setEditName(e.target.value)} required />
-          <TextInput id="edit-cust-company" labelText="Company" value={editCompany} onChange={(e) => setEditCompany(e.target.value)} />
+          <TextInput id="edit-cust-name" labelText="Name" value={editName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditName(e.target.value)} required />
+          <TextInput id="edit-cust-company" labelText="Company" value={editCompany} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditCompany(e.target.value)} />
           <div style={{ display: 'flex', gap: '1rem' }}>
-            <div style={{ flex: 1 }}><TextInput id="edit-cust-email" labelText="Email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} /></div>
-            <div style={{ flex: 1 }}><TextInput id="edit-cust-phone" labelText="Phone" value={editPhone} onChange={(e) => setEditPhone(e.target.value)} /></div>
+            <div style={{ flex: 1 }}><TextInput id="edit-cust-email" labelText="Email" value={editEmail} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditEmail(e.target.value)} /></div>
+            <div style={{ flex: 1 }}><TextInput id="edit-cust-phone" labelText="Phone" value={editPhone} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditPhone(e.target.value)} /></div>
           </div>
-          <TextInput id="edit-cust-website" labelText="Website" value={editWebsite} onChange={(e) => setEditWebsite(e.target.value)} />
+          <TextInput id="edit-cust-website" labelText="Website" value={editWebsite} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditWebsite(e.target.value)} />
           {allCategories.length > 0 && (
             <Dropdown
               id="edit-cust-category"
@@ -510,7 +510,7 @@ export function CustomerDetailPage() {
               }}
             />
           )}
-          <TextArea id="edit-cust-notes" labelText="Notes" value={editNotes} onChange={(e) => setEditNotes(e.target.value)} />
+          <TextArea id="edit-cust-notes" labelText="Notes" value={editNotes} onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setEditNotes(e.target.value)} />
         </div>
       </Modal>
 

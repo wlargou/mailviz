@@ -79,7 +79,7 @@ export function CustomerCreateModal({ open, onClose, onCreated }: CustomerCreate
         labelText="Name"
         placeholder="Company name"
         value={name}
-        onChange={(e) => setName(e.target.value)}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
         invalid={open && name.length > 0 && !name.trim()}
         invalidText="Name is required"
         className="create-side-panel__form-item"
@@ -89,7 +89,7 @@ export function CustomerCreateModal({ open, onClose, onCreated }: CustomerCreate
         labelText="Company"
         placeholder="Company name"
         value={company}
-        onChange={(e) => setCompany(e.target.value)}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCompany(e.target.value)}
         className="create-side-panel__form-item"
       />
       <TextInput
@@ -97,7 +97,7 @@ export function CustomerCreateModal({ open, onClose, onCreated }: CustomerCreate
         labelText="Email"
         placeholder="email@example.com"
         value={email}
-        onChange={(e) => setEmail(e.target.value)}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
         className="create-side-panel__form-item"
       />
       <TextInput
@@ -105,7 +105,7 @@ export function CustomerCreateModal({ open, onClose, onCreated }: CustomerCreate
         labelText="Phone"
         placeholder="+1 234 567 890"
         value={phone}
-        onChange={(e) => setPhone(e.target.value)}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPhone(e.target.value)}
         className="create-side-panel__form-item"
       />
       <TextInput
@@ -113,7 +113,7 @@ export function CustomerCreateModal({ open, onClose, onCreated }: CustomerCreate
         labelText="Website"
         placeholder="https://example.com"
         value={website}
-        onChange={(e) => setWebsite(e.target.value)}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setWebsite(e.target.value)}
         className="create-side-panel__form-item"
       />
       <TextArea
@@ -121,7 +121,7 @@ export function CustomerCreateModal({ open, onClose, onCreated }: CustomerCreate
         labelText="Notes"
         placeholder="Additional notes"
         value={notes}
-        onChange={(e) => setNotes(e.target.value)}
+        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNotes(e.target.value)}
         className="create-side-panel__form-item"
       />
     </SidePanel>

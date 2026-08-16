@@ -116,7 +116,7 @@ export function ShareDialog({
           labelText="Search users"
           placeholder="Search by name or email..."
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)}
           size="sm"
           className="share-dialog__search"
         />

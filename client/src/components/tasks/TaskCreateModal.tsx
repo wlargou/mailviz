@@ -21,6 +21,11 @@ const priorityItems = [
   { id: 'URGENT', text: 'Urgent' },
 ];
 
+interface LabelItem {
+  id: string;
+  text: string;
+}
+
 interface TaskCreateModalProps {
   open: boolean;
   onClose: () => void;
@@ -114,7 +119,7 @@ export function TaskCreateModal({ open, onClose, onCreated, labels }: TaskCreate
         labelText="Title"
         placeholder="Enter task title"
         value={title}
-        onChange={(e) => setTitle(e.target.value)}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTitle(e.target.value)}
         invalid={open && title.length > 0 && !title.trim()}
         invalidText="Title is required"
         className="create-side-panel__form-item"
@@ -124,7 +129,7 @@ export function TaskCreateModal({ open, onClose, onCreated, labels }: TaskCreate
         labelText="Description"
         placeholder="Enter task description (optional)"
         value={description}
-        onChange={(e) => setDescription(e.target.value)}
+        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setDescription(e.target.value)}
         className="create-side-panel__form-item"
       />
       <Dropdown
@@ -179,9 +184,9 @@ export function TaskCreateModal({ open, onClose, onCreated, labels }: TaskCreate
           titleText="Labels"
           label="Select labels"
           items={labels.map((l) => ({ id: l.id, text: l.name }))}
-          itemToString={(item) => item?.text || ''}
-          onChange={({ selectedItems }) => {
-            setSelectedLabels(selectedItems.map((item) => item.id));
+          itemToString={(item: LabelItem | null) => item?.text || ''}
+          onChange={({ selectedItems }: { selectedItems: LabelItem[] }) => {
+            setSelectedLabels(selectedItems.map((item: LabelItem) => item.id));
           }}
           className="create-side-panel__form-item"
         />

@@ -55,7 +55,7 @@ export function MailSearchBar({ filters, onFiltersChange }: MailSearchBarProps) 
   const [selectedTo, setSelectedTo] = useState<EmailItem | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Lazy-fetch contacts as user types
   const searchContacts = useCallback((query: string) => {
@@ -282,7 +282,7 @@ export function MailSearchBar({ filters, onFiltersChange }: MailSearchBarProps) 
               placeholder="Keywords in subject"
               size="sm"
               value={draft.subject}
-              onChange={(e) => setDraft({ ...draft, subject: e.target.value })}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDraft({ ...draft, subject: e.target.value })}
             />
             <CompanyComboBox
               id="filter-company"
