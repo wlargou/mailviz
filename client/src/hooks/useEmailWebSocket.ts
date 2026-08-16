@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface WsMessage {
   event: string;
@@ -7,6 +7,8 @@ interface WsMessage {
 }
 
 type EventHandler = (data: any) => void;
+
+export type WsStatus = 'connecting' | 'connected' | 'disconnected';
 
 interface WsOptions {
   /**
@@ -19,105 +21,162 @@ interface WsOptions {
   onReconnect?: () => void;
 }
 
+interface Subscriber {
+  handlers: Record<string, EventHandler>;
+  onReconnect?: () => void;
+}
+
 /**
- * WebSocket hook for real-time sync updates (email, calendar, etc.).
- * Automatically connects, reconnects with exponential backoff,
- * and invokes handlers when server emits events.
+ * ─── Shared connection ──────────────────────────────────────────────────────
+ *
+ * There is exactly ONE socket for the whole app, reference-counted across every
+ * `useEmailWebSocket` caller.
+ *
+ * Previously each mounted hook opened its own WebSocket, so MailPage,
+ * CalendarPage, AppSideNav and AppShell held four concurrent connections to the
+ * same server. Every broadcast was delivered four times, every drop and
+ * backoff cycle ran four times, and there was no single place to ask "are we
+ * connected?" — which the status indicator needs.
+ */
+const subscribers = new Set<Subscriber>();
+const statusListeners = new Set<(s: WsStatus) => void>();
+
+let socket: WebSocket | null = null;
+let status: WsStatus = 'disconnected';
+let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+let teardownTimer: ReturnType<typeof setTimeout> | undefined;
+let reconnectDelay = 1000;
+let hasConnected = false;
+let wasDisconnected = false;
+
+function setStatus(next: WsStatus) {
+  if (status === next) return;
+  status = next;
+  statusListeners.forEach((l) => l(next));
+}
+
+function socketUrl(): string {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  // In development, the API server is on a different port (3002)
+  const host = import.meta.env.DEV ? 'localhost:3002' : window.location.host;
+  return `${protocol}//${host}/ws`;
+}
+
+function scheduleReconnect() {
+  if (subscribers.size === 0) return;
+  const delay = reconnectDelay;
+  reconnectDelay = Math.min(delay * 2, 30000); // Exponential backoff, max 30s
+  reconnectTimer = setTimeout(() => {
+    if (subscribers.size > 0) connect();
+  }, delay);
+}
+
+function connect() {
+  if (socket || subscribers.size === 0) return;
+  setStatus(hasConnected ? 'disconnected' : 'connecting');
+
+  try {
+    const ws = new WebSocket(socketUrl());
+    socket = ws;
+
+    ws.onopen = () => {
+      console.log('[WS] Connected');
+      reconnectDelay = 1000; // Reset backoff on successful connect
+      setStatus('connected');
+
+      // Anything broadcast while we were down was missed, so tell subscribers
+      // to refetch. Only after a genuine drop — not the first open.
+      if (hasConnected && wasDisconnected) {
+        console.log('[WS] Reconnected — refetching to catch up on missed events');
+        wasDisconnected = false;
+        subscribers.forEach((s) => s.onReconnect?.());
+      }
+      hasConnected = true;
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const msg: WsMessage = JSON.parse(event.data);
+        // Fan out to every subscriber that registered this event.
+        subscribers.forEach((s) => s.handlers[msg.event]?.(msg.data));
+      } catch {
+        // Ignore malformed messages
+      }
+    };
+
+    ws.onclose = () => {
+      console.log('[WS] Disconnected, reconnecting...');
+      socket = null;
+      wasDisconnected = true;
+      setStatus('disconnected');
+      scheduleReconnect();
+    };
+
+    ws.onerror = () => {
+      ws.close();
+    };
+  } catch {
+    socket = null;
+    setStatus('disconnected');
+    scheduleReconnect();
+  }
+}
+
+function releaseIfUnused() {
+  // Deferred so a React StrictMode double-mount (or a route change that
+  // swaps which components subscribe) doesn't tear down and immediately
+  // rebuild the connection.
+  clearTimeout(teardownTimer);
+  teardownTimer = setTimeout(() => {
+    if (subscribers.size > 0) return;
+    clearTimeout(reconnectTimer);
+    hasConnected = false;
+    wasDisconnected = false;
+    reconnectDelay = 1000;
+    if (socket) {
+      const s = socket;
+      socket = null;
+      s.onclose = null; // don't trigger the reconnect path on an intentional close
+      s.close();
+    }
+    setStatus('disconnected');
+  }, 1000);
+}
+
+/**
+ * Subscribe to real-time sync events (email, calendar, etc.) over the app's
+ * shared WebSocket. Connects on the first subscriber and reconnects with
+ * exponential backoff.
  */
 export function useEmailWebSocket(handlers: Record<string, EventHandler>, options: WsOptions = {}) {
-  const wsRef = useRef<WebSocket | null>(null);
-  const handlersRef = useRef(handlers);
-  const optionsRef = useRef(options);
-  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const reconnectDelayRef = useRef(1000);
-  const mountedRef = useRef(true);
-  // Distinguishes "opened for the first time" from "came back after a drop".
-  const hasConnectedRef = useRef(false);
-  const wasDisconnectedRef = useRef(false);
-
-  // Keep refs current without causing reconnects
-  handlersRef.current = handlers;
-  optionsRef.current = options;
-
-  const connect = useCallback(() => {
-    if (!mountedRef.current) return;
-
-    // Build WebSocket URL from current page location
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    // In development, the API server is on a different port (3002)
-    const host = import.meta.env.DEV ? 'localhost:3002' : window.location.host;
-    const url = `${protocol}//${host}/ws`;
-
-    try {
-      const ws = new WebSocket(url);
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        console.log('[WS] Connected');
-        reconnectDelayRef.current = 1000; // Reset backoff on successful connect
-
-        // Anything broadcast while we were down was missed, so tell the
-        // consumer to refetch. Only after a genuine drop — not the first open.
-        if (hasConnectedRef.current && wasDisconnectedRef.current) {
-          console.log('[WS] Reconnected — refetching to catch up on missed events');
-          wasDisconnectedRef.current = false;
-          optionsRef.current.onReconnect?.();
-        }
-        hasConnectedRef.current = true;
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const msg: WsMessage = JSON.parse(event.data);
-          const handler = handlersRef.current[msg.event];
-          if (handler) {
-            handler(msg.data);
-          }
-        } catch {
-          // Ignore malformed messages
-        }
-      };
-
-      ws.onclose = () => {
-        console.log('[WS] Disconnected, reconnecting...');
-        wasDisconnectedRef.current = true;
-        scheduleReconnect();
-      };
-
-      ws.onerror = () => {
-        ws.close();
-      };
-    } catch {
-      scheduleReconnect();
-    }
-  }, []);
-
-  const scheduleReconnect = useCallback(() => {
-    if (!mountedRef.current) return;
-
-    const delay = reconnectDelayRef.current;
-    reconnectDelayRef.current = Math.min(delay * 2, 30000); // Exponential backoff, max 30s
-
-    reconnectTimeoutRef.current = setTimeout(() => {
-      if (mountedRef.current) {
-        connect();
-      }
-    }, delay);
-  }, [connect]);
+  // Hold one stable subscriber object and keep its contents current, so
+  // re-renders never churn the connection.
+  const subRef = useRef<Subscriber>({ handlers, onReconnect: options.onReconnect });
+  subRef.current.handlers = handlers;
+  subRef.current.onReconnect = options.onReconnect;
 
   useEffect(() => {
-    mountedRef.current = true;
+    const sub = subRef.current;
+    subscribers.add(sub);
+    clearTimeout(teardownTimer);
     connect();
 
     return () => {
-      mountedRef.current = false;
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
+      subscribers.delete(sub);
+      if (subscribers.size === 0) releaseIfUnused();
     };
-  }, [connect]);
+  }, []);
+}
+
+/** Current state of the shared connection, for status indicators. */
+export function useWebSocketStatus(): WsStatus {
+  const [current, setCurrent] = useState<WsStatus>(status);
+  useEffect(() => {
+    statusListeners.add(setCurrent);
+    setCurrent(status);
+    return () => {
+      statusListeners.delete(setCurrent);
+    };
+  }, []);
+  return current;
 }

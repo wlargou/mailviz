@@ -10,6 +10,7 @@ import { useUIStore } from '../../store/uiStore';
 import { useAuthStore } from '../../store/authStore';
 import { GlobalSearch } from './GlobalSearch';
 import { NotificationBell } from './NotificationBell';
+import { ConnectionStatus } from './ConnectionStatus';
 import { MailvizLogo } from '../shared/MailvizLogo';
 
 export function AppHeader() {
@@ -29,6 +30,7 @@ export function AppHeader() {
       </HeaderName>
       <HeaderGlobalBar>
         <GlobalSearch />
+        <ConnectionStatus />
         <NotificationBell />
         <HeaderGlobalAction
           aria-label="Toggle theme"

@@ -248,3 +248,13 @@ body {
   gap: $spacing-03;
   border-top: 1px solid var(--cds-border-subtle);
 }
+
+// WebSocket connection warning in the header. Only rendered while the shared
+// socket is down (see components/layout/ConnectionStatus.tsx), so it needs to
+// read as an alert without shifting the header layout when it appears.
+.connection-status {
+  flex-shrink: 0;
+  align-self: center;
+  margin-inline-end: $spacing-03;
+  white-space: nowrap;
+}
