@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 
 export type AuditAction =
@@ -59,7 +60,9 @@ interface AuditLogInput {
   action: AuditAction;
   entityType: EntityType;
   entityId?: string | null;
-  details?: Record<string, unknown>;
+  // Must be JSON-serialisable — `Record<string, unknown>` is not assignable to
+  // Prisma's InputJsonValue because `unknown` admits non-JSON values.
+  details?: Prisma.InputJsonObject;
   status?: 'success' | 'failure';
 }
 
@@ -75,7 +78,8 @@ export const auditService = {
         action: input.action,
         entityType: input.entityType,
         entityId: input.entityId || null,
-        details: input.details || null,
+        // Prisma needs Prisma.DbNull (not JS null) to write SQL NULL to a Json? column.
+        details: input.details ?? Prisma.DbNull,
         status: input.status || 'success',
       },
     }).catch((err) => {
@@ -93,7 +97,8 @@ export const auditService = {
         action: input.action,
         entityType: input.entityType,
         entityId: input.entityId || null,
-        details: input.details || null,
+        // Prisma needs Prisma.DbNull (not JS null) to write SQL NULL to a Json? column.
+        details: input.details ?? Prisma.DbNull,
         status: input.status || 'success',
       },
     });

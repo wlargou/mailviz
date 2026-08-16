@@ -11,7 +11,13 @@ interface ContactQueryParams {
   customerId?: string;
   page?: string;
   limit?: string;
+  sortBy?: string;
+  sortOrder?: string;
 }
+
+// Whitelist of sortable Contact columns. `sortBy` comes straight off the query
+// string and is used as a Prisma orderBy key, so it must never be trusted raw.
+const CONTACT_SORT_FIELDS = ['firstName', 'lastName', 'email', 'role', 'isVip', 'createdAt', 'updatedAt'] as const;
 
 export const contactService = {
   async findAll(userId: string, query: ContactQueryParams) {
@@ -30,35 +36,40 @@ export const contactService = {
       ];
     }
 
-    const sortBy = query.sortBy || 'emailCount';
-    const sortOrder = (query.sortOrder || 'desc') as Prisma.SortOrder;
+    const requestedSort = query.sortBy || 'emailCount';
+    const sortBy = (CONTACT_SORT_FIELDS as readonly string[]).includes(requestedSort)
+      ? requestedSort
+      : 'emailCount';
+    const sortOrder: Prisma.SortOrder = query.sortOrder === 'asc' ? 'asc' : 'desc';
 
     if (sortBy === 'emailCount') {
-      // Use raw SQL to sort by email count across all pages
-      // Build WHERE clause parts
-      const whereParts: string[] = [`cu.user_id = '${userId}'`];
+      // Sort by email count across all pages. Uses parameterized Prisma.sql —
+      // never interpolate query values into the SQL string.
+      const conditions: Prisma.Sql[] = [Prisma.sql`cu.user_id = ${userId}`];
       if (query.customerId) {
-        whereParts.push(`c.customer_id = '${query.customerId}'`);
+        conditions.push(Prisma.sql`c.customer_id = ${query.customerId}`);
       }
       if (query.search) {
-        const s = query.search.replace(/'/g, "''");
-        whereParts.push(`(c.first_name ILIKE '%${s}%' OR c.last_name ILIKE '%${s}%' OR c.email ILIKE '%${s}%' OR c.role ILIKE '%${s}%')`);
+        const pattern = `%${query.search}%`;
+        conditions.push(
+          Prisma.sql`(c.first_name ILIKE ${pattern} OR c.last_name ILIKE ${pattern} OR c.email ILIKE ${pattern} OR c.role ILIKE ${pattern})`
+        );
       }
-      const whereClause = whereParts.join(' AND ');
+      const whereClause = Prisma.join(conditions, ' AND ');
 
       const [rows, countResult] = await Promise.all([
-        prisma.$queryRawUnsafe<Array<{ id: string; email_count: bigint }>>(`
+        prisma.$queryRaw<Array<{ id: string; email_count: bigint }>>(Prisma.sql`
           SELECT c.id, COALESCE(ec.cnt, 0) AS email_count
           FROM contacts c
           JOIN customers cu ON c.customer_id = cu.id
           LEFT JOIN (
-            SELECT "from", COUNT(*) AS cnt FROM emails WHERE user_id = '${userId}' GROUP BY "from"
+            SELECT "from", COUNT(*) AS cnt FROM emails WHERE user_id = ${userId} GROUP BY "from"
           ) ec ON c.email = ec."from"
           WHERE ${whereClause}
           ORDER BY email_count DESC
           LIMIT ${pagination.limit} OFFSET ${pagination.skip}
         `),
-        prisma.$queryRawUnsafe<Array<{ count: bigint }>>(`
+        prisma.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
           SELECT COUNT(*) as count FROM contacts c
           JOIN customers cu ON c.customer_id = cu.id
           WHERE ${whereClause}

@@ -12,7 +12,7 @@ export function validate(schema: ZodSchema) {
           error: {
             code: 'VALIDATION_ERROR',
             message: 'Invalid request data',
-            details: err.errors.map((e) => ({
+            details: err.issues.map((e) => ({
               field: e.path.join('.'),
               message: e.message,
             })),
