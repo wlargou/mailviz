@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { EmailThread, EmailMessage, ConvertToTaskInput, ReviewSummary } from '../types/email';
+import type { EmailThread, EmailMessage, ConvertToTaskInput, ReviewSummary, EmailReminder, ReminderKind } from '../types/email';
 import type { ApiResponse } from '../types/api';
 import type { Task } from '../types/task';
 
@@ -120,6 +120,23 @@ export const emailsApi = {
 
   cancelScheduledEmail(id: string) {
     return api.delete(`/emails/scheduled/${id}`);
+  },
+
+  // Snooze / follow-up reminders.
+  //
+  // Their own resource rather than a sub-route of a message: a reminder hangs
+  // off a *thread*, and it outlives any individual message in it.
+  getReminders() {
+    return api.get<ApiResponse<EmailReminder[]>>('/snooze');
+  },
+
+  createReminder(data: { threadId: string; kind: ReminderKind; remindAt: string }) {
+    return api.post<ApiResponse<EmailReminder>>('/snooze', data);
+  },
+
+  /** Unsnooze now, or forget a follow-up. */
+  cancelReminder(id: string) {
+    return api.delete(`/snooze/${id}`);
   },
 
   // Sharing

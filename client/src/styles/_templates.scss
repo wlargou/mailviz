@@ -1,0 +1,90 @@
+@use '@carbon/react/scss/spacing' as *;
+@use '@carbon/react/scss/type' as type;
+
+// Email templates and snippets: the picker in the compose modal and the
+// management list in Settings.
+
+// ─── Compose picker ────────────────────────────────────────────────
+
+.compose-templates {
+  display: flex;
+  align-items: flex-end;
+  gap: $spacing-03;
+  margin-block-end: $spacing-03;
+}
+
+.compose-templates__picker {
+  // Wide enough for a real template name, narrow enough that it reads as one
+  // control on the compose form rather than another full-width field.
+  inline-size: 100%;
+  max-inline-size: 22rem;
+}
+
+// ─── Settings list ─────────────────────────────────────────────────
+
+.templates-settings__row-actions {
+  display: flex;
+  gap: $spacing-02;
+}
+
+.templates-settings__subject {
+  display: block;
+  max-inline-size: 20rem;
+  overflow: hidden;
+  color: var(--cds-text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.templates-settings__add {
+  display: flex;
+  gap: $spacing-03;
+}
+
+.templates-settings__variables {
+  padding-block-start: $spacing-03;
+  border-block-start: 1px solid var(--cds-border-subtle);
+}
+
+.templates-settings__variable-list {
+  display: grid;
+  gap: $spacing-02 $spacing-05;
+  margin-block-start: $spacing-04;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+}
+
+.templates-settings__variable {
+  dt {
+    @include type.type-style('body-compact-01');
+
+    color: var(--cds-text-primary);
+
+    code {
+      @include type.type-style('code-01');
+
+      padding: 0 $spacing-02;
+      background-color: var(--cds-layer-accent);
+      border-radius: 2px;
+      color: var(--cds-text-primary);
+    }
+  }
+
+  dd {
+    @include type.type-style('label-01');
+
+    margin: 0;
+    color: var(--cds-text-secondary);
+  }
+}
+
+// ─── Settings editor ───────────────────────────────────────────────
+
+.templates-editor {
+  padding-block: $spacing-05;
+}
+
+.templates-editor__body {
+  min-block-size: 12rem;
+  border: 1px solid var(--cds-border-subtle);
+  margin-block-start: $spacing-02;
+}

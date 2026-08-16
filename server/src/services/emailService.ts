@@ -22,6 +22,7 @@ import {
 import { getSharedThreadIds, canAccessThread } from '../utils/accessControl.js';
 import { auditService } from './auditService.js';
 import { notificationService } from './notificationService.js';
+import { snoozeService } from './snoozeService.js';
 
 /**
  * The single definition of how Gmail's labels map onto our boolean columns.
@@ -472,6 +473,30 @@ export const emailService = {
     if (query.isRead === 'true') where.isRead = true;
     if (query.isRead === 'false') where.isRead = false;
     if (query.hasAttachment === 'true') where.hasAttachment = true;
+    // ── Snoozed threads ──
+    //
+    // Hidden from every folder except the Snoozed folder itself and Trash.
+    // Trash is excluded from the hiding because a thread the user throws away
+    // while it is snoozed has to still be findable where they threw it —
+    // otherwise it vanishes from both places at once.
+    //
+    // This is where snooze actually happens. Nothing on the `emails` row says
+    // "snoozed": those columns are rewritten from Gmail every sync, so a flag
+    // there would be undone within the minute. The authority is the
+    // `email_reminders` table, which no sync path writes to.
+    //
+    // The `threadId: null` arm matters: `NOT IN (...)` is NULL-valued for a
+    // NULL column, so a bare `notIn` would silently drop every message that has
+    // no thread id from every folder.
+    const snoozedThreadIds = await snoozeService.snoozedThreadIds(userId);
+    if (query.folder === 'snoozed') {
+      // An empty list yields `IN ()`, i.e. nothing — which is the right answer
+      // for a Snoozed folder with nothing in it.
+      andFilters.push({ threadId: { in: snoozedThreadIds } });
+    } else if (snoozedThreadIds.length > 0 && query.folder !== 'trash') {
+      andFilters.push({ OR: [{ threadId: null }, { threadId: { notIn: snoozedThreadIds } }] });
+    }
+
     if (query.folder === 'inbox') where.labelIds = { has: 'INBOX' };
     if (query.folder === 'sent') where.labelIds = { has: 'SENT' };
     if (query.folder === 'starred') where.isStarred = true;

@@ -3,6 +3,7 @@ import {
   Pagination,
   Button,
   Tag,
+  DismissibleTag,
   InlineLoading,
   ContentSwitcher,
   Switch,
@@ -12,7 +13,7 @@ import {
   DatePickerInput,
   TimePicker,
 } from '@carbon/react';
-import { Renew, StarFilled, Star, Attachment, Email as EmailIcon, EmailNew, ReplyAll, Archive, TrashCan, Undo, Add, CheckmarkOutline, Close, CheckboxCheckedFilled, Task, Share, Review, DocumentBlank } from '@carbon/icons-react';
+import { Renew, StarFilled, Star, Attachment, Email as EmailIcon, EmailNew, ReplyAll, Archive, TrashCan, Undo, Add, CheckmarkOutline, Close, CheckboxCheckedFilled, Task, Share, Review, DocumentBlank, Snooze, Reminder, AlarmSubtract } from '@carbon/icons-react';
 import { SidePanel } from '@carbon/ibm-products';
 import { formatDistanceToNow, format } from 'date-fns';
 import { Time } from '@carbon/icons-react';
@@ -27,8 +28,9 @@ import { ThreadDetail } from './ThreadDetail';
 import { MailSearchBar } from './MailSearchBar';
 import { MailComposeModal } from './MailComposeModal';
 import { ConvertToTaskModal } from './ConvertToTaskModal';
+import { SnoozeModal } from './SnoozeModal';
 import type { MailFilters } from './MailSearchBar';
-import type { ComposeMode, DraftDetail, DraftListItem, EmailThread } from '../../types/email';
+import type { ComposeMode, DraftDetail, DraftListItem, EmailReminder, EmailThread, ReminderKind } from '../../types/email';
 import type { PaginationMeta } from '../../types/api';
 
 // Decode HTML entities in snippets (Gmail API returns &#39; etc.)
@@ -100,6 +102,13 @@ export function MailPage() {
   const [rescheduleDate, setRescheduleDate] = useState<Date | null>(null);
   const [rescheduleTime, setRescheduleTime] = useState('09:00');
   const [rescheduleSaving, setRescheduleSaving] = useState(false);
+  // Pending snoozes and follow-ups, keyed by thread. Fetched as one list rather
+  // than embedded in each thread row: the mail list is paged and a reminder can
+  // outlive the page it was set from, and the badge has to be right in the
+  // Snoozed folder too, which renders from the same state.
+  const [reminders, setReminders] = useState<EmailReminder[]>([]);
+  const [snoozeTarget, setSnoozeTarget] = useState<EmailThread | null>(null);
+  const [snoozeSaving, setSnoozeSaving] = useState(false);
   const addNotification = useUIStore((s) => s.addNotification);
   const currentUser = useAuthStore((s) => s.user);
 
@@ -129,6 +138,15 @@ export function MailPage() {
       addNotification({ kind: 'info', title: 'An email thread was shared with you' });
       fetchThreadsRef.current?.(true);
     },
+    // A reminder came due server-side: the thread may have just reappeared in
+    // the inbox, so the list and the badges both need rereading.
+    'reminder:fired': () => {
+      fetchRemindersRef.current?.();
+      fetchThreadsRef.current?.(true);
+    },
+    'reminder:changed': () => {
+      fetchRemindersRef.current?.();
+    },
     'deal:shared': () => {
       addNotification({ kind: 'info', title: 'A deal was shared with you' });
     },
@@ -139,6 +157,7 @@ export function MailPage() {
   // Ref to fetchThreads so WS handlers don't need it as a dependency
   const fetchThreadsRef = useRef<((silent?: boolean) => void) | null>(null);
   const fetchDraftsRef = useRef<(() => void) | null>(null);
+  const fetchRemindersRef = useRef<(() => void) | null>(null);
 
   const fetchThreads = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -163,6 +182,15 @@ export function MailPage() {
       if (!silent) setLoading(false);
     }
   }, [page, pageSize, filters, addNotification]);
+
+  const fetchReminders = useCallback(async () => {
+    try {
+      const { data: response } = await emailsApi.getReminders();
+      setReminders(response.data);
+    } catch {
+      // A missing badge is not worth a toast; the next fetch will pick it up.
+    }
+  }, []);
 
   const fetchScheduledEmails = useCallback(async () => {
     setScheduledLoading(true);
@@ -286,6 +314,78 @@ export function MailPage() {
   useEffect(() => {
     fetchDraftsRef.current = filters.folder === 'drafts' ? () => fetchDrafts() : null;
   }, [fetchDrafts, filters.folder]);
+
+  useEffect(() => {
+    fetchRemindersRef.current = fetchReminders;
+    fetchReminders();
+  }, [fetchReminders]);
+
+  /** Pending reminders by thread, so a row can badge itself in one lookup. */
+  const remindersByThread = useMemo(() => {
+    const map = new Map<string, { snooze?: EmailReminder; follow_up?: EmailReminder }>();
+    for (const r of reminders) {
+      const entry = map.get(r.threadId) ?? {};
+      entry[r.kind] = r;
+      map.set(r.threadId, entry);
+    }
+    return map;
+  }, [reminders]);
+
+  /**
+   * Arm a reminder. Optimistic in the way that matters: a snoozed thread leaves
+   * the list immediately, because the whole point of pressing the button is
+   * that you do not want to look at it any more. Restored from the server on
+   * failure.
+   */
+  const submitReminder = useCallback(async (kind: ReminderKind, remindAt: Date) => {
+    const thread = snoozeTarget;
+    if (!thread?.threadId) return;
+    setSnoozeSaving(true);
+    const previous = threads;
+    if (kind === 'snooze' && filters.folder !== 'snoozed') {
+      setThreads((prev) => prev.filter((t) => t.threadId !== thread.threadId));
+    }
+    try {
+      await emailsApi.createReminder({
+        threadId: thread.threadId,
+        kind,
+        remindAt: remindAt.toISOString(),
+      });
+      addNotification({
+        kind: 'success',
+        title: kind === 'snooze' ? 'Snoozed' : 'Follow-up set',
+        subtitle: `${kind === 'snooze' ? 'Back' : 'Reminder'} ${format(remindAt, 'EEE d MMM, h:mm a')}`,
+      });
+      setSnoozeTarget(null);
+      fetchReminders();
+      fetchThreads(true);
+    } catch {
+      setThreads(previous);
+      addNotification({ kind: 'error', title: 'Could not set the reminder' });
+    } finally {
+      setSnoozeSaving(false);
+    }
+  }, [snoozeTarget, threads, filters.folder, addNotification, fetchReminders, fetchThreads]);
+
+  /** Unsnooze now, or drop a follow-up. */
+  const cancelReminder = useCallback(async (reminder: EmailReminder) => {
+    setReminders((prev) => prev.filter((r) => r.id !== reminder.id));
+    if (filters.folder === 'snoozed' && reminder.kind === 'snooze') {
+      setThreads((prev) => prev.filter((t) => t.threadId !== reminder.threadId));
+    }
+    try {
+      await emailsApi.cancelReminder(reminder.id);
+      addNotification({
+        kind: 'success',
+        title: reminder.kind === 'snooze' ? 'Back in your inbox' : 'Follow-up cleared',
+      });
+      fetchThreads(true);
+    } catch {
+      addNotification({ kind: 'error', title: 'Could not clear the reminder' });
+    } finally {
+      fetchReminders();
+    }
+  }, [filters.folder, addNotification, fetchReminders, fetchThreads]);
 
   const handleFiltersChange = (newFilters: MailFilters) => {
     setFilters(newFilters);
@@ -565,14 +665,15 @@ export function MailPage() {
               : filters.folder === 'starred' ? 4
               : filters.folder === 'archived' ? 5
               : filters.folder === 'trash' ? 6
-              : filters.folder === 'scheduled' ? 7
+              : filters.folder === 'snoozed' ? 7
+              : filters.folder === 'scheduled' ? 8
               : 0
             }
             onChange={({ index }) => {
               // Carbon only fires onChange once it has resolved an index, but
               // `SwitchEventHandlersParams['index']` is optional.
               if (index === undefined) return;
-              const folders = [null, 'inbox', 'sent', 'drafts', 'starred', 'archived', 'trash', 'scheduled'];
+              const folders = [null, 'inbox', 'sent', 'drafts', 'starred', 'archived', 'trash', 'snoozed', 'scheduled'];
               handleFolderChange(folders[index]);
             }}
           >
@@ -583,6 +684,7 @@ export function MailPage() {
             <Switch name="starred" text="Starred" />
             <Switch name="archived" text="Archived" />
             <Switch name="trash" text="Trash" />
+            <Switch name="snoozed" text="Snoozed" />
             <Switch name="scheduled" text="Scheduled" />
           </ContentSwitcher>
         </div>
@@ -729,11 +831,19 @@ export function MailPage() {
             ))}
           </div>
         ) : threads.length === 0 ? (
-          <EmptyState
-            title="No emails"
-            description={hasActiveFilters ? 'No emails match your filters' : 'Click Sync to import emails from Gmail'}
-            icon={<EmailIcon size={48} />}
-          />
+          filters.folder === 'snoozed' ? (
+            <EmptyState
+              title="Nothing snoozed"
+              description="Snooze a thread to take it out of your inbox until you want it back"
+              icon={<Snooze size={48} />}
+            />
+          ) : (
+            <EmptyState
+              title="No emails"
+              description={hasActiveFilters ? 'No emails match your filters' : 'Click Sync to import emails from Gmail'}
+              icon={<EmailIcon size={48} />}
+            />
+          )
         ) : (
           <>
             {selectMode && (
@@ -766,6 +876,9 @@ export function MailPage() {
                 const isUnread = thread.unreadCount > 0;
                 const isSelected = thread.threadId === selectedThread;
                 const isChecked = selectedIds.has(e.id);
+                const threadReminders = thread.threadId ? remindersByThread.get(thread.threadId) : undefined;
+                const snoozedUntil = threadReminders?.snooze;
+                const followUp = threadReminders?.follow_up;
 
                 return (
                   <div
@@ -859,6 +972,18 @@ export function MailPage() {
                           kind="ghost"
                           size="sm"
                           hasIconOnly
+                          iconDescription={snoozedUntil ? 'Unsnooze now' : 'Snooze or follow up'}
+                          renderIcon={snoozedUntil ? AlarmSubtract : Snooze}
+                          onClick={(ev: React.MouseEvent) => {
+                            ev.stopPropagation();
+                            if (snoozedUntil) cancelReminder(snoozedUntil);
+                            else setSnoozeTarget(thread);
+                          }}
+                        />
+                        <Button
+                          kind="ghost"
+                          size="sm"
+                          hasIconOnly
                           iconDescription="Convert to task"
                           renderIcon={Task}
                           onClick={(ev: React.MouseEvent) => {
@@ -869,9 +994,32 @@ export function MailPage() {
                       </div>
                     </div>
                     <div className="thread-item__snippet">{decodeEntities(e.snippet)}</div>
-                    {currentUser && e.userId !== currentUser.id && (
-                      <Tag size="sm" type="purple" renderIcon={Share}>Shared</Tag>
-                    )}
+                    <div className="thread-item__tags">
+                      {currentUser && e.userId !== currentUser.id && (
+                        <Tag size="sm" type="purple" renderIcon={Share}>Shared</Tag>
+                      )}
+                      {snoozedUntil && (
+                        <Tag size="sm" type="teal" renderIcon={Snooze}>
+                          {`Back ${format(new Date(snoozedUntil.remindAt), 'EEE d MMM, h:mm a')}`}
+                        </Tag>
+                      )}
+                      {followUp && (
+                        // DismissibleTag, not `Tag filter` — the latter is the
+                        // legacy form. Dismissing it clears the follow-up,
+                        // which is the only way to drop one from the list.
+                        <DismissibleTag
+                          size="sm"
+                          type="magenta"
+                          renderIcon={Reminder}
+                          text={`Chase ${format(new Date(followUp.remindAt), 'EEE d MMM')}`}
+                          title="Clear follow-up"
+                          onClose={(ev: React.MouseEvent<HTMLButtonElement>) => {
+                            ev.stopPropagation();
+                            cancelReminder(followUp);
+                          }}
+                        />
+                      )}
+                    </div>
                     </div>
                   </div>
                 );
@@ -926,6 +1074,14 @@ export function MailPage() {
         onDraftChanged={() => {
           if (filters.folder === 'drafts') fetchDrafts();
         }}
+      />
+
+      <SnoozeModal
+        open={!!snoozeTarget}
+        subject={snoozeTarget ? decodeEntities(snoozeTarget.latestEmail.subject) : ''}
+        saving={snoozeSaving}
+        onClose={() => setSnoozeTarget(null)}
+        onSubmit={submitReminder}
       />
 
       {convertEmail && (

@@ -212,6 +212,8 @@ model User {
   emailDrafts         EmailDraft[]
   auditLogs           AuditLog[]
   notifications       Notification[]
+  emailTemplates      EmailTemplate[]
+  emailReminders      EmailReminder[]
 
   @@map("users")
 }
@@ -575,4 +577,118 @@ model Notification {
   @@index([userId, isRead, isDismissed])
   @@index([userId, createdAt])
   @@map("notifications")
+}
+
+// ─── EMAIL TEMPLATES & SNIPPETS ─────────────────
+
+/**
+ * A reusable message the user can drop into compose.
+ *
+ * `kind` splits two genuinely different things that share one table because
+ * they share one editor and one picker:
+ *   - `template` — a whole message. Carries a `subject` as well as a body.
+ *   - `snippet`  — a fragment (a closing line, a booking link). No subject;
+ *     `subject` is forced to null for these by the validator.
+ *
+ * `body` is the same sanitised HTML the compose editor produces, and may
+ * contain `{{variable}}` placeholders. The variable names are checked against
+ * `templateService.TEMPLATE_VARIABLES` at write time, so a typo is a 400 here
+ * rather than a literal `{{firstNmae}}` in a sent email.
+ *
+ * `usageCount` / `lastUsedAt` order the picker by what the user actually
+ * reaches for — the whole point of the feature is the two or three replies
+ * they send constantly, and those should not be buried alphabetically.
+ */
+model EmailTemplate {
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  name       String    @db.VarChar(120)
+  kind       String    @default("template") @db.VarChar(20)
+  subject    String?   @db.VarChar(500)
+  body       String    @db.Text
+  usageCount Int       @default(0) @map("usage_count")
+  lastUsedAt DateTime? @map("last_used_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@index([userId, kind])
+  @@map("email_templates")
+}
+
+// ─── SNOOZE & FOLLOW-UP REMINDERS ──────────────────
+
+/**
+ * A deferred reminder attached to a Gmail *thread*.
+ *
+ * Two products share this one row because they share a clock and a scheduler,
+ * and differ only in what firing does:
+ *
+ *  - `kind = "snooze"`     — hide the thread from every mail folder until
+ *                            `remindAt`, then put it back, unread.
+ *  - `kind = "follow_up"`  — leave the thread where it is, and remind the user
+ *                            at `remindAt` *only if nobody has replied*. An
+ *                            inbound message newer than `armedAt` cancels it.
+ *
+ * ── Why this is a separate table and not a column on Email ──
+ *
+ * `emailService.upsertMessage` rewrites every Email row from Gmail on each
+ * 60-second sync, and the incremental label handlers rewrite `label_ids` and
+ * the four boolean flags derived from them. Any snooze state stored on `emails`
+ * is therefore state the sync is contractually obliged to destroy — a snooze
+ * that silently un-snoozes itself a minute later.
+ *
+ * Sync never touches this table. It is keyed by `(user_id, thread_id)`, which
+ * is a Gmail identity, not a row identity, so it also survives a message being
+ * deleted and re-imported. That is the whole mechanism: the hiding lives in a
+ * place the sync has no reason to write to.
+ *
+ * No Prisma relation to User: this model is appended in a file another change
+ * owns the middle of, and a relation needs a back-reference on `model User`.
+ * The consequence is that a deleted user would leave orphan reminders — there
+ * is no user-deletion path in this app today. Adding
+ * `emailReminders EmailReminder[]` to `User` plus the matching foreign key is
+ * the correct follow-up.
+ */
+model EmailReminder {
+  id       String @id @default(uuid())
+  userId   String @map("user_id")
+  threadId String @map("thread_id")
+
+  /// "snooze" | "follow_up"
+  kind String @db.VarChar(20)
+  /// "armed" | "fired" | "cancelled"
+  state String @default("armed") @db.VarChar(20)
+
+  /// When to bring the thread back / raise the reminder.
+  remindAt DateTime @map("remind_at")
+  /// The `receivedAt` of the newest message in the thread when the reminder was
+  /// armed. A follow-up counts anything strictly newer than this, from someone
+  /// other than the user, as "they replied".
+  armedAt DateTime @map("armed_at")
+
+  /// Whether any message in the thread carried Gmail's INBOX label when it was
+  /// snoozed. Un-snoozing only puts INBOX back if it was there to begin with —
+  /// otherwise snoozing an already-archived thread would resurrect it.
+  wasInInbox Boolean @default(true) @map("was_in_inbox")
+
+  /// Why the reminder stopped being armed: "replied" | "trashed" | "gone" |
+  /// "manual" | "replaced" | "due".
+  resolution String?   @db.VarChar(20)
+  firedAt    DateTime? @map("fired_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Every read is user-scoped; the state filter is what makes the "which
+  /// threads are hidden right now" query on the mail list cheap.
+  @@index([userId, state, kind])
+  /// The scheduler's claim query: armed rows whose time has come, oldest first.
+  @@index([state, remindAt])
+  @@map("email_reminders")
 }

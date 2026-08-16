@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { TextInput, Button, InlineLoading, Tag, DatePicker, DatePickerInput, TimePicker } from '@carbon/react';
+import { TextInput, Button, InlineLoading, Tag, DatePicker, DatePickerInput, TimePicker, ComboBox } from '@carbon/react';
 import { Tearsheet } from '@carbon/ibm-products';
 import { SendAlt, Attachment, Close, Time, Save } from '@carbon/icons-react';
 import DOMPurify from 'dompurify';
@@ -7,12 +7,14 @@ import { format } from 'date-fns';
 import { emailsApi } from '../../api/emails';
 import { draftsApi } from '../../api/drafts';
 import { authApi } from '../../api/auth';
+import { templatesApi } from '../../api/templates';
 import { useUIStore } from '../../store/uiStore';
 import { TiptapEditor } from './TiptapEditor';
 import { ComposeToolbar } from './ComposeToolbar';
 import { RecipientInput } from './RecipientInput';
 import type { Editor } from '@tiptap/react';
 import type { ComposeMode, DraftDetail, DraftSaveInput, EmailMessage } from '../../types/email';
+import type { EmailTemplate } from '../../types/template';
 
 interface ComposeAttachment {
   id: string;
@@ -37,6 +39,29 @@ function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * A template placeholder the server could not fill — same shape it validates
+ * on write, so nothing else can end up matching this.
+ */
+const PLACEHOLDER_PATTERN = /\{\{\s*[A-Za-z][A-Za-z0-9]*\s*\}\}/g;
+
+/**
+ * Placeholders still sitting in the message.
+ *
+ * The server tells us which variables it could not fill at insert time, but the
+ * user may have typed the value in since — or inserted a second template — so
+ * the only trustworthy answer is to re-read the text about to be sent.
+ */
+export function findUnfilledPlaceholders(...parts: string[]): string[] {
+  const found = new Set<string>();
+  for (const part of parts) {
+    for (const match of part.matchAll(PLACEHOLDER_PATTERN)) {
+      found.add(match[0].replace(/\s+/g, ''));
+    }
+  }
+  return [...found];
 }
 
 interface MailComposeModalProps {
@@ -79,6 +104,9 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, dr
    */
   const [draftId, setDraftId] = useState<string | null>(null);
   const [savingDraft, setSavingDraft] = useState(false);
+  const [templates, setTemplates] = useState<EmailTemplate[]>([]);
+  const [insertingTemplate, setInsertingTemplate] = useState(false);
+  const [templatePickerKey, setTemplatePickerKey] = useState(0);
 
   // Pre-fill based on mode
   useEffect(() => {
@@ -180,6 +208,105 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, dr
 
     return () => clearTimeout(timer);
   }, [open, editorInstance, mode, draft]);
+
+  // Refetched on every open rather than cached: templates are edited in
+  // Settings in another tab, and a stale picker is a template the user cannot
+  // find the one time they need it.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    templatesApi
+      .getAll()
+      .then(({ data }) => { if (!cancelled) setTemplates(data.data); })
+      .catch(() => { if (!cancelled) setTemplates([]); });
+    return () => { cancelled = true; };
+  }, [open]);
+
+  /** Replies and forwards keep the original subject; only these modes own one. */
+  const canEditSubject = mode === 'new' || mode === 'forward' || mode === 'draft';
+
+  /**
+   * Drop a template or snippet into the message.
+   *
+   * The body is **inserted at the cursor**, never swapped in over what is
+   * already there. Replacing would be defensible for an empty compose window
+   * and catastrophic everywhere else — and the window is essentially never
+   * empty, because the signature is seeded into it on open.
+   *
+   * The subject is only filled when it is blank and the mode actually owns one.
+   * Overwriting a subject the user typed, or rewriting a reply's "Re: …", are
+   * both silent destruction of something they chose.
+   */
+  const handleInsertTemplate = useCallback(async (template: EmailTemplate) => {
+    setInsertingTemplate(true);
+    try {
+      const recipient = to[0];
+      const { data } = await templatesApi.render(template.id, {
+        ...(recipient ? { recipientEmail: recipient } : {}),
+        // The display name is only a valid hint for the person it belongs to.
+        ...(replyToEmail?.fromName && recipient?.toLowerCase() === replyToEmail.from.toLowerCase()
+          ? { recipientName: replyToEmail.fromName }
+          : {}),
+      });
+      const rendered = data.data;
+
+      const editor = editorRef.current;
+      if (editor && !editor.isDestroyed) {
+        editor.chain().focus().insertContent(rendered.body).run();
+      }
+
+      const notes: string[] = [];
+      if (rendered.subject) {
+        if (!canEditSubject) {
+          notes.push('the subject was kept as-is');
+        } else if (subject.trim()) {
+          notes.push('the subject you already wrote was kept');
+        } else {
+          setSubject(rendered.subject);
+        }
+      }
+
+      if (rendered.missing.length > 0) {
+        addNotification({
+          kind: 'warning',
+          title: `Inserted "${template.name}" — fill in ${rendered.missing.map((v) => `{{${v}}}`).join(', ')}`,
+          subtitle: [
+            'There is nothing on file for those, so they were left in place. The message cannot be sent until they are gone.',
+            ...notes,
+          ].join(' Also, '),
+        });
+      } else {
+        addNotification({
+          kind: 'success',
+          title: `Inserted "${template.name}"`,
+          ...(notes.length > 0 ? { subtitle: `Note: ${notes.join('; ')}.` } : {}),
+        });
+      }
+    } catch {
+      addNotification({ kind: 'error', title: `Failed to insert "${template.name}"` });
+    } finally {
+      setInsertingTemplate(false);
+    }
+  }, [to, replyToEmail, subject, canEditSubject, addNotification]);
+
+  /**
+   * Refuse to send while a `{{placeholder}}` survives.
+   *
+   * The whole point of substitution is that a customer never receives "Hi
+   * {{firstName}},". Leaving the token visible in the editor is not enough —
+   * people send without re-reading — so this is a hard stop, and it is checked
+   * against the text at send time rather than the state at insert time.
+   */
+  const blockedByPlaceholders = (): boolean => {
+    const unfilled = findUnfilledPlaceholders(editorRef.current?.getHTML() || '', subject);
+    if (unfilled.length === 0) return false;
+    addNotification({
+      kind: 'warning',
+      title: `Fill in ${unfilled.join(', ')} before sending`,
+      subtitle: 'A template placeholder is still in the message.',
+    });
+    return true;
+  };
 
   const handleFilesSelected = useCallback((files: FileList | File[]) => {
     const fileArray = Array.from(files);
@@ -332,6 +459,7 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, dr
       addNotification({ kind: 'warning', title: 'Add at least one recipient' });
       return;
     }
+    if (blockedByPlaceholders()) return;
     setSending(true);
     try {
       await draftsApi.send(id, draftPayload());
@@ -363,6 +491,7 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, dr
       addNotification({ kind: 'warning', title: 'Please write a message' });
       return;
     }
+    if (blockedByPlaceholders()) return;
 
     const attachmentPayload = attachments
       .filter((a) => a.status === 'ready')
@@ -431,6 +560,9 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, dr
       addNotification({ kind: 'warning', title: 'Add at least one recipient' });
       return;
     }
+    // A scheduled send goes out unattended, so an unfilled placeholder here is
+    // strictly worse than one in an immediate send — nobody is watching.
+    if (blockedByPlaceholders()) return;
 
     const attachmentPayload = attachments
       .filter((a) => a.status === 'ready')
@@ -581,6 +713,42 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, dr
             <span className="compose-form__subject-label">Subject:</span> {subject}
           </div>
         )}
+
+        {/*
+          A filterable ComboBox rather than a dialog: picking a saved body is a
+          "choose one from a list" job, which is what Carbon's combo box is for,
+          and it keeps the whole interaction to a click and a keystroke inside
+          the compose window instead of covering it with a second layer.
+        */}
+        <div className="compose-templates">
+          <ComboBox<EmailTemplate>
+            // Remounted after each insert: the picker is a command, not a
+            // selection, so the previous choice must not linger in the field.
+            key={`compose-template-picker-${templatePickerKey}`}
+            id="compose-template-picker"
+            className="compose-templates__picker"
+            size="sm"
+            titleText="Templates"
+            placeholder={templates.length > 0 ? 'Insert a template or snippet' : 'No templates saved yet'}
+            helperText={
+              templates.length > 0
+                ? 'Inserted at the cursor — nothing you have written is replaced'
+                : 'Create them under Settings → Email Templates'
+            }
+            disabled={templates.length === 0 || insertingTemplate}
+            items={templates}
+            selectedItem={null}
+            itemToString={(item: EmailTemplate | null) =>
+              item ? (item.kind === 'snippet' ? `${item.name} — snippet` : item.name) : ''
+            }
+            onChange={({ selectedItem }: { selectedItem?: EmailTemplate | null }) => {
+              if (!selectedItem) return;
+              setTemplatePickerKey((k) => k + 1);
+              void handleInsertTemplate(selectedItem);
+            }}
+          />
+          {insertingTemplate && <InlineLoading description="Inserting..." />}
+        </div>
 
         <ComposeToolbar editor={editorInstance} onAttach={() => fileInputRef.current?.click()} />
         <TiptapEditor editorRef={editorRef} onEditorReady={setEditorInstance} placeholder="Write your message..." />

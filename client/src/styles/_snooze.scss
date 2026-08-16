@@ -1,0 +1,71 @@
+// Snoozed mail: the folder entry, the row treatment for a snoozed thread and
+// the snooze-until picker.
+//
+// `@use` scopes members per-file, so this partial declares the Carbon modules
+// it needs itself rather than inheriting them from index.scss.
+@use '@carbon/react/scss/type' as type;
+@use '@carbon/react/scss/spacing' as *;
+
+// ─── ROW BADGES ───────────────────────────────
+//
+// The "Shared" tag used to sit bare at the bottom of a thread row. A snoozed or
+// chased thread can carry a second one, so they share a flex line rather than
+// stacking and pushing the row height around.
+.thread-item__tags {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: $spacing-02;
+
+  &:empty {
+    display: none;
+  }
+}
+
+// ─── SNOOZE PICKER ────────────────────────────
+.snooze-form {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-05;
+}
+
+// What the chosen kind actually does. The distinction between "hide this" and
+// "chase this" is the one thing a user cannot infer from the switcher labels.
+.snooze-form__explainer {
+  @include type.type-style('label-01');
+  color: var(--cds-text-secondary);
+  margin: 0;
+}
+
+.snooze-form__custom {
+  display: flex;
+  gap: $spacing-05;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  padding-inline-start: $spacing-06;
+}
+
+.snooze-form__error {
+  @include type.type-style('label-01');
+  color: var(--cds-text-error);
+  margin: 0;
+}
+
+// Each preset shows the absolute time it resolves to, so the shortcut never
+// hides what it means.
+.snooze-preset {
+  display: flex;
+  align-items: baseline;
+  gap: $spacing-03;
+  flex-wrap: wrap;
+}
+
+.snooze-preset__label {
+  @include type.type-style('body-compact-01');
+  color: var(--cds-text-primary);
+}
+
+.snooze-preset__when {
+  @include type.type-style('label-01');
+  color: var(--cds-text-secondary);
+}

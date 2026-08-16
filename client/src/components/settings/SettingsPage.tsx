@@ -54,6 +54,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { useSearchParams } from 'react-router-dom';
 import { authApi } from '../../api/auth';
 import { TiptapEditor } from '../mail/TiptapEditor';
+import { TemplateSettings } from './TemplateSettings';
 import { taskStatusesApi } from '../../api/taskStatuses';
 import { companyCategoriesApi } from '../../api/companyCategories';
 import { dealPartnersApi } from '../../api/dealPartners';
@@ -784,6 +785,9 @@ export function SettingsPage() {
             </div>
           </Stack>
         </Tile>
+
+        {/* ─── Email Templates & Snippets ─── */}
+        <TemplateSettings />
 
         {/* ─── Task Statuses ─── */}
         <Tile className="settings-tile">

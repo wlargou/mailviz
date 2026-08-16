@@ -147,6 +147,27 @@ export interface DraftSaveInput {
   replyToEmailId?: string;
 }
 
+/**
+ * The two things a reminder can be. They share a row and a scheduler on the
+ * server and differ in what firing does: a snooze hides the thread and brings
+ * it back, a follow-up hides nothing and cancels itself if a reply arrives.
+ */
+export type ReminderKind = 'snooze' | 'follow_up';
+
+/** A pending snooze or follow-up. Mirrors `EmailReminder` on the server. */
+export interface EmailReminder {
+  id: string;
+  threadId: string;
+  kind: ReminderKind;
+  state: 'armed' | 'fired' | 'cancelled';
+  remindAt: string;
+  armedAt: string;
+  wasInInbox: boolean;
+  resolution: string | null;
+  firedAt: string | null;
+  createdAt: string;
+}
+
 export interface ConvertToTaskInput {
   title?: string;
   priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';

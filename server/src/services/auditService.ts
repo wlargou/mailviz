@@ -28,6 +28,10 @@ export type AuditAction =
   | 'EMAIL_DRAFT_SAVED'
   | 'EMAIL_DRAFT_DELETED'
   | 'EMAIL_DRAFT_SENT'
+  | 'EMAIL_SNOOZED'
+  | 'EMAIL_UNSNOOZED'
+  | 'EMAIL_FOLLOW_UP_SET'
+  | 'EMAIL_FOLLOW_UP_CLEARED'
   // Task actions
   | 'TASK_CREATED'
   | 'TASK_UPDATED'
@@ -52,6 +56,10 @@ export type AuditAction =
   | 'CONTACT_UPDATED'
   | 'CONTACT_DELETED'
   | 'CONTACT_MERGED'
+  // Email template / snippet actions
+  | 'TEMPLATE_CREATED'
+  | 'TEMPLATE_UPDATED'
+  | 'TEMPLATE_DELETED'
   // Label actions
   | 'LABEL_CREATED'
   | 'LABEL_UPDATED'
@@ -62,7 +70,7 @@ export type AuditAction =
   | 'USER_LOGIN'
   | 'USER_LOGOUT';
 
-export type EntityType = 'email' | 'task' | 'deal' | 'event' | 'company' | 'contact' | 'label' | 'auth' | 'scheduled_email' | 'email_draft';
+export type EntityType = 'email' | 'task' | 'deal' | 'event' | 'company' | 'contact' | 'label' | 'auth' | 'scheduled_email' | 'email_draft' | 'email_template';
 
 /**
  * Anything that can write an audit row — the shared client or a transaction
