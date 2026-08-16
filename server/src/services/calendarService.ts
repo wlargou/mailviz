@@ -82,6 +82,7 @@ export const calendarService = {
     sendUpdates?: 'all' | 'externalOnly' | 'none';
     addGoogleMeet?: boolean;
     colorId?: string;
+    recurrence?: string[];
   }, userId: string) {
     const event = await prisma.calendarEvent.create({
       data: {
@@ -93,6 +94,7 @@ export const calendarService = {
         location: data.location,
         isAllDay: data.isAllDay ?? false,
         colorId: data.colorId || null,
+        recurrence: data.recurrence ?? [],
         attendees: data.attendees ? (data.attendees as unknown as Prisma.InputJsonValue) : undefined,
       },
     });
@@ -103,6 +105,7 @@ export const calendarService = {
       sendUpdates: data.sendUpdates,
       addGoogleMeet: data.addGoogleMeet,
       colorId: data.colorId,
+      recurrence: data.recurrence,
     });
 
     // Re-fetch event after pushToGoogle updated it with Google response data
@@ -122,6 +125,7 @@ export const calendarService = {
     sendUpdates?: 'all' | 'externalOnly' | 'none';
     addGoogleMeet?: boolean;
     colorId?: string;
+    recurrence?: string[];
   }, userId: string) {
     const updateData: Prisma.CalendarEventUpdateInput = {};
     if (data.title !== undefined) updateData.title = data.title;
@@ -133,6 +137,14 @@ export const calendarService = {
     if (data.colorId !== undefined) updateData.colorId = data.colorId || null;
     if (data.attendees !== undefined) updateData.attendees = data.attendees as unknown as Prisma.InputJsonValue;
 
+    // Recurrence lives on the master event. A row that carries a recurringEventId
+    // is a single instance of a series (its `recurrence` is a copy of the parent's),
+    // so we never rewrite the rule from there — Google would reject it anyway.
+    const existing = await prisma.calendarEvent.findUnique({ where: { id, userId } });
+    const canEditRecurrence = !existing?.recurringEventId;
+    const recurrence = canEditRecurrence ? data.recurrence : undefined;
+    if (recurrence !== undefined) updateData.recurrence = recurrence;
+
     const event = await prisma.calendarEvent.update({
       where: { id, userId },
       data: updateData,
@@ -143,6 +155,7 @@ export const calendarService = {
       sendUpdates: data.sendUpdates,
       addGoogleMeet: data.addGoogleMeet,
       colorId: data.colorId,
+      recurrence,
     });
 
     // Re-fetch event after pushToGoogle updated it with Google response data
@@ -498,6 +511,7 @@ export const calendarService = {
       sendUpdates?: 'all' | 'externalOnly' | 'none';
       addGoogleMeet?: boolean;
       colorId?: string;
+      recurrence?: string[];
     },
   ) {
     const oauth2Client = await googleAuthService.getAuthenticatedClient(userId);
@@ -527,6 +541,9 @@ export const calendarService = {
         }
         if (extraData?.colorId) {
           requestBody.colorId = extraData.colorId;
+        }
+        if (extraData?.recurrence && extraData.recurrence.length > 0) {
+          requestBody.recurrence = extraData.recurrence;
         }
         if (extraData?.addGoogleMeet) {
           requestBody.conferenceData = {
@@ -559,6 +576,12 @@ export const calendarService = {
           organizer: a.organizer || false,
         })) || null;
 
+        // A recurring insert returns the master event (recurrence set, no
+        // recurringEventId). Persist exactly what Google echoed back so the
+        // next incremental sync — which upserts this same googleEventId with
+        // gEvent.recurrence — writes an identical value instead of fighting us.
+        const returnedRecurrence = (googleEvent.data.recurrence as string[] | undefined) || null;
+
         await prisma.calendarEvent.update({
           where: { id: eventId },
           data: {
@@ -566,6 +589,7 @@ export const calendarService = {
             syncedAt: new Date(),
             ...(conferenceLink ? { conferenceLink } : {}),
             ...(returnedAttendees ? { attendees: returnedAttendees as unknown as Prisma.InputJsonValue } : {}),
+            ...(returnedRecurrence ? { recurrence: returnedRecurrence } : {}),
           },
         });
       } else if (action === 'update') {
@@ -592,6 +616,15 @@ export const calendarService = {
         }
         if (event.colorId) {
           requestBody.colorId = requestBody.colorId ?? event.colorId;
+        }
+        // events.update is a full replace: omitting `recurrence` on a master
+        // event would silently collapse the whole series into a single event.
+        // An explicit empty array from extraData is how the caller clears it.
+        if (extraData?.recurrence) {
+          requestBody.recurrence = extraData.recurrence;
+        }
+        if (!event.recurringEventId && event.recurrence.length > 0) {
+          requestBody.recurrence = requestBody.recurrence ?? event.recurrence;
         }
         if (extraData?.addGoogleMeet) {
           requestBody.conferenceData = {
@@ -625,12 +658,17 @@ export const calendarService = {
           organizer: a.organizer || false,
         })) || null;
 
+        // Mirror the create path: store Google's own view of the rule so the
+        // sync path has nothing to correct.
+        const returnedRecurrence = (updatedGoogleEvent.data.recurrence as string[] | undefined) || null;
+
         await prisma.calendarEvent.update({
           where: { id: eventId },
           data: {
             syncedAt: new Date(),
             ...(conferenceLink ? { conferenceLink } : {}),
             ...(returnedAttendees ? { attendees: returnedAttendees as unknown as Prisma.InputJsonValue } : {}),
+            ...(returnedRecurrence ? { recurrence: returnedRecurrence } : {}),
           },
         });
       } else if (action === 'delete') {

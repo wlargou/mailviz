@@ -53,12 +53,30 @@ machine-local.
   deliberate stand-in. Needs: GCP topic/subscription, `gmailWatchService.ts`,
   `watchExpiration` on GoogleAuth, `POST /api/v1/webhooks/gmail`, and a
   `GMAIL_PUSH_ENABLED` strategy so local dev keeps polling.
-- [ ] **2.2 Sync resilience (live-email-sync Phase 5)** — `bottleneck` rate limiting
-  for batch ops; smarter history fallback (re-sync 7 days, not 3 months);
-  WebSocket reconnect indicator; sync-on-reconnect for changes missed while offline.
-- [ ] **2.3 Calendar create-flow gaps** — recurrence **on create** (you can view and
-  delete series but not create one), reminders, and visibility. Scoped in
-  `event-creation-enhancement.md`, never built.
+- [~] **2.2 Sync resilience (live-email-sync Phase 5)** — partially done.
+  - [x] Optimistic UI — was already implemented; the plan checkbox was stale.
+  - [x] Bounded history-expiry catch-up. The 404 path fell through to a FULL
+    initialSync, which with EMAIL_SYNC_MONTHS=0 re-synced the entire mailbox
+    (111k messages here). Now bounded by SYNC_CATCHUP_DAYS (default 7).
+  - [x] Sync-on-reconnect — `onReconnect` refetches in MailPage, CalendarPage
+    and AppSideNav.
+  - [ ] `bottleneck` rate limiting for batch operations — not installed.
+  - [ ] WebSocket reconnect indicator in the UI — the hook reconnects silently;
+    nothing ever tells the user they are disconnected.
+  - [ ] **Found while testing:** every mounted `useEmailWebSocket` instance opens
+    its OWN socket, so the app holds 3+ concurrent connections (MailPage,
+    CalendarPage, AppSideNav, AppShell) and each drop/reconnect happens N times.
+    Should be a single shared connection via context or a store.
+- [~] **2.3 Calendar create-flow gaps** — partially done. (Attendees,
+  sendUpdates, Google Meet, colorId and the date/time pickers were already
+  shipped — that plan's gap table was stale.)
+  - [x] **Recurrence on create** — presets (Daily / Weekly on <weekday> /
+    Monthly on day N / Yearly) anchored to the start date. Custom builder
+    deliberately omitted; an unrecognised existing RRULE is shown read-only
+    and never rewritten.
+  - [ ] Reminders (popup/email X minutes before) — absent everywhere.
+  - [ ] Visibility (default/public/private) — absent everywhere.
+  - [ ] Custom recurrence builder (INTERVAL/COUNT/UNTIL/multi-BYDAY).
 
 ## Phase 3 — Genuine product gaps
 

@@ -38,6 +38,8 @@ export interface CreateEventInput {
   sendUpdates?: 'all' | 'none';
   addGoogleMeet?: boolean;
   colorId?: string;
+  /** RFC 5545 recurrence lines, e.g. ['RRULE:FREQ=WEEKLY;BYDAY=MO']. Empty array clears the rule. */
+  recurrence?: string[];
 }
 
 export interface UpdateEventInput extends Partial<CreateEventInput> {}

@@ -1011,6 +1011,34 @@
   flex-shrink: 0;
 }
 
+// Existing recurrence that we can't express as a preset — shown read-only so
+// the underlying RRULE is never silently rewritten.
+.event-modal__recurrence-locked {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-02;
+}
+
+.event-modal__recurrence-locked-title {
+  color: var(--cds-text-secondary);
+  @include type.type-style('label-01');
+}
+
+.event-modal__recurrence-rule {
+  padding: $spacing-03 $spacing-05;
+  background: var(--cds-field-01);
+  border-block-end: 1px solid var(--cds-border-strong);
+  color: var(--cds-text-primary);
+  @include type.type-style('code-01');
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.event-modal__recurrence-locked-hint {
+  color: var(--cds-text-helper);
+  @include type.type-style('helper-text-01');
+}
+
 .event-modal__meeting-detected {
   display: flex;
   align-items: center;
