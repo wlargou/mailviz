@@ -1039,6 +1039,52 @@
   @include type.type-style('helper-text-01');
 }
 
+// Reminder overrides — compact rows so the (already long) event form doesn't
+// grow by a full field per reminder.
+.event-modal__reminders {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-03;
+}
+
+.event-modal__reminder-list {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: $spacing-02;
+}
+
+.event-modal__reminder-row {
+  display: grid;
+  // Carbon's NumberInput with steppers has a larger intrinsic min-width than
+  // its track, so an 8rem column let it overflow and cover the unit label
+  // ("minutes before" rendered as "nutes before"). The column is widened to fit
+  // the steppers, and min-inline-size: 0 below stops any child from pushing
+  // past its own track.
+  grid-template-columns: 10rem 10.5rem 1fr auto;
+  align-items: center;
+  gap: $spacing-03;
+  width: 100%;
+
+  > * {
+    min-inline-size: 0;
+  }
+
+  .cds--number {
+    inline-size: 100%;
+  }
+}
+
+.event-modal__reminder-unit {
+  color: var(--cds-text-secondary);
+  @include type.type-style('label-01');
+}
+
+.event-modal__reminder-hint {
+  color: var(--cds-text-helper);
+  @include type.type-style('helper-text-01');
+}
+
 .event-modal__meeting-detected {
   display: flex;
   align-items: center;

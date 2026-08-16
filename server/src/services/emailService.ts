@@ -2,6 +2,7 @@ import { google } from 'googleapis';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { getGmailClient } from '../lib/gmail.js';
+import { isGmailRateLimitError } from '../lib/gmailLimiter.js';
 import { customerService } from './customerService.js';
 import { extractDomain, isPersonalDomain, normalizeDomain, parseName } from '../utils/domainResolver.js';
 import { parsePagination, paginationMeta } from '../utils/pagination.js';
@@ -48,7 +49,11 @@ export const emailService = {
         contactsCreated = result.contactsCreated;
       }
     } catch (err: any) {
-      if (err?.code === 403 || err?.status === 403) {
+      // A plain 403 means the gmail scope was never granted. A 403 carrying a
+      // rateLimitExceeded reason is throttling that outlived the limiter's
+      // retries — telling the user to reconnect Google would be wrong, so let
+      // it surface as itself.
+      if ((err?.code === 403 || err?.status === 403) && !isGmailRateLimitError(err)) {
         throw Object.assign(
           new Error('Gmail access not granted. Please reconnect Google from Settings to grant email permissions.'),
           { status: 403 }

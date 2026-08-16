@@ -60,13 +60,13 @@ machine-local.
     (111k messages here). Now bounded by SYNC_CATCHUP_DAYS (default 7).
   - [x] Sync-on-reconnect — `onReconnect` refetches in MailPage, CalendarPage
     and AppSideNav.
-  - [ ] `bottleneck` rate limiting for batch operations — not installed.
-  - [ ] WebSocket reconnect indicator in the UI — the hook reconnects silently;
-    nothing ever tells the user they are disconnected.
-  - [ ] **Found while testing:** every mounted `useEmailWebSocket` instance opens
-    its OWN socket, so the app holds 3+ concurrent connections (MailPage,
-    CalendarPage, AppSideNav, AppShell) and each drop/reconnect happens N times.
-    Should be a single shared connection via context or a store.
+  - [x] `bottleneck` rate limiting — per-user Bottleneck Group wrapping every
+    Gmail call at the single choke point (getGmailClient), with retry/backoff
+    on 429 and rate-limit 403s only.
+  - [x] WebSocket reconnect indicator — a "Reconnecting" tag in the header,
+    shown only on a genuine drop (not first connect, not while connected).
+  - [x] **Shared WebSocket** — was one socket per mounted hook (4 concurrent);
+    now a single reference-counted connection.
 - [~] **2.3 Calendar create-flow gaps** — partially done. (Attendees,
   sendUpdates, Google Meet, colorId and the date/time pickers were already
   shipped — that plan's gap table was stale.)
@@ -74,8 +74,9 @@ machine-local.
     Monthly on day N / Yearly) anchored to the start date. Custom builder
     deliberately omitted; an unrecognised existing RRULE is shown read-only
     and never rewritten.
-  - [ ] Reminders (popup/email X minutes before) — absent everywhere.
-  - [ ] Visibility (default/public/private) — absent everywhere.
+  - [x] Reminders — useDefault toggle plus up to 5 (method, minutes) rows,
+    enforcing Google's caps (5 overrides, 40320 minutes).
+  - [x] Visibility — Calendar default / Public / Private.
   - [ ] Custom recurrence builder (INTERVAL/COUNT/UNTIL/multi-BYDAY).
 
 ## Phase 3 — Genuine product gaps

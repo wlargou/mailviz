@@ -228,6 +228,10 @@ model CalendarEvent {
   conferenceLink    String?   @map("conference_link")
   recurringEventId  String?   @map("recurring_event_id")
   recurrence        String[]  @default([])
+  // { useDefault: boolean, overrides?: [{ method: 'email' | 'popup', minutes: number }] }
+  reminders         Json?     @db.JsonB
+  // 'default' | 'public' | 'private' | 'confidential'
+  visibility        String?   @db.VarChar(20)
   syncedAt          DateTime? @map("synced_at")
   userId        String    @map("user_id")
   createdAt     DateTime  @default(now()) @map("created_at")

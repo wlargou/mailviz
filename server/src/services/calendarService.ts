@@ -6,8 +6,9 @@ import { customerService } from './customerService.js';
 import { extractDomain, isPersonalDomain, normalizeDomain } from '../utils/domainResolver.js';
 import { wsEmit } from '../websocket.js';
 import { env } from '../config/env.js';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { auditService } from './auditService.js';
+import type { EventReminders, EventVisibility } from '../validators/calendarValidator.js';
 
 // Patterns to extract meeting links from event descriptions.
 // Order matters — first match wins.
@@ -32,6 +33,47 @@ function extractMeetingLink(description: string | null | undefined): string | nu
     if (match) return match[0];
   }
   return null;
+}
+
+const VISIBILITY_VALUES: readonly EventVisibility[] = ['default', 'public', 'private', 'confidential'];
+
+/** Google returns visibility as a free-form string — keep only values we model. */
+function normalizeVisibility(raw: string | null | undefined): EventVisibility | null {
+  return VISIBILITY_VALUES.find((v) => v === raw) ?? null;
+}
+
+/** Shape Google hands back on an event; every field is optional/nullable there. */
+interface GoogleReminders {
+  useDefault?: boolean | null;
+  overrides?: Array<{ method?: string | null; minutes?: number | null }> | null;
+}
+
+/**
+ * Narrow a reminders payload — from Google or from our own Json column — down
+ * to the shape we persist, dropping override entries with an unknown method or
+ * a missing offset. Overrides and useDefault are mutually exclusive, so an
+ * event with overrides always ends up with useDefault:false.
+ */
+function normalizeReminders(raw: unknown): EventReminders | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const source = raw as GoogleReminders;
+
+  const overrides: Array<{ method: 'email' | 'popup'; minutes: number }> = [];
+  for (const o of Array.isArray(source.overrides) ? source.overrides : []) {
+    const method = o.method === 'email' ? 'email' : o.method === 'popup' ? 'popup' : null;
+    if (!method || typeof o.minutes !== 'number') continue;
+    overrides.push({ method, minutes: o.minutes });
+  }
+
+  if (overrides.length > 0) return { useDefault: false, overrides };
+  return { useDefault: source.useDefault ?? true };
+}
+
+/** Json columns need Prisma.DbNull rather than a bare null to clear the value. */
+function remindersColumn(
+  reminders: EventReminders | null | undefined,
+): Prisma.InputJsonValue | typeof Prisma.DbNull {
+  return reminders ? (reminders as unknown as Prisma.InputJsonValue) : Prisma.DbNull;
 }
 
 export const calendarService = {
@@ -83,6 +125,8 @@ export const calendarService = {
     addGoogleMeet?: boolean;
     colorId?: string;
     recurrence?: string[];
+    reminders?: EventReminders;
+    visibility?: EventVisibility;
   }, userId: string) {
     const event = await prisma.calendarEvent.create({
       data: {
@@ -96,6 +140,8 @@ export const calendarService = {
         colorId: data.colorId || null,
         recurrence: data.recurrence ?? [],
         attendees: data.attendees ? (data.attendees as unknown as Prisma.InputJsonValue) : undefined,
+        reminders: remindersColumn(data.reminders),
+        visibility: data.visibility ?? null,
       },
     });
 
@@ -106,6 +152,8 @@ export const calendarService = {
       addGoogleMeet: data.addGoogleMeet,
       colorId: data.colorId,
       recurrence: data.recurrence,
+      reminders: data.reminders,
+      visibility: data.visibility,
     });
 
     // Re-fetch event after pushToGoogle updated it with Google response data
@@ -126,6 +174,8 @@ export const calendarService = {
     addGoogleMeet?: boolean;
     colorId?: string;
     recurrence?: string[];
+    reminders?: EventReminders;
+    visibility?: EventVisibility;
   }, userId: string) {
     const updateData: Prisma.CalendarEventUpdateInput = {};
     if (data.title !== undefined) updateData.title = data.title;
@@ -136,6 +186,8 @@ export const calendarService = {
     if (data.isAllDay !== undefined) updateData.isAllDay = data.isAllDay;
     if (data.colorId !== undefined) updateData.colorId = data.colorId || null;
     if (data.attendees !== undefined) updateData.attendees = data.attendees as unknown as Prisma.InputJsonValue;
+    if (data.reminders !== undefined) updateData.reminders = remindersColumn(data.reminders);
+    if (data.visibility !== undefined) updateData.visibility = data.visibility;
 
     // Recurrence lives on the master event. A row that carries a recurringEventId
     // is a single instance of a series (its `recurrence` is a copy of the parent's),
@@ -156,6 +208,8 @@ export const calendarService = {
       addGoogleMeet: data.addGoogleMeet,
       colorId: data.colorId,
       recurrence,
+      reminders: data.reminders,
+      visibility: data.visibility,
     });
 
     // Re-fetch event after pushToGoogle updated it with Google response data
@@ -402,6 +456,10 @@ export const calendarService = {
       recurringEventId,
       recurrence,
       colorId: gEvent.colorId || null,
+      // Events created outside this app carry their own reminders/visibility —
+      // store them so the UI shows what Google actually has.
+      reminders: remindersColumn(normalizeReminders(gEvent.reminders)),
+      visibility: normalizeVisibility(gEvent.visibility),
       syncedAt: new Date(),
     };
 
@@ -512,6 +570,8 @@ export const calendarService = {
       addGoogleMeet?: boolean;
       colorId?: string;
       recurrence?: string[];
+      reminders?: EventReminders;
+      visibility?: EventVisibility;
     },
   ) {
     const oauth2Client = await googleAuthService.getAuthenticatedClient(userId);
@@ -544,6 +604,12 @@ export const calendarService = {
         }
         if (extraData?.recurrence && extraData.recurrence.length > 0) {
           requestBody.recurrence = extraData.recurrence;
+        }
+        if (extraData?.reminders) {
+          requestBody.reminders = extraData.reminders;
+        }
+        if (extraData?.visibility) {
+          requestBody.visibility = extraData.visibility;
         }
         if (extraData?.addGoogleMeet) {
           requestBody.conferenceData = {
@@ -582,6 +648,12 @@ export const calendarService = {
         // gEvent.recurrence — writes an identical value instead of fighting us.
         const returnedRecurrence = (googleEvent.data.recurrence as string[] | undefined) || null;
 
+        // Same reasoning for reminders/visibility: Google fills in defaults we
+        // never sent (e.g. reminders:{useDefault:true}, visibility:'default'),
+        // so store its version rather than ours.
+        const returnedReminders = normalizeReminders(googleEvent.data.reminders);
+        const returnedVisibility = normalizeVisibility(googleEvent.data.visibility);
+
         await prisma.calendarEvent.update({
           where: { id: eventId },
           data: {
@@ -590,6 +662,8 @@ export const calendarService = {
             ...(conferenceLink ? { conferenceLink } : {}),
             ...(returnedAttendees ? { attendees: returnedAttendees as unknown as Prisma.InputJsonValue } : {}),
             ...(returnedRecurrence ? { recurrence: returnedRecurrence } : {}),
+            ...(returnedReminders ? { reminders: remindersColumn(returnedReminders) } : {}),
+            ...(returnedVisibility ? { visibility: returnedVisibility } : {}),
           },
         });
       } else if (action === 'update') {
@@ -626,6 +700,19 @@ export const calendarService = {
         if (!event.recurringEventId && event.recurrence.length > 0) {
           requestBody.recurrence = requestBody.recurrence ?? event.recurrence;
         }
+        // Also a full replace for these two: omitting `reminders` resets the
+        // event to the calendar defaults and omitting `visibility` resets it to
+        // 'default', so fall back to whatever we already have stored.
+        const storedReminders = normalizeReminders(event.reminders);
+        if (extraData?.reminders) {
+          requestBody.reminders = extraData.reminders;
+        } else if (storedReminders) {
+          requestBody.reminders = storedReminders;
+        }
+        const visibility = extraData?.visibility ?? normalizeVisibility(event.visibility);
+        if (visibility) {
+          requestBody.visibility = visibility;
+        }
         if (extraData?.addGoogleMeet) {
           requestBody.conferenceData = {
             createRequest: {
@@ -661,6 +748,8 @@ export const calendarService = {
         // Mirror the create path: store Google's own view of the rule so the
         // sync path has nothing to correct.
         const returnedRecurrence = (updatedGoogleEvent.data.recurrence as string[] | undefined) || null;
+        const returnedReminders = normalizeReminders(updatedGoogleEvent.data.reminders);
+        const returnedVisibility = normalizeVisibility(updatedGoogleEvent.data.visibility);
 
         await prisma.calendarEvent.update({
           where: { id: eventId },
@@ -669,6 +758,8 @@ export const calendarService = {
             ...(conferenceLink ? { conferenceLink } : {}),
             ...(returnedAttendees ? { attendees: returnedAttendees as unknown as Prisma.InputJsonValue } : {}),
             ...(returnedRecurrence ? { recurrence: returnedRecurrence } : {}),
+            ...(returnedReminders ? { reminders: remindersColumn(returnedReminders) } : {}),
+            ...(returnedVisibility ? { visibility: returnedVisibility } : {}),
           },
         });
       } else if (action === 'delete') {

@@ -4,7 +4,9 @@ import {
   TextArea,
   Toggle,
   Tag,
+  Button,
   Dropdown,
+  NumberInput,
   DatePicker,
   DatePickerInput,
   TimePicker,
@@ -12,11 +14,16 @@ import {
   SelectItem,
 } from '@carbon/react';
 import { Tearsheet } from '@carbon/ibm-products';
-import { Launch, VideoChat } from '@carbon/icons-react';
+import { Add, Launch, TrashCan, VideoChat } from '@carbon/icons-react';
 import { calendarApi } from '../../api/calendar';
 import { contactsApi } from '../../api/contacts';
 import { useUIStore } from '../../store/uiStore';
-import type { CalendarEvent } from '../../types/calendar';
+import type {
+  CalendarEvent,
+  EventReminders,
+  EventVisibility,
+  ReminderMethod,
+} from '../../types/calendar';
 import type { Contact } from '../../types/customer';
 import { format } from 'date-fns';
 
@@ -133,6 +140,49 @@ function parseRecurrencePreset(rules: string[], start: Date): RecurrencePresetId
   }
 }
 
+// ─── Reminders & visibility ───────────────────────
+// Google caps an event at 5 reminder overrides, each at most 4 weeks (40320
+// minutes) ahead of the start time. We mirror both limits in the UI so the API
+// never has to reject a save.
+const MAX_REMINDERS = 5;
+const MAX_REMINDER_MINUTES = 40320;
+
+interface ReminderMethodOption {
+  id: ReminderMethod;
+  label: string;
+}
+
+const REMINDER_METHODS: ReminderMethodOption[] = [
+  { id: 'popup', label: 'Notification' },
+  { id: 'email', label: 'Email' },
+];
+
+/** A reminder row in the form. `key` only exists to keep React rows stable. */
+interface ReminderRow {
+  key: number;
+  method: ReminderMethod;
+  minutes: number;
+}
+
+let reminderKeySeq = 0;
+function nextReminderKey(): number {
+  reminderKeySeq += 1;
+  return reminderKeySeq;
+}
+
+interface VisibilityOption {
+  id: Exclude<EventVisibility, 'confidential'>;
+  label: string;
+}
+
+// 'confidential' is deliberately omitted — Google documents it as equivalent to
+// 'private' and offering both only confuses people.
+const VISIBILITY_OPTIONS: VisibilityOption[] = [
+  { id: 'default', label: 'Calendar default' },
+  { id: 'public', label: 'Public — details visible to anyone who sees the calendar' },
+  { id: 'private', label: 'Private — details visible to attendees only' },
+];
+
 function detectMeetingProvider(url: string): string | null {
   if (!url) return null;
   const lower = url.toLowerCase();
@@ -226,6 +276,11 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
   const [addGoogleMeet, setAddGoogleMeet] = useState(false);
   const [colorId, setColorId] = useState<string | null>(null);
 
+  // Reminders & visibility
+  const [useDefaultReminders, setUseDefaultReminders] = useState(true);
+  const [reminderRows, setReminderRows] = useState<ReminderRow[]>([]);
+  const [visibility, setVisibility] = useState<VisibilityOption['id']>('default');
+
   const meetingProvider = detectMeetingProvider(location);
 
   // Recurrence rules and labels are anchored on the currently selected start
@@ -286,6 +341,22 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
       setColorId(event.colorId || null);
       setAddGoogleMeet(false);
 
+      // useDefault:false with no overrides is Google's way of saying "no
+      // reminders at all", so it round-trips as an empty custom list.
+      const reminders = event.reminders;
+      setUseDefaultReminders(reminders ? reminders.useDefault : true);
+      setReminderRows(
+        (reminders?.overrides || []).slice(0, MAX_REMINDERS).map((o) => ({
+          key: nextReminderKey(),
+          method: o.method,
+          minutes: o.minutes,
+        })),
+      );
+      // 'confidential' has no option of its own; Google treats it as private.
+      setVisibility(
+        event.visibility === 'confidential' ? 'private' : event.visibility || 'default',
+      );
+
       // An event carrying a recurringEventId is one instance of a series — its
       // rule lives on the master event, so it is never editable from here.
       const rules = event.recurrence || [];
@@ -319,6 +390,9 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
       setShowContactDropdown(false);
       setRecurrencePresetId('none');
       setLockedRecurrence(null);
+      setUseDefaultReminders(true);
+      setReminderRows([]);
+      setVisibility('default');
 
       // Set end = start + 1h
       const endDt = new Date(base.getTime() + 60 * 60000);
@@ -418,6 +492,38 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
     }
   };
 
+  const handleRemindersToggle = (checked: boolean) => {
+    setUseDefaultReminders(checked);
+    // Switching to custom with an empty list silently means "notify me about
+    // nothing", so seed the row Google itself defaults to.
+    if (!checked && reminderRows.length === 0) {
+      setReminderRows([{ key: nextReminderKey(), method: 'popup', minutes: 10 }]);
+    }
+  };
+
+  const addReminderRow = () => {
+    setReminderRows((rows) =>
+      rows.length >= MAX_REMINDERS
+        ? rows
+        : [...rows, { key: nextReminderKey(), method: 'popup', minutes: 30 }],
+    );
+  };
+
+  const updateReminderRow = (key: number, patch: Partial<Omit<ReminderRow, 'key'>>) => {
+    setReminderRows((rows) => rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  };
+
+  const removeReminderRow = (key: number) => {
+    setReminderRows((rows) => rows.filter((r) => r.key !== key));
+  };
+
+  const handleReminderMinutesChange = (key: number, raw: number | string) => {
+    const parsed = typeof raw === 'number' ? raw : parseInt(raw, 10);
+    if (Number.isNaN(parsed)) return;
+    const clamped = Math.min(Math.max(Math.trunc(parsed), 0), MAX_REMINDER_MINUTES);
+    updateReminderRow(key, { minutes: clamped });
+  };
+
   const buildDateTime = (dateStr: string, time: string): string => {
     const d = parseDateTime(dateStr, time);
     return d.toISOString();
@@ -429,6 +535,15 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
 
     const startTime24 = to24h(startTime12, startAmPm);
     const endTime24 = to24h(endTime12, endAmPm);
+
+    // Google rejects overrides alongside useDefault:true, so the two branches
+    // are exclusive.
+    const reminders: EventReminders = useDefaultReminders
+      ? { useDefault: true }
+      : {
+          useDefault: false,
+          overrides: reminderRows.map(({ method, minutes }) => ({ method, minutes })),
+        };
 
     try {
       const payload = {
@@ -448,6 +563,8 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
           lockedRecurrence === null
             ? buildRecurrenceRules(recurrencePresetId, recurrenceAnchor)
             : undefined,
+        reminders,
+        visibility,
       };
 
       if (event) {
@@ -631,7 +748,92 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
         </div>
       )}
 
-      {/* 6. Add guests — contact search */}
+      {/* 6. Reminders */}
+      <div className="tearsheet-form__item event-modal__reminders">
+        <Toggle
+          id="event-reminders-default"
+          labelText="Reminders"
+          labelA="Custom"
+          labelB="Calendar default"
+          toggled={useDefaultReminders}
+          onToggle={handleRemindersToggle}
+        />
+        {!useDefaultReminders && (
+          <div className="event-modal__reminder-list">
+            {reminderRows.map((row) => (
+              <div className="event-modal__reminder-row" key={row.key}>
+                <Dropdown
+                  id={`event-reminder-method-${row.key}`}
+                  titleText="Reminder method"
+                  hideLabel
+                  size="sm"
+                  label="Notification"
+                  items={REMINDER_METHODS}
+                  itemToString={(item: ReminderMethodOption | null) => item?.label || ''}
+                  selectedItem={
+                    REMINDER_METHODS.find((m) => m.id === row.method) || REMINDER_METHODS[0]
+                  }
+                  onChange={({ selectedItem }) => {
+                    if (selectedItem) updateReminderRow(row.key, { method: selectedItem.id });
+                  }}
+                />
+                <NumberInput
+                  id={`event-reminder-minutes-${row.key}`}
+                  label="Minutes before event"
+                  hideLabel
+                  size="sm"
+                  min={0}
+                  max={MAX_REMINDER_MINUTES}
+                  step={5}
+                  value={row.minutes}
+                  onChange={(_e, state) => handleReminderMinutesChange(row.key, state.value)}
+                />
+                <span className="event-modal__reminder-unit">minutes before</span>
+                <Button
+                  kind="ghost"
+                  size="sm"
+                  hasIconOnly
+                  renderIcon={TrashCan}
+                  iconDescription="Remove reminder"
+                  tooltipPosition="left"
+                  onClick={() => removeReminderRow(row.key)}
+                />
+              </div>
+            ))}
+            {reminderRows.length === 0 && (
+              <span className="event-modal__reminder-hint">
+                No reminders — you won't be notified about this event.
+              </span>
+            )}
+            {reminderRows.length < MAX_REMINDERS ? (
+              <Button kind="ghost" size="sm" renderIcon={Add} onClick={addReminderRow}>
+                Add reminder
+              </Button>
+            ) : (
+              <span className="event-modal__reminder-hint">
+                Google Calendar allows up to {MAX_REMINDERS} reminders per event.
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* 7. Visibility */}
+      <Dropdown
+        id="event-visibility"
+        titleText="Visibility"
+        label="Calendar default"
+        helperText="Who can see this event's details on your calendar."
+        items={VISIBILITY_OPTIONS}
+        itemToString={(item: VisibilityOption | null) => item?.label || ''}
+        selectedItem={VISIBILITY_OPTIONS.find((v) => v.id === visibility) || VISIBILITY_OPTIONS[0]}
+        onChange={({ selectedItem }) => {
+          if (selectedItem) setVisibility(selectedItem.id);
+        }}
+        className="tearsheet-form__item"
+      />
+
+      {/* 8. Add guests — contact search */}
       <div className="tearsheet-form__item event-modal__guests" ref={dropdownRef}>
         <TextInput
           id="attendee-input"
@@ -697,7 +899,7 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
         )}
       </div>
 
-      {/* 7. Notify attendees toggle */}
+      {/* 9. Notify attendees toggle */}
       {attendees.length > 0 && (
         <Toggle
           id="notify-attendees"
@@ -710,7 +912,7 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
         />
       )}
 
-      {/* 8. Location */}
+      {/* 10. Location */}
       <div className="tearsheet-form__item">
         <TextInput
           id="event-location"
@@ -731,7 +933,7 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
         )}
       </div>
 
-      {/* 9. Google Meet toggle */}
+      {/* 11. Google Meet toggle */}
       <Toggle
         id="add-google-meet"
         labelText="Add Google Meet video conferencing"
@@ -750,7 +952,7 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
         </div>
       )}
 
-      {/* 10. Color dropdown */}
+      {/* 12. Color dropdown */}
       <Dropdown
         id="event-color"
         titleText="Color"
@@ -778,7 +980,7 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
         className="tearsheet-form__item"
       />
 
-      {/* 11. Description */}
+      {/* 13. Description */}
       <TextArea
         id="event-description"
         labelText="Description"

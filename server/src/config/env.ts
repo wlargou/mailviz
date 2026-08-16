@@ -29,6 +29,18 @@ export const env = {
   CALENDAR_SYNC_PAST_MONTHS: parseInt(process.env.CALENDAR_SYNC_PAST_MONTHS || '24', 10),
   CALENDAR_SYNC_FUTURE_MONTHS: parseInt(process.env.CALENDAR_SYNC_FUTURE_MONTHS || '12', 10),
 
+  // Gmail API throttling (per user — Gmail's quota is charged per user).
+  // 5 concurrent calls spaced 50ms apart caps a single user at ~20 req/s; at
+  // 5 quota units for messages.get/modify that is ~100 of the 250 units/second
+  // Gmail allows, leaving headroom for the calls we don't route through here.
+  GMAIL_MAX_CONCURRENT: parseInt(process.env.GMAIL_MAX_CONCURRENT || '5', 10),
+  GMAIL_MIN_TIME_MS: parseInt(process.env.GMAIL_MIN_TIME_MS || '50', 10),
+  // Retry budget for 429 / 403 rateLimitExceeded responses. 5 retries with
+  // exponential backoff from 1s, capped at 32s, rides out ~1 minute of throttling.
+  GMAIL_MAX_RETRIES: parseInt(process.env.GMAIL_MAX_RETRIES || '5', 10),
+  GMAIL_RETRY_BASE_MS: parseInt(process.env.GMAIL_RETRY_BASE_MS || '1000', 10),
+  GMAIL_RETRY_MAX_MS: parseInt(process.env.GMAIL_RETRY_MAX_MS || '32000', 10),
+
   // Auth
   JWT_SECRET: process.env.JWT_SECRET || devSecret('mailviz-jwt-dev'),
   JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET || devSecret('mailviz-jwt-refresh-dev'),

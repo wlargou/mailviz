@@ -6,6 +6,22 @@ export interface EventAttendee {
   organizer: boolean;
 }
 
+export type ReminderMethod = 'email' | 'popup';
+
+export interface EventReminderOverride {
+  method: ReminderMethod;
+  /** Minutes before the event start. Google caps this at 40320 (4 weeks). */
+  minutes: number;
+}
+
+export interface EventReminders {
+  useDefault: boolean;
+  /** Google allows at most 5 overrides, and only when useDefault is false. */
+  overrides?: EventReminderOverride[];
+}
+
+export type EventVisibility = 'default' | 'public' | 'private' | 'confidential';
+
 export interface CalendarEvent {
   id: string;
   googleEventId: string | null;
@@ -21,6 +37,8 @@ export interface CalendarEvent {
   conferenceLink: string | null;
   recurringEventId: string | null;
   recurrence: string[];
+  reminders: EventReminders | null;
+  visibility: EventVisibility | null;
   customers?: Array<{ customer: { id: string; name: string; domain: string | null; logoUrl: string | null } }>;
   syncedAt: string | null;
   createdAt: string;
@@ -40,6 +58,8 @@ export interface CreateEventInput {
   colorId?: string;
   /** RFC 5545 recurrence lines, e.g. ['RRULE:FREQ=WEEKLY;BYDAY=MO']. Empty array clears the rule. */
   recurrence?: string[];
+  reminders?: EventReminders;
+  visibility?: EventVisibility;
 }
 
 export interface UpdateEventInput extends Partial<CreateEventInput> {}
