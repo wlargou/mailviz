@@ -178,4 +178,31 @@
   font-weight: 600;
 }
 
+.review-group__skeleton {
+  padding: $spacing-05;
+}
+
+.review-group__empty {
+  padding: $spacing-05;
+  @include type.type-style('body-compact-01');
+  color: var(--cds-text-secondary);
+}
+
+// "Showing X of Y" — the review pages threads in batches, and this line is what
+// keeps that visible instead of silently stopping at some cap.
+.review-group__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-04;
+  padding: $spacing-03 $spacing-05;
+  min-height: 2.5rem;
+  border-top: 1px solid var(--cds-border-subtle);
+}
+
+.review-group__showing {
+  @include type.type-style('helper-text-01');
+  color: var(--cds-text-secondary);
+}
+
 // Thread items in review reuse the mail page styles (.thread-item, etc.)

@@ -1,6 +1,7 @@
 import { Response, NextFunction } from 'express';
 import type { Req } from "../types/http.js";
 import { emailService } from '../services/emailService.js';
+import { draftService } from '../services/draftService.js';
 import { isSyncInProgress } from '../jobs/emailSyncScheduler.js';
 
 export const emailController = {
@@ -53,7 +54,15 @@ export const emailController = {
   async sync(req: Req, res: Response, next: NextFunction) {
     try {
       const result = await emailService.syncFromGmail(req.user!.id);
-      res.json({ data: result });
+      // Drafts ride along with a manual sync, but must not be able to fail it:
+      // the mail sync has already committed by this point.
+      let draftsSynced = 0;
+      try {
+        draftsSynced = (await draftService.syncDrafts(req.user!.id)).synced;
+      } catch (err: unknown) {
+        console.warn('[DraftSync] Draft sync failed:', err instanceof Error ? err.message : err);
+      }
+      res.json({ data: { ...result, draftsSynced } });
     } catch (err) {
       next(err);
     }

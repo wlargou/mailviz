@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { EmailThread, EmailMessage, ConvertToTaskInput } from '../types/email';
+import type { EmailThread, EmailMessage, ConvertToTaskInput, ReviewSummary } from '../types/email';
 import type { ApiResponse } from '../types/api';
 import type { Task } from '../types/task';
 
@@ -77,18 +77,7 @@ export const emailsApi = {
   },
 
   getReviewSummary(params: { dateAfter: string; dateBefore: string }) {
-    return api.get<{
-      data: Array<{
-        customerId: string;
-        customerName: string;
-        customerDomain: string;
-        customerLogoUrl: string | null;
-        isVip: boolean;
-        totalEmails: number;
-        unreadEmails: number;
-      }>;
-      uncategorized: { totalEmails: number; unreadEmails: number };
-    }>('/emails/review-summary', { params });
+    return api.get<ReviewSummary>('/emails/review-summary', { params });
   },
 
   getUnreadCount() {
