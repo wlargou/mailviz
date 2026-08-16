@@ -24,6 +24,26 @@ UPDATE "labels" SET "user_id" = (SELECT id FROM "users" LIMIT 1) WHERE "user_id"
 UPDATE "emails" SET "user_id" = (SELECT id FROM "users" LIMIT 1) WHERE "user_id" IS NULL;
 UPDATE "calendar_events" SET "user_id" = (SELECT id FROM "users" LIMIT 1) WHERE "user_id" IS NULL;
 
+-- Step 2b: Drop rows that could not be attributed to a user.
+--
+-- The backfill above selects the first user, so on a database with no users it
+-- leaves NULLs behind and Step 3 fails with
+--   column "user_id" of relation "task_statuses" contains null values
+-- That is exactly the fresh-database case: CI, a new clone, or a first deploy
+-- to an empty Railway database. The rows in question are the default
+-- task_statuses seeded by 20260319120000_dynamic_task_statuses, which predate
+-- user scoping and are unattributable; the app recreates them per user.
+--
+-- On a database that HAS a user the backfill already filled every row, so all
+-- of these are no-ops and the outcome is unchanged.
+DELETE FROM "tasks" WHERE "user_id" IS NULL;
+DELETE FROM "task_statuses" WHERE "user_id" IS NULL;
+DELETE FROM "company_categories" WHERE "user_id" IS NULL;
+DELETE FROM "customers" WHERE "user_id" IS NULL;
+DELETE FROM "labels" WHERE "user_id" IS NULL;
+DELETE FROM "emails" WHERE "user_id" IS NULL;
+DELETE FROM "calendar_events" WHERE "user_id" IS NULL;
+
 -- Step 3: Make user_id NOT NULL
 ALTER TABLE "tasks" ALTER COLUMN "user_id" SET NOT NULL;
 ALTER TABLE "task_statuses" ALTER COLUMN "user_id" SET NOT NULL;

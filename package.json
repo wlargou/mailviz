@@ -12,7 +12,8 @@
     "db:migrate": "npm run prisma:migrate --workspace=server",
     "db:seed": "npm run prisma:seed --workspace=server",
     "typecheck": "npm run typecheck --workspace=server && npm run typecheck --workspace=client",
-    "build": "npm run build --workspace=client && npm run build --workspace=server"
+    "build": "npm run build --workspace=client && npm run build --workspace=server",
+    "test": "npm run test --workspace=server && npm run test --workspace=client"
   },
   "engines": {
     "node": ">=22.0.0",
@@ -24,6 +25,8 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "concurrently": "^9.2.1",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
     "typescript": "^5.9.3"
   },
   "dependencies": {

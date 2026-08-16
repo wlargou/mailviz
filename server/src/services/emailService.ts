@@ -419,7 +419,10 @@ export const emailService = {
     const ownershipFilter: Prisma.EmailWhereInput = sharedThreadIds.length > 0
       ? { OR: [{ userId }, { threadId: { in: sharedThreadIds } }] }
       : { userId };
-    const where: Prisma.EmailWhereInput = { ...ownershipFilter };
+    // The ownership filter lives under `AND` so that the search branch below,
+    // which assigns `where.OR`, cannot clobber it. Spreading it here instead
+    // leaked every user's mail to anyone who had a shared thread and searched.
+    const where: Prisma.EmailWhereInput = { AND: [ownershipFilter] };
     // By default, hide trashed emails unless explicitly viewing trash folder
     if (query.folder !== 'trash') {
       where.isTrashed = false;

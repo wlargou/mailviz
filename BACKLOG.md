@@ -109,14 +109,20 @@ This session alone found a SQL injection, a validation path that returned 500 on
 every failure, and a field that silently could not be set. All three were
 invisible to the build.
 
-- [ ] **4.1 Test harness** — Vitest for both workspaces; wire into `.github/workflows/ci.yml`.
-- [ ] **4.2 Cover the money paths, in this order:**
-  - multi-tenant `userId` isolation (`utils/accessControl.ts`, every `findAll`)
-  - OAuth token encryption/decryption incl. the plaintext-fallback path
-  - Gmail incremental sync + history fallback
-  - the batch/optimistic email actions
-- [ ] **4.3 Make client typecheck blocking in CI** once it has stayed at 0 for a while
-  (currently `continue-on-error: true`).
+- [x] **4.1 Test harness** — Vitest in both workspaces, running against a real
+  Postgres (`mailviz_test`). A mocked Prisma would have passed the deal leak,
+  so the DB is the point. CI creates the database and runs both suites.
+- [~] **4.2 Money paths** — 132 tests passing.
+  - [x] Multi-tenant isolation: deals, tasks, emails, contacts, customers,
+    accessControl — including the search-plus-filter combination that caused
+    the original leak.
+  - [x] OAuth token encryption, incl. the legacy-plaintext passthrough.
+  - [x] JWT sign/verify and the access/refresh secret separation.
+  - [x] validate middleware (the Zod v4 `.errors` 500 regression).
+  - [ ] Gmail incremental sync + history fallback — needs the Gmail API mocked;
+    only the DB-backed query paths are covered so far.
+  - [ ] The batch email actions.
+- [x] **4.3 Client typecheck is blocking in CI** — `continue-on-error` removed.
 
 ---
 

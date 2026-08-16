@@ -11,7 +11,10 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "tsx src/prisma/seed.ts",
     "prisma:generate": "prisma generate",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "prisma": {
     "schema": "src/prisma/schema.prisma",
@@ -44,9 +47,11 @@
     "@types/nodemailer": "^7.0.11",
     "@types/sanitize-html": "^2.16.1",
     "@types/ws": "^8.18.1",
+    "@vitest/coverage-v8": "^4.1.10",
     "esbuild": "^0.27.4",
     "prisma": "^6.19.2",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
   }
 }

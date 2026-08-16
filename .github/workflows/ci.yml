@@ -26,6 +26,9 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://mailviz:mailviz_dev@localhost:5432/mailviz_db?schema=public
+      # The suite truncates every table between tests, so it gets its own
+      # database. globalSetup refuses to run against a name not ending in _test.
+      TEST_DATABASE_URL: postgresql://mailviz:mailviz_dev@localhost:5432/mailviz_test?schema=public
 
     steps:
       - uses: actions/checkout@v4
@@ -41,21 +44,31 @@ jobs:
       - name: Generate Prisma client
         run: npm run prisma:generate --workspace=server
 
-      # Catches drift between schema.prisma and the committed migrations.
+      # Catches drift between schema.prisma and the committed migrations, and
+      # proves the migration chain applies to an EMPTY database — which is how
+      # a new clone and a first deploy both start. That was genuinely broken:
+      # a migration backfilled user_id from an empty users table and then set
+      # the column NOT NULL.
       - name: Apply migrations
         run: npx prisma migrate deploy --schema=src/prisma/schema.prisma
         working-directory: server
+
+      - name: Create test database
+        run: PGPASSWORD=mailviz_dev psql -h localhost -U mailviz -d postgres -c 'CREATE DATABASE mailviz_test OWNER mailviz;'
 
       # esbuild and Vite strip types without checking them, so the build alone
       # proves nothing. This is the gate that actually reads the types.
       - name: Typecheck server
         run: npm run typecheck --workspace=server
 
-      # TODO: remove continue-on-error once the Carbon upgrade clears the
-      # remaining @carbon/react + @carbon/charts-react typing failures.
       - name: Typecheck client
         run: npm run typecheck --workspace=client
-        continue-on-error: true
+
+      - name: Test server
+        run: npm run test --workspace=server
+
+      - name: Test client
+        run: npm run test --workspace=client
 
       - name: Build client
         run: npm run build --workspace=client

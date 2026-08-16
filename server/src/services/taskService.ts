@@ -31,13 +31,17 @@ export const taskService = {
 
     // Include shared + assigned tasks
     const sharedTaskIds = await getSharedTaskIds(userId);
-    const where: Prisma.TaskWhereInput = {
+    const ownershipFilter: Prisma.TaskWhereInput = {
       OR: [
         { userId },
         ...(sharedTaskIds.length > 0 ? [{ id: { in: sharedTaskIds } }] : []),
         { assignedToId: userId },
       ],
     };
+    // Ownership lives under `AND`, not at the top level, so that a filter
+    // branch below can never overwrite it by assigning `where.OR`. That is
+    // exactly how the cross-tenant leak in dealService.findAll happened.
+    const where: Prisma.TaskWhereInput = { AND: [ownershipFilter] };
 
     if (query.status) {
       where.status = query.status;
