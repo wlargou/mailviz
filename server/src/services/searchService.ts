@@ -40,16 +40,24 @@ interface SearchResults {
     customerId: string;
     customer: { name: string } | null;
   }>;
+  deals: Array<{
+    id: string;
+    title: string;
+    status: string;
+    expiryDate: Date | null;
+    partner: { name: string } | null;
+    customer: { id: string; name: string } | null;
+  }>;
 }
 
-const EMPTY: SearchResults = { emails: [], tasks: [], events: [], customers: [], contacts: [] };
+const EMPTY: SearchResults = { emails: [], tasks: [], events: [], customers: [], contacts: [], deals: [] };
 
 export const searchService = {
   async search(query: string, userId: string): Promise<SearchResults> {
     const q = query.trim();
     if (q.length < 2) return EMPTY;
 
-    const [emails, tasks, events, customers, contacts] = await Promise.all([
+    const [emails, tasks, events, customers, contacts, deals] = await Promise.all([
       // Emails — distinct by threadId, newest first, exclude trashed
       prisma.email.findMany({
         where: {
@@ -159,8 +167,30 @@ export const searchService = {
         orderBy: { firstName: 'asc' },
         take: 4,
       }),
+
+      // Deals — search title, products and notes
+      prisma.deal.findMany({
+        where: {
+          userId,
+          OR: [
+            { title: { contains: q, mode: 'insensitive' } },
+            { products: { contains: q, mode: 'insensitive' } },
+            { notes: { contains: q, mode: 'insensitive' } },
+          ],
+        },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          expiryDate: true,
+          partner: { select: { name: true } },
+          customer: { select: { id: true, name: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 4,
+      }),
     ]);
 
-    return { emails, tasks, events, customers, contacts };
+    return { emails, tasks, events, customers, contacts, deals };
   },
 };

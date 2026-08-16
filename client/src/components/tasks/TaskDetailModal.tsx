@@ -113,6 +113,12 @@ export function TaskDetailModal({ task, open, onClose, onUpdated, labels }: Task
     if (!task || !title.trim()) return;
     setLoading(true);
     try {
+      // Assignment deliberately does NOT go through the generic update. Only
+      // PATCH /tasks/:id/assign creates the notification and emits the
+      // `task:assigned` WebSocket event, so routing it through `update` meant
+      // the assignee was never told.
+      const assignmentChanged = (task.assignedToId ?? null) !== assignedToId;
+
       await tasksApi.update(task.id, {
         title: title.trim(),
         description: description.trim() || undefined,
@@ -121,9 +127,13 @@ export function TaskDetailModal({ task, open, onClose, onUpdated, labels }: Task
         dueDate,
         labelIds: selectedLabels,
         customerId,
-        assignedToId,
         estimatedMinutes: stepIndexToMinutes(effortIndex),
       });
+
+      if (assignmentChanged) {
+        await tasksApi.assignTask(task.id, assignedToId);
+      }
+
       addNotification({ kind: 'success', title: 'Task updated' });
       onUpdated();
       onClose();

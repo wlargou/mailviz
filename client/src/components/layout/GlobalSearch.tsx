@@ -7,12 +7,13 @@ import {
   UserAvatar,
   Search as SearchIcon,
   User,
+  Partnership,
 } from '@carbon/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { formatDistanceToNow, format } from 'date-fns';
 import { searchApi, type SearchResults } from '../../api/search';
 
-type Category = 'emails' | 'tasks' | 'events' | 'customers' | 'contacts';
+type Category = 'emails' | 'tasks' | 'events' | 'customers' | 'contacts' | 'deals';
 
 interface Scope {
   id: string;
@@ -26,6 +27,7 @@ const SCOPES: Scope[] = [
   { id: 'events', text: 'Events' },
   { id: 'customers', text: 'Companies' },
   { id: 'contacts', text: 'Contacts' },
+  { id: 'deals', text: 'Deals' },
 ];
 
 interface FlatResult {
@@ -42,11 +44,12 @@ const CATEGORY_META: Record<Category, { icon: typeof Email; label: string }> = {
   events: { icon: Calendar, label: 'Event results' },
   customers: { icon: UserAvatar, label: 'Company results' },
   contacts: { icon: User, label: 'Contact results' },
+  deals: { icon: Partnership, label: 'Deal results' },
 };
 
 function flattenResults(results: SearchResults, scopeIds: string[]): FlatResult[] {
   const flat: FlatResult[] = [];
-  const allCategories: Category[] = ['emails', 'tasks', 'events', 'customers', 'contacts'];
+  const allCategories: Category[] = ['emails', 'tasks', 'events', 'customers', 'contacts', 'deals'];
   // If 'all' is selected or no scopes selected, show everything
   const cats = scopeIds.length === 0 || scopeIds.includes('all')
     ? allCategories
@@ -97,6 +100,19 @@ function flattenResults(results: SearchResults, scopeIds: string[]): FlatResult[
           label: `${contact.firstName} ${contact.lastName}`.trim(),
           sublabel: [contact.email, contact.customer?.name].filter(Boolean).join(' · '),
           navigateTo: `/contacts/${contact.id}`,
+        });
+      }
+    } else if (cat === 'deals') {
+      for (const deal of results.deals) {
+        flat.push({
+          category: 'deals', icon: Partnership,
+          label: deal.title,
+          sublabel: [
+            deal.partner?.name,
+            deal.customer?.name,
+            deal.status.replace(/_/g, ' ').toLowerCase(),
+          ].filter(Boolean).join(' · '),
+          navigateTo: '/deals',
         });
       }
     }
@@ -213,6 +229,7 @@ export function GlobalSearch() {
       events: `/calendar?search=${searchParam}`,
       customers: `/customers?search=${searchParam}`,
       contacts: `/contacts?search=${searchParam}`,
+      deals: `/deals?search=${searchParam}`,
     };
     navigate(paths[cat]);
     handleClear();
@@ -260,7 +277,7 @@ export function GlobalSearch() {
     return () => document.removeEventListener('mousedown', handleMouseDown);
   }, []);
 
-  const allCategories: Category[] = ['emails', 'tasks', 'events', 'customers', 'contacts'];
+  const allCategories: Category[] = ['emails', 'tasks', 'events', 'customers', 'contacts', 'deals'];
   const categories: Category[] = results
     ? (selectedScope.id === 'all'
         ? allCategories

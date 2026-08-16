@@ -40,6 +40,14 @@ export interface SearchResults {
     customerId: string;
     customer: { name: string } | null;
   }>;
+  deals: Array<{
+    id: string;
+    title: string;
+    status: string;
+    expiryDate: string | null;
+    partner: { name: string } | null;
+    customer: { id: string; name: string } | null;
+  }>;
 }
 
 export const searchApi = {

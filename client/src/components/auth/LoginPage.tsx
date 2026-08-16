@@ -25,8 +25,12 @@ function WaterBackground() {
     let time = 0;
 
     const resize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+      // Never let the backing store reach 0 — getImageData throws IndexSizeError
+      // on a zero-width source, and because that happens inside the rAF loop it
+      // is an uncaught error that white-screens the whole login page. A hidden
+      // or zero-size viewport is enough to trigger it.
+      canvas.width = Math.max(1, window.innerWidth);
+      canvas.height = Math.max(1, window.innerHeight);
     };
     resize();
     window.addEventListener('resize', resize);
@@ -34,6 +38,12 @@ function WaterBackground() {
     const render = () => {
       time += 0.008;
       const { width, height } = canvas;
+
+      // Belt and braces: skip the frame entirely if the canvas has no area.
+      if (width < 1 || height < 1) {
+        animationId = requestAnimationFrame(render);
+        return;
+      }
 
       ctx.fillStyle = '#161616';
       ctx.fillRect(0, 0, width, height);

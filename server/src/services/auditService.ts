@@ -47,13 +47,17 @@ export type AuditAction =
   | 'CONTACT_CREATED'
   | 'CONTACT_UPDATED'
   | 'CONTACT_DELETED'
+  // Label actions
+  | 'LABEL_CREATED'
+  | 'LABEL_UPDATED'
+  | 'LABEL_DELETED'
   // Auth actions
   | 'GOOGLE_CONNECTED'
   | 'GOOGLE_DISCONNECTED'
   | 'USER_LOGIN'
   | 'USER_LOGOUT';
 
-export type EntityType = 'email' | 'task' | 'deal' | 'event' | 'company' | 'contact' | 'auth' | 'scheduled_email';
+export type EntityType = 'email' | 'task' | 'deal' | 'event' | 'company' | 'contact' | 'label' | 'auth' | 'scheduled_email';
 
 interface AuditLogInput {
   userId: string;

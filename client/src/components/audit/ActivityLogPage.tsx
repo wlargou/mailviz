@@ -123,6 +123,7 @@ const entityTypeItems = [
   { id: 'event', text: 'Event' },
   { id: 'company', text: 'Company' },
   { id: 'contact', text: 'Contact' },
+  { id: 'label', text: 'Label' },
   { id: 'scheduled_email', text: 'Scheduled Email' },
 ];
 
@@ -143,6 +144,12 @@ function getSummary(entry: AuditLogEntry): string {
   if (d.count) parts.push(`${d.count} items`);
   if (d.response) parts.push(`Response: ${d.response}`);
   if (d.assignedToId) parts.push(`Assigned to: ${String(d.assignedToId).slice(0, 8)}…`);
+  if (d.previousName && d.previousName !== d.name) parts.push(`was "${String(d.previousName)}"`);
+  // Deleting a label cascades through TaskLabel, detaching it from every task
+  // that had it. That count is the part you cannot reconstruct afterwards.
+  if (typeof d.detachedFromTasks === 'number') {
+    parts.push(`detached from ${d.detachedFromTasks} task${d.detachedFromTasks === 1 ? '' : 's'}`);
+  }
   if (d.changes) {
     const changes = d.changes as string[];
     parts.push(`Changed: ${changes.join(', ')}`);

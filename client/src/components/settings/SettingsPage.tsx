@@ -31,6 +31,7 @@ import {
   Calendar,
   Email,
   Pen,
+  Tag as TagIcon,
 } from '@carbon/icons-react';
 import { useSearchParams } from 'react-router-dom';
 import { authApi } from '../../api/auth';
@@ -38,8 +39,9 @@ import { TiptapEditor } from '../mail/TiptapEditor';
 import { taskStatusesApi } from '../../api/taskStatuses';
 import { companyCategoriesApi } from '../../api/companyCategories';
 import { dealPartnersApi } from '../../api/dealPartners';
+import { labelsApi } from '../../api/labels';
 import { useUIStore } from '../../store/uiStore';
-import type { TaskStatusConfig } from '../../types/task';
+import type { Label, TaskStatusConfig } from '../../types/task';
 import type { CompanyCategory } from '../../types/customer';
 import type { DealPartner } from '../../types/deal';
 import type { GoogleStatus } from '../../types/calendar';
@@ -56,6 +58,16 @@ const STATUS_COLORS = [
   { hex: '#da1e28', label: 'Red' },
   { hex: '#878d96', label: 'Gray' },
 ];
+
+/** Shape of the JSON error envelope returned by the API's errorHandler middleware. */
+interface ApiErrorLike {
+  response?: { data?: { error?: { message?: string } } };
+}
+
+function apiErrorMessage(err: unknown, fallback: string): string {
+  const message = (err as ApiErrorLike | null | undefined)?.response?.data?.error?.message;
+  return typeof message === 'string' && message.length > 0 ? message : fallback;
+}
 
 export function SettingsPage() {
   const [status, setStatus] = useState<GoogleStatus | null>(null);
@@ -87,6 +99,16 @@ export function SettingsPage() {
   const [editCategoryLabel, setEditCategoryLabel] = useState('');
   const [categoryColorPickerOpen, setCategoryColorPickerOpen] = useState<string | null>(null);
 
+  const [labels, setLabels] = useState<Label[]>([]);
+  const [newLabelName, setNewLabelName] = useState('');
+  const [newLabelColor, setNewLabelColor] = useState(STATUS_COLORS[0].hex);
+  const [newLabelColorPickerOpen, setNewLabelColorPickerOpen] = useState(false);
+  const [editingLabelId, setEditingLabelId] = useState<string | null>(null);
+  const [editLabelName, setEditLabelName] = useState('');
+  const [labelColorPickerOpen, setLabelColorPickerOpen] = useState<string | null>(null);
+  const [labelToDelete, setLabelToDelete] = useState<Label | null>(null);
+  const [deletingLabel, setDeletingLabel] = useState(false);
+
   const [dealPartners, setDealPartners] = useState<DealPartner[]>([]);
   const [newPartnerName, setNewPartnerName] = useState('');
   const [newPartnerUrl, setNewPartnerUrl] = useState('');
@@ -105,6 +127,13 @@ export function SettingsPage() {
     try {
       const { data: res } = await companyCategoriesApi.getAll();
       setCategories(res.data);
+    } catch { /* ignore */ }
+  }, []);
+
+  const fetchLabels = useCallback(async () => {
+    try {
+      const { data: res } = await labelsApi.getAll();
+      setLabels(res.data);
     } catch { /* ignore */ }
   }, []);
 
@@ -143,6 +172,7 @@ export function SettingsPage() {
     fetchStatus();
     fetchTaskStatuses();
     fetchCategories();
+    fetchLabels();
     fetchDealPartners();
     fetchSignature();
   }, []);
@@ -323,6 +353,56 @@ export function SettingsPage() {
     await companyCategoriesApi.update(id, { label: editCategoryLabel.trim() });
     setEditingCategoryId(null);
     fetchCategories();
+  };
+
+  // ── Label handlers ──
+  const handleAddLabel = async () => {
+    if (!newLabelName.trim()) return;
+    try {
+      await labelsApi.create({ name: newLabelName.trim(), color: newLabelColor });
+      setNewLabelName('');
+      fetchLabels();
+      addNotification({ kind: 'success', title: 'Label created' });
+    } catch (err) {
+      addNotification({
+        kind: 'error',
+        title: apiErrorMessage(err, 'Failed to create label'),
+      });
+    }
+  };
+
+  const handleDeleteLabel = async (l: Label) => {
+    setDeletingLabel(true);
+    try {
+      await labelsApi.delete(l.id);
+      addNotification({ kind: 'success', title: `Label "${l.name}" deleted` });
+      fetchLabels();
+      setLabelToDelete(null);
+    } catch (err) {
+      addNotification({
+        kind: 'error',
+        title: apiErrorMessage(err, 'Cannot delete label'),
+      });
+    } finally {
+      setDeletingLabel(false);
+    }
+  };
+
+  const handleSaveEditLabel = async (id: string) => {
+    const name = editLabelName.trim();
+    setEditingLabelId(null);
+    const current = labels.find((l) => l.id === id);
+    if (!name || !current || name === current.name) return;
+    try {
+      await labelsApi.update(id, { name });
+      fetchLabels();
+    } catch (err) {
+      addNotification({
+        kind: 'error',
+        title: apiErrorMessage(err, 'Failed to rename label'),
+      });
+      fetchLabels();
+    }
   };
 
   // ── Deal Partner handlers ──
@@ -793,6 +873,144 @@ export function SettingsPage() {
           </Stack>
         </Tile>
 
+        {/* ─── Labels ─── */}
+        <Tile className="settings-tile">
+          <Stack gap={5}>
+            <div className="settings-tile__header">
+              <div className="settings-tile__icon">
+                <TagIcon size={20} />
+              </div>
+              <div>
+                <h4 className="settings-tile__title">Labels</h4>
+                <p className="settings-tile__desc">Tag your tasks (e.g. Urgent, Follow-up, Billing)</p>
+              </div>
+            </div>
+
+            <StructuredListWrapper isCondensed>
+              <StructuredListHead>
+                <StructuredListRow head>
+                  <StructuredListCell head>Color</StructuredListCell>
+                  <StructuredListCell head>Name</StructuredListCell>
+                  <StructuredListCell head>Tasks</StructuredListCell>
+                  <StructuredListCell head>{''}</StructuredListCell>
+                </StructuredListRow>
+              </StructuredListHead>
+              <StructuredListBody>
+                {labels.map((l) => (
+                  <StructuredListRow key={l.id}>
+                    <StructuredListCell>
+                      <div className="settings-color-swatch-wrapper">
+                        <button
+                          className="settings-status-dot"
+                          style={{ backgroundColor: l.color }}
+                          title="Change color"
+                          onClick={() => setLabelColorPickerOpen(labelColorPickerOpen === l.id ? null : l.id)}
+                        />
+                        {labelColorPickerOpen === l.id && (
+                          <div className="settings-color-popover">
+                            {STATUS_COLORS.map((sc) => (
+                              <button
+                                key={sc.hex}
+                                className={`settings-color-option${l.color === sc.hex ? ' settings-color-option--selected' : ''}`}
+                                style={{ backgroundColor: sc.hex }}
+                                title={sc.label}
+                                onClick={async () => {
+                                  setLabels((prev) =>
+                                    prev.map((lb) => lb.id === l.id ? { ...lb, color: sc.hex } : lb)
+                                  );
+                                  setLabelColorPickerOpen(null);
+                                  try {
+                                    await labelsApi.update(l.id, { color: sc.hex });
+                                  } catch {
+                                    fetchLabels();
+                                  }
+                                }}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </StructuredListCell>
+                    <StructuredListCell>
+                      {editingLabelId === l.id ? (
+                        <TextInput
+                          id={`edit-label-${l.id}`}
+                          labelText=""
+                          hideLabel
+                          size="sm"
+                          value={editLabelName}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditLabelName(e.target.value)}
+                          onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+                            if (e.key === 'Enter') handleSaveEditLabel(l.id);
+                            if (e.key === 'Escape') setEditingLabelId(null);
+                          }}
+                          onBlur={() => handleSaveEditLabel(l.id)}
+                          autoFocus
+                        />
+                      ) : (
+                        <span>{l.name}</span>
+                      )}
+                    </StructuredListCell>
+                    <StructuredListCell>
+                      <Tag size="sm" type="cool-gray">
+                        {`${l._count?.tasks ?? 0} ${(l._count?.tasks ?? 0) === 1 ? 'task' : 'tasks'}`}
+                      </Tag>
+                    </StructuredListCell>
+                    <StructuredListCell>
+                      <div className="settings-status-actions">
+                        <Button kind="ghost" size="sm" hasIconOnly iconDescription="Rename" renderIcon={Edit}
+                          onClick={() => { setEditingLabelId(l.id); setEditLabelName(l.name); }}
+                        />
+                        <Button kind="ghost" size="sm" hasIconOnly iconDescription="Delete" renderIcon={TrashCan}
+                          onClick={() => setLabelToDelete(l)}
+                        />
+                      </div>
+                    </StructuredListCell>
+                  </StructuredListRow>
+                ))}
+              </StructuredListBody>
+            </StructuredListWrapper>
+
+            <div className="settings-status-add">
+              <div style={{ display: 'flex', alignItems: 'center', height: '2rem' }}>
+                <div className="settings-color-swatch-wrapper">
+                  <button
+                    className="settings-status-dot"
+                    style={{ backgroundColor: newLabelColor }}
+                    title="Pick a color"
+                    onClick={() => setNewLabelColorPickerOpen((open) => !open)}
+                  />
+                  {newLabelColorPickerOpen && (
+                    <div className="settings-color-popover">
+                      {STATUS_COLORS.map((sc) => (
+                        <button
+                          key={sc.hex}
+                          className={`settings-color-option${newLabelColor === sc.hex ? ' settings-color-option--selected' : ''}`}
+                          style={{ backgroundColor: sc.hex }}
+                          title={sc.label}
+                          onClick={() => { setNewLabelColor(sc.hex); setNewLabelColorPickerOpen(false); }}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <TextInput
+                id="new-label-name"
+                labelText="Add new label"
+                placeholder="e.g. Urgent, Follow-up..."
+                size="sm"
+                value={newLabelName}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewLabelName(e.target.value)}
+                onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') handleAddLabel(); }}
+              />
+              <Button kind="primary" size="sm" renderIcon={Add} disabled={!newLabelName.trim()} onClick={handleAddLabel}>
+                Add
+              </Button>
+            </div>
+          </Stack>
+        </Tile>
+
         {/* ─── Deal Partners ─── */}
         <Tile className="settings-tile">
           <Stack gap={5}>
@@ -905,6 +1123,33 @@ export function SettingsPage() {
       </Stack>
         </Column>
       </Grid>
+
+      <Modal
+        open={labelToDelete !== null}
+        danger
+        modalHeading={labelToDelete ? `Delete label "${labelToDelete.name}"?` : 'Delete label'}
+        primaryButtonText={deletingLabel ? 'Deleting...' : 'Delete'}
+        secondaryButtonText="Cancel"
+        primaryButtonDisabled={deletingLabel}
+        onRequestClose={() => setLabelToDelete(null)}
+        onRequestSubmit={() => { if (labelToDelete) handleDeleteLabel(labelToDelete); }}
+      >
+        {labelToDelete && (labelToDelete._count?.tasks ?? 0) > 0 ? (
+          <p>
+            This label is currently attached to{' '}
+            <strong>
+              {labelToDelete._count?.tasks}{' '}
+              {labelToDelete._count?.tasks === 1 ? 'task' : 'tasks'}
+            </strong>
+            . Deleting it removes the label from{' '}
+            {labelToDelete._count?.tasks === 1 ? 'that task' : 'those tasks'} — the{' '}
+            {labelToDelete._count?.tasks === 1 ? 'task itself is' : 'tasks themselves are'} kept.
+            This action cannot be undone.
+          </p>
+        ) : (
+          <p>This label isn&apos;t attached to any tasks. This action cannot be undone.</p>
+        )}
+      </Modal>
 
       <Modal
         open={disconnectConfirmOpen}

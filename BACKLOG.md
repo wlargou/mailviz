@@ -13,11 +13,11 @@ which is gitignored, so it never survived a clone.
 Backend, route and client wrapper all exist. Only the UI is missing, so these are
 the cheapest items in the backlog.
 
-- [ ] **1.1 Label management UI** — `labelsApi.create/update/delete` have **zero
+- [x] **1.1 Label management UI** — `labelsApi.create/update/delete` have **zero
   callers**. Labels can currently only be created by `server/src/prisma/seed.ts`.
   You can attach labels to tasks but never create, rename or delete one.
   Add a Settings tab alongside Task Statuses / Company Categories / Deal Partners.
-- [ ] **1.2 Task assignment through its real endpoint** — `PATCH /tasks/:id/assign`
+- [x] **1.2 Task assignment through its real endpoint** — `PATCH /tasks/:id/assign`
   is unused; `TaskDetailModal` sets `assignedToId` via the generic `PATCH /tasks/:id`.
   Consequence: the `task:assigned` notification and WebSocket event **never fire**.
   Assignment works, but nobody is told about it.
@@ -26,14 +26,14 @@ the cheapest items in the backlog.
 - [ ] **1.4 Drag-to-reorder** — `PATCH /task-statuses/reorder` and
   `/company-categories/reorder` are fully built. No drag UI exists, so `position`
   is only ever set at creation time.
-- [ ] **1.5 Index Deals in global search** — `searchService` queries emails, tasks,
+- [x] **1.5 Index Deals in global search** — `searchService` queries emails, tasks,
   events, customers and contacts. Deals are a first-class entity with their own
   page and are not searchable.
 - [ ] **1.6 "Shared with me" affordance** — `utils/accessControl.ts` genuinely works
   and shared items appear in the recipient's normal lists, but nothing marks them.
   There is no way to answer "what has been shared with me?". Needs at minimum a
   badge on shared rows, ideally a filter.
-- [ ] **1.7 Audit logging in `labelService`** — the only service with zero
+- [x] **1.7 Audit logging in `labelService`** — the only service with zero
   `auditService.log` calls. (Note: customer/deal/calendar services *do* log,
   3–4 actions each — an earlier audit claimed otherwise and was wrong.)
 
