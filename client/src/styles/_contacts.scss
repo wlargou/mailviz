@@ -1,0 +1,91 @@
+// `@use` scopes members per-file, so each partial declares the Carbon modules
+// it needs itself rather than inheriting them from index.scss.
+@use '@carbon/react/scss/type' as type;
+@use '@carbon/react/scss/spacing' as *;
+// ─── Duplicate contacts: review and merge ────────
+
+.duplicate-group {
+  margin-bottom: $spacing-05;
+
+  .duplicate-group__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: $spacing-05;
+    flex-wrap: wrap;
+  }
+
+  .duplicate-group__company {
+    display: flex;
+    align-items: center;
+    gap: $spacing-03;
+    @include type.type-style('heading-compact-01');
+  }
+
+  .duplicate-group__reason {
+    margin: $spacing-02 0 $spacing-05;
+    color: var(--cds-text-secondary);
+    @include type.type-style('label-01');
+  }
+
+  // The radio group is the "which row survives" control; give each option room
+  // to show the evidence the choice is made on.
+  .cds--radio-button-group--vertical .cds--radio-button__label {
+    align-items: flex-start;
+    padding: $spacing-02 0;
+  }
+
+  .duplicate-group__discard {
+    margin-top: $spacing-05;
+    padding-top: $spacing-04;
+    border-top: 1px solid var(--cds-border-subtle);
+
+    legend {
+      @include type.type-style('label-01');
+      color: var(--cds-text-secondary);
+      margin-bottom: $spacing-02;
+    }
+  }
+}
+
+.duplicate-contact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+
+  .duplicate-contact__name {
+    @include type.type-style('body-compact-01');
+    color: var(--cds-text-primary);
+  }
+
+  .duplicate-contact__emails {
+    @include type.type-style('code-01');
+    color: var(--cds-text-secondary);
+    word-break: break-all;
+  }
+
+  .duplicate-contact__meta {
+    @include type.type-style('label-01');
+    color: var(--cds-text-helper);
+  }
+}
+
+.duplicate-confirm {
+  h5 {
+    @include type.type-style('label-01');
+    color: var(--cds-text-secondary);
+    margin-bottom: $spacing-02;
+  }
+
+  .duplicate-confirm__primary {
+    margin-bottom: $spacing-05;
+    @include type.type-style('body-compact-01');
+  }
+
+  ul {
+    margin: 0 0 $spacing-05 $spacing-05;
+    list-style: disc;
+    @include type.type-style('body-compact-01');
+  }
+}

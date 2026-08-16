@@ -19,6 +19,19 @@ interface ContactQueryParams {
 // string and is used as a Prisma orderBy key, so it must never be trusted raw.
 const CONTACT_SORT_FIELDS = ['firstName', 'lastName', 'email', 'role', 'isVip', 'createdAt', 'updatedAt'] as const;
 
+/**
+ * Every address a contact answers to: its primary plus anything a merge folded
+ * into it. Mail, events and attachments all join to contacts by address string,
+ * so a merged contact is only whole if all of them are considered.
+ */
+function contactAddresses(contact: { email: string | null; emailAliases: Array<{ email: string }> }): string[] {
+  const addresses = contact.email ? [contact.email] : [];
+  for (const alias of contact.emailAliases) {
+    if (!addresses.includes(alias.email)) addresses.push(alias.email);
+  }
+  return addresses;
+}
+
 export const contactService = {
   async findAll(userId: string, query: ContactQueryParams) {
     const pagination = parsePagination(query);
@@ -58,13 +71,24 @@ export const contactService = {
       const whereClause = Prisma.join(conditions, ' AND ');
 
       const [rows, countResult] = await Promise.all([
+        // The count spans a contact's primary address *and* any addresses it
+        // absorbed in a merge — otherwise merging visibly loses history.
         prisma.$queryRaw<Array<{ id: string; email_count: bigint }>>(Prisma.sql`
           SELECT c.id, COALESCE(ec.cnt, 0) AS email_count
           FROM contacts c
           JOIN customers cu ON c.customer_id = cu.id
           LEFT JOIN (
-            SELECT "from", COUNT(*) AS cnt FROM emails WHERE user_id = ${userId} GROUP BY "from"
-          ) ec ON c.email = ec."from"
+            SELECT a.contact_id, SUM(f.cnt) AS cnt
+            FROM (
+              SELECT id AS contact_id, email FROM contacts WHERE email IS NOT NULL
+              UNION ALL
+              SELECT contact_id, email FROM contact_email_aliases
+            ) a
+            JOIN (
+              SELECT "from", COUNT(*) AS cnt FROM emails WHERE user_id = ${userId} GROUP BY "from"
+            ) f ON f."from" = a.email
+            GROUP BY a.contact_id
+          ) ec ON ec.contact_id = c.id
           WHERE ${whereClause}
           ORDER BY email_count DESC
           LIMIT ${pagination.limit} OFFSET ${pagination.skip}
@@ -116,8 +140,23 @@ export const contactService = {
       prisma.contact.count({ where }),
     ]);
 
-    // Still need email counts for the column display
-    const contactEmails = contacts.filter(c => c.email).map(c => c.email!);
+    // Still need email counts for the column display. Merged-in addresses count
+    // towards their surviving contact, same as the emailCount sort above.
+    const aliasRows = contacts.length > 0
+      ? await prisma.contactEmailAlias.findMany({
+          where: { contactId: { in: contacts.map(c => c.id) } },
+          select: { contactId: true, email: true },
+        })
+      : [];
+    const addressesByContact = new Map<string, string[]>();
+    for (const c of contacts) {
+      addressesByContact.set(c.id, c.email ? [c.email] : []);
+    }
+    for (const row of aliasRows) {
+      addressesByContact.get(row.contactId)?.push(row.email);
+    }
+
+    const contactEmails = Array.from(new Set([...addressesByContact.values()].flat()));
     let emailCounts: Record<string, number> = {};
     if (contactEmails.length > 0) {
       const counts = await prisma.email.groupBy({
@@ -129,7 +168,13 @@ export const contactService = {
     }
 
     return {
-      data: contacts.map(c => ({ ...c, _emailCount: c.email ? (emailCounts[c.email] || 0) : 0 })),
+      data: contacts.map(c => ({
+        ...c,
+        _emailCount: (addressesByContact.get(c.id) ?? []).reduce(
+          (sum, address) => sum + (emailCounts[address] || 0),
+          0
+        ),
+      })),
       meta: paginationMeta(total, pagination),
     };
   },
@@ -147,6 +192,7 @@ export const contactService = {
       where: { id, customer: { userId } },
       include: {
         customer: { select: { id: true, name: true, domain: true, logoUrl: true, company: true, website: true } },
+        emailAliases: { select: { id: true, email: true, createdAt: true }, orderBy: { email: 'asc' } },
       },
     });
     if (!contact) {
@@ -158,20 +204,25 @@ export const contactService = {
   async findContactEvents(userId: string, id: string) {
     const contact = await prisma.contact.findFirst({
       where: { id, customer: { userId } },
+      include: { emailAliases: { select: { email: true } } },
     });
     if (!contact) {
       throw new AppError(404, 'CONTACT_NOT_FOUND', 'Contact not found');
     }
-    if (!contact.email) return [];
+    // A merged contact answers to every address it absorbed, not just its primary.
+    const addresses = contactAddresses(contact);
+    if (addresses.length === 0) return [];
 
-    // Find events where this contact's email appears in the JSON attendees array
+    // Find events where any of this contact's addresses appears in the JSON attendees array
     const events = await prisma.calendarEvent.findMany({
       where: {
         userId,
-        attendees: {
-          path: [],
-          array_contains: [{ email: contact.email }],
-        },
+        OR: addresses.map((address) => ({
+          attendees: {
+            path: [],
+            array_contains: [{ email: address }],
+          },
+        })),
       },
       orderBy: { startTime: 'desc' },
       take: 50,
@@ -186,12 +237,12 @@ export const contactService = {
         take: 50,
       });
 
-      // Filter to events where the contact's email is in attendees
+      // Filter to events where any of the contact's addresses is in attendees
       return customerEvents
         .map((ce) => ce.calendarEvent)
         .filter((evt) => {
           const attendees = evt.attendees as unknown as Array<{ email: string }> | null;
-          return attendees?.some((a) => a.email === contact.email);
+          return attendees?.some((a) => addresses.includes(a.email));
         });
     }
 
@@ -201,20 +252,23 @@ export const contactService = {
   async findAttachments(userId: string, id: string) {
     const contact = await prisma.contact.findFirst({
       where: { id, customer: { userId } },
+      include: { emailAliases: { select: { email: true } } },
     });
     if (!contact) {
       throw new AppError(404, 'CONTACT_NOT_FOUND', 'Contact not found');
     }
-    if (!contact.email) return [];
+    // Includes addresses absorbed by a merge, so attachments do not disappear.
+    const addresses = contactAddresses(contact);
+    if (addresses.length === 0) return [];
 
     return prisma.emailAttachment.findMany({
       where: {
         email: {
           userId,
           OR: [
-            { from: contact.email },
-            { to: { has: contact.email } },
-            { cc: { has: contact.email } },
+            { from: { in: addresses } },
+            { to: { hasSome: addresses } },
+            { cc: { hasSome: addresses } },
           ],
         },
       },

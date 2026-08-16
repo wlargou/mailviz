@@ -25,6 +25,9 @@ export type AuditAction =
   | 'EMAIL_SHARED'
   | 'EMAIL_UNSHARED'
   | 'EMAIL_CONVERTED_TO_TASK'
+  | 'EMAIL_DRAFT_SAVED'
+  | 'EMAIL_DRAFT_DELETED'
+  | 'EMAIL_DRAFT_SENT'
   // Task actions
   | 'TASK_CREATED'
   | 'TASK_UPDATED'
@@ -48,6 +51,7 @@ export type AuditAction =
   | 'CONTACT_CREATED'
   | 'CONTACT_UPDATED'
   | 'CONTACT_DELETED'
+  | 'CONTACT_MERGED'
   // Label actions
   | 'LABEL_CREATED'
   | 'LABEL_UPDATED'
@@ -58,7 +62,13 @@ export type AuditAction =
   | 'USER_LOGIN'
   | 'USER_LOGOUT';
 
-export type EntityType = 'email' | 'task' | 'deal' | 'event' | 'company' | 'contact' | 'label' | 'auth' | 'scheduled_email';
+export type EntityType = 'email' | 'task' | 'deal' | 'event' | 'company' | 'contact' | 'label' | 'auth' | 'scheduled_email' | 'email_draft';
+
+/**
+ * Anything that can write an audit row — the shared client or a transaction
+ * client handed out by `prisma.$transaction`.
+ */
+type AuditClient = Pick<Prisma.TransactionClient, 'auditLog'>;
 
 interface AuditLogInput {
   userId: string;
@@ -94,9 +104,14 @@ export const auditService = {
 
   /**
    * Log with await — for critical operations where we need confirmation.
+   *
+   * Pass the transaction client for an operation that must not be able to
+   * commit without its audit row. Contact merges do: they delete rows whose
+   * contents exist nowhere else afterwards, so the record of what was destroyed
+   * has to land or roll back with the deletion itself.
    */
-  async logSync(input: AuditLogInput): Promise<void> {
-    await prisma.auditLog.create({
+  async logSync(input: AuditLogInput, client: AuditClient = prisma): Promise<void> {
+    await client.auditLog.create({
       data: {
         userId: input.userId,
         action: input.action,

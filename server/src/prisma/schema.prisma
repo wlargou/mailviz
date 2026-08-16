@@ -116,11 +116,35 @@ model Contact {
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
 
-  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customer Customer            @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  emailAliases ContactEmailAlias[]
 
   @@index([customerId])
   @@index([email])
   @@map("contacts")
+}
+
+/// Addresses a contact answers to besides `Contact.email`.
+///
+/// A contact is joined to mail by its email *string* — there is no foreign key
+/// from `emails` to `contacts`. Merging two contacts therefore destroys the
+/// losing address's entire mail history unless that address is kept somewhere,
+/// which is what this table is for. It holds only addresses gained through a
+/// merge, so nothing else in the app has to write to it.
+model ContactEmailAlias {
+  id                  String   @id @default(uuid())
+  contactId           String   @map("contact_id")
+  email               String   @db.VarChar(255)
+  /// Id of the contact row this address came from. That row is deleted by the
+  /// merge, so this is a historical reference only — deliberately not a foreign key.
+  mergedFromContactId String?  @map("merged_from_contact_id")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([contactId, email])
+  @@index([email])
+  @@map("contact_email_aliases")
 }
 
 model Label {
@@ -185,6 +209,7 @@ model User {
   taskSharesReceived  TaskShare[]        @relation("TaskSharesReceived")
   taskAssignments     Task[]             @relation("TaskAssignments")
   scheduledEmails     ScheduledEmail[]
+  emailDrafts         EmailDraft[]
   auditLogs           AuditLog[]
   notifications       Notification[]
 
@@ -460,6 +485,53 @@ model ScheduledEmail {
   @@index([userId])
   @@index([status, sendAt])
   @@map("scheduled_emails")
+}
+
+// ─── GMAIL DRAFTS ──────────────────────────────────
+
+/**
+ * A local mirror of a Gmail draft. Gmail's `users.drafts` collection is the
+ * source of truth: every write (create/update/send/delete) goes to Gmail first
+ * and this row is rewritten from what we just sent, and `draftService.syncDrafts`
+ * reconciles the table against `drafts.list` so a draft written in the Gmail UI
+ * shows up here too.
+ *
+ * The mirror exists so the Drafts folder renders from Postgres like every other
+ * folder rather than fanning out to `drafts.get` per row on every page load.
+ * `gmailMessageId` is the change detector: Gmail mints a NEW message id every
+ * time a draft is edited, and `drafts.list` returns it, so a sync only has to
+ * re-fetch the drafts whose message id moved.
+ */
+model EmailDraft {
+  id             String  @id @default(uuid())
+  userId         String  @map("user_id")
+  gmailDraftId   String  @map("gmail_draft_id")
+  gmailMessageId String? @map("gmail_message_id")
+  threadId       String? @map("thread_id")
+
+  to       String[]
+  cc       String[] @default([])
+  bcc      String[] @default([])
+  subject  String   @default("") @db.VarChar(500)
+  htmlBody String   @default("") @map("html_body") @db.Text
+  snippet  String?  @db.Text
+
+  hasAttachment Boolean @default(false) @map("has_attachment")
+  /// [{ filename, mimeType, size }] — enough to list a draft, not the bytes.
+  attachments   Json?   @default("[]")
+
+  /// Gmail's internalDate for the draft message: when it was last edited.
+  lastEditedAt DateTime  @map("last_edited_at")
+  syncedAt     DateTime? @map("synced_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, gmailDraftId])
+  @@index([userId])
+  @@index([userId, lastEditedAt])
+  @@map("email_drafts")
 }
 
 // ─── AUDIT LOG ──────────────────────────────────

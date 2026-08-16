@@ -33,6 +33,13 @@ export interface CustomerSummary {
   logoUrl: string | null;
 }
 
+/** An address a contact answers to besides its primary, gained by a merge. */
+export interface ContactEmailAlias {
+  id: string;
+  email: string;
+  createdAt: string;
+}
+
 export interface Contact {
   id: string;
   firstName: string;
@@ -43,8 +50,35 @@ export interface Contact {
   isVip: boolean;
   customerId: string;
   customer?: { id: string; name: string; domain: string | null; logoUrl: string | null };
+  emailAliases?: ContactEmailAlias[];
   createdAt: string;
   updatedAt: string;
+}
+
+export type DuplicateMatchRule = 'exact_email' | 'alias_local_part' | 'initial_form';
+
+export interface DuplicateContact extends Contact {
+  /** Messages received from all of this contact's addresses. */
+  emailCount: number;
+  aliasEmails: string[];
+}
+
+export interface DuplicateGroup {
+  id: string;
+  customer: { id: string; name: string; domain: string | null; logoUrl: string | null };
+  confidence: 'high' | 'medium';
+  rules: DuplicateMatchRule[];
+  /** Plain-language justification, strongest rule first. */
+  reasons: string[];
+  suggestedPrimaryId: string;
+  contacts: DuplicateContact[];
+}
+
+export interface MergeContactsResult {
+  contact: Contact;
+  mergedContactIds: string[];
+  aliasEmailsAdded: string[];
+  fieldsAdopted: Record<string, string>;
 }
 
 export interface CreateCustomerInput {

@@ -2,8 +2,30 @@ import { Response, NextFunction } from 'express';
 import type { Req } from "../types/http.js";
 import { prisma } from '../lib/prisma.js';
 import { contactService } from '../services/contactService.js';
+import { contactMergeService } from '../services/contactMergeService.js';
 
 export const contactController = {
+  async findDuplicates(req: Req, res: Response, next: NextFunction) {
+    try {
+      const result = await contactMergeService.findDuplicates(
+        req.user!.id,
+        req.query as Record<string, string>
+      );
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async merge(req: Req, res: Response, next: NextFunction) {
+    try {
+      const result = await contactMergeService.merge(req.user!.id, req.body);
+      res.json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async findAll(req: Req, res: Response, next: NextFunction) {
     try {
       const result = await contactService.findAll(req.user!.id, req.query as Record<string, string>);

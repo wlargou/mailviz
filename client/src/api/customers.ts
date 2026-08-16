@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { Customer, Contact, CreateCustomerInput, UpdateCustomerInput, CreateContactInput, UpdateContactInput } from '../types/customer';
+import type { Customer, Contact, CreateCustomerInput, UpdateCustomerInput, CreateContactInput, UpdateContactInput, DuplicateGroup, MergeContactsResult } from '../types/customer';
 import type { CalendarEvent } from '../types/calendar';
 import type { AttachmentWithEmail } from '../types/email';
 import type { ApiResponse } from '../types/api';
@@ -73,5 +73,17 @@ export const contactsApi = {
 
   toggleVip(id: string) {
     return api.patch<ApiResponse<Contact>>(`/contacts/${id}/vip`);
+  },
+
+  getDuplicates(params?: Record<string, string>) {
+    return api.get<ApiResponse<DuplicateGroup[]>>('/contacts/duplicates', { params });
+  },
+
+  /**
+   * Irreversible: every id in `sourceIds` is deleted. The caller sends exactly
+   * the ids the user confirmed on screen — there is no "merge the group" call.
+   */
+  merge(body: { targetId: string; sourceIds: string[] }) {
+    return api.post<ApiResponse<MergeContactsResult>>('/contacts/merge', body);
   },
 };

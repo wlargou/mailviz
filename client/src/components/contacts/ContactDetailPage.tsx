@@ -205,6 +205,13 @@ export function ContactDetailPage() {
                 <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.75rem', flexWrap: 'wrap', color: 'var(--cds-text-secondary)' }}>
                   {contact.email && <span>{contact.email}</span>}
                   {contact.phone && <span>{contact.phone}</span>}
+                  {/* Addresses folded in by a merge — their mail, events and
+                      attachments all show up under this contact. */}
+                  {contact.emailAliases?.map((alias) => (
+                    <span key={alias.id} title="Merged address">
+                      {alias.email} <Tag type="gray" size="sm">also</Tag>
+                    </span>
+                  ))}
                 </div>
               </div>
               <Button kind="ghost" size="sm" renderIcon={Edit} onClick={openEditContact}>

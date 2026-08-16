@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createContactSchema, updateContactSchema } from './contactValidator.js';
+import { createContactSchema, mergeContactsSchema, updateContactSchema } from './contactValidator.js';
 
 /**
  * Contact request schemas.
@@ -101,5 +101,38 @@ describe('createContactSchema', () => {
     expect(parsed.email).toBe('');
     expect(parsed.phone).toBe('');
     expect(parsed.role).toBe('');
+  });
+});
+
+/**
+ * The merge request.
+ *
+ * A merge deletes every id in `sourceIds`, so the schema is the first place a
+ * malformed request is stopped. An unvalidated id reaching the service would be
+ * matched against the caller's contacts, find nothing, and surface as "not
+ * found" — which reads like the row was already merged rather than like a bug.
+ */
+describe('mergeContactsSchema', () => {
+  const target = '3f2504e0-4f89-41d3-9a0c-0305e82c3301';
+  const source = '9c858901-8a57-4791-81fe-4c455b099bc9';
+
+  it('accepts a target and one or more sources', () => {
+    expect(mergeContactsSchema.parse({ targetId: target, sourceIds: [source] })).toEqual({
+      targetId: target,
+      sourceIds: [source],
+    });
+  });
+
+  it('rejects a request with nothing to merge', () => {
+    expect(() => mergeContactsSchema.parse({ targetId: target, sourceIds: [] })).toThrow();
+  });
+
+  it('rejects ids that are not uuids', () => {
+    expect(() => mergeContactsSchema.parse({ targetId: 'nope', sourceIds: [source] })).toThrow();
+    expect(() => mergeContactsSchema.parse({ targetId: target, sourceIds: ['nope'] })).toThrow();
+  });
+
+  it('rejects a missing target', () => {
+    expect(() => mergeContactsSchema.parse({ sourceIds: [source] })).toThrow();
   });
 });

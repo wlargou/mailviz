@@ -14,8 +14,9 @@ import {
   Pagination,
   DataTableSkeleton,
   Tag,
+  Button,
 } from '@carbon/react';
-import { Copy } from '@carbon/icons-react';
+import { Copy, Merge } from '@carbon/icons-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { contactsApi } from '../../api/customers';
 import { useUIStore } from '../../store/uiStore';
@@ -91,6 +92,16 @@ export function ContactsPage() {
         <div className="page-header__info">
           <h1>Contacts</h1>
           <p className="page-header__subtitle">All contacts across companies</p>
+        </div>
+        <div className="page-header__actions">
+          <Button
+            kind="tertiary"
+            size="sm"
+            renderIcon={Merge}
+            onClick={() => navigate('/contacts/duplicates')}
+          >
+            Find duplicates
+          </Button>
         </div>
       </div>
 
