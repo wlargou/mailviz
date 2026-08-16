@@ -54,40 +54,6 @@ export interface DashboardStats {
     emailVolume: Array<{ date: string; sent: number; received: number }>;
     taskStatusCounts: Record<string, number>;
   };
-  myDay: {
-    events: Array<{
-      id: string;
-      title: string;
-      startTime: string;
-      endTime: string;
-      isAllDay: boolean;
-      location: string | null;
-      conferenceLink: string | null;
-    }>;
-    tasksDueToday: Array<{
-      id: string;
-      title: string;
-      priority: string;
-      status: string;
-      dueDate: string;
-    }>;
-    unreadTodayCount: number;
-  };
-  needsAttention: Array<{
-    id: string;
-    name: string;
-    domain: string | null;
-    logoUrl: string | null;
-    lastContactedDaysAgo: number;
-    openTaskCount: number;
-  }>;
-  frequentContacts: Array<{
-    email: string;
-    name: string | null;
-    company: string | null;
-    contactId: string | null;
-    messageCount: number;
-  }>;
   expiringDeals: Array<{
     id: string;
     title: string;

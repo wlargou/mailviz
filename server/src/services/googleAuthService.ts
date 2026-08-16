@@ -283,14 +283,4 @@ export const googleAuthService = {
 
     return oauth2Client;
   },
-
-  // Helper used by calendarSyncScheduler to check if sync is in progress
-  async isCalendarSyncInProgress() {
-    return false; // Placeholder — actual impl is in the scheduler
-  },
 };
-
-// Re-export for backward compatibility
-export function isCalendarSyncInProgress() {
-  return false;
-}

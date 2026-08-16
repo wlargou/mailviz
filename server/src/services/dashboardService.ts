@@ -14,8 +14,8 @@ function subDays(d: Date, days: number): Date {
 export const dashboardService = {
   /**
    * P2: Reorganized into 3 sequential batches instead of 18+ parallel queries.
-   * Batch 1: Core stats (7 queries — tasks, emails, calendar, customers)
-   * Batch 2: Raw SQL aggregates (email volume, needs attention, frequent contacts)
+   * Batch 1: Core stats (6 queries — tasks, emails, calendar, customers)
+   * Batch 2: Raw SQL aggregates (email volume, top customers)
    * Batch 3: Post-processing lookups (top customer details)
    */
   async getStats(userId: string) {
@@ -39,11 +39,10 @@ export const dashboardService = {
     const authRecord = await prisma.googleAuth.findFirst({ where: { userId }, select: { email: true } });
     const userEmail = authRecord?.email ?? '';
 
-    // ── Batch 1: Core Prisma queries (7 queries, within Prisma pool limits) ──
+    // ── Batch 1: Core Prisma queries (6 queries, within Prisma pool limits) ──
     const [
       taskAggregates,
       recentTasks,
-      tasksDueToday,
       emailStats,
       recentUnreadEmails,
       calendarData,
@@ -80,17 +79,6 @@ export const dashboardService = {
           labels: { include: { label: true } },
           customer: { select: { id: true, name: true, company: true } },
         },
-      }),
-
-      // Tasks due today
-      prisma.task.findMany({
-        where: {
-          userId,
-          status: { not: 'DONE' },
-          dueDate: { gte: startOfToday, lt: endOfToday },
-        },
-        orderBy: { dueDate: 'asc' },
-        select: { id: true, title: true, priority: true, status: true, dueDate: true },
       }),
 
       // Single raw query replaces 3 separate email count queries
@@ -205,7 +193,7 @@ export const dashboardService = {
     }, 0);
 
     // ── Batch 2: Raw SQL aggregates (run in parallel) ──
-    const [topCustomersRaw, emailVolumeResult, needsAttentionResult, frequentContactsResult] = await Promise.all([
+    const [topCustomersRaw, emailVolumeResult] = await Promise.all([
       prisma.email.groupBy({
         by: ['customerId'],
         where: { userId, customerId: { not: null } },
@@ -225,48 +213,6 @@ export const dashboardService = {
         GROUP BY DATE("received_at")
         ORDER BY date ASC
       `.catch(() => [] as Array<{ date: Date; sent: string; received: string }>),
-
-      // Needs attention customers
-      prisma.$queryRaw<Array<{
-        id: string;
-        name: string;
-        domain: string | null;
-        logoUrl: string | null;
-        lastContactedDaysAgo: number | null;
-        openTaskCount: string;
-      }>>`
-        SELECT
-          c.id,
-          c.name,
-          c.domain,
-          c.logo_url as "logoUrl",
-          EXTRACT(DAY FROM NOW() - MAX(e.received_at))::int as "lastContactedDaysAgo",
-          COUNT(DISTINCT t.id) FILTER (WHERE t.status != 'DONE')::int as "openTaskCount"
-        FROM customers c
-        LEFT JOIN emails e ON e.customer_id = c.id AND e.user_id = ${userId}
-        LEFT JOIN tasks t ON t.customer_id = c.id AND t.user_id = ${userId}
-        WHERE c.user_id = ${userId}
-        GROUP BY c.id, c.name, c.domain, c.logo_url
-        HAVING
-          (MAX(e.received_at) < NOW() - INTERVAL '14 days' AND COUNT(DISTINCT t.id) FILTER (WHERE t.status != 'DONE') > 0)
-          OR MAX(e.received_at) < NOW() - INTERVAL '30 days'
-          OR MAX(e.received_at) IS NULL
-        ORDER BY MAX(e.received_at) ASC NULLS FIRST
-        LIMIT 5
-      `.catch(() => []),
-
-      // Frequent contacts
-      prisma.$queryRaw<Array<{ email: string; name: string | null; messageCount: string }>>`
-        SELECT
-          "from" as email,
-          "from_name" as name,
-          COUNT(*)::int as "messageCount"
-        FROM emails
-        WHERE "from" NOT LIKE '%' || ${userEmail} || '%' AND user_id = ${userId}
-        GROUP BY "from", "from_name"
-        ORDER BY COUNT(*) DESC
-        LIMIT 5
-      `.catch(() => []),
     ]);
 
     // ── Build email volume ──
@@ -283,19 +229,12 @@ export const dashboardService = {
       emailVolume.push({ date: dateStr, sent: existing?.sent ?? 0, received: existing?.received ?? 0 });
     }
 
-    // ── Build needs attention ──
-    const needsAttention = needsAttentionResult.map((r) => ({
-      ...r,
-      lastContactedDaysAgo: r.lastContactedDaysAgo ?? 999,
-      openTaskCount: Number(r.openTaskCount),
-    }));
-
     // ── Batch 3: Post-processing lookups ──
     const customerIds = topCustomersRaw
       .map((r) => r.customerId)
       .filter((id): id is string => id !== null);
 
-    const [customerDetails, taskCountsByCustomer, contactLookup] = await Promise.all([
+    const [customerDetails, taskCountsByCustomer] = await Promise.all([
       prisma.customer.findMany({
         where: { id: { in: customerIds }, userId },
         select: { id: true, name: true, domain: true, logoUrl: true },
@@ -305,13 +244,6 @@ export const dashboardService = {
         where: { userId, customerId: { in: customerIds } },
         _count: { id: true },
       }),
-      // Enrich frequent contacts
-      frequentContactsResult.length > 0
-        ? prisma.contact.findMany({
-            where: { customer: { userId }, email: { in: frequentContactsResult.map((f) => f.email) } },
-            select: { id: true, email: true, customer: { select: { company: true } } },
-          })
-        : Promise.resolve([]),
     ]);
 
     // Top customers
@@ -332,19 +264,6 @@ export const dashboardService = {
         };
       })
       .filter((c): c is NonNullable<typeof c> => c !== null);
-
-    // Frequent contacts enrichment
-    const contactMap = new Map(contactLookup.map((c) => [c.email, c]));
-    const frequentContacts = frequentContactsResult.map((f) => {
-      const contact = contactMap.get(f.email);
-      return {
-        email: f.email,
-        name: f.name,
-        company: contact?.customer?.company || null,
-        contactId: contact?.id || null,
-        messageCount: Number(f.messageCount),
-      };
-    });
 
     // Expiring deals (next 15 days)
     const fifteenDaysFromNow = new Date(now);
@@ -418,13 +337,6 @@ export const dashboardService = {
         emailVolume,
         taskStatusCounts,
       },
-      myDay: {
-        events: todayEventsDetailed,
-        tasksDueToday,
-        unreadTodayCount,
-      },
-      needsAttention,
-      frequentContacts,
       expiringDeals,
     };
   },
