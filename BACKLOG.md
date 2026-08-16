@@ -110,7 +110,12 @@ Design detail for 2.1 and 2.3 is in [`docs/plans/`](docs/plans/).
   Adding value fields would invite pipeline expectations the rest of the app
   does not meet. Revisit only if Deals is deliberately repositioned as
   opportunity management, which is a different product.
-- [ ] **3.5 Email templates / snippets** — zero references anywhere.
+- [x] **3.5 Email templates / snippets** — variables gated twice: unknown names
+  rejected at save time, and compose refuses to send while any `{{…}}` survives
+  in the final text. Unfilled variables stay verbatim rather than blanking, so
+  the damage is visible to the sender. Insert goes at the cursor, never
+  replacing the body — the compose window is never empty (the signature is
+  seeded on open), so replace-if-empty would have been dead code.
 - [x] **3.6 Snooze / follow-up** — state lives in `email_reminders`, not on the
   `emails` row, because the 60s sync rewrites every column there. Threads
   return unread at their real date; bumping `receivedAt` would corrupt the date
