@@ -8,6 +8,7 @@ import { CustomersPage } from './components/customers/CustomersPage';
 import { CustomerDetailPage } from './components/customers/CustomerDetailPage';
 import { ContactsPage } from './components/contacts/ContactsPage';
 import { ContactDetailPage } from './components/contacts/ContactDetailPage';
+import { ContactDuplicatesPage } from './components/contacts/ContactDuplicatesPage';
 import { CalendarPage } from './components/calendar/CalendarPage';
 import { MailPage } from './components/mail/MailPage';
 import { ReviewPage } from './components/mail/review/ReviewPage';
@@ -27,6 +28,8 @@ export function App() {
             <Route path="/customers" element={<CustomersPage />} />
             <Route path="/customers/:id" element={<CustomerDetailPage />} />
             <Route path="/contacts" element={<ContactsPage />} />
+            {/* Above `/contacts/:id` — otherwise "duplicates" reads as an id. */}
+            <Route path="/contacts/duplicates" element={<ContactDuplicatesPage />} />
             <Route path="/contacts/:id" element={<ContactDetailPage />} />
             <Route path="/deals" element={<DealsPage />} />
             <Route path="/calendar" element={<CalendarPage />} />

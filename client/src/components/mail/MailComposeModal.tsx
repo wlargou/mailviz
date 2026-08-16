@@ -1,17 +1,18 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { TextInput, Button, InlineLoading, Tag, DatePicker, DatePickerInput, TimePicker } from '@carbon/react';
 import { Tearsheet } from '@carbon/ibm-products';
-import { SendAlt, Attachment, Close, Time } from '@carbon/icons-react';
+import { SendAlt, Attachment, Close, Time, Save } from '@carbon/icons-react';
 import DOMPurify from 'dompurify';
 import { format } from 'date-fns';
 import { emailsApi } from '../../api/emails';
+import { draftsApi } from '../../api/drafts';
 import { authApi } from '../../api/auth';
 import { useUIStore } from '../../store/uiStore';
 import { TiptapEditor } from './TiptapEditor';
 import { ComposeToolbar } from './ComposeToolbar';
 import { RecipientInput } from './RecipientInput';
 import type { Editor } from '@tiptap/react';
-import type { ComposeMode, EmailMessage } from '../../types/email';
+import type { ComposeMode, DraftDetail, DraftSaveInput, EmailMessage } from '../../types/email';
 
 interface ComposeAttachment {
   id: string;
@@ -44,9 +45,17 @@ interface MailComposeModalProps {
   onSent: () => void;
   mode: ComposeMode;
   replyToEmail?: EmailMessage | null;
+  /**
+   * A draft already loaded from the server (recipients, subject, body and
+   * attachment bytes). Present when the window was opened from the Drafts
+   * folder; saving then updates that draft instead of creating a second one.
+   */
+  draft?: DraftDetail | null;
+  /** Fired after a draft is saved or sent so the Drafts folder can refresh. */
+  onDraftChanged?: () => void;
 }
 
-export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail }: MailComposeModalProps) {
+export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, draft, onDraftChanged }: MailComposeModalProps) {
   const addNotification = useUIStore((s) => s.addNotification);
   const editorRef = useRef<Editor | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -63,6 +72,13 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail }: 
   const [showSchedulePicker, setShowSchedulePicker] = useState(false);
   const [scheduledAt, setScheduledAt] = useState<Date | null>(null);
   const [scheduleTime, setScheduleTime] = useState('09:00');
+  /**
+   * The draft this window is bound to, if any. Set when opened from the Drafts
+   * folder, and set again by the first "Save draft" of a fresh compose — which
+   * is what makes the second save an update rather than a duplicate.
+   */
+  const [draftId, setDraftId] = useState<string | null>(null);
+  const [savingDraft, setSavingDraft] = useState(false);
 
   // Pre-fill based on mode
   useEffect(() => {
@@ -73,8 +89,28 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail }: 
     setScheduledAt(null);
     setShowSchedulePicker(false);
     setScheduleTime('09:00');
+    setDraftId(draft?.id ?? null);
 
-    if (mode === 'new') {
+    if (mode === 'draft' && draft) {
+      setTo(draft.to);
+      setCc(draft.cc);
+      setBcc(draft.bcc);
+      setShowBcc(draft.bcc.length > 0);
+      setSubject(draft.subject);
+      setAttachments(
+        draft.attachments.map((a) => ({
+          id: crypto.randomUUID(),
+          filename: a.filename,
+          size: a.size,
+          contentType: a.mimeType,
+          content: a.content,
+          // A draft attachment Gmail would not hand back (too large to
+          // rehydrate) arrives with no bytes; flagging it stops a silent
+          // send of an empty file.
+          status: a.content ? ('ready' as const) : ('error' as const),
+        }))
+      );
+    } else if (mode === 'new') {
       setTo([]);
       setCc([]);
       setBcc([]);
@@ -113,14 +149,24 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail }: 
         );
       }
     }
-  }, [open, mode, replyToEmail]);
+  }, [open, mode, replyToEmail, draft]);
 
-  // Inject email signature into editor when it's ready
+  // Seed the editor once it exists: with the draft's own body when one was
+  // opened, otherwise with the signature. A draft already carries whatever
+  // signature it was saved with, so injecting one here would duplicate it.
   useEffect(() => {
     if (!open || !editorInstance) return;
 
     // Small delay to ensure editor is fully initialized after mode setup
     const timer = setTimeout(async () => {
+      if (editorInstance.isDestroyed) return;
+
+      if (mode === 'draft' && draft) {
+        editorInstance.commands.setContent(draft.htmlBody || '');
+        editorInstance.commands.focus('start');
+        return;
+      }
+
       try {
         const { data } = await authApi.getSignature();
         if (data.signature && editorInstance && !editorInstance.isDestroyed) {
@@ -133,7 +179,7 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail }: 
     }, 100);
 
     return () => clearTimeout(timer);
-  }, [open, editorInstance]);
+  }, [open, editorInstance, mode, draft]);
 
   const handleFilesSelected = useCallback((files: FileList | File[]) => {
     const fileArray = Array.from(files);
@@ -226,10 +272,90 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail }: 
   const totalSize = attachments.reduce((s, a) => s + a.size, 0) + forwardedAttachments.reduce((s, a) => s + a.size, 0);
   const allAttachmentCount = attachments.length + forwardedAttachments.length;
 
+  /**
+   * Drafts are offered everywhere except Forward. A forward's payload includes
+   * attachments that live on the original message and are never uploaded here,
+   * so saving one as a draft would quietly drop them.
+   */
+  const canSaveDraft = mode !== 'forward';
+
+  /**
+   * The body a draft has to carry. A reply's quoted original is appended by the
+   * server at send time but not at draft time, so it is folded in here —
+   * otherwise the quote would vanish from a reply that was put down and picked
+   * back up. A draft reopened from the Drafts folder already contains it.
+   */
+  const draftBody = () => {
+    const html = editorRef.current?.getHTML() || '';
+    if (mode === 'reply' || mode === 'replyAll') return `${html}${getQuotedHtml()}`;
+    return html;
+  };
+
+  const draftPayload = (): DraftSaveInput => ({
+    to,
+    cc,
+    bcc,
+    subject,
+    htmlBody: draftBody(),
+    attachments: attachments
+      .filter((a) => a.status === 'ready')
+      .map((a) => ({ filename: a.filename, content: a.content, contentType: a.contentType, size: a.size })),
+    ...(mode === 'reply' || mode === 'replyAll' ? { replyToEmailId: replyToEmail?.id } : {}),
+  });
+
+  const handleSaveDraft = async () => {
+    setSavingDraft(true);
+    try {
+      const payload = draftPayload();
+      const { data } = draftId
+        ? await draftsApi.update(draftId, payload)
+        : await draftsApi.create(payload);
+      setDraftId(data.data.id);
+      addNotification({ kind: 'success', title: 'Draft saved' });
+      onDraftChanged?.();
+    } catch {
+      addNotification({ kind: 'error', title: 'Failed to save draft' });
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  /**
+   * Send a message that is already a Gmail draft.
+   *
+   * Goes through `drafts.send`, which sends and consumes the draft in one
+   * operation — the alternative (send, then delete) leaves a stale copy behind
+   * whenever the delete fails.
+   */
+  const handleSendDraft = async (id: string) => {
+    if (to.length === 0) {
+      addNotification({ kind: 'warning', title: 'Add at least one recipient' });
+      return;
+    }
+    setSending(true);
+    try {
+      await draftsApi.send(id, draftPayload());
+      addNotification({ kind: 'success', title: 'Message sent' });
+      onDraftChanged?.();
+      onSent();
+      onClose();
+    } catch {
+      addNotification({ kind: 'error', title: 'Failed to send message' });
+    } finally {
+      setSending(false);
+    }
+  };
+
   const handleSend = async () => {
     // If scheduled, delegate to schedule handler
     if (scheduledAt) {
       return handleScheduleSend();
+    }
+
+    // Once this window is bound to a draft, sending must go through the draft
+    // so Gmail consumes it. Sending the normal way would leave the draft behind.
+    if (draftId) {
+      return handleSendDraft(draftId);
     }
 
     const htmlBody = editorRef.current?.getHTML() || '';
@@ -326,6 +452,15 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail }: 
           ? forwardedAttachments.map((a) => a.id)
           : undefined,
       });
+      // The scheduler now owns this message. Leaving the draft behind would
+      // put the same mail in two places, one of which sends itself.
+      if (draftId) {
+        try {
+          await draftsApi.remove(draftId);
+          setDraftId(null);
+          onDraftChanged?.();
+        } catch { /* the draft survives; the schedule still stands */ }
+      }
       addNotification({ kind: 'success', title: `Email scheduled for ${format(scheduledAt, 'MMM d, h:mm a')}` });
       onSent();
       onClose();
@@ -349,13 +484,20 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail }: 
     setShowSchedulePicker(false);
   };
 
-  const panelTitle = mode === 'new' ? 'New Email' : mode === 'reply' ? 'Reply' : mode === 'replyAll' ? 'Reply All' : 'Forward';
+  const panelTitle =
+    mode === 'new' ? 'New Email'
+    : mode === 'draft' ? 'Draft'
+    : mode === 'reply' ? 'Reply'
+    : mode === 'replyAll' ? 'Reply All'
+    : 'Forward';
   const panelDescription =
     mode === 'new'
       ? 'Compose a new message'
-      : mode === 'forward'
-        ? 'Forward this message to new recipients'
-        : 'Reply to this conversation';
+      : mode === 'draft'
+        ? 'Pick up where you left off'
+        : mode === 'forward'
+          ? 'Forward this message to new recipients'
+          : 'Reply to this conversation';
 
   return (
     <Tearsheet
@@ -381,9 +523,23 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail }: 
           label: 'Schedule',
           onClick: () => setShowSchedulePicker(!showSchedulePicker),
           kind: 'secondary' as const,
-          disabled: sending,
+          // Scheduled send stores its own copy of the message; a draft opened
+          // from the Drafts folder already has a copy in Gmail, and there is no
+          // sensible reading of "both". Send it or leave it a draft.
+          disabled: sending || mode === 'draft',
           renderIcon: Time,
         },
+        // Explicit, never on a timer: one save is one Gmail write.
+        ...(canSaveDraft
+          ? [{
+              key: 'save-draft',
+              label: savingDraft ? 'Saving...' : draftId ? 'Update draft' : 'Save draft',
+              onClick: handleSaveDraft,
+              kind: 'ghost' as const,
+              disabled: sending || savingDraft || isUploading,
+              renderIcon: Save,
+            }]
+          : []),
       ]}
     >
       <div
@@ -411,7 +567,7 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail }: 
           <RecipientInput label="Bcc" value={bcc} onChange={setBcc} />
         )}
 
-        {(mode === 'new' || mode === 'forward') && (
+        {(mode === 'new' || mode === 'forward' || mode === 'draft') && (
           <TextInput
             id="compose-subject"
             labelText="Subject"

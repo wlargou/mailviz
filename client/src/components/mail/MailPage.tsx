@@ -12,12 +12,13 @@ import {
   DatePickerInput,
   TimePicker,
 } from '@carbon/react';
-import { Renew, StarFilled, Star, Attachment, Email as EmailIcon, EmailNew, ReplyAll, Archive, TrashCan, Undo, Add, CheckmarkOutline, Close, CheckboxCheckedFilled, Task, Share, Review } from '@carbon/icons-react';
+import { Renew, StarFilled, Star, Attachment, Email as EmailIcon, EmailNew, ReplyAll, Archive, TrashCan, Undo, Add, CheckmarkOutline, Close, CheckboxCheckedFilled, Task, Share, Review, DocumentBlank } from '@carbon/icons-react';
 import { SidePanel } from '@carbon/ibm-products';
 import { formatDistanceToNow, format } from 'date-fns';
 import { Time } from '@carbon/icons-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { emailsApi } from '../../api/emails';
+import { draftsApi } from '../../api/drafts';
 import { useUIStore } from '../../store/uiStore';
 import { useAuthStore } from '../../store/authStore';
 import { useEmailWebSocket } from '../../hooks/useEmailWebSocket';
@@ -27,7 +28,7 @@ import { MailSearchBar } from './MailSearchBar';
 import { MailComposeModal } from './MailComposeModal';
 import { ConvertToTaskModal } from './ConvertToTaskModal';
 import type { MailFilters } from './MailSearchBar';
-import type { EmailThread } from '../../types/email';
+import type { ComposeMode, DraftDetail, DraftListItem, EmailThread } from '../../types/email';
 import type { PaginationMeta } from '../../types/api';
 
 // Decode HTML entities in snippets (Gmail API returns &#39; etc.)
@@ -83,6 +84,11 @@ export function MailPage() {
   });
   const [selectedThread, setSelectedThread] = useState<string | null>(null);
   const [composeOpen, setComposeOpen] = useState(false);
+  const [composeMode, setComposeMode] = useState<ComposeMode>('new');
+  const [composeDraft, setComposeDraft] = useState<DraftDetail | null>(null);
+  const [drafts, setDrafts] = useState<DraftListItem[]>([]);
+  const [draftsLoading, setDraftsLoading] = useState(false);
+  const [openingDraftId, setOpeningDraftId] = useState<string | null>(null);
   const [convertEmail, setConvertEmail] = useState<EmailThread | null>(null);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -111,6 +117,14 @@ export function MailPage() {
     'email:sent': () => {
       fetchThreadsRef.current?.(true);
     },
+    // Only wired while the Drafts folder is open — see the effect that sets the
+    // ref. A draft changing in Gmail is not worth a fetch nobody will look at.
+    'drafts:synced': () => {
+      fetchDraftsRef.current?.();
+    },
+    'drafts:changed': () => {
+      fetchDraftsRef.current?.();
+    },
     'email:shared': () => {
       addNotification({ kind: 'info', title: 'An email thread was shared with you' });
       fetchThreadsRef.current?.(true);
@@ -124,6 +138,7 @@ export function MailPage() {
 
   // Ref to fetchThreads so WS handlers don't need it as a dependency
   const fetchThreadsRef = useRef<((silent?: boolean) => void) | null>(null);
+  const fetchDraftsRef = useRef<(() => void) | null>(null);
 
   const fetchThreads = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -160,6 +175,57 @@ export function MailPage() {
       setScheduledLoading(false);
     }
   }, []);
+
+  /**
+   * The Drafts folder reads the server's Gmail mirror, so opening the folder is
+   * one query. The `sync` call behind it is the reconciliation with Gmail —
+   * fired once when the folder is opened so a draft written in the Gmail UI
+   * appears without waiting for the 60s background sync.
+   */
+  const fetchDrafts = useCallback(async (reconcile = false) => {
+    setDraftsLoading(true);
+    try {
+      if (reconcile) {
+        try {
+          await draftsApi.sync();
+        } catch { /* fall back to whatever the mirror already holds */ }
+      }
+      const { data: response } = await draftsApi.list();
+      setDrafts(response.data);
+    } catch {
+      addNotification({ kind: 'error', title: 'Failed to load drafts' });
+    } finally {
+      setDraftsLoading(false);
+    }
+  }, [addNotification]);
+
+  /** Restore a draft into the compose window: recipients, subject, body, files. */
+  const openDraft = useCallback(async (id: string) => {
+    setOpeningDraftId(id);
+    try {
+      const { data: response } = await draftsApi.open(id);
+      setComposeDraft(response.data);
+      setComposeMode('draft');
+      setComposeOpen(true);
+    } catch {
+      addNotification({ kind: 'error', title: 'Failed to open draft' });
+    } finally {
+      setOpeningDraftId(null);
+    }
+  }, [addNotification]);
+
+  const deleteDraft = useCallback(async (id: string) => {
+    // Optimistic: the row goes now, and comes back on the next list if the
+    // server refused.
+    setDrafts((prev) => prev.filter((d) => d.id !== id));
+    try {
+      await draftsApi.remove(id);
+      addNotification({ kind: 'success', title: 'Draft discarded' });
+    } catch {
+      addNotification({ kind: 'error', title: 'Failed to discard draft' });
+      fetchDrafts();
+    }
+  }, [addNotification, fetchDrafts]);
 
   const openReschedule = (se: ScheduledEmailRow) => {
     const current = new Date(se.sendAt);
@@ -205,15 +271,21 @@ export function MailPage() {
   useEffect(() => {
     if (filters.folder === 'scheduled') {
       fetchScheduledEmails();
+    } else if (filters.folder === 'drafts') {
+      fetchDrafts(true);
     } else {
       fetchThreads();
     }
-  }, [fetchThreads, fetchScheduledEmails, filters.folder]);
+  }, [fetchThreads, fetchScheduledEmails, fetchDrafts, filters.folder]);
 
   // Keep ref in sync for WebSocket handlers
   useEffect(() => {
     fetchThreadsRef.current = fetchThreads;
   }, [fetchThreads]);
+
+  useEffect(() => {
+    fetchDraftsRef.current = filters.folder === 'drafts' ? () => fetchDrafts() : null;
+  }, [fetchDrafts, filters.folder]);
 
   const handleFiltersChange = (newFilters: MailFilters) => {
     setFilters(newFilters);
@@ -440,7 +512,11 @@ export function MailPage() {
               kind="primary"
               size="sm"
               renderIcon={Add}
-              onClick={() => setComposeOpen(true)}
+              onClick={() => {
+                setComposeDraft(null);
+                setComposeMode('new');
+                setComposeOpen(true);
+              }}
             >
               Compose
             </Button>
@@ -485,23 +561,25 @@ export function MailPage() {
               filters.folder === null ? 0
               : filters.folder === 'inbox' ? 1
               : filters.folder === 'sent' ? 2
-              : filters.folder === 'starred' ? 3
-              : filters.folder === 'archived' ? 4
-              : filters.folder === 'trash' ? 5
-              : filters.folder === 'scheduled' ? 6
+              : filters.folder === 'drafts' ? 3
+              : filters.folder === 'starred' ? 4
+              : filters.folder === 'archived' ? 5
+              : filters.folder === 'trash' ? 6
+              : filters.folder === 'scheduled' ? 7
               : 0
             }
             onChange={({ index }) => {
               // Carbon only fires onChange once it has resolved an index, but
               // `SwitchEventHandlersParams['index']` is optional.
               if (index === undefined) return;
-              const folders = [null, 'inbox', 'sent', 'starred', 'archived', 'trash', 'scheduled'];
+              const folders = [null, 'inbox', 'sent', 'drafts', 'starred', 'archived', 'trash', 'scheduled'];
               handleFolderChange(folders[index]);
             }}
           >
             <Switch name="all" text="All" />
             <Switch name="inbox" text="Inbox" />
             <Switch name="sent" text="Sent" />
+            <Switch name="drafts" text="Drafts" />
             <Switch name="starred" text="Starred" />
             <Switch name="archived" text="Archived" />
             <Switch name="trash" text="Trash" />
@@ -522,7 +600,70 @@ export function MailPage() {
           </div>
         )}
 
-        {filters.folder === 'scheduled' ? (
+        {filters.folder === 'drafts' ? (
+          draftsLoading ? (
+            <div className="thread-list">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="thread-item" style={{ padding: '0.75rem 1rem' }}>
+                  <SkeletonText heading width={`${30 + Math.random() * 40}%`} />
+                  <SkeletonText width={`${50 + Math.random() * 30}%`} />
+                </div>
+              ))}
+            </div>
+          ) : drafts.length === 0 ? (
+            <EmptyState
+              title="No drafts"
+              description="Start a message and choose Save draft to come back to it later"
+              icon={<DocumentBlank size={48} />}
+            />
+          ) : (
+            <div className="draft-list">
+              {drafts.map((d) => (
+                <div
+                  key={d.id}
+                  role="button"
+                  tabIndex={0}
+                  className="draft-item"
+                  onClick={() => openDraft(d.id)}
+                  onKeyDown={(ev) => {
+                    if (ev.key === 'Enter' || ev.key === ' ') {
+                      ev.preventDefault();
+                      openDraft(d.id);
+                    }
+                  }}
+                >
+                  <div className="draft-item__info">
+                    <div className="draft-item__subject">
+                      {decodeEntities(d.subject) || '(No subject)'}
+                    </div>
+                    <div className="draft-item__meta">
+                      To: {d.to.length > 0 ? d.to.join(', ') : '—'}
+                    </div>
+                    <div className="draft-item__snippet">{decodeEntities(d.snippet)}</div>
+                  </div>
+                  <div className="draft-item__right">
+                    {d.hasAttachment && <Attachment size={14} />}
+                    <span className="draft-item__edited">
+                      Edited {formatDistanceToNow(new Date(d.lastEditedAt), { addSuffix: true })}
+                    </span>
+                    {openingDraftId === d.id && <InlineLoading description="" />}
+                    <Button
+                      kind="danger--ghost"
+                      size="sm"
+                      hasIconOnly
+                      iconDescription="Discard draft"
+                      renderIcon={TrashCan}
+                      onClick={(ev: React.MouseEvent) => {
+                        ev.stopPropagation();
+                        deleteDraft(d.id);
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        ) : filters.folder === 'scheduled' ? (
           scheduledLoading ? (
             <div className="mail-page__loading">
               <InlineLoading description="Loading scheduled emails..." />
@@ -769,12 +910,22 @@ export function MailPage() {
 
       <MailComposeModal
         open={composeOpen}
-        onClose={() => setComposeOpen(false)}
+        onClose={() => {
+          setComposeOpen(false);
+          setComposeDraft(null);
+          setComposeMode('new');
+        }}
         onSent={() => {
           setComposeOpen(false);
+          setComposeDraft(null);
+          setComposeMode('new');
           fetchThreads(true);
         }}
-        mode="new"
+        mode={composeMode}
+        draft={composeDraft}
+        onDraftChanged={() => {
+          if (filters.folder === 'drafts') fetchDrafts();
+        }}
       />
 
       {convertEmail && (

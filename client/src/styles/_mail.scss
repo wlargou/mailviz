@@ -108,6 +108,79 @@
   flex-shrink: 0;
 }
 
+// ─── DRAFTS FOLDER ────────────────────────────
+// Rows are wider than the scheduled ones: a draft is chosen by its recipients
+// and its opening line, so both get room, and the whole row is the target.
+.draft-list {
+  display: flex;
+  flex-direction: column;
+  padding: $spacing-03 0;
+}
+
+.draft-item {
+  display: flex;
+  align-items: flex-start;
+  gap: $spacing-04;
+  padding: $spacing-04 $spacing-05;
+  border-bottom: 1px solid var(--cds-border-subtle);
+  cursor: pointer;
+  text-align: left;
+
+  &:hover {
+    background: var(--cds-layer-hover);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--cds-focus);
+    outline-offset: -2px;
+  }
+}
+
+.draft-item__info {
+  flex: 1;
+  min-width: 0;
+}
+
+.draft-item__subject {
+  @include type.type-style('body-compact-01');
+  font-weight: 500;
+  color: var(--cds-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.draft-item__meta {
+  @include type.type-style('label-01');
+  color: var(--cds-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.draft-item__snippet {
+  @include type.type-style('label-01');
+  color: var(--cds-text-helper);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: $spacing-02;
+}
+
+.draft-item__right {
+  display: flex;
+  align-items: center;
+  gap: $spacing-03;
+  flex-shrink: 0;
+  color: var(--cds-text-secondary);
+}
+
+.draft-item__edited {
+  @include type.type-style('label-01');
+  color: var(--cds-text-secondary);
+  white-space: nowrap;
+}
+
 .mail-folder-switcher {
   padding: 0;
   margin-bottom: $spacing-04;
