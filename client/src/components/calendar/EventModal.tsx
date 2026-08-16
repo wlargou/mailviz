@@ -385,7 +385,7 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTitle(e.target.value)}
         invalid={open && title.length > 0 && !title.trim()}
         invalidText="Title is required"
-        className="create-side-panel__form-item"
+        className="tearsheet-form__item"
       />
 
       {/* 2. All-day toggle */}
@@ -396,11 +396,11 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
         labelB="Yes"
         toggled={isAllDay}
         onToggle={(checked: boolean) => setIsAllDay(checked)}
-        className="create-side-panel__form-item"
+        className="tearsheet-form__item"
       />
 
       {/* 3. Start date + time */}
-      <div className="event-modal__date-row create-side-panel__form-item">
+      <div className="event-modal__date-row tearsheet-form__item">
         <DatePicker
           datePickerType="single"
           dateFormat="m/d/Y"
@@ -435,7 +435,7 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
 
       {/* 4. Duration + End time */}
       {!isAllDay && (
-        <div className="event-modal__date-row create-side-panel__form-item">
+        <div className="event-modal__date-row tearsheet-form__item">
           <Dropdown
             id="event-duration"
             titleText="Duration"
@@ -470,7 +470,7 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
 
       {/* End date (for multi-day all-day events or custom end) */}
       {(isAllDay || isCustomEnd) && (
-        <div className="event-modal__date-row create-side-panel__form-item">
+        <div className="event-modal__date-row tearsheet-form__item">
           <DatePicker
             datePickerType="single"
             dateFormat="m/d/Y"
@@ -489,7 +489,7 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
       )}
 
       {/* 5. Add guests — contact search */}
-      <div className="create-side-panel__form-item event-modal__guests" ref={dropdownRef}>
+      <div className="tearsheet-form__item event-modal__guests" ref={dropdownRef}>
         <TextInput
           id="attendee-input"
           labelText="Add guests"
@@ -563,12 +563,12 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
           labelB="Yes"
           toggled={sendUpdates === 'all'}
           onToggle={(checked) => setSendUpdates(checked ? 'all' : 'none')}
-          className="create-side-panel__form-item"
+          className="tearsheet-form__item"
         />
       )}
 
       {/* 7. Location */}
-      <div className="create-side-panel__form-item">
+      <div className="tearsheet-form__item">
         <TextInput
           id="event-location"
           labelText="Location"
@@ -596,7 +596,7 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
         labelB="On"
         toggled={addGoogleMeet}
         onToggle={(checked) => setAddGoogleMeet(checked)}
-        className="create-side-panel__form-item"
+        className="tearsheet-form__item"
       />
       {event?.conferenceLink && (
         <div className="event-modal__conference-link">
@@ -632,7 +632,7 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
         )}
         selectedItem={EVENT_COLORS.find((c) => c.id === colorId) || COLOR_ITEMS[0]}
         onChange={({ selectedItem }) => setColorId(selectedItem?.id || null)}
-        className="create-side-panel__form-item"
+        className="tearsheet-form__item"
       />
 
       {/* 10. Description */}
@@ -643,7 +643,7 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
         value={description}
         onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setDescription(e.target.value)}
         rows={3}
-        className="create-side-panel__form-item"
+        className="tearsheet-form__item"
       />
     </Tearsheet>
   );

@@ -133,9 +133,18 @@ body {
   margin-bottom: $spacing-04;
 }
 
-// CreateSidePanel form item spacing
+// Form item spacing inside a SidePanel, which supplies its own body gutters.
 .create-side-panel__form-item {
   margin-bottom: $spacing-05;
+}
+
+// Form item spacing inside a Tearsheet. Tearsheet hands the body its full
+// width and expects the content to own its gutters, so unlike SidePanel these
+// items carry their own horizontal padding — otherwise labels sit flush
+// against the panel edge while the inputs appear inset.
+.tearsheet-form__item {
+  margin-bottom: $spacing-05;
+  padding-inline: $spacing-07;
 }
 
 

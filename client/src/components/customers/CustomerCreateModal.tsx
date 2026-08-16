@@ -84,7 +84,7 @@ export function CustomerCreateModal({ open, onClose, onCreated }: CustomerCreate
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
         invalid={open && name.length > 0 && !name.trim()}
         invalidText="Name is required"
-        className="create-side-panel__form-item"
+        className="tearsheet-form__item"
       />
       <TextInput
         id="customer-company"
@@ -92,7 +92,7 @@ export function CustomerCreateModal({ open, onClose, onCreated }: CustomerCreate
         placeholder="Company name"
         value={company}
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCompany(e.target.value)}
-        className="create-side-panel__form-item"
+        className="tearsheet-form__item"
       />
       <TextInput
         id="customer-email"
@@ -100,7 +100,7 @@ export function CustomerCreateModal({ open, onClose, onCreated }: CustomerCreate
         placeholder="email@example.com"
         value={email}
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
-        className="create-side-panel__form-item"
+        className="tearsheet-form__item"
       />
       <TextInput
         id="customer-phone"
@@ -108,7 +108,7 @@ export function CustomerCreateModal({ open, onClose, onCreated }: CustomerCreate
         placeholder="+1 234 567 890"
         value={phone}
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPhone(e.target.value)}
-        className="create-side-panel__form-item"
+        className="tearsheet-form__item"
       />
       <TextInput
         id="customer-website"
@@ -116,7 +116,7 @@ export function CustomerCreateModal({ open, onClose, onCreated }: CustomerCreate
         placeholder="https://example.com"
         value={website}
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => setWebsite(e.target.value)}
-        className="create-side-panel__form-item"
+        className="tearsheet-form__item"
       />
       <TextArea
         id="customer-notes"
@@ -124,7 +124,7 @@ export function CustomerCreateModal({ open, onClose, onCreated }: CustomerCreate
         placeholder="Additional notes"
         value={notes}
         onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNotes(e.target.value)}
-        className="create-side-panel__form-item"
+        className="tearsheet-form__item"
       />
     </TearsheetNarrow>
   );

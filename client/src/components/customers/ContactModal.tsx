@@ -110,7 +110,7 @@ export function ContactModal({ open, contact, customerId, onClose, onSaved }: Co
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFirstName(e.target.value)}
         invalid={open && firstName.length > 0 && !firstName.trim()}
         invalidText="First name is required"
-        className="create-side-panel__form-item"
+        className="tearsheet-form__item"
       />
       <TextInput
         id="contact-last-name"
@@ -120,7 +120,7 @@ export function ContactModal({ open, contact, customerId, onClose, onSaved }: Co
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => setLastName(e.target.value)}
         invalid={open && lastName.length > 0 && !lastName.trim()}
         invalidText="Last name is required"
-        className="create-side-panel__form-item"
+        className="tearsheet-form__item"
       />
       <TextInput
         id="contact-email"
@@ -128,7 +128,7 @@ export function ContactModal({ open, contact, customerId, onClose, onSaved }: Co
         placeholder="email@example.com"
         value={email}
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
-        className="create-side-panel__form-item"
+        className="tearsheet-form__item"
       />
       <TextInput
         id="contact-phone"
@@ -136,7 +136,7 @@ export function ContactModal({ open, contact, customerId, onClose, onSaved }: Co
         placeholder="+1 234 567 890"
         value={phone}
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPhone(e.target.value)}
-        className="create-side-panel__form-item"
+        className="tearsheet-form__item"
       />
       <TextInput
         id="contact-role"
@@ -144,7 +144,7 @@ export function ContactModal({ open, contact, customerId, onClose, onSaved }: Co
         placeholder="e.g. CEO, CTO, Manager"
         value={role}
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRole(e.target.value)}
-        className="create-side-panel__form-item"
+        className="tearsheet-form__item"
       />
       <Toggle
         id="contact-vip"
@@ -153,7 +153,7 @@ export function ContactModal({ open, contact, customerId, onClose, onSaved }: Co
         labelB="Yes"
         toggled={isVip}
         onToggle={(checked: boolean) => setIsVip(checked)}
-        className="create-side-panel__form-item"
+        className="tearsheet-form__item"
       />
     </TearsheetNarrow>
   );
