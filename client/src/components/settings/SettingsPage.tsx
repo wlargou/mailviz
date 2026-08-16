@@ -31,8 +31,26 @@ import {
   Calendar,
   Email,
   Pen,
+  Draggable,
   Tag as TagIcon,
 } from '@carbon/icons-react';
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { useSearchParams } from 'react-router-dom';
 import { authApi } from '../../api/auth';
 import { TiptapEditor } from '../mail/TiptapEditor';
@@ -67,6 +85,78 @@ interface ApiErrorLike {
 function apiErrorMessage(err: unknown, fallback: string): string {
   const message = (err as ApiErrorLike | null | undefined)?.response?.data?.error?.message;
   return typeof message === 'string' && message.length > 0 ? message : fallback;
+}
+
+/** An item that lives in an ordered settings list (task statuses, company categories). */
+interface OrderedSettingsItem {
+  id: string;
+  label: string;
+  position: number;
+}
+
+/** Recompute contiguous positions for every row after a move. */
+function withRecomputedPositions<T extends OrderedSettingsItem>(items: T[]): T[] {
+  return items.map((item, index) => ({ ...item, position: index }));
+}
+
+interface SortableSettingsRowProps {
+  id: string;
+  /** Accessible name for the icon-only drag handle, e.g. `Reorder "In Progress"`. */
+  dragDescription: string;
+  children: React.ReactNode;
+}
+
+/**
+ * A `StructuredListRow` that can be reordered by pointer drag or by keyboard from its
+ * handle. Carbon's `StructuredListRow` attaches its own internal ref to the rendered
+ * `<div role="row">`, so a ref passed as a prop would be discarded — instead the handle
+ * cell resolves the row element with `closest()` and hands that to dnd-kit, which keeps
+ * the Carbon table markup (and its column alignment) intact.
+ */
+function SortableSettingsRow({ id, dragDescription, children }: SortableSettingsRowProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  const rowRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      setNodeRef(node ? node.closest<HTMLElement>('.cds--structured-list-row') : null);
+    },
+    [setNodeRef]
+  );
+
+  return (
+    <StructuredListRow
+      className={`settings-sortable-row${isDragging ? ' settings-sortable-row--dragging' : ''}`}
+      // Zero out `x` so rows only ever travel along the vertical axis of the list.
+      style={{
+        transform: CSS.Translate.toString(transform && { ...transform, x: 0 }),
+        transition,
+      }}
+    >
+      <StructuredListCell className="settings-drag-cell">
+        <div className="settings-drag-handle" ref={rowRef}>
+          <Button
+            kind="ghost"
+            size="sm"
+            hasIconOnly
+            iconDescription={dragDescription}
+            renderIcon={Draggable}
+            ref={setActivatorNodeRef}
+            {...attributes}
+            {...listeners}
+          />
+        </div>
+      </StructuredListCell>
+      {children}
+    </StructuredListRow>
+  );
 }
 
 export function SettingsPage() {
@@ -115,6 +205,13 @@ export function SettingsPage() {
   const [editingPartnerId, setEditingPartnerId] = useState<string | null>(null);
   const [editPartnerName, setEditPartnerName] = useState('');
   const [editPartnerUrl, setEditPartnerUrl] = useState('');
+
+  // Same sensor setup as the Kanban board, plus a keyboard sensor so the drag handles
+  // can reorder with arrow keys (Space/Enter to pick up and drop, Escape to cancel).
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
 
   const fetchTaskStatuses = useCallback(async () => {
     try {
@@ -316,6 +413,29 @@ export function SettingsPage() {
     }
   };
 
+  const handleReorderStatuses = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = taskStatuses.findIndex((s) => s.id === active.id);
+    const newIndex = taskStatuses.findIndex((s) => s.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const previous = taskStatuses;
+    const reordered = withRecomputedPositions(arrayMove(taskStatuses, oldIndex, newIndex));
+    setTaskStatuses(reordered);
+
+    try {
+      await taskStatusesApi.reorder(reordered.map((s) => ({ id: s.id, position: s.position })));
+    } catch (err) {
+      setTaskStatuses(previous);
+      addNotification({
+        kind: 'error',
+        title: apiErrorMessage(err, 'Failed to reorder statuses'),
+      });
+    }
+  };
+
   const handleSaveEditStatus = async (id: string) => {
     if (!editLabel.trim()) return;
     await taskStatusesApi.update(id, { label: editLabel.trim() });
@@ -344,6 +464,29 @@ export function SettingsPage() {
       addNotification({
         kind: 'error',
         title: err?.response?.data?.error?.message || 'Cannot delete category',
+      });
+    }
+  };
+
+  const handleReorderCategories = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = categories.findIndex((c) => c.id === active.id);
+    const newIndex = categories.findIndex((c) => c.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const previous = categories;
+    const reordered = withRecomputedPositions(arrayMove(categories, oldIndex, newIndex));
+    setCategories(reordered);
+
+    try {
+      await companyCategoriesApi.reorder(reordered.map((c) => ({ id: c.id, position: c.position })));
+    } catch (err) {
+      setCategories(previous);
+      addNotification({
+        kind: 'error',
+        title: apiErrorMessage(err, 'Failed to reorder categories'),
       });
     }
   };
@@ -658,9 +801,15 @@ export function SettingsPage() {
               </div>
             </div>
 
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleReorderStatuses}
+            >
             <StructuredListWrapper isCondensed>
               <StructuredListHead>
                 <StructuredListRow head>
+                  <StructuredListCell head className="settings-drag-cell">{''}</StructuredListCell>
                   <StructuredListCell head>Color</StructuredListCell>
                   <StructuredListCell head>Label</StructuredListCell>
                   <StructuredListCell head>Key</StructuredListCell>
@@ -668,8 +817,16 @@ export function SettingsPage() {
                 </StructuredListRow>
               </StructuredListHead>
               <StructuredListBody>
+                <SortableContext
+                  items={taskStatuses.map((s) => s.id)}
+                  strategy={verticalListSortingStrategy}
+                >
                 {taskStatuses.map((s) => (
-                  <StructuredListRow key={s.id}>
+                  <SortableSettingsRow
+                    key={s.id}
+                    id={s.id}
+                    dragDescription={`Reorder status "${s.label}"`}
+                  >
                     <StructuredListCell>
                       <div className="settings-color-swatch-wrapper">
                         <button
@@ -736,10 +893,12 @@ export function SettingsPage() {
                         />
                       </div>
                     </StructuredListCell>
-                  </StructuredListRow>
+                  </SortableSettingsRow>
                 ))}
+                </SortableContext>
               </StructuredListBody>
             </StructuredListWrapper>
+            </DndContext>
 
             <div className="settings-status-add">
               <TextInput
@@ -773,9 +932,15 @@ export function SettingsPage() {
               </div>
             </div>
 
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleReorderCategories}
+            >
             <StructuredListWrapper isCondensed>
               <StructuredListHead>
                 <StructuredListRow head>
+                  <StructuredListCell head className="settings-drag-cell">{''}</StructuredListCell>
                   <StructuredListCell head>Color</StructuredListCell>
                   <StructuredListCell head>Label</StructuredListCell>
                   <StructuredListCell head>Key</StructuredListCell>
@@ -783,8 +948,16 @@ export function SettingsPage() {
                 </StructuredListRow>
               </StructuredListHead>
               <StructuredListBody>
+                <SortableContext
+                  items={categories.map((c) => c.id)}
+                  strategy={verticalListSortingStrategy}
+                >
                 {categories.map((c) => (
-                  <StructuredListRow key={c.id}>
+                  <SortableSettingsRow
+                    key={c.id}
+                    id={c.id}
+                    dragDescription={`Reorder category "${c.label}"`}
+                  >
                     <StructuredListCell>
                       <div className="settings-color-swatch-wrapper">
                         <button
@@ -851,10 +1024,12 @@ export function SettingsPage() {
                         />
                       </div>
                     </StructuredListCell>
-                  </StructuredListRow>
+                  </SortableSettingsRow>
                 ))}
+                </SortableContext>
               </StructuredListBody>
             </StructuredListWrapper>
+            </DndContext>
 
             <div className="settings-status-add">
               <TextInput

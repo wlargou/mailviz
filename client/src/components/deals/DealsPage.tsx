@@ -22,17 +22,26 @@ import { useNavigate } from 'react-router-dom';
 import { DealCreateModal } from './DealCreateModal';
 import { ConfirmDeleteModal } from '../shared/ConfirmDeleteModal';
 import { EmptyState } from '../shared/EmptyState';
+import { SharedBadge } from '../shared/SharedBadge';
 import { TableFilterFlyout } from '../shared/TableFilterFlyout';
 import { ShareDialog } from '../shared/ShareDialog';
 import { dealsApi } from '../../api/deals';
 import { dealPartnersApi } from '../../api/dealPartners';
 import { useUIStore } from '../../store/uiStore';
-import { useAuthStore } from '../../store/authStore';
 import type { Deal, DealPartner, DealStatus } from '../../types/deal';
 import { DEAL_STATUS_LABELS, DEAL_STATUS_TAG_TYPE } from '../../types/deal';
 import type { PaginationMeta } from '../../types/api';
 import { format, isPast } from 'date-fns';
 import { toolbarSearchValue } from '../../utils/carbonSearch';
+
+/** Restrict the list to deals the user does not own ('shared') or does own ('owned'). */
+type DealOwnership = 'shared' | 'owned';
+
+const ownershipItems: Array<{ id: DealOwnership | '__all__'; text: string }> = [
+  { id: '__all__', text: 'All Deals' },
+  { id: 'shared', text: 'Shared with me' },
+  { id: 'owned', text: 'Owned by me' },
+];
 
 const headers = [
   { key: 'title', header: 'Title' },
@@ -55,6 +64,7 @@ export function DealsPage() {
   const [partners, setPartners] = useState<DealPartner[]>([]);
   const [selectedPartnerId, setSelectedPartnerId] = useState<string | null>(null);
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
+  const [selectedOwnership, setSelectedOwnership] = useState<DealOwnership | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteDeal, setDeleteDeal] = useState<Deal | null>(null);
   const [editDeal, setEditDeal] = useState<Deal | null>(null);
@@ -63,7 +73,6 @@ export function DealsPage() {
   const searchRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const addNotification = useUIStore((s) => s.addNotification);
-  const currentUser = useAuthStore((s) => s.user);
 
   // Debounce search input
   useEffect(() => {
@@ -85,6 +94,7 @@ export function DealsPage() {
       if (debouncedSearch) params.search = debouncedSearch;
       if (selectedStatus) params.status = selectedStatus;
       if (selectedPartnerId) params.partnerId = selectedPartnerId;
+      if (selectedOwnership) params.ownership = selectedOwnership;
       const { data: response } = await dealsApi.getAll(params);
       setDeals(response.data);
       setMeta(response.meta || null);
@@ -104,7 +114,7 @@ export function DealsPage() {
         });
       }
     }
-  }, [page, pageSize, debouncedSearch, selectedStatus, selectedPartnerId, addNotification]);
+  }, [page, pageSize, debouncedSearch, selectedStatus, selectedPartnerId, selectedOwnership, addNotification]);
 
   useEffect(() => {
     fetchDeals();
@@ -177,8 +187,8 @@ export function DealsPage() {
                         persistent
                       />
                       <TableFilterFlyout
-                        activeFilterCount={(selectedPartnerId ? 1 : 0) + (selectedStatus ? 1 : 0)}
-                        onReset={() => { setSelectedPartnerId(null); setSelectedStatus(null); setPage(1); }}
+                        activeFilterCount={(selectedPartnerId ? 1 : 0) + (selectedStatus ? 1 : 0) + (selectedOwnership ? 1 : 0)}
+                        onReset={() => { setSelectedPartnerId(null); setSelectedStatus(null); setSelectedOwnership(null); setPage(1); }}
                       >
                         {partners.length > 0 && (
                           <Dropdown
@@ -218,6 +228,21 @@ export function DealsPage() {
                           }}
                           size="sm"
                         />
+                        <Dropdown
+                          id="ownership-filter"
+                          titleText="Shared"
+                          label="All Deals"
+                          items={ownershipItems}
+                          itemToString={(item: { id: string; text: string } | null) => item?.text || ''}
+                          selectedItem={
+                            ownershipItems.find((o) => o.id === (selectedOwnership || '__all__')) || ownershipItems[0]
+                          }
+                          onChange={({ selectedItem }: { selectedItem: { id: DealOwnership | '__all__'; text: string } | null }) => {
+                            setSelectedOwnership(!selectedItem || selectedItem.id === '__all__' ? null : selectedItem.id);
+                            setPage(1);
+                          }}
+                          size="sm"
+                        />
                       </TableFilterFlyout>
                       <Button renderIcon={Add} onClick={() => setCreateOpen(true)}>
                         New Deal
@@ -227,7 +252,7 @@ export function DealsPage() {
                   {deals.length === 0 ? (
                     <EmptyState
                       title="No deals"
-                      description={search || selectedPartnerId || selectedStatus ? 'No deals match your filters' : 'Register your first deal to get started'}
+                      description={search || selectedPartnerId || selectedStatus || selectedOwnership ? 'No deals match your filters' : 'Register your first deal to get started'}
                     />
                   ) : (
                   <Table {...getTableProps()} size="lg">
@@ -244,11 +269,9 @@ export function DealsPage() {
                       {deals.map((deal) => (
                         <TableRow key={deal.id}>
                           <TableCell>
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <span className="shared-title-cell">
                               {deal.title}
-                              {currentUser && deal.userId !== currentUser.id && (
-                                <Tag size="sm" type="purple">Shared</Tag>
-                              )}
+                              <SharedBadge ownerId={deal.userId} />
                             </span>
                           </TableCell>
                           <TableCell>

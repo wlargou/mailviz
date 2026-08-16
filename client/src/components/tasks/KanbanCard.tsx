@@ -4,6 +4,7 @@ import { ClickableTile } from '@carbon/react';
 import { format } from 'date-fns';
 import { PriorityBadge } from '../shared/PriorityBadge';
 import { LabelTag } from '../shared/LabelTag';
+import { SharedBadge } from '../shared/SharedBadge';
 import type { Task } from '../../types/task';
 
 interface KanbanCardProps {
@@ -35,6 +36,9 @@ export function KanbanCard({ task, onClick }: KanbanCardProps) {
         onClick={() => onClick(task)}
       >
         <div className="card-title">{task.title}</div>
+        <div className="card-badges">
+          <SharedBadge ownerId={task.userId} />
+        </div>
         <div className="card-meta">
           <PriorityBadge priority={task.priority} />
           {task.dueDate && (

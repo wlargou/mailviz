@@ -204,6 +204,34 @@
   gap: 0;
 }
 
+// ─── Drag-to-reorder rows (task statuses, company categories) ───
+.settings-drag-cell {
+  inline-size: $spacing-08;
+}
+
+.settings-drag-handle {
+  display: flex;
+  align-items: center;
+
+  .cds--btn {
+    cursor: grab;
+    touch-action: none; // Let the pointer sensor own vertical drags on touch devices
+  }
+}
+
+.settings-sortable-row {
+  // dnd-kit writes the drag offset into the row's inline transform.
+  &--dragging {
+    position: relative;
+    z-index: 1;
+    background-color: var(--cds-layer-hover);
+
+    .settings-drag-handle .cds--btn {
+      cursor: grabbing;
+    }
+  }
+}
+
 .settings-status-add {
   display: flex;
   align-items: flex-end;

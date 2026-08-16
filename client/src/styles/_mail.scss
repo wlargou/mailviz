@@ -73,6 +73,15 @@
   min-width: 0;
 }
 
+// Reschedule dialog — date and time side by side, matching the compose
+// scheduling sub-form.
+.reschedule-form {
+  display: flex;
+  gap: $spacing-05;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
 .scheduled-email-item__subject {
   @include type.type-style('body-compact-01');
   font-weight: 500;

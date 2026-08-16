@@ -7,6 +7,10 @@ import {
   ContentSwitcher,
   Switch,
   SkeletonText,
+  Modal,
+  DatePicker,
+  DatePickerInput,
+  TimePicker,
 } from '@carbon/react';
 import { Renew, StarFilled, Star, Attachment, Email as EmailIcon, EmailNew, ReplyAll, Archive, TrashCan, Undo, Add, CheckmarkOutline, Close, CheckboxCheckedFilled, Task, Share, Review } from '@carbon/icons-react';
 import { SidePanel } from '@carbon/ibm-products';
@@ -47,6 +51,15 @@ const defaultFilters: MailFilters = {
   folder: null,
 };
 
+/** A row in the Scheduled folder. */
+interface ScheduledEmailRow {
+  id: string;
+  subject: string | null;
+  to: string[] | null;
+  sendAt: string;
+  status: 'pending' | 'sent' | 'failed' | 'cancelled';
+}
+
 export function MailPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -74,8 +87,13 @@ export function MailPage() {
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
-  const [scheduledEmails, setScheduledEmails] = useState<any[]>([]);
+  const [scheduledEmails, setScheduledEmails] = useState<ScheduledEmailRow[]>([]);
   const [scheduledLoading, setScheduledLoading] = useState(false);
+  // Reschedule flow — only pending emails can be moved (server enforces this too).
+  const [reschedulingEmail, setReschedulingEmail] = useState<ScheduledEmailRow | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState<Date | null>(null);
+  const [rescheduleTime, setRescheduleTime] = useState('09:00');
+  const [rescheduleSaving, setRescheduleSaving] = useState(false);
   const addNotification = useUIStore((s) => s.addNotification);
   const currentUser = useAuthStore((s) => s.user);
 
@@ -134,13 +152,54 @@ export function MailPage() {
     setScheduledLoading(true);
     try {
       const { data: response } = await emailsApi.getScheduledEmails();
-      setScheduledEmails((response as any).data || []);
+      setScheduledEmails((response as { data?: ScheduledEmailRow[] }).data || []);
     } catch {
       // ignore
     } finally {
       setScheduledLoading(false);
     }
   }, []);
+
+  const openReschedule = (se: ScheduledEmailRow) => {
+    const current = new Date(se.sendAt);
+    setReschedulingEmail(se);
+    setRescheduleDate(current);
+    setRescheduleTime(
+      `${String(current.getHours()).padStart(2, '0')}:${String(current.getMinutes()).padStart(2, '0')}`
+    );
+  };
+
+  const closeReschedule = () => {
+    setReschedulingEmail(null);
+    setRescheduleDate(null);
+  };
+
+  const submitReschedule = async () => {
+    if (!reschedulingEmail || !rescheduleDate) return;
+    const [hours, minutes] = rescheduleTime.split(':').map(Number);
+    if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+      addNotification({ kind: 'error', title: 'Enter a valid time' });
+      return;
+    }
+    const sendAt = new Date(rescheduleDate);
+    sendAt.setHours(hours, minutes, 0, 0);
+    if (sendAt.getTime() <= Date.now()) {
+      addNotification({ kind: 'error', title: 'Pick a time in the future' });
+      return;
+    }
+
+    setRescheduleSaving(true);
+    try {
+      await emailsApi.updateScheduledEmail(reschedulingEmail.id, { sendAt: sendAt.toISOString() });
+      addNotification({ kind: 'success', title: 'Send time updated' });
+      closeReschedule();
+      fetchScheduledEmails();
+    } catch {
+      addNotification({ kind: 'error', title: 'Failed to reschedule' });
+    } finally {
+      setRescheduleSaving(false);
+    }
+  };
 
   useEffect(() => {
     if (filters.folder === 'scheduled') {
@@ -493,21 +552,26 @@ export function MailPage() {
                     {se.status}
                   </Tag>
                   {se.status === 'pending' && (
-                    <Button
-                      kind="danger--ghost"
-                      size="sm"
-                      onClick={async () => {
-                        try {
-                          await emailsApi.cancelScheduledEmail(se.id);
-                          addNotification({ kind: 'success', title: 'Scheduled email cancelled' });
-                          fetchScheduledEmails();
-                        } catch {
-                          addNotification({ kind: 'error', title: 'Failed to cancel' });
-                        }
-                      }}
-                    >
-                      Cancel
-                    </Button>
+                    <>
+                      <Button kind="ghost" size="sm" onClick={() => openReschedule(se)}>
+                        Reschedule
+                      </Button>
+                      <Button
+                        kind="danger--ghost"
+                        size="sm"
+                        onClick={async () => {
+                          try {
+                            await emailsApi.cancelScheduledEmail(se.id);
+                            addNotification({ kind: 'success', title: 'Scheduled email cancelled' });
+                            fetchScheduledEmails();
+                          } catch {
+                            addNotification({ kind: 'error', title: 'Failed to cancel' });
+                          }
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </>
                   )}
                 </div>
               ))}
@@ -723,6 +787,36 @@ export function MailPage() {
           }}
         />
       )}
+
+      <Modal
+        open={!!reschedulingEmail}
+        modalHeading="Reschedule send"
+        modalLabel={reschedulingEmail?.subject || '(No subject)'}
+        primaryButtonText={rescheduleSaving ? 'Saving…' : 'Update send time'}
+        secondaryButtonText="Cancel"
+        primaryButtonDisabled={!rescheduleDate || rescheduleSaving}
+        onRequestClose={closeReschedule}
+        onRequestSubmit={submitReschedule}
+        size="sm"
+      >
+        <div className="reschedule-form">
+          <DatePicker
+            datePickerType="single"
+            value={rescheduleDate ? [rescheduleDate] : []}
+            minDate={new Date().toISOString()}
+            onChange={(dates: Date[]) => setRescheduleDate(dates[0] || null)}
+          >
+            <DatePickerInput id="reschedule-date" labelText="Date" placeholder="mm/dd/yyyy" size="sm" />
+          </DatePicker>
+          <TimePicker
+            id="reschedule-time"
+            labelText="Time"
+            value={rescheduleTime}
+            size="sm"
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRescheduleTime(e.target.value)}
+          />
+        </div>
+      </Modal>
     </div>
   );
 }

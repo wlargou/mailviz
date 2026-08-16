@@ -21,21 +21,27 @@ the cheapest items in the backlog.
   is unused; `TaskDetailModal` sets `assignedToId` via the generic `PATCH /tasks/:id`.
   Consequence: the `task:assigned` notification and WebSocket event **never fire**.
   Assignment works, but nobody is told about it.
-- [ ] **1.3 Reschedule a scheduled email** — `emailsApi.updateScheduledEmail` has no
+- [x] **1.3 Reschedule a scheduled email** — `emailsApi.updateScheduledEmail` has no
   caller. You can schedule and cancel, but not change the send time.
-- [ ] **1.4 Drag-to-reorder** — `PATCH /task-statuses/reorder` and
+- [x] **1.4 Drag-to-reorder** — `PATCH /task-statuses/reorder` and
   `/company-categories/reorder` are fully built. No drag UI exists, so `position`
   is only ever set at creation time.
 - [x] **1.5 Index Deals in global search** — `searchService` queries emails, tasks,
   events, customers and contacts. Deals are a first-class entity with their own
   page and are not searchable.
-- [ ] **1.6 "Shared with me" affordance** — `utils/accessControl.ts` genuinely works
+- [x] **1.6 "Shared with me" affordance** — `utils/accessControl.ts` genuinely works
   and shared items appear in the recipient's normal lists, but nothing marks them.
   There is no way to answer "what has been shared with me?". Needs at minimum a
   badge on shared rows, ideally a filter.
 - [x] **1.7 Audit logging in `labelService`** — the only service with zero
   `auditService.log` calls. (Note: customer/deal/calendar services *do* log,
   3–4 actions each — an earlier audit claimed otherwise and was wrong.)
+
+### Phase 1 follow-ups
+
+- [ ] **Shared badge on email threads** — the badge + `ownership` query-param
+  pattern from 1.6 applies to mail threads too, but `MailPage.tsx` was locked
+  during that work. Reuse `shared/SharedBadge.tsx` and the `ownership` param.
 
 ## Phase 2 — Roadmap, scoped but not started
 

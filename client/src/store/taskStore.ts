@@ -9,9 +9,13 @@ interface TaskFilters {
   search?: string;
   labelId?: string;
   overdue?: boolean;
+  /** Restrict to tasks the user does not own ('shared') or does own ('owned'). */
+  ownership?: TaskOwnership;
   sortBy: string;
   sortOrder: string;
 }
+
+export type TaskOwnership = 'shared' | 'owned';
 
 interface TaskState {
   tasks: Task[];
@@ -58,6 +62,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       if (filters.priority) params.priority = filters.priority;
       if (filters.search) params.search = filters.search;
       if (filters.labelId) params.labelId = filters.labelId;
+      if (filters.ownership) params.ownership = filters.ownership;
       if (filters.overdue) {
         params.dueBefore = new Date().toISOString();
         // Exclude completed tasks for overdue filter

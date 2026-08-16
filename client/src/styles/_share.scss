@@ -4,16 +4,18 @@
 @use '@carbon/react/scss/spacing' as *;
 // ─── Sharing UI ──────────────────────────────────
 
-.share-badge {
+// "Shared with me" marker (Carbon Tag) used on task and deal rows.
+.shared-badge {
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+// Row title cell pairing an entity name with the shared badge.
+.shared-title-cell {
   display: inline-flex;
   align-items: center;
-  gap: $spacing-02;
-  @include type.type-style('label-01');
-  color: var(--cds-text-secondary);
-
-  .share-badge__icon {
-    color: var(--cds-support-info);
-  }
+  gap: $spacing-03;
+  min-width: 0;
 }
 
 // Share dialog

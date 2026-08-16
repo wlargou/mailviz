@@ -1299,10 +1299,26 @@ export const emailService = {
     if (!existing) throw Object.assign(new Error('Scheduled email not found'), { status: 404 });
     if (existing.status !== 'pending') throw Object.assign(new Error('Only pending emails can be updated'), { status: 400 });
 
-    return prisma.scheduledEmail.update({
+    const updated = await prisma.scheduledEmail.update({
       where: { id },
       data: { sendAt: new Date(data.sendAt) },
     });
+
+    // Cancel was already audited; rescheduling was not. Record both times so the
+    // trail shows what the send time was moved from and to.
+    auditService.log({
+      userId,
+      action: 'EMAIL_SCHEDULE_UPDATED',
+      entityType: 'scheduled_email',
+      entityId: id,
+      details: {
+        subject: existing.subject ?? '',
+        previousSendAt: existing.sendAt.toISOString(),
+        sendAt: updated.sendAt.toISOString(),
+      },
+    });
+
+    return updated;
   },
 
   async cancelScheduledEmail(userId: string, id: string) {

@@ -17,6 +17,8 @@ interface TaskQueryParams {
   customerId?: string;
   dueBefore?: string;
   dueAfter?: string;
+  /** 'shared' = only rows this user does not own, 'owned' = only rows they own. */
+  ownership?: string;
   sortBy?: string;
   sortOrder?: string;
   page?: string;
@@ -59,6 +61,13 @@ export const taskService = {
       where.dueDate = {};
       if (query.dueBefore) where.dueDate.lte = new Date(query.dueBefore);
       if (query.dueAfter) where.dueDate.gte = new Date(query.dueAfter);
+    }
+    // "Shared with me" / "Owned by me" narrowing. This only ever restricts the
+    // access-controlled OR above — it never widens what the user can see.
+    if (query.ownership === 'shared') {
+      where.userId = { not: userId };
+    } else if (query.ownership === 'owned') {
+      where.userId = userId;
     }
 
     const sortBy = query.sortBy || 'createdAt';

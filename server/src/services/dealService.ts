@@ -16,6 +16,8 @@ interface DealQueryParams {
   sortOrder?: string;
   status?: string;
   partnerId?: string;
+  /** 'shared' = only rows this user does not own, 'owned' = only rows they own. */
+  ownership?: string;
 }
 
 const dealIncludes = {
@@ -32,7 +34,9 @@ export const dealService = {
     const ownershipFilter: Prisma.DealWhereInput = sharedDealIds.length > 0
       ? { OR: [{ userId }, { id: { in: sharedDealIds } }] }
       : { userId };
-    const where: Prisma.DealWhereInput = { ...ownershipFilter };
+    // The ownership filter lives under `AND` so that the search branch below,
+    // which assigns `where.OR`, cannot clobber it.
+    const where: Prisma.DealWhereInput = { AND: [ownershipFilter] };
 
     if (query.status) {
       where.status = query.status;
@@ -46,6 +50,13 @@ export const dealService = {
         { products: { contains: query.search, mode: 'insensitive' } },
         { customer: { name: { contains: query.search, mode: 'insensitive' } } },
       ];
+    }
+    // "Shared with me" / "Owned by me" narrowing. This only ever restricts the
+    // ownership filter above — it never widens what the user can see.
+    if (query.ownership === 'shared') {
+      where.userId = { not: userId };
+    } else if (query.ownership === 'owned') {
+      where.userId = userId;
     }
 
     const sortBy = query.sortBy || 'createdAt';

@@ -22,6 +22,7 @@ import { TaskStatusTag } from '../shared/TaskStatusTag';
 import { PriorityBadge } from '../shared/PriorityBadge';
 import { LabelTag } from '../shared/LabelTag';
 import { EmptyState } from '../shared/EmptyState';
+import { SharedBadge } from '../shared/SharedBadge';
 import { TableFilterFlyout } from '../shared/TableFilterFlyout';
 import { ShareDialog } from '../shared/ShareDialog';
 import { useTaskStore } from '../../store/taskStore';
@@ -47,6 +48,12 @@ const priorityItems = [
   { id: 'MEDIUM', text: 'Medium' },
   { id: 'HIGH', text: 'High' },
   { id: 'URGENT', text: 'Urgent' },
+];
+
+const ownershipItems = [
+  { id: '', text: 'All Tasks' },
+  { id: 'shared', text: 'Shared with me' },
+  { id: 'owned', text: 'Owned by me' },
 ];
 
 interface TaskListViewProps {
@@ -82,7 +89,11 @@ export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreat
     ...labels.map((l) => ({ id: l.id, text: l.name })),
   ];
 
-  const activeFilterCount = (filters.status ? 1 : 0) + (filters.priority ? 1 : 0) + (filters.labelId ? 1 : 0);
+  const activeFilterCount =
+    (filters.status ? 1 : 0) +
+    (filters.priority ? 1 : 0) +
+    (filters.labelId ? 1 : 0) +
+    (filters.ownership ? 1 : 0);
 
   const handleSearchChange = useCallback((e: TableToolbarSearchChangeEvent) => {
     const val = toolbarSearchValue(e);
@@ -112,7 +123,9 @@ export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreat
     return <DataTableSkeleton headers={headers} rowCount={5} />;
   }
 
-  if (tasks.length === 0 && !localSearch) {
+  // Keep the toolbar mounted whenever a filter is on, otherwise a filter that
+  // matches nothing (e.g. "Shared with me" with no shares) hides its own reset.
+  if (tasks.length === 0 && !localSearch && activeFilterCount === 0) {
     return (
       <EmptyState
         title="No tasks found"
@@ -184,6 +197,16 @@ export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreat
                     onChange={({ selectedItem }: { selectedItem: { id: string; text: string } | null }) => setFilter('labelId', selectedItem?.id || undefined)}
                     size="sm"
                   />
+                  <Dropdown
+                    id="filter-ownership"
+                    titleText="Shared"
+                    label="All Tasks"
+                    items={ownershipItems}
+                    itemToString={(item: { id: string; text: string } | null) => item?.text || ''}
+                    selectedItem={ownershipItems.find((o) => o.id === (filters.ownership || '')) || ownershipItems[0]}
+                    onChange={({ selectedItem }: { selectedItem: { id: string; text: string } | null }) => setFilter('ownership', selectedItem?.id || undefined)}
+                    size="sm"
+                  />
                 </TableFilterFlyout>
                 <Button renderIcon={Add} onClick={onCreateNew}>
                   New Task
@@ -204,14 +227,20 @@ export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreat
                 {tasks.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={headers.length}>
-                      <EmptyState title="No results" description={`No tasks match "${localSearch}"`} />
+                      <EmptyState
+                        title="No results"
+                        description={localSearch ? `No tasks match "${localSearch}"` : 'No tasks match your filters'}
+                      />
                     </TableCell>
                   </TableRow>
                 ) : tasks.map((task) => (
                   <TableRow key={task.id}>
                     <TableCell>
-                      <span style={{ cursor: 'pointer', fontWeight: 500 }} onClick={() => onEdit(task)}>
-                        {task.title}
+                      <span className="shared-title-cell">
+                        <span style={{ cursor: 'pointer', fontWeight: 500 }} onClick={() => onEdit(task)}>
+                          {task.title}
+                        </span>
+                        <SharedBadge ownerId={task.userId} />
                       </span>
                     </TableCell>
                     <TableCell><TaskStatusTag status={task.status} /></TableCell>
