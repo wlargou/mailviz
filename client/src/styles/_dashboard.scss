@@ -649,9 +649,15 @@ td.table-cell--center .cds--tag {
     margin-left: auto;
   }
 
+  // Truncate like .dashboard-item__title. Without this a long event title
+  // wrapped to several lines and ran underneath the Join button, which is
+  // flex-shrink: 0 and so never yielded space.
   .upcoming-event__title {
     @include type.type-style('body-compact-01');
     font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .upcoming-event__date {

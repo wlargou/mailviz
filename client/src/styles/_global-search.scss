@@ -15,48 +15,40 @@
   margin-left: $spacing-05;
 }
 
+// Header search: a Carbon `Search` with a `Dropdown` scope selector beside it.
+//
+// This previously used @carbon/ibm-products' previewCandidate__SearchBar, an
+// explicitly unstable component that needed eight `.c4p--*` / `.cds--*`
+// internal overrides to fit a 2rem header and still rendered a stray submit
+// button. Both are stable Carbon components at size="sm", which is already
+// 2rem tall — so no internal overrides are needed at all, only layout.
 .global-search__input {
+  display: flex;
+  align-items: center;
   width: 100%;
 
-  // Override Carbon SearchBar to fit header height
-  .c4p--search-bar {
-    min-height: 2rem;
+  .global-search__scope {
+    flex: 0 0 auto;
+    // Wide enough for the longest scope label ("Companies") without truncating.
+    inline-size: 8.5rem;
   }
 
-  .c4p--search-bar__search {
-    .cds--search-input {
-      height: 2rem;
-      @include type.type-style('body-compact-01');
-    }
-
-    .cds--search-magnifier-icon {
-      fill: var(--cds-icon-secondary);
-    }
-  }
-
-  .c4p--search-bar__submit-button {
-    height: 2rem;
-    min-height: 2rem;
-  }
-
-  // Scope dropdown styling
-  .c4p--search-bar__scope {
-    .cds--dropdown {
-      height: 2rem;
-      min-height: 2rem;
-    }
-
-    .cds--list-box__label {
-      font-size: 0.8125rem;
-    }
+  .global-search__field {
+    flex: 1 1 auto;
+    min-inline-size: 0;
   }
 
   @media (max-width: 768px) {
     max-width: 340px;
   }
 
+  // Below this the scope selector costs more room than it earns.
   @media (max-width: 480px) {
     max-width: 200px;
+
+    .global-search__scope {
+      display: none;
+    }
   }
 }
 

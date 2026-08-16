@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { InlineLoading } from '@carbon/react';
-import { previewCandidate__SearchBar as SearchBar } from '@carbon/ibm-products';
+import { InlineLoading, Search, Dropdown } from '@carbon/react';
 import {
   Email,
   Task,
@@ -136,13 +135,13 @@ export function GlobalSearch() {
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [focusIndex, setFocusIndex] = useState(-1);
-  const [selectedScopes, setSelectedScopes] = useState<Scope[]>([SCOPES[0]]);
+  const [selectedScope, setSelectedScope] = useState<Scope>(SCOPES[0]);
 
   const wrapperRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestIdRef = useRef(0);
 
-  const getScopeIds = (scopes: Scope[]) => scopes.map((s) => s.id);
+  const scopeIdsFor = (scope: Scope) => [scope.id];
 
   const doSearch = useCallback((q: string, scopeIds: string[]) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -171,25 +170,24 @@ export function GlobalSearch() {
     }, 300);
   }, []);
 
-  // Re-filter when scopes change
+  // Re-filter when the scope changes
   useEffect(() => {
     if (results && query.trim().length >= 2) {
-      setFlatResults(flattenResults(results, getScopeIds(selectedScopes)));
+      setFlatResults(flattenResults(results, scopeIdsFor(selectedScope)));
       setFocusIndex(-1);
     }
-  }, [selectedScopes, results, query]);
+  }, [selectedScope, results, query]);
 
-  const handleChange = (e: { value: string; selectedScopes?: Scope[] }) => {
-    // SearchBar onChange passes { value } for input changes, and { value, selectedScopes } for scope changes
-    const val = e.value ?? '';
+  const handleQueryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value ?? '';
     setQuery(val);
+    doSearch(val, scopeIdsFor(selectedScope));
+  };
 
-    if (e.selectedScopes) {
-      setSelectedScopes(e.selectedScopes);
-      doSearch(val, getScopeIds(e.selectedScopes));
-    } else {
-      doSearch(val, getScopeIds(selectedScopes));
-    }
+  const handleScopeChange = (scope: Scope | null) => {
+    const next = scope ?? SCOPES[0];
+    setSelectedScope(next);
+    doSearch(query, scopeIdsFor(next));
   };
 
   const handleClear = () => {
@@ -221,13 +219,9 @@ export function GlobalSearch() {
   }, [query, navigate]);
 
   const handleSubmit = () => {
-    if (query.trim().length >= 2) {
-      const scopeIds = getScopeIds(selectedScopes);
-      // If exactly one non-all scope is selected, navigate to that page
-      const nonAll = scopeIds.filter((id) => id !== 'all');
-      if (nonAll.length === 1) {
-        handleViewAll(nonAll[0] as Category);
-      }
+    // Submitting with a specific scope jumps straight to that page's results.
+    if (query.trim().length >= 2 && selectedScope.id !== 'all') {
+      handleViewAll(selectedScope.id as Category);
     }
   };
 
@@ -266,13 +260,12 @@ export function GlobalSearch() {
     return () => document.removeEventListener('mousedown', handleMouseDown);
   }, []);
 
-  const scopeIds = getScopeIds(selectedScopes);
   const allCategories: Category[] = ['emails', 'tasks', 'events', 'customers', 'contacts'];
-  const categories = results
-    ? (scopeIds.includes('all') || scopeIds.length === 0
+  const categories: Category[] = results
+    ? (selectedScope.id === 'all'
         ? allCategories
-        : scopeIds.filter((id): id is Category => allCategories.includes(id as Category))
-      ).filter((cat) => results[cat]?.length > 0)
+        : allCategories.filter((cat) => cat === selectedScope.id)
+      ).filter((cat) => (results[cat]?.length ?? 0) > 0)
     : [];
 
   const hasResults = flatResults.length > 0;
@@ -281,22 +274,29 @@ export function GlobalSearch() {
   return (
     <div className="global-search" ref={wrapperRef} onKeyDown={handleKeyDown}>
       <div className="global-search__input">
-        <SearchBar
-          clearButtonLabelText="Clear"
-          labelText="Search"
-          placeholderText="Search emails, tasks, events..."
-          submitLabel="Search"
-          onChange={handleChange}
-          onSubmit={handleSubmit}
-          scopes={SCOPES}
-          selectedScopes={selectedScopes}
-          scopesTypeLabel="Scope"
-          scopeToString={(scope) =>
-            typeof scope === 'object' && 'text' in scope && typeof scope.text === 'string'
-              ? scope.text
-              : String(scope)
-          }
+        <Dropdown<Scope>
+          id="global-search-scope"
+          className="global-search__scope"
+          titleText="Search scope"
+          hideLabel
+          size="sm"
+          label="Scope"
+          items={SCOPES}
+          selectedItem={selectedScope}
+          itemToString={(item) => item?.text ?? ''}
+          onChange={({ selectedItem }) => handleScopeChange(selectedItem)}
+        />
+        <Search
+          id="global-search-input"
+          className="global-search__field"
+          size="sm"
+          labelText="Search emails, tasks, events and companies"
+          placeholder="Search emails, tasks, events..."
+          value={query}
+          onChange={handleQueryChange}
+          onClear={handleClear}
           onFocus={() => { if (flatResults.length > 0) setOpen(true); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
         />
       </div>
 
