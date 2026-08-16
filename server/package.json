@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "typecheck": "tsc --noEmit",
     "build": "node esbuild.config.js",
     "start": "node dist/index.js",
     "prisma:migrate": "prisma migrate dev",

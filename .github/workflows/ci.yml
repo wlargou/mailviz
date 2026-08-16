@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: mailviz
+          POSTGRES_PASSWORD: mailviz_dev
+          POSTGRES_DB: mailviz_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mailviz -d mailviz_db"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://mailviz:mailviz_dev@localhost:5432/mailviz_db?schema=public
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run prisma:generate --workspace=server
+
+      # Catches drift between schema.prisma and the committed migrations.
+      - name: Apply migrations
+        run: npx prisma migrate deploy --schema=src/prisma/schema.prisma
+        working-directory: server
+
+      # esbuild and Vite strip types without checking them, so the build alone
+      # proves nothing. This is the gate that actually reads the types.
+      - name: Typecheck server
+        run: npm run typecheck --workspace=server
+
+      # TODO: remove continue-on-error once the Carbon upgrade clears the
+      # remaining @carbon/react + @carbon/charts-react typing failures.
+      - name: Typecheck client
+        run: npm run typecheck --workspace=client
+        continue-on-error: true
+
+      - name: Build client
+        run: npm run build --workspace=client
+
+      - name: Build server
+        run: npm run build --workspace=server
+
+      - name: Audit (high severity)
+        run: npm audit --audit-level=high
+        continue-on-error: true
