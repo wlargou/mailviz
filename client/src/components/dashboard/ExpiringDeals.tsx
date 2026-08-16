@@ -31,34 +31,42 @@ export function ExpiringDeals({ deals, loading }: ExpiringDealsProps) {
   return (
     <div className="dashboard-item-list">
       {deals.map((deal) => (
-        <div
+        <button
           key={deal.id}
+          type="button"
           className={`dashboard-item dashboard-item--deal${deal.daysUntilExpiry <= 3 ? ' dashboard-item--urgent' : ''}`}
+          aria-label={`${deal.title}, ${deal.partner.name}${deal.customer ? `, ${deal.customer.name}` : ''}, expires ${
+            deal.daysUntilExpiry === 0
+              ? 'today'
+              : deal.daysUntilExpiry === 1
+                ? 'in 1 day'
+                : `in ${deal.daysUntilExpiry} days`
+          }`}
           onClick={() => navigate('/deals')}
         >
-          <div className="dashboard-item__time">
+          <span className="dashboard-item__time">
             {deal.daysUntilExpiry === 0
               ? 'Today'
               : deal.daysUntilExpiry === 1
                 ? '1 day'
                 : `${deal.daysUntilExpiry} days`}
-          </div>
-          <div className="dashboard-item__info">
+          </span>
+          <span className="dashboard-item__info">
             <span className="dashboard-item__title">{deal.title}</span>
             <span className="dashboard-item__sub">
               {deal.partner.name}
               {deal.customer && ` · ${deal.customer.name}`}
             </span>
-          </div>
-          <div className="dashboard-item__tag">
+          </span>
+          <span className="dashboard-item__tag">
             <Tag
               size="sm"
               type={deal.daysUntilExpiry <= 3 ? 'red' : deal.daysUntilExpiry <= 7 ? 'warm-gray' : 'cool-gray'}
             >
               {deal.status === 'TO_CHALLENGE' ? 'To Challenge' : deal.status === 'APPROVED' ? 'Approved' : deal.status}
             </Tag>
-          </div>
-        </div>
+          </span>
+        </button>
       ))}
       <Button kind="ghost" size="sm" renderIcon={ArrowRight} className="dashboard-item-list__view-all" onClick={() => navigate('/deals')}>
         View all deals

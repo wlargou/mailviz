@@ -130,6 +130,13 @@
     background: var(--cds-layer-02);
   }
 
+  // role="button" div (it wraps the event buttons), so the focus ring has to
+  // be supplied by hand.
+  &:focus-visible {
+    outline: 2px solid var(--cds-focus);
+    outline-offset: -2px;
+  }
+
   &--muted {
     opacity: 0.4;
   }
@@ -176,6 +183,11 @@
       color: var(--cds-link-primary-hover);
       text-decoration: underline;
     }
+
+    &:focus-visible {
+      outline: 2px solid var(--cds-focus);
+      outline-offset: -1px;
+    }
   }
 }
 
@@ -219,6 +231,11 @@
     &:hover {
       background: var(--cds-layer-hover);
       color: var(--cds-text-primary);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--cds-focus);
+      outline-offset: -1px;
     }
   }
 
@@ -277,6 +294,11 @@
     background: var(--cds-layer-02);
   }
 
+  &:focus-visible {
+    outline: 2px solid var(--cds-focus);
+    outline-offset: -1px;
+  }
+
   .calendar-event-dot__dot {
     width: 6px;
     height: 6px;
@@ -318,6 +340,11 @@
 
   &:hover {
     filter: brightness(1.15);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--cds-focus);
+    outline-offset: -1px;
   }
 
   .calendar-event-pill__title {

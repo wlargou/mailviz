@@ -40,33 +40,35 @@ export function TopCustomers({ stats, loading }: TopCustomersProps) {
       {topCustomers.map((customer) => {
         const logo = getLogoUrl(customer.domain, customer.logoUrl);
         return (
-          <div
+          <button
             key={customer.id}
+            type="button"
             className="top-customer__row"
+            aria-label={`${customer.name}, ${customer.emailCount} emails, ${customer.taskCount} tasks`}
             onClick={() => navigate(`/customers/${customer.id}`)}
           >
             {logo ? (
               <img
                 src={logo}
-                alt={customer.name}
+                alt=""
                 className="top-customer__logo"
                 onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
               />
             ) : (
-              <div className="top-customer__logo top-customer__logo--placeholder">
+              <span className="top-customer__logo top-customer__logo--placeholder" aria-hidden="true">
                 {customer.name.charAt(0).toUpperCase()}
-              </div>
+              </span>
             )}
             <span className="top-customer__name">{customer.name}</span>
-            <div className="top-customer__badges">
+            <span className="top-customer__badges">
               <Tag size="sm" type="blue">
                 <Email size={12} /> {customer.emailCount}
               </Tag>
               <Tag size="sm" type="gray">
                 <TaskComplete size={12} /> {customer.taskCount}
               </Tag>
-            </div>
-          </div>
+            </span>
+          </button>
         );
       })}
     </div>

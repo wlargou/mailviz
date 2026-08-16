@@ -32,25 +32,27 @@ export function RecentTasks({ stats, loading, onTaskClick }: RecentTasksProps) {
   return (
     <div className="dashboard-item-list">
       {tasks.recentTasks.slice(0, 5).map((task) => (
-        <div
+        <button
           key={task.id}
+          type="button"
           className="dashboard-item dashboard-item--task"
+          aria-label={`${task.title}, ${task.customer?.name || 'No company'}`}
           onClick={() => {
             if (onTaskClick) onTaskClick(task as Task);
             else navigate('/tasks');
           }}
         >
-          <div className="dashboard-item__badge">
+          <span className="dashboard-item__badge">
             <PriorityBadge priority={task.priority} />
-          </div>
-          <div className="dashboard-item__info">
+          </span>
+          <span className="dashboard-item__info">
             <span className="dashboard-item__title">{task.title}</span>
             <span className="dashboard-item__sub">{task.customer?.name || 'No company'}</span>
-          </div>
-          <div className="dashboard-item__tag">
+          </span>
+          <span className="dashboard-item__tag">
             <TaskStatusTag status={task.status} />
-          </div>
-        </div>
+          </span>
+        </button>
       ))}
       <Button kind="ghost" size="sm" renderIcon={ArrowRight} className="dashboard-item-list__view-all" onClick={() => navigate('/tasks')}>
         View all tasks

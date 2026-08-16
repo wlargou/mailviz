@@ -22,6 +22,7 @@ interface OverflowPopoverProps {
 
 function OverflowPopover({ events, date, anchorRect, onEventClick, onClose }: OverflowPopoverProps) {
   const popoverRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -39,6 +40,21 @@ function OverflowPopover({ events, date, anchorRect, onEventClick, onClose }: Ov
     };
   }, [onClose]);
 
+  // The popover is portalled to <body>, so it is nowhere near the trigger in tab
+  // order. Move focus into it on open; CalendarDayCell returns focus to the
+  // trigger on close.
+  useEffect(() => {
+    closeRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   // Position the popover near the anchor, adjusting to stay in viewport
   const top = Math.min(anchorRect.bottom + 4, window.innerHeight - 300);
   const left = Math.min(anchorRect.left, window.innerWidth - 260);
@@ -47,13 +63,21 @@ function OverflowPopover({ events, date, anchorRect, onEventClick, onClose }: Ov
     <div
       ref={popoverRef}
       className="calendar-overflow-popover"
+      role="dialog"
+      aria-label={`Events on ${format(date, 'EEEE, MMMM d')}`}
       style={{ top, left }}
     >
       <div className="calendar-overflow-popover__header">
         <span className="calendar-overflow-popover__date">
           {format(date, 'EEEE, MMMM d')}
         </span>
-        <button className="calendar-overflow-popover__close" onClick={onClose} aria-label="Close">
+        <button
+          ref={closeRef}
+          type="button"
+          className="calendar-overflow-popover__close"
+          onClick={onClose}
+          aria-label="Close"
+        >
           ×
         </button>
       </div>
@@ -65,6 +89,7 @@ function OverflowPopover({ events, date, anchorRect, onEventClick, onClose }: Ov
             return (
               <button
                 key={event.id}
+                type="button"
                 className="calendar-event-pill"
                 style={{ background: colors.bg, color: colors.text }}
                 onClick={() => { onEventClick(event); onClose(); }}
@@ -77,6 +102,7 @@ function OverflowPopover({ events, date, anchorRect, onEventClick, onClose }: Ov
           return (
             <button
               key={event.id}
+              type="button"
               className="calendar-event-dot"
               onClick={() => { onEventClick(event); onClose(); }}
             >
@@ -122,10 +148,29 @@ export function CalendarDayCell({ date, currentMonth, events, onDayClick, onEven
     setShowOverflow(true);
   };
 
+  const closeOverflow = () => {
+    setShowOverflow(false);
+    // Return focus to the trigger — the popover is portalled to <body>.
+    moreRef.current?.focus();
+  };
+
   return (
+    // Stays a div with role="button" rather than a real <button>: the cell
+    // contains event buttons and buttons cannot be nested.
     <div
+      role="button"
+      tabIndex={0}
+      aria-label={`Go to ${format(date, 'EEEE, MMMM d, yyyy')}`}
       className={`calendar-day-cell ${!isCurrentMonth ? 'calendar-day-cell--muted' : ''} ${today ? 'calendar-day-cell--today' : ''}`}
       onClick={() => onDayClick(date)}
+      onKeyDown={(e) => {
+        // Ignore keys bubbling up from the nested event / "+N more" buttons.
+        if (e.target !== e.currentTarget) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onDayClick(date);
+        }
+      }}
     >
       <span className={`calendar-day-cell__number ${today ? 'calendar-day-cell__number--today' : ''}`}>
         {format(date, 'd')}
@@ -139,6 +184,7 @@ export function CalendarDayCell({ date, currentMonth, events, onDayClick, onEven
             return (
               <button
                 key={event.id}
+                type="button"
                 className="calendar-event-pill"
                 style={{ background: colors.bg, color: colors.text }}
                 onClick={(e) => {
@@ -156,6 +202,7 @@ export function CalendarDayCell({ date, currentMonth, events, onDayClick, onEven
           return (
             <button
               key={event.id}
+              type="button"
               className="calendar-event-dot"
               onClick={(e) => {
                 e.stopPropagation();
@@ -174,7 +221,11 @@ export function CalendarDayCell({ date, currentMonth, events, onDayClick, onEven
         {overflowCount > 0 && (
           <button
             ref={moreRef}
+            type="button"
             className="calendar-day-cell__more"
+            aria-haspopup="dialog"
+            aria-expanded={showOverflow}
+            aria-label={`Show ${overflowCount} more events on ${format(date, 'EEEE, MMMM d')}`}
             onClick={handleMoreClick}
           >
             +{overflowCount} more
@@ -187,7 +238,7 @@ export function CalendarDayCell({ date, currentMonth, events, onDayClick, onEven
           date={date}
           anchorRect={anchorRect}
           onEventClick={onEventClick}
-          onClose={() => setShowOverflow(false)}
+          onClose={closeOverflow}
         />
       )}
     </div>

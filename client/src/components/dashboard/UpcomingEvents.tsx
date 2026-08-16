@@ -40,12 +40,26 @@ export function UpcomingEvents({ stats, loading, onEventClick }: UpcomingEventsP
       {upcomingEvents.slice(0, 5).map((event) => {
         const startDate = new Date(event.startTime);
         const today = isToday(startDate);
+        const openEvent = () => (onEventClick ? onEventClick(event.id) : navigate('/calendar'));
 
         return (
+          // Stays a div with role="button" rather than a real <button>: the row
+          // can contain a nested "Join" Button and buttons cannot be nested.
           <div
             key={event.id}
+            role="button"
+            tabIndex={0}
+            aria-label={`${event.title}, ${event.isAllDay ? 'all day' : format(startDate, 'h:mm a')}`}
             className={`upcoming-event${today ? ' upcoming-event--today' : ''}`}
-            onClick={() => onEventClick ? onEventClick(event.id) : navigate('/calendar')}
+            onClick={openEvent}
+            onKeyDown={(e) => {
+              // Ignore keys bubbling up from the nested Join button.
+              if (e.target !== e.currentTarget) return;
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                openEvent();
+              }
+            }}
           >
             <div className="upcoming-event__time">
               {event.isAllDay

@@ -30,22 +30,24 @@ export function RecentEmails({ stats, loading, onEmailClick }: RecentEmailsProps
   return (
     <div className="dashboard-item-list">
       {emails.recentEmails.slice(0, 5).map((email, idx) => (
-        <div
+        <button
           key={email.threadId || idx}
+          type="button"
           className={`dashboard-item dashboard-item--email${!email.isRead ? ' dashboard-item--unread' : ''}`}
+          aria-label={`${email.subject || '(No subject)'}, from ${email.fromName || email.from}${!email.isRead ? ', unread' : ''}`}
           onClick={() => {
             if (onEmailClick && email.threadId) onEmailClick(email.threadId, email.subject || '(No subject)');
             else navigate('/mail');
           }}
         >
-          <div className="dashboard-item__time">
+          <span className="dashboard-item__time">
             {formatDistanceToNow(new Date(email.receivedAt), { addSuffix: false })}
-          </div>
-          <div className="dashboard-item__info">
+          </span>
+          <span className="dashboard-item__info">
             <span className="dashboard-item__title">{email.subject || '(No subject)'}</span>
             <span className="dashboard-item__sub">{email.fromName || email.from}</span>
-          </div>
-        </div>
+          </span>
+        </button>
       ))}
       <Button kind="ghost" size="sm" renderIcon={ArrowRight} className="dashboard-item-list__view-all" onClick={() => navigate('/mail')}>
         View all emails
