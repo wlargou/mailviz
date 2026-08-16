@@ -126,6 +126,21 @@ invisible to the build.
 
 ---
 
+## Follow-ups from the test work
+
+- [ ] **`sortBy` is unvalidated** in `taskService`, `customerService` and
+  `dealService` — `orderBy: { [sortBy]: sortOrder }` takes the raw query value.
+  Prisma rejects unknown keys, so this is a 500 rather than an injection or a
+  leak, but only `contactService` has a whitelist. Give the other three one.
+- [ ] **The suite cannot run concurrently with itself.** `src/test/setup.ts`
+  truncates every table between cases, so two simultaneous runs against
+  `mailviz_test` wipe each other's fixtures (FK violations and 40P01
+  deadlocks). Fine for a single CI job; needs a per-run database if parallel
+  jobs or parallel agents are ever expected.
+- [ ] **Gmail-dependent paths are untested** — sync, send, reply, forward, batch
+  operations and attachments all need the Gmail API mocked. Only the DB-backed
+  query paths are covered.
+
 ## Carried-over quality items
 
 Not blocking, but known and deliberate.
