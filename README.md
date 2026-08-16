@@ -309,15 +309,19 @@ dev fallbacks so the app boots without them. **Set all four in production.**
 
 ## Roadmap
 
-**[`BACKLOG.md`](BACKLOG.md) is the roadmap.** It is committed deliberately: the earlier plans lived
-in `.claude/plans/`, which is gitignored, so they never survived a clone.
+**[`BACKLOG.md`](BACKLOG.md) is the roadmap** — the one file anyone is obliged to keep current. It is
+committed deliberately: the earlier plans lived in `.claude/plans/`, which is gitignored, so they
+never survived a clone and rotted unnoticed.
 
 It is ordered by cost-to-value — Phase 1 (backend already built, UI missing) is complete; Phase 2 is
 the scoped-but-unstarted work carried over from those plans; Phase 3 is genuine product gaps; Phase 4
 is testing.
 
-`TODO-CARBON-AUDIT.md` tracks Carbon Design System compliance. Its checkboxes are unmaintained —
-trust the summary table and verify against source before starting an item.
+Two design documents survive in [`docs/plans/`](docs/plans/), because they hold detail a backlog line
+cannot: [`live-email-sync.md`](docs/plans/live-email-sync.md) (the Pub/Sub design behind item 2.1) and
+[`event-creation-enhancement.md`](docs/plans/event-creation-enhancement.md) (why shipping without a
+custom recurrence builder is acceptable). The Carbon audit that used to live in
+`TODO-CARBON-AUDIT.md` has been folded into the backlog — it had started to contradict it.
 
 ## Known Gaps
 

@@ -3,8 +3,11 @@
 Working order: **Phase 1 → 2 → 3 → 4**. Phase 1 is cheapest per unit of value
 (the backend already exists); Phase 4 is the one that de-risks everything else.
 
-This file is committed deliberately. The earlier roadmap lived in `.claude/plans/`,
-which is gitignored, so it never survived a clone.
+This file is committed deliberately, and it is the only roadmap anyone is obliged
+to keep current. The earlier plans lived in `.claude/plans/`, which is gitignored:
+they never survived a clone, and nothing in CI or review ever read them, so they
+rotted. Two of them survive as design detail in `docs/plans/`; the Carbon audit
+that used to live in `TODO-CARBON-AUDIT.md` is folded in below.
 
 ---
 
@@ -45,8 +48,7 @@ the cheapest items in the backlog.
 
 ## Phase 2 — Roadmap, scoped but not started
 
-From `.claude/plans/`. Fold those plans into this repo so they stop being
-machine-local.
+Design detail for 2.1 and 2.3 is in [`docs/plans/`](docs/plans/).
 
 - [ ] **2.1 Gmail Pub/Sub real-time (live-email-sync Phase 4)** — the one
   architecturally significant item left. Production runs 60s polling as a
@@ -140,6 +142,25 @@ multi-tenant.
 - [ ] **Gmail send paths still untested** — sync and batch operations are now
   covered; send, reply, forward and attachments are not.
 
+## Departures from the shipped plans
+
+Recorded here because `notification-system.md` and `001-mail-review.md` are not
+being kept — the plans described work that shipped, and only these divergences
+are still worth knowing.
+
+- [ ] **`EMAIL_RECEIVED` notifications were never built.** The notification plan
+  specified the type; there are zero server references. It was the only
+  heuristic-driven type, which is probably why it was dropped — but nothing
+  recorded that decision.
+- [ ] **The notification panel is hand-rolled**, not `@carbon/ibm-products`
+  `NotificationsPanel` as planned: no `badgeCount`, and a flat list with relative
+  timestamps instead of day-bucketed grouping.
+- [ ] **Mail Review's unread filter is client-side**, applied after the fetch
+  rather than as `isRead=false` server-side — so it cannot recover threads the
+  500-row cap (3.3) has already dropped. Fixing 3.3 without this leaves the
+  filter still lossy.
+- [ ] **Mail Review uses a custom collapsible** rather than Carbon `Accordion`.
+
 ## Bugs found by the Gmail sync tests
 
 Characterisation-tested and named `— KNOWN BUG` in
@@ -194,10 +215,34 @@ Not blocking, but known and deliberate.
   deliberately — forcing them would change the design. Needs a design decision.
   (Re-measured during the doc audit; the spacing figure was previously
   understated as 31.)
-- [ ] Fold `TODO-CARBON-AUDIT.md` into this file. Its real state is 11 done /
-  5 partial / 7 open — the old 18/23 over-counted every band but P3 — and the
-  two files have started to disagree. Only A1, B3, B4, D2, D5 need moving.
-  A1 (keyboard access on clickable divs) is a P0 never touched, and the correct
-  pattern already exists in six other components.
+- [ ] **Carbon A1 — keyboard access on clickable divs.** A P0 from the Carbon
+  audit that was never started. Bare `<div onClick>` with no `role="button"`,
+  `tabIndex` or `onKeyDown`: `dashboard/TopCustomers.tsx:45`,
+  `RecentActivity.tsx:33`, `RecentTasks.tsx:35`, `ExpiringDeals.tsx:34`,
+  `UpcomingEvents.tsx:45`, and `calendar/CalendarDayCell.tsx:127` plus its
+  overflow-popover rows at `:68`/`:79`. Mechanical: the correct pattern is
+  already implemented in six other components (`ThreadItemList`, `MailPage`,
+  `ThreadDetail`, `ReviewMailView`, `CustomerSummary`, `TaskDetailModal`).
+- [ ] **Carbon B3 — `ComposeToolbar` colour array.** `ComposeToolbar.tsx:51-56`
+  holds 21 raw hex values and never imports `@carbon/colors`. Every value is
+  already a real Carbon palette colour, so this is traceability, not a visual
+  change. Cheap now that the `carbon-colors.d.ts` stub which shadowed the
+  package's real types is gone.
+- [ ] **Carbon B4 — inline `style={{}}` objects.** 106 across 27 files (was
+  "54+" when first filed). Worst: `SettingsPage` (16), `CustomerDetailPage` (15),
+  `TaskDetailModal` / `CalendarWeekView` / `CalendarDayView` (8 each).
+  **Rescope before starting** — calendar views compute per-event pixel offsets
+  and the badges paint per-record colours, so a real fraction are legitimately
+  dynamic and should not be extracted.
+- [ ] **Carbon D2 — logo fallback.** `TopCustomers.tsx:56` shows the company
+  initial when there is no logo URL, but `onError` at `:53` only sets
+  `display: none` — so a Clearbit 404, the exact case this was filed for, renders
+  nothing. Point `onError` at the same placeholder element.
+- [ ] **Carbon D5 — consistent empty states.** `shared/EmptyState.tsx` is used by
+  10 components, but all five dashboard cards use ad-hoc `.card-empty` divs
+  (`TopCustomers:35`, `RecentTasks:29`, `RecentActivity:27`, `ExpiringDeals:25`,
+  `UpcomingEvents:28`) and the Review flow uses its own
+  (`ReviewMailView:195`, `CustomerSummary:115`). If the cards need a denser
+  look, add a `size` prop rather than keeping two markup families.
 - [ ] `docs/database-schema.md` is untracked and 3 migrations stale (missing
   `AuditLog`, `Notification`, `User.signature`). Commit and regenerate, or delete.
