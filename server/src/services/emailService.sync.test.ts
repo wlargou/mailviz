@@ -341,7 +341,7 @@ describe('emailService.incrementalSync', () => {
     expect(subjects.sort()).toEqual(['Page one mail', 'Page two mail']);
   });
 
-  it('disagrees with upsertMessage about isArchived for trashed mail — KNOWN BUG', async () => {
+  it('agrees with upsertMessage about isArchived for trashed mail — REGRESSION', async () => {
     // Gmail expresses "trash this" as one history record that removes INBOX and
     // adds TRASH. The two code paths that translate labels into flags then
     // disagree:
@@ -374,8 +374,43 @@ describe('emailService.incrementalSync', () => {
 
     const stored = await prisma.email.findFirstOrThrow({ where: { userId: user.id } });
     expect(stored.isTrashed).toBe(true);
-    // Should be false — a trashed message is not an archived one.
-    expect(stored.isArchived).toBe(true);
+    // The bug: this used to be true. A trashed message is not an archived one.
+    expect(stored.isArchived).toBe(false);
+  });
+
+  it('restores a trashed message to the inbox, not to archive — REGRESSION', async () => {
+    // The round trip the bug above actually broke. `untrash()` clears only
+    // `isTrashed`, so once isArchived was wrongly stuck true the message never
+    // reappeared in the inbox view even though Gmail had restored INBOX.
+    const user = await createUser();
+    await createEmail(user.id, { gmailMessageId: 'm1', labelIds: ['INBOX'], isArchived: false });
+
+    gmail.historyList.mockResolvedValueOnce(
+      historyPage([
+        {
+          id: 'h1',
+          labelsAdded: [{ message: { id: 'm1' }, labelIds: ['TRASH'] }],
+          labelsRemoved: [{ message: { id: 'm1' }, labelIds: ['INBOX'] }],
+        },
+      ])
+    );
+    await emailService.incrementalSync(gmail.client, '100', user.id);
+
+    gmail.historyList.mockResolvedValueOnce(
+      historyPage([
+        {
+          id: 'h2',
+          labelsAdded: [{ message: { id: 'm1' }, labelIds: ['INBOX'] }],
+          labelsRemoved: [{ message: { id: 'm1' }, labelIds: ['TRASH'] }],
+        },
+      ])
+    );
+    await emailService.incrementalSync(gmail.client, '101', user.id);
+
+    const stored = await prisma.email.findFirstOrThrow({ where: { userId: user.id } });
+    expect(stored.isTrashed).toBe(false);
+    expect(stored.isArchived).toBe(false);
+    expect(stored.labelIds).toContain('INBOX');
   });
 
   it('auto-links imported mail to a customer derived from the sender domain', async () => {
@@ -570,7 +605,7 @@ describe('emailService.syncFromGmail — path selection and error translation', 
     await expect(emailService.syncFromGmail(user.id)).rejects.not.toThrow(/reconnect google/i);
   });
 
-  it('does not translate a 403 raised by the trailing getProfile call — KNOWN BUG', async () => {
+  it('translates a 403 raised by the trailing getProfile call — REGRESSION', async () => {
     // The try/catch that turns a 403 into the reconnect message wraps only the
     // sync itself. `gmail.users.getProfile` runs after it, unguarded, so a 403
     // from that call escapes raw: no `status` property, and the original
@@ -588,9 +623,10 @@ describe('emailService.syncFromGmail — path selection and error translation', 
     const error = await emailService.syncFromGmail(user.id).catch((err: unknown) => err);
 
     expect(error).toBeInstanceOf(Error);
-    // Should be the reconnect message, with status 403.
-    expect((error as Error).message).toMatch(/insufficient authentication scopes/i);
-    expect((error as { status?: number }).status).toBeUndefined();
+    // The bug: this used to surface googleapis' raw wording with no `status`,
+    // so the scheduler could not recognise it as expected.
+    expect((error as Error).message).toMatch(/reconnect google/i);
+    expect((error as { status?: number }).status).toBe(403);
   });
 
   it('leaves the stored history id untouched when the sync fails', async () => {
@@ -694,7 +730,7 @@ describe('emailService batch operations — thread fan-out', () => {
     expect(calledMessageIds(gmail.messagesTrash).sort()).toEqual(['g1', 'g2']);
   });
 
-  it('accumulates duplicate TRASH labels when a thread is trashed twice — KNOWN BUG', async () => {
+  it('does not accumulate duplicate TRASH labels when trashed twice — REGRESSION', async () => {
     // `batchTrash` rewrites labels as `[...labelIds.filter(l => l !== 'INBOX'), 'TRASH']`
     // — it strips INBOX idempotently but appends TRASH unconditionally, so the
     // array grows on every call. `batchArchive` does not have the problem
@@ -704,7 +740,7 @@ describe('emailService batch operations — thread fan-out', () => {
     // over the whole thread, so trashing a thread that already contains a
     // trashed message re-trashes that message. `trash()` has the same line.
     //
-    // The fix is to dedupe, e.g. `[...new Set([...kept, 'TRASH'])]`.
+    // Both sites now dedupe via `[...new Set([...kept, 'TRASH'])]`.
     const user = await createUser();
     const email = await createEmail(user.id, { threadId: 't1', gmailMessageId: 'g1', labelIds: ['INBOX'] });
 
@@ -712,8 +748,8 @@ describe('emailService batch operations — thread fan-out', () => {
     await emailService.batchTrash([email.id], user.id);
 
     const stored = await prisma.email.findUniqueOrThrow({ where: { id: email.id } });
-    // Should be ['TRASH'].
-    expect(stored.labelIds).toEqual(['TRASH', 'TRASH']);
+    // The bug: this used to be ['TRASH', 'TRASH'], growing on every call.
+    expect(stored.labelIds).toEqual(['TRASH']);
   });
 
   it('archiving twice is idempotent', async () => {

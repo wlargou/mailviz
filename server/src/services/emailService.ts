@@ -22,6 +22,28 @@ import { getSharedThreadIds, canAccessThread } from '../utils/accessControl.js';
 import { auditService } from './auditService.js';
 import { notificationService } from './notificationService.js';
 
+/**
+ * The single definition of how Gmail's labels map onto our boolean columns.
+ *
+ * Both write paths — `upsertMessage` and the incremental label handlers — must
+ * derive flags from the RESULTING label set, never from the delta Gmail sent.
+ * They used to disagree: `upsertMessage` computed
+ * `isArchived = !INBOX && !TRASH`, while the labelsRemoved handler set
+ * `isArchived = true` from an INBOX removal alone. Gmail sends a trash as one
+ * record that removes INBOX and adds TRASH, so the flag depended on which path
+ * touched the row last — and since `untrash()` clears only `isTrashed`, a
+ * trash-then-restore left the message flagged archived and it never came back
+ * to the inbox view.
+ */
+function flagsFromLabels(labelIds: string[]) {
+  return {
+    isRead: !labelIds.includes('UNREAD'),
+    isStarred: labelIds.includes('STARRED'),
+    isArchived: !labelIds.includes('INBOX') && !labelIds.includes('TRASH'),
+    isTrashed: labelIds.includes('TRASH'),
+  };
+}
+
 export const emailService = {
   async syncFromGmail(userId: string) {
     const gmail = await getGmailClient(userId);
@@ -32,6 +54,7 @@ export const emailService = {
     let customersCreated = 0;
     let contactsCreated = 0;
     let labelsChanged = 0;
+    let historyId: string | null = null;
 
     try {
       if (auth.lastHistoryId) {
@@ -42,12 +65,20 @@ export const emailService = {
         contactsCreated = result.contactsCreated;
         labelsChanged = result.labelsChanged;
       } else {
-        // Initial sync — last 3 months
+        // Initial sync — honours EMAIL_SYNC_MONTHS (0 = the whole mailbox)
         const result = await this.initialSync(gmail, userId);
         synced = result.synced;
         customersCreated = result.customersCreated;
         contactsCreated = result.contactsCreated;
       }
+
+      // Inside the try on purpose: this is a Gmail call like any other, and a
+      // revoked grant fails here just as readily. Left outside, its 403 escaped
+      // the translation below with no `status`, so emailSyncScheduler classified
+      // a revoked grant as an unexpected error and logged it every 60 seconds
+      // forever, while the HTTP layer answered 500 instead of 403.
+      const profile = await gmail.users.getProfile({ userId: 'me' });
+      historyId = profile.data.historyId || null;
     } catch (err: any) {
       // A plain 403 means the gmail scope was never granted. A 403 carrying a
       // rateLimitExceeded reason is throttling that outlived the limiter's
@@ -61,10 +92,6 @@ export const emailService = {
       }
       throw err;
     }
-
-    // Get current historyId for future incremental syncs
-    const profile = await gmail.users.getProfile({ userId: 'me' });
-    const historyId = profile.data.historyId || null;
 
     await prisma.googleAuth.update({
       where: { id: auth.id },
@@ -218,60 +245,45 @@ export const emailService = {
             }
           }
 
-          // Handle label changes (read/unread/starred/archive/trash)
+          // Handle label changes (read/unread/starred/archive/trash).
+          //
+          // Both handlers below compute the resulting label set FIRST and then
+          // derive every flag from it via flagsFromLabels. Deriving from the
+          // delta instead is what let the two write paths disagree about
+          // isArchived — see the note on flagsFromLabels.
           if (history.labelsAdded) {
             for (const labelChange of history.labelsAdded) {
               if (!labelChange.message?.id) continue;
-              const updates: Prisma.EmailUpdateInput = {};
               const labels = labelChange.labelIds || [];
-              if (labels.includes('UNREAD')) updates.isRead = false;
-              if (labels.includes('STARRED')) updates.isStarred = true;
-              if (labels.includes('INBOX')) updates.isArchived = false;
-              if (labels.includes('TRASH')) updates.isTrashed = true;
-              if (Object.keys(updates).length > 0) {
-                const result = await prisma.email.updateMany({
-                  where: { gmailMessageId: labelChange.message.id, userId },
-                  data: updates,
-                });
-                if (result.count > 0) labelsChanged++;
-              }
-              // Also update the stored labelIds array
-              const existing = await prisma.email.findFirst({ where: { gmailMessageId: labelChange.message.id, userId } });
-              if (existing) {
-                const newLabels = [...new Set([...existing.labelIds, ...labels])];
-                await prisma.email.updateMany({
-                  where: { gmailMessageId: labelChange.message.id, userId },
-                  data: { labelIds: newLabels },
-                });
-              }
+              const existing = await prisma.email.findFirst({
+                where: { gmailMessageId: labelChange.message.id, userId },
+              });
+              if (!existing) continue;
+
+              const newLabels = [...new Set([...existing.labelIds, ...labels])];
+              const result = await prisma.email.updateMany({
+                where: { gmailMessageId: labelChange.message.id, userId },
+                data: { labelIds: newLabels, ...flagsFromLabels(newLabels) },
+              });
+              if (result.count > 0) labelsChanged++;
             }
           }
 
           if (history.labelsRemoved) {
             for (const labelChange of history.labelsRemoved) {
               if (!labelChange.message?.id) continue;
-              const updates: Prisma.EmailUpdateInput = {};
               const labels = labelChange.labelIds || [];
-              if (labels.includes('UNREAD')) updates.isRead = true;
-              if (labels.includes('STARRED')) updates.isStarred = false;
-              if (labels.includes('INBOX')) updates.isArchived = true;
-              if (labels.includes('TRASH')) updates.isTrashed = false;
-              if (Object.keys(updates).length > 0) {
-                const result = await prisma.email.updateMany({
-                  where: { gmailMessageId: labelChange.message.id, userId },
-                  data: updates,
-                });
-                if (result.count > 0) labelsChanged++;
-              }
-              // Also update the stored labelIds array
-              const existing = await prisma.email.findFirst({ where: { gmailMessageId: labelChange.message.id, userId } });
-              if (existing) {
-                const newLabels = existing.labelIds.filter((l) => !labels.includes(l));
-                await prisma.email.updateMany({
-                  where: { gmailMessageId: labelChange.message.id, userId },
-                  data: { labelIds: newLabels },
-                });
-              }
+              const existing = await prisma.email.findFirst({
+                where: { gmailMessageId: labelChange.message.id, userId },
+              });
+              if (!existing) continue;
+
+              const newLabels = existing.labelIds.filter((l) => !labels.includes(l));
+              const result = await prisma.email.updateMany({
+                where: { gmailMessageId: labelChange.message.id, userId },
+                data: { labelIds: newLabels, ...flagsFromLabels(newLabels) },
+              });
+              if (result.count > 0) labelsChanged++;
             }
           }
         }
@@ -327,10 +339,7 @@ export const emailService = {
       : new Date();
 
     const labelIds = msg.labelIds || [];
-    const isRead = !labelIds.includes('UNREAD');
-    const isStarred = labelIds.includes('STARRED');
-    const isArchived = !labelIds.includes('INBOX') && !labelIds.includes('TRASH');
-    const isTrashed = labelIds.includes('TRASH');
+    const { isRead, isStarred, isArchived, isTrashed } = flagsFromLabels(labelIds);
 
     // Extract attachment metadata
     const attachmentMeta = extractAttachments(msg.payload || {});
@@ -815,7 +824,7 @@ export const emailService = {
 
     await prisma.email.update({
       where: { id },
-      data: { isTrashed: true, labelIds: [...email.labelIds.filter((l) => l !== 'INBOX'), 'TRASH'] },
+      data: { isTrashed: true, labelIds: [...new Set([...email.labelIds.filter((l) => l !== 'INBOX'), 'TRASH'])] },
     });
     wsEmit('email:updated', { id, isTrashed: true });
 
@@ -951,7 +960,7 @@ export const emailService = {
     for (const email of allEmails) {
       await prisma.email.update({
         where: { id: email.id },
-        data: { isTrashed: true, labelIds: [...email.labelIds.filter((l) => l !== 'INBOX'), 'TRASH'] },
+        data: { isTrashed: true, labelIds: [...new Set([...email.labelIds.filter((l) => l !== 'INBOX'), 'TRASH'])] },
       });
       wsEmit('email:updated', { id: email.id, isTrashed: true });
     }

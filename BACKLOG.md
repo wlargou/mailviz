@@ -163,30 +163,23 @@ are still worth knowing.
 
 ## Bugs found by the Gmail sync tests
 
-Characterisation-tested and named `— KNOWN BUG` in
-`server/src/services/emailService.sync.test.ts`, so each test turns red when the
-bug is fixed. A fourth (sync counters discarded on history expiry) is already
-fixed.
+All four are fixed. Each characterisation test was converted into a regression
+test in `server/src/services/emailService.sync.test.ts`, and each was watched
+failing against the fix before being rewritten.
 
-- [ ] **`isArchived` disagrees between the two write paths.** `upsertMessage`
-  computes `isArchived = !INBOX && !TRASH` (false for trashed mail); the
-  incremental `labelsRemoved` handler sets it true from INBOX-removal alone.
-  Gmail sends a trash as one record that removes INBOX and adds TRASH, so the
-  flag depends on which path touched the row last. Masked while `isTrashed` is
-  true — but `untrash()` clears only `isTrashed`, so trash-then-restore leaves
-  the message flagged archived and it never returns to the inbox view.
-- [ ] **`batchTrash`/`trash` accumulate duplicate TRASH labels.**
-  `[...labelIds.filter(l => l !== 'INBOX'), 'TRASH']` strips idempotently but
-  appends unconditionally, so `labelIds` grows on every call. Reachable
-  normally, since the batch actions fan out over a whole thread and re-trash
-  messages already in it. `batchArchive` is unaffected (removal only).
-- [ ] **A 403 from the trailing `getProfile` escapes the reconnect translation**
-  (`emailService.ts:66`, outside the try/catch). It surfaces with no `status`,
-  so `emailSyncScheduler.ts` treats a revoked Gmail grant as unexpected and logs
-  it every 60 seconds forever, and the HTTP layer answers 500 instead of 403.
-- [ ] **The rate limiter is untestable at the Gmail mock seam** — it lives inside
-  `getGmailClient()`, which those tests replace. Its backoff and retry need a
-  unit test against `withGmailRateLimit` directly.
+- [x] Sync counters discarded when the history id expired mid-pagination, so
+  mail landed in the database while every open client was told nothing changed.
+- [x] `isArchived` derived from the delta rather than the resulting label set,
+  so trash-then-restore left a message permanently hidden from the inbox.
+  Both write paths now share `flagsFromLabels`, so they cannot drift again.
+- [x] `batchTrash`/`trash` appended `TRASH` unconditionally, growing
+  `labelIds` on every call.
+- [x] A 403 from the trailing `getProfile` escaped the reconnect translation,
+  making the scheduler log a revoked grant every 60 seconds forever.
+
+- [ ] **The rate limiter is still untestable at the Gmail mock seam** — it lives
+  inside `getGmailClient()`, which those tests replace. Its backoff and retry
+  need a unit test against `withGmailRateLimit` directly.
 
 ## Carried-over quality items
 
