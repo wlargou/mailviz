@@ -1,0 +1,241 @@
+// App-level base styles: CSS custom properties, theme application, shell layout
+// and a few shared cross-page patterns.
+//
+// This lives in its own partial (rather than in index.scss) because Sass
+// requires every `@use` rule to precede all style rules in a file. Keeping
+// index.scss as a pure manifest of `@use` rules lets the component partials
+// load *after* these base rules, preserving the cascade order the old
+// `@import`-at-the-bottom arrangement produced.
+@use '@carbon/react/scss/themes';
+@use '@carbon/react/scss/theme';
+@use '@carbon/react/scss/type' as type;
+@use '@carbon/react/scss/spacing' as *;
+@use '@carbon/colors';
+
+:root {
+  --app-header-height: 48px;
+  // Accent colors — all mapped to Carbon design tokens
+  --accent-tasks: var(--cds-support-info);
+  --accent-completed: var(--cds-support-success);
+  --accent-overdue: var(--cds-support-error);
+  --accent-priority: #{colors.$purple-50};
+  --accent-customers: #{colors.$teal-40};
+  --accent-calendar: #{colors.$teal-60};
+  --accent-calendar-hover: #{colors.$teal-50};
+  // Internal-sender accent for the mail thread list. Carbon has no semantic
+  // token for "sender is a colleague", and the obvious candidate
+  // ($support-info) resolves to blue in every theme — which would collide with
+  // the blue unread affordance and destroy the variant's differentiation. So
+  // it gets an app-level accent like the other domain colors above.
+  --accent-internal: #{colors.$teal-40};
+}
+
+body {
+  margin: 0;
+  font-family: 'IBM Plex Sans', 'Helvetica Neue', Arial, sans-serif;
+}
+
+// Theme application on html/body so portals (menus, modals) inherit the theme
+[data-carbon-theme='g100'] {
+  @include theme.theme(themes.$g100);
+}
+
+[data-carbon-theme='g10'] {
+  @include theme.theme(themes.$g10);
+}
+
+// Custom scrollbar
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--cds-layer-01);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--cds-border-subtle-01);
+  border-radius: 4px;
+
+  &:hover {
+    background: var(--cds-border-strong-01);
+  }
+}
+
+.app-container {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+// Remove focus outline on SideNavLink after mouse click (keep for keyboard nav)
+.cds--side-nav__link:focus:not(:focus-visible) {
+  outline: none;
+  box-shadow: none;
+}
+
+// Sidebar animated logo (rendered inside Carbon SideNav)
+.sidebar-logo-container {
+  position: absolute;
+  bottom: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 0.7;
+  pointer-events: none;
+  animation: sidebar-logo-float 10s ease-in-out infinite;
+}
+
+@keyframes sidebar-logo-float {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50% { transform: translateX(-50%) translateY(-8px); }
+}
+
+// Header logo + text alignment
+.mailviz-header-name {
+  display: inline-flex !important;
+  align-items: center;
+  gap: $spacing-03;
+
+  svg {
+    flex-shrink: 0;
+    position: relative;
+    top: 2px;
+  }
+}
+
+.app-content {
+  flex: 1;
+  margin-left: 256px;
+  margin-top: var(--app-header-height);
+  padding: $spacing-05 $spacing-06;
+  transition: margin-left 0.3s ease;
+  background-color: var(--cds-background);
+  height: calc(100vh - var(--app-header-height));
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+
+  // Calendar page needs to fill the viewport, not scroll the outer container
+  &:has(.calendar-page) {
+    overflow: hidden;
+  }
+}
+
+// Collapsed side nav — content takes full width
+.app-container:has(.cds--side-nav:not(.cds--side-nav--expanded)) .app-content {
+  margin-left: 0;
+}
+
+.page-header__breadcrumb {
+  margin-bottom: $spacing-04;
+}
+
+// CreateSidePanel form item spacing
+.create-side-panel__form-item {
+  margin-bottom: $spacing-05;
+}
+
+
+
+// Page header pattern (title + subtitle + action)
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: $spacing-06;
+  flex-shrink: 0;
+
+  .page-header__info {
+    h1 {
+      @include type.type-style('productive-heading-05');
+      margin: 0 0 $spacing-02;
+    }
+
+    .page-header__subtitle {
+      @include type.type-style('helper-text-02');
+      color: var(--cds-text-secondary);
+      margin: 0;
+    }
+  }
+
+  &--padded {
+    padding: 0 $spacing-05;
+  }
+}
+
+.page-header__actions {
+  display: flex;
+  gap: $spacing-03;
+}
+
+// VIP and Category styles
+.vip-star {
+  color: var(--cds-support-warning);
+  flex-shrink: 0;
+}
+
+.vip-star--clickable {
+  cursor: pointer;
+  &:hover { opacity: 0.7; }
+}
+
+.category-tag {
+  border-radius: 1rem;
+}
+
+// ─── Table Filter Flyout (shared, Carbon Popover-based) ──────────────
+.table-filter-flyout__trigger--active {
+  color: var(--cds-link-primary);
+  position: relative;
+}
+
+.table-filter-flyout__badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 14px;
+  height: 14px;
+  border-radius: 7px;
+  background: var(--cds-link-primary);
+  color: var(--cds-text-on-color);
+  font-size: 0.5625rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 3px;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.table-filter-flyout__content {
+  padding: $spacing-04 $spacing-05;
+  min-width: 240px;
+
+  .cds--fieldset {
+    margin: 0;
+  }
+
+  .cds--label {
+    margin-bottom: $spacing-04;
+  }
+
+  .cds--dropdown {
+    min-width: 100%;
+  }
+
+  .cds--form-item + .cds--form-item {
+    margin-top: $spacing-04;
+  }
+}
+
+.table-filter-flyout__actions {
+  padding: $spacing-03 $spacing-05 $spacing-04;
+  display: flex;
+  justify-content: flex-end;
+  gap: $spacing-03;
+  border-top: 1px solid var(--cds-border-subtle);
+}

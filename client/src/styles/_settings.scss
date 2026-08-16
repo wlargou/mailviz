@@ -1,3 +1,8 @@
+// Shared elevation variable — Carbon v11 has no shadow token. See _elevation.scss.
+@use 'elevation' as *;
+@use '@carbon/react/scss/type' as type;
+@use '@carbon/react/scss/spacing' as *;
+
 // ─── SETTINGS PAGE ────────────────────────────────
 
 .settings-page {
@@ -10,8 +15,8 @@
   .settings-tile__header {
     display: flex;
     align-items: flex-start;
-    gap: 0.75rem;
-    padding: 1.25rem 1.5rem 0;
+    gap: $spacing-04;
+    padding: 1.25rem $spacing-06 0;
   }
 
   .settings-tile__icon {
@@ -26,21 +31,20 @@
   }
 
   .settings-tile__title {
-    font-size: 1rem;
-    font-weight: 600;
+    @include type.type-style('heading-compact-02');
     margin: 0;
     color: var(--cds-text-primary);
   }
 
   .settings-tile__desc {
-    font-size: 0.875rem;
-    color: var(--cds-text-secondary);
-    margin: 0.125rem 0 0;
+    @include type.type-style('body-compact-01');
     line-height: 1.4;
+    color: var(--cds-text-secondary);
+    margin: $spacing-01 0 0;
   }
 
   .settings-tile__actions {
-    padding: 0 1.5rem 1.25rem;
+    padding: 0 $spacing-06 1.25rem;
   }
 
   // Override Carbon Stack inside tile for proper padding
@@ -48,8 +52,8 @@
     padding-bottom: 1.25rem;
 
     > *:not(.settings-tile__header):not(.cds--structured-list) {
-      padding-left: 1.5rem;
-      padding-right: 1.5rem;
+      padding-left: $spacing-06;
+      padding-right: $spacing-06;
     }
   }
 
@@ -57,11 +61,11 @@
   .cds--structured-list {
     .cds--structured-list-th:first-child,
     .cds--structured-list-td:first-child {
-      padding-left: 1.5rem;
+      padding-left: $spacing-06;
     }
     .cds--structured-list-th:last-child,
     .cds--structured-list-td:last-child {
-      padding-right: 1.5rem;
+      padding-right: $spacing-06;
     }
   }
 }
@@ -70,11 +74,11 @@
 .settings-connection-status {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: $spacing-04;
 }
 
 .settings-connection-email {
-  font-size: 0.875rem;
+  @include type.type-style('body-compact-01');
   color: var(--cds-text-secondary);
   flex: 1;
 }
@@ -96,8 +100,8 @@
 .settings-sync-item {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
+  gap: $spacing-04;
+  padding: $spacing-04 $spacing-05;
   border-bottom: 1px solid var(--cds-border-subtle-01);
 
   &:last-child {
@@ -113,18 +117,18 @@
 .settings-sync-item__info {
   display: flex;
   flex-direction: column;
-  gap: 0.125rem;
+  gap: $spacing-01;
   flex: 1;
 }
 
 .settings-sync-item__label {
-  font-size: 0.875rem;
+  @include type.type-style('body-compact-01');
   font-weight: 500;
   color: var(--cds-text-primary);
 }
 
 .settings-sync-item__time {
-  font-size: 0.75rem;
+  @include type.type-style('label-01');
   color: var(--cds-text-secondary);
 }
 
@@ -162,10 +166,10 @@
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 4px;
-  padding: 0.5rem;
+  padding: $spacing-03;
   background: var(--cds-layer-02);
   border: 1px solid var(--cds-border-subtle-01);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: $shadow-overlay;
   z-index: 10;
   border-radius: 2px;
 }
@@ -203,7 +207,7 @@
 .settings-status-add {
   display: flex;
   align-items: flex-end;
-  gap: 0.5rem;
+  gap: $spacing-03;
 
   .cds--text-input-wrapper {
     flex: 1;

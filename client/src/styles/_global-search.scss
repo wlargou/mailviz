@@ -1,13 +1,18 @@
+// Shared elevation variable — Carbon v11 has no shadow token. See _elevation.scss.
+@use 'elevation' as *;
+@use '@carbon/react/scss/type' as type;
+@use '@carbon/react/scss/spacing' as *;
+
 // ─── GLOBAL SEARCH (Carbon SearchBar with Scopes) ──────────────────────────────
 
 .global-search {
   position: relative;
   display: flex;
   align-items: center;
-  margin-right: 0.5rem;
+  margin-right: $spacing-03;
   flex: 1;
   max-width: 600px;
-  margin-left: 1rem;
+  margin-left: $spacing-05;
 }
 
 .global-search__input {
@@ -21,7 +26,7 @@
   .c4p--search-bar__search {
     .cds--search-input {
       height: 2rem;
-      font-size: 0.875rem;
+      @include type.type-style('body-compact-01');
     }
 
     .cds--search-magnifier-icon {
@@ -61,7 +66,7 @@
   width: 540px;
   background: var(--cds-layer-01);
   border: 1px solid var(--cds-border-subtle-01);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  box-shadow: $shadow-overlay;
   z-index: 8001;
 
   @media (max-width: 600px) {
@@ -71,18 +76,18 @@
 }
 
 .global-search__loading {
-  padding: 1rem;
+  padding: $spacing-05;
   display: flex;
   justify-content: center;
 }
 
 .global-search__empty {
-  padding: 1.5rem 1rem;
+  padding: $spacing-06 $spacing-05;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: $spacing-03;
   color: var(--cds-text-secondary);
-  font-size: 0.875rem;
+  @include type.type-style('body-compact-01');
 }
 
 .global-search__category {
@@ -95,8 +100,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.5rem 1rem 0.25rem;
-  font-size: 0.75rem;
+  padding: $spacing-03 $spacing-05 $spacing-02;
+  @include type.type-style('label-01');
   font-weight: 600;
   color: var(--cds-text-secondary);
 }
@@ -105,7 +110,7 @@
   background: none;
   border: none;
   color: var(--cds-link-primary);
-  font-size: 0.75rem;
+  @include type.type-style('label-01');
   font-weight: 500;
   cursor: pointer;
   padding: 0;
@@ -120,7 +125,7 @@
   display: flex;
   align-items: flex-start;
   gap: 0.625rem;
-  padding: 0.5rem 1rem;
+  padding: $spacing-03 $spacing-05;
   cursor: pointer;
   transition: background 0.1s ease;
 
@@ -132,7 +137,7 @@
 
 .global-search__result-icon {
   flex-shrink: 0;
-  margin-top: 0.125rem;
+  margin-top: $spacing-01;
   fill: var(--cds-icon-secondary);
 }
 
@@ -142,8 +147,7 @@
 }
 
 .global-search__result-label {
-  font-size: 0.875rem;
-  font-weight: 400;
+  @include type.type-style('body-compact-01');
   color: var(--cds-text-secondary);
   white-space: nowrap;
   overflow: hidden;
@@ -151,9 +155,9 @@
 }
 
 .global-search__result-sublabel {
-  font-size: 0.75rem;
+  @include type.type-style('label-01');
   color: var(--cds-text-secondary);
-  margin-top: 0.125rem;
+  margin-top: $spacing-01;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

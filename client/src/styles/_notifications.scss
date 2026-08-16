@@ -1,3 +1,8 @@
+// Shared elevation variable — Carbon v11 has no shadow token. See _elevation.scss.
+@use 'elevation' as *;
+@use '@carbon/react/scss/type' as type;
+@use '@carbon/react/scss/spacing' as *;
+
 // Notification badge on bell icon
 .notification-badge {
   position: absolute;
@@ -26,7 +31,7 @@
   max-height: 500px;
   background: var(--cds-layer-01);
   border: 1px solid var(--cds-border-subtle);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  box-shadow: $shadow-overlay;
   z-index: 9100;
   display: flex;
   flex-direction: column;
@@ -37,26 +42,25 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.75rem 1rem;
+  padding: $spacing-04 $spacing-05;
   border-bottom: 1px solid var(--cds-border-subtle);
 
   h4 {
-    font-size: 0.875rem;
-    font-weight: 600;
+    @include type.type-style('heading-compact-01');
     margin: 0;
   }
 }
 
 .notification-panel__actions {
   display: flex;
-  gap: 0.75rem;
+  gap: $spacing-04;
 }
 
 .notification-panel__link {
   background: none;
   border: none;
   color: var(--cds-link-primary);
-  font-size: 0.75rem;
+  @include type.type-style('label-01');
   cursor: pointer;
   padding: 0;
 
@@ -79,12 +83,12 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 2rem;
-  gap: 0.5rem;
+  padding: $spacing-07;
+  gap: $spacing-03;
   color: var(--cds-text-secondary);
 
   p {
-    font-size: 0.875rem;
+    @include type.type-style('body-compact-01');
     margin: 0;
   }
 }
@@ -93,8 +97,8 @@
 .notification-item {
   display: flex;
   align-items: flex-start;
-  gap: 0.5rem;
-  padding: 0.75rem 1rem;
+  gap: $spacing-03;
+  padding: $spacing-04 $spacing-05;
   cursor: pointer;
   transition: background 0.1s;
   border-bottom: 1px solid var(--cds-border-subtle);
@@ -104,8 +108,9 @@
     background: var(--cds-layer-hover);
   }
 
+  // Unread tint — see _mail.scss: alpha preserved, hue from the theme token.
   &--unread {
-    background: rgba(120, 169, 255, 0.06);
+    background: color-mix(in srgb, var(--cds-link-primary) 6%, transparent);
 
     .notification-item__title {
       font-weight: 600;
@@ -121,7 +126,7 @@
 }
 
 .notification-item__icon {
-  font-size: 1rem;
+  @include type.type-style('body-compact-02');
   flex-shrink: 0;
   padding-top: 1px;
 }
@@ -144,7 +149,7 @@
 }
 
 .notification-item__message {
-  font-size: 0.75rem;
+  @include type.type-style('label-01');
   color: var(--cds-text-secondary);
 }
 

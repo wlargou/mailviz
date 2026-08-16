@@ -13,243 +13,26 @@
 @use '@carbon/react/scss/theme' with (
   $theme: themes.$g100
 );
-@use '@carbon/react/scss/type' as type;
 @use '@carbon/react';
 @use '@carbon/ibm-products/css/index';
-@use '@carbon/colors';
-@use 'sass:color';
 
-:root {
-  --app-header-height: 48px;
-  // Accent colors — all mapped to Carbon design tokens
-  --accent-tasks: var(--cds-support-info);
-  --accent-completed: var(--cds-support-success);
-  --accent-overdue: var(--cds-support-error);
-  --accent-priority: #{colors.$purple-50};
-  --accent-customers: #{colors.$teal-40};
-  --accent-calendar: #{colors.$teal-60};
-  --accent-calendar-hover: #{colors.$teal-50};
-}
+// App base styles — must load before the component partials so the cascade
+// order matches the previous `@import`-at-the-bottom arrangement.
+@use 'base';
 
-body {
-  margin: 0;
-  font-family: 'IBM Plex Sans', 'Helvetica Neue', Arial, sans-serif;
-}
-
-// Theme application on html/body so portals (menus, modals) inherit the theme
-[data-carbon-theme='g100'] {
-  @include theme.theme(themes.$g100);
-}
-
-[data-carbon-theme='g10'] {
-  @include theme.theme(themes.$g10);
-}
-
-// Custom scrollbar
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: var(--cds-layer-01);
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--cds-border-subtle-01);
-  border-radius: 4px;
-
-  &:hover {
-    background: var(--cds-border-strong-01);
-  }
-}
-
-.app-container {
-  display: flex;
-  height: 100vh;
-  overflow: hidden;
-}
-
-// Remove focus outline on SideNavLink after mouse click (keep for keyboard nav)
-.cds--side-nav__link:focus:not(:focus-visible) {
-  outline: none;
-  box-shadow: none;
-}
-
-// Sidebar animated logo (rendered inside Carbon SideNav)
-.sidebar-logo-container {
-  position: absolute;
-  bottom: 1rem;
-  left: 50%;
-  transform: translateX(-50%);
-  opacity: 0.7;
-  pointer-events: none;
-  animation: sidebar-logo-float 10s ease-in-out infinite;
-}
-
-@keyframes sidebar-logo-float {
-  0%, 100% { transform: translateX(-50%) translateY(0); }
-  50% { transform: translateX(-50%) translateY(-8px); }
-}
-
-// Header logo + text alignment
-.mailviz-header-name {
-  display: inline-flex !important;
-  align-items: center;
-  gap: 0.5rem;
-
-  svg {
-    flex-shrink: 0;
-    position: relative;
-    top: 2px;
-  }
-}
-
-.app-content {
-  flex: 1;
-  margin-left: 256px;
-  margin-top: var(--app-header-height);
-  padding: 1rem 1.5rem;
-  transition: margin-left 0.3s ease;
-  background-color: var(--cds-background);
-  height: calc(100vh - var(--app-header-height));
-  overflow-y: auto;
-  overflow-x: hidden;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-
-  // Calendar page needs to fill the viewport, not scroll the outer container
-  &:has(.calendar-page) {
-    overflow: hidden;
-  }
-}
-
-// Collapsed side nav — content takes full width
-.app-container:has(.cds--side-nav:not(.cds--side-nav--expanded)) .app-content {
-  margin-left: 0;
-}
-
-.page-header__breadcrumb {
-  margin-bottom: 0.75rem;
-}
-
-// CreateSidePanel form item spacing
-.create-side-panel__form-item {
-  margin-bottom: 1rem;
-}
-
-
-
-// Page header pattern (title + subtitle + action)
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 1.5rem;
-  flex-shrink: 0;
-
-  .page-header__info {
-    h1 {
-      @include type.type-style('productive-heading-05');
-      margin: 0 0 0.25rem;
-    }
-
-    .page-header__subtitle {
-      @include type.type-style('helper-text-02');
-      color: var(--cds-text-secondary);
-      margin: 0;
-    }
-  }
-
-  &--padded {
-    padding: 0 1rem;
-  }
-}
-
-.page-header__actions {
-  display: flex;
-  gap: 0.5rem;
-}
-
-// VIP and Category styles
-.vip-star {
-  color: var(--cds-support-warning);
-  flex-shrink: 0;
-}
-
-.vip-star--clickable {
-  cursor: pointer;
-  &:hover { opacity: 0.7; }
-}
-
-.category-tag {
-  border-radius: 1rem;
-}
-
-// ─── Table Filter Flyout (shared, Carbon Popover-based) ──────────────
-.table-filter-flyout__trigger--active {
-  color: var(--cds-link-primary);
-  position: relative;
-}
-
-.table-filter-flyout__badge {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  min-width: 14px;
-  height: 14px;
-  border-radius: 7px;
-  background: var(--cds-link-primary);
-  color: var(--cds-text-on-color);
-  font-size: 0.5625rem;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 3px;
-  line-height: 1;
-  pointer-events: none;
-}
-
-.table-filter-flyout__content {
-  padding: 0.75rem 1rem;
-  min-width: 240px;
-
-  .cds--fieldset {
-    margin: 0;
-  }
-
-  .cds--label {
-    margin-bottom: 0.75rem;
-  }
-
-  .cds--dropdown {
-    min-width: 100%;
-  }
-
-  .cds--form-item + .cds--form-item {
-    margin-top: 0.75rem;
-  }
-}
-
-.table-filter-flyout__actions {
-  padding: 0.5rem 1rem 0.75rem;
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  border-top: 1px solid var(--cds-border-subtle);
-}
-
-// Component partials
-@import 'dashboard';
-@import 'settings';
-@import 'calendar';
-@import 'mail';
-@import 'compose';
-@import 'login';
-@import 'global-search';
-@import 'deals';
-@import 'share';
-@import 'notifications';
-@import 'review';
+// Component partials.
+// These are `@use`d, not `@import`ed: `@import` is deprecated and removed in
+// Dart Sass 3.0. Note that `@use` gives each partial its own scope, so any
+// partial that needs Sass-level members (mixins/functions/variables such as
+// `type.type-style` or `$spacing-05`) declares its own `@use` header.
+@use 'dashboard';
+@use 'settings';
+@use 'calendar';
+@use 'mail';
+@use 'compose';
+@use 'login';
+@use 'global-search';
+@use 'deals';
+@use 'share';
+@use 'notifications';
+@use 'review';

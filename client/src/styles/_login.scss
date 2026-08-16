@@ -1,3 +1,7 @@
+// `@use` scopes members per-file, so each partial declares the Carbon
+// modules it needs itself rather than inheriting them from index.scss.
+@use '@carbon/react/scss/type' as type;
+@use '@carbon/react/scss/spacing' as *;
 // ─── LOGIN PAGE ─────────────────────────────────
 .login-page {
   position: relative;
@@ -31,38 +35,38 @@
 }
 
 .login-panel__content {
-  padding: 3rem 2.5rem;
+  padding: $spacing-09 $spacing-08;
 }
 
 .login-panel__title {
   font-size: 2.25rem;
   font-weight: 300;
   color: var(--cds-text-primary);
-  margin: 0 0 0.5rem;
+  margin: 0 0 $spacing-03;
   letter-spacing: 0.01em;
 }
 
 .login-panel__subtitle {
-  font-size: 0.875rem;
+  @include type.type-style('body-compact-01');
+  line-height: 1.4;
   color: var(--cds-text-secondary);
   margin: 0;
-  line-height: 1.4;
 }
 
 .login-panel__divider {
   height: 1px;
   background: var(--cds-border-subtle-01);
-  margin: 2rem 0;
+  margin: $spacing-07 0;
 }
 
 .login-panel__label {
-  font-size: 0.875rem;
+  @include type.type-style('body-compact-01');
   color: var(--cds-text-secondary);
-  margin: 0 0 1rem;
+  margin: 0 0 $spacing-05;
 }
 
 .login-panel__error {
-  margin: 0 0 1rem;
+  margin: 0 0 $spacing-05;
 }
 
 .login-panel__button {
@@ -111,7 +115,7 @@
   width: 0;
   max-width: fit-content;
   padding-bottom: 0.1em;
-  margin-top: 1rem;
+  margin-top: $spacing-05;
   animation:
     typing-reveal2 2.5s steps(50, end) 4s forwards,
     blink-caret2 0.75s step-end 4s 5,

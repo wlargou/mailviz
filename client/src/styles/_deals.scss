@@ -1,3 +1,7 @@
+// `@use` scopes members per-file, so each partial declares the Carbon
+// modules it needs itself rather than inheriting them from index.scss.
+@use '@carbon/react/scss/type' as type;
+@use '@carbon/react/scss/spacing' as *;
 // ─── Deal Registration Page ─────────────────────
 
 .deals-table {
@@ -15,7 +19,7 @@
 .deal-partner-cell {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: $spacing-03;
 }
 
 .deal-partner-link {

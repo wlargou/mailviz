@@ -1,0 +1,18 @@
+// Elevation
+//
+// Carbon v11 deliberately ships no box-shadow / elevation token, so drop
+// shadows are the one place in this codebase that legitimately can't be
+// expressed with `var(--cds-*)`. This module is the app's stand-in.
+//
+// Every call site that used a shadow was the same role — a floating surface
+// anchored to the page (dropdown menu, popover, autocomplete list,
+// notification panel) — but the values had drifted to five variants:
+//   0 4px 16px rgba(0, 0, 0, 0.3)   ×4
+//   0 2px  6px rgba(0, 0, 0, 0.3)   ×1
+//   0 2px  8px rgba(0, 0, 0, 0.3)   ×1
+//   0 4px  8px rgba(0, 0, 0, 0.3)   ×1
+//   0 8px 24px rgba(0, 0, 0, 0.2)   ×1
+// They are now all `$shadow-overlay`, i.e. the most common of the five.
+//
+// This module emits no CSS; it only exports variables.
+$shadow-overlay: 0 4px 16px rgba(0, 0, 0, 0.3) !default;
