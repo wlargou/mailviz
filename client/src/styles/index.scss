@@ -1,3 +1,13 @@
+// Carbon's default $font-path is '~@ibm/plex' — a webpack convention Vite does
+// not resolve, so Carbon's 90 @font-face rules emitted dead url(~@ibm/plex/...)
+// paths and IBM Plex never loaded (the app silently rendered in Helvetica).
+// We disable Carbon's font emission and load Plex from the @ibm/plex-sans and
+// @ibm/plex-mono packages in main.tsx instead, whose relative font URLs Vite
+// resolves and fingerprints correctly.
+// This must come first: it configures the module every other Carbon import uses.
+@use '@carbon/react/scss/config' with (
+  $css--font-face: false
+);
 @use '@carbon/react/scss/reset';
 @use '@carbon/react/scss/themes';
 @use '@carbon/react/scss/theme' with (
