@@ -8,20 +8,36 @@ interface WsMessage {
 
 type EventHandler = (data: any) => void;
 
+interface WsOptions {
+  /**
+   * Called when the socket reopens after having been disconnected — NOT on the
+   * first connect. Events broadcast while the socket was down are gone, so the
+   * consumer should refetch whatever it renders. The background schedulers keep
+   * syncing server-side throughout, so a refetch is enough to catch up; no
+   * extra Gmail sync is needed.
+   */
+  onReconnect?: () => void;
+}
+
 /**
  * WebSocket hook for real-time sync updates (email, calendar, etc.).
  * Automatically connects, reconnects with exponential backoff,
  * and invokes handlers when server emits events.
  */
-export function useEmailWebSocket(handlers: Record<string, EventHandler>) {
+export function useEmailWebSocket(handlers: Record<string, EventHandler>, options: WsOptions = {}) {
   const wsRef = useRef<WebSocket | null>(null);
   const handlersRef = useRef(handlers);
+  const optionsRef = useRef(options);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const reconnectDelayRef = useRef(1000);
   const mountedRef = useRef(true);
+  // Distinguishes "opened for the first time" from "came back after a drop".
+  const hasConnectedRef = useRef(false);
+  const wasDisconnectedRef = useRef(false);
 
-  // Keep handlers ref current without causing reconnects
+  // Keep refs current without causing reconnects
   handlersRef.current = handlers;
+  optionsRef.current = options;
 
   const connect = useCallback(() => {
     if (!mountedRef.current) return;
@@ -39,6 +55,15 @@ export function useEmailWebSocket(handlers: Record<string, EventHandler>) {
       ws.onopen = () => {
         console.log('[WS] Connected');
         reconnectDelayRef.current = 1000; // Reset backoff on successful connect
+
+        // Anything broadcast while we were down was missed, so tell the
+        // consumer to refetch. Only after a genuine drop — not the first open.
+        if (hasConnectedRef.current && wasDisconnectedRef.current) {
+          console.log('[WS] Reconnected — refetching to catch up on missed events');
+          wasDisconnectedRef.current = false;
+          optionsRef.current.onReconnect?.();
+        }
+        hasConnectedRef.current = true;
       };
 
       ws.onmessage = (event) => {
@@ -55,6 +80,7 @@ export function useEmailWebSocket(handlers: Record<string, EventHandler>) {
 
       ws.onclose = () => {
         console.log('[WS] Disconnected, reconnecting...');
+        wasDisconnectedRef.current = true;
         scheduleReconnect();
       };
 

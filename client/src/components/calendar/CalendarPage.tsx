@@ -34,7 +34,8 @@ export function CalendarPage() {
     },
   }), []);
 
-  useEmailWebSocket(wsHandlers);
+  // Refetch on reconnect — events broadcast while the socket was down are lost.
+  useEmailWebSocket(wsHandlers, { onReconnect: () => fetchEventsRef.current?.(true) });
 
   useEffect(() => {
     fetchEvents();

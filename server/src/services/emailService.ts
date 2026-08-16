@@ -72,12 +72,25 @@ export const emailService = {
     return { synced, customersCreated, contactsCreated, labelsChanged };
   },
 
-  async initialSync(gmail: ReturnType<typeof google.gmail>, userId: string) {
+  /**
+   * @param windowDays When set, only messages newer than this many days are
+   *   listed, overriding EMAIL_SYNC_MONTHS. Used by the history-expiry catch-up
+   *   path, which must stay bounded — see the 404 handler in incrementalSync.
+   */
+  async initialSync(gmail: ReturnType<typeof google.gmail>, userId: string, windowDays?: number) {
     let synced = 0;
     let customersCreated = 0;
     let contactsCreated = 0;
     let currentGmail = gmail;
     let messagesSinceRefresh = 0;
+
+    // A true initial sync honours EMAIL_SYNC_MONTHS (0 = the whole mailbox).
+    // A catch-up sync passes an explicit day window instead.
+    const query = windowDays
+      ? `newer_than:${windowDays}d`
+      : env.EMAIL_SYNC_MONTHS > 0
+        ? `newer_than:${env.EMAIL_SYNC_MONTHS}m`
+        : undefined;
 
     // Phase 1: Collect ALL message IDs (cheap — only IDs, no content)
     wsEmit('sync:progress', { type: 'email', synced: 0, total: 0, phase: 'counting' });
@@ -87,7 +100,7 @@ export const emailService = {
     do {
       const listRes = await currentGmail.users.messages.list({
         userId: 'me',
-        ...(env.EMAIL_SYNC_MONTHS > 0 ? { q: `newer_than:${env.EMAIL_SYNC_MONTHS}m` } : {}),
+        ...(query ? { q: query } : {}),
         maxResults: 500,
         pageToken,
       });
@@ -259,10 +272,21 @@ export const emailService = {
         }
       } while (pageToken);
     } catch (err: any) {
-      // If historyId is too old, fall back to initial sync
+      // Gmail returns 404 when startHistoryId is older than its retention
+      // window. This is routine (it happens after any longish gap), not an
+      // error condition — but it used to fall through to a FULL initialSync,
+      // which with the default EMAIL_SYNC_MONTHS=0 re-listed the entire
+      // mailbox. On a large account that is tens of thousands of message
+      // fetches triggered by a condition we do not control.
+      //
+      // Gmail retains history for about a week, so a bounded catch-up over the
+      // same period recovers everything the history feed would have contained.
       if (err?.code === 404) {
-        console.warn('History ID expired, falling back to initial sync');
-        return this.initialSync(gmail, userId);
+        console.warn(
+          `[EmailSync] History ID expired; catching up on the last ${env.SYNC_CATCHUP_DAYS} days instead of a full re-sync`
+        );
+        const result = await this.initialSync(gmail, userId, env.SYNC_CATCHUP_DAYS);
+        return { ...result, labelsChanged: 0 };
       }
       throw err;
     }

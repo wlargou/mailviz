@@ -21,6 +21,11 @@ export const env = {
   CALENDAR_SYNC_ENABLED: process.env.CALENDAR_SYNC_ENABLED !== 'false',
   CALENDAR_SYNC_INTERVAL_SECONDS: parseInt(process.env.CALENDAR_SYNC_INTERVAL_SECONDS || '120', 10),
   EMAIL_SYNC_MONTHS: parseInt(process.env.EMAIL_SYNC_MONTHS || '0', 10), // 0 = all emails
+  // How far back to catch up when Gmail rejects our history token as too old.
+  // Gmail retains history for roughly a week, so 7 days covers everything the
+  // history feed could have returned. Bounded on purpose: the alternative is a
+  // full mailbox re-sync triggered by a condition we do not control.
+  SYNC_CATCHUP_DAYS: parseInt(process.env.SYNC_CATCHUP_DAYS || '7', 10),
   CALENDAR_SYNC_PAST_MONTHS: parseInt(process.env.CALENDAR_SYNC_PAST_MONTHS || '24', 10),
   CALENDAR_SYNC_FUTURE_MONTHS: parseInt(process.env.CALENDAR_SYNC_FUTURE_MONTHS || '12', 10),
 

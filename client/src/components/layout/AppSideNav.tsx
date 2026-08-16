@@ -35,7 +35,8 @@ export function AppSideNav() {
     'task:shared': () => refreshCounts(),
     'deal:shared': () => refreshCounts(),
   }), [refreshCounts]);
-  useEmailWebSocket(wsHandlers);
+  // Refetch on reconnect — events broadcast while the socket was down are lost.
+  useEmailWebSocket(wsHandlers, { onReconnect: () => refreshCounts() });
 
   useEffect(() => {
     refreshCounts();

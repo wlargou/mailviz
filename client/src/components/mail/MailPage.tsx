@@ -119,7 +119,8 @@ export function MailPage() {
       addNotification({ kind: 'info', title: 'A deal was shared with you' });
     },
   }), [addNotification]);
-  useEmailWebSocket(wsHandlers);
+  // Refetch on reconnect — events broadcast while the socket was down are lost.
+  useEmailWebSocket(wsHandlers, { onReconnect: () => fetchThreadsRef.current?.(true) });
 
   // Ref to fetchThreads so WS handlers don't need it as a dependency
   const fetchThreadsRef = useRef<((silent?: boolean) => void) | null>(null);
