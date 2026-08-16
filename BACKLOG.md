@@ -111,7 +111,12 @@ Design detail for 2.1 and 2.3 is in [`docs/plans/`](docs/plans/).
   does not meet. Revisit only if Deals is deliberately repositioned as
   opportunity management, which is a different product.
 - [ ] **3.5 Email templates / snippets** — zero references anywhere.
-- [ ] **3.6 Snooze and follow-up reminders** — zero references anywhere.
+- [x] **3.6 Snooze / follow-up** — state lives in `email_reminders`, not on the
+  `emails` row, because the 60s sync rewrites every column there. Threads
+  return unread at their real date; bumping `receivedAt` would corrupt the date
+  filters, the review buckets and the dashboard.
+
+
 - [~] **3.7 CSV import / export** — deprioritised. Useful for onboarding data
   or leaving, not for daily use. Not planned.
 - [~] **3.8 Mail rules / filters** — deprioritised. Gmail's own filters already
@@ -204,6 +209,29 @@ are still worth knowing.
   `acme.test`, `shared-domain.test` and `msw9…-N.example.com` domains. Harmless,
   but they pollute the customer list and any count taken from it. Worth a
   cleanup query once someone confirms they are not referenced by real mail.
+
+## Follow-ups from templates and snooze
+
+- [ ] **Snooze/reply race.** The snooze scheduler and the mail sync are
+  independent, so a follow-up can fire between a reply landing at Gmail and the
+  sync importing it. `fire()` re-checks, which narrows the window without
+  closing it. The real fix is 2.1 (Pub/Sub).
+- [ ] **Snoozed mail still counts** in `getReviewSummary` and the dashboard —
+  reminders are excluded from the mail folders only. Arguably correct; decide.
+- [ ] **A snoozed-then-trashed thread shows in Trash but not in Snoozed**, since
+  the Snoozed folder defaults to `isTrashed: false`.
+- [ ] **Snoozing is owner-only** — a recipient of a shared thread cannot snooze
+  it, since their view renders from the owner's rows.
+- [ ] **No snooze action inside `ThreadDetail`** (the SidePanel); row action
+  only. Needs `createPortal` per the modals-inside-SidePanel rule.
+- [ ] **`{{today}}` renders with server-local `en-US` formatting.**
+- [ ] **Templates are not shareable and are absent from global search.**
+- [ ] **Normalize attendee addresses at ingest.** `calendarService.ts:491` passes
+  the raw Google attendee address to `findOrCreateContact`, which dedupes on an
+  exact string. Some arrive quote-wrapped, so a second contact is created for
+  someone who already exists — 190 contacts carry a quoted address, and 36 of
+  the 38 high-confidence duplicate groups are this one bug. Dedupe cleans up
+  what exists; this stops it coming back.
 
 ## Bugs found by the Gmail sync tests
 
