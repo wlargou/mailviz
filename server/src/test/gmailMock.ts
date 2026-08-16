@@ -24,9 +24,16 @@ export interface GmailMock {
   messagesModify: Mock;
   messagesTrash: Mock;
   messagesUntrash: Mock;
+  attachmentsGet: Mock;
   historyList: Mock;
   getProfile: Mock;
   threadsGet: Mock;
+  draftsList: Mock;
+  draftsGet: Mock;
+  draftsCreate: Mock;
+  draftsUpdate: Mock;
+  draftsSend: Mock;
+  draftsDelete: Mock;
 }
 
 export function createGmailMock(): GmailMock {
@@ -35,9 +42,16 @@ export function createGmailMock(): GmailMock {
   const messagesModify = vi.fn().mockResolvedValue({ data: {} });
   const messagesTrash = vi.fn().mockResolvedValue({ data: {} });
   const messagesUntrash = vi.fn().mockResolvedValue({ data: {} });
+  const attachmentsGet = vi.fn().mockResolvedValue({ data: { data: '' } });
   const historyList = vi.fn().mockResolvedValue({ data: { history: [] } });
   const getProfile = vi.fn().mockResolvedValue({ data: { emailAddress: 'me@example.com', historyId: '1' } });
   const threadsGet = vi.fn().mockResolvedValue({ data: { messages: [] } });
+  const draftsList = vi.fn().mockResolvedValue({ data: { drafts: [] } });
+  const draftsGet = vi.fn().mockResolvedValue({ data: { id: 'unstubbed', message: gmailMessage({ id: 'unstubbed' }) } });
+  const draftsCreate = vi.fn().mockResolvedValue({ data: { id: 'draft-new', message: { id: 'msg-new', threadId: 'thread-new' } } });
+  const draftsUpdate = vi.fn().mockResolvedValue({ data: { id: 'draft-new', message: { id: 'msg-updated', threadId: 'thread-new' } } });
+  const draftsSend = vi.fn().mockResolvedValue({ data: { id: 'sent-msg', threadId: 'thread-new' } });
+  const draftsDelete = vi.fn().mockResolvedValue({ data: {} });
 
   const client = {
     users: {
@@ -47,9 +61,18 @@ export function createGmailMock(): GmailMock {
         modify: messagesModify,
         trash: messagesTrash,
         untrash: messagesUntrash,
+        attachments: { get: attachmentsGet },
       },
       history: { list: historyList },
       threads: { get: threadsGet },
+      drafts: {
+        list: draftsList,
+        get: draftsGet,
+        create: draftsCreate,
+        update: draftsUpdate,
+        send: draftsSend,
+        delete: draftsDelete,
+      },
       getProfile,
     },
   } as unknown as gmail_v1.Gmail;
@@ -61,10 +84,29 @@ export function createGmailMock(): GmailMock {
     messagesModify,
     messagesTrash,
     messagesUntrash,
+    attachmentsGet,
     historyList,
     getProfile,
     threadsGet,
+    draftsList,
+    draftsGet,
+    draftsCreate,
+    draftsUpdate,
+    draftsSend,
+    draftsDelete,
   };
+}
+
+/** Every Gmail endpoint the drafts feature can reach. */
+export function draftEndpoints(mock: GmailMock): Mock[] {
+  return [
+    mock.draftsList,
+    mock.draftsGet,
+    mock.draftsCreate,
+    mock.draftsUpdate,
+    mock.draftsSend,
+    mock.draftsDelete,
+  ];
 }
 
 // ── Request-shape helpers ────────────────────────────────────────────────────
@@ -150,6 +192,89 @@ export function gmailMessage(msg: FakeMessage): gmail_v1.Schema$Message {
     sizeEstimate: 1024,
     payload: { mimeType: 'text/plain', headers, body: { size: 0 } },
   };
+}
+
+// ── Draft builders ───────────────────────────────────────────────────────────
+
+export interface FakeDraftAttachment {
+  filename: string;
+  mimeType: string;
+  size: number;
+  attachmentId: string;
+}
+
+export interface FakeDraft {
+  id: string;
+  /** Gmail mints a new message id on every edit — that is the change detector. */
+  messageId: string;
+  threadId?: string;
+  to?: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject?: string;
+  htmlBody?: string;
+  /** Epoch milliseconds; Gmail sends this as a string. */
+  internalDate?: number;
+  attachments?: FakeDraftAttachment[];
+}
+
+/** A `users.drafts.get` payload, shaped the way Gmail returns `format: 'full'`. */
+export function gmailDraft(draft: FakeDraft): gmail_v1.Schema$Draft {
+  const headers: gmail_v1.Schema$MessagePartHeader[] = [
+    { name: 'Subject', value: draft.subject ?? '' },
+    { name: 'To', value: (draft.to ?? []).join(', ') },
+  ];
+  if (draft.cc?.length) headers.push({ name: 'Cc', value: draft.cc.join(', ') });
+  if (draft.bcc?.length) headers.push({ name: 'Bcc', value: draft.bcc.join(', ') });
+
+  const parts: gmail_v1.Schema$MessagePart[] = [
+    {
+      mimeType: 'text/html',
+      body: { data: Buffer.from(draft.htmlBody ?? '', 'utf-8').toString('base64url') },
+    },
+    ...(draft.attachments ?? []).map((a) => ({
+      mimeType: a.mimeType,
+      filename: a.filename,
+      body: { attachmentId: a.attachmentId, size: a.size },
+    })),
+  ];
+
+  return {
+    id: draft.id,
+    message: {
+      id: draft.messageId,
+      threadId: draft.threadId ?? `thread-${draft.id}`,
+      labelIds: ['DRAFT'],
+      internalDate: String(draft.internalDate ?? Date.UTC(2024, 0, 1)),
+      payload: { mimeType: 'multipart/mixed', headers, parts },
+    },
+  };
+}
+
+/** One page of `users.drafts.list` — ids plus the current message id per draft. */
+export function draftsListPage(
+  drafts: Array<{ id: string; messageId: string }>,
+  nextPageToken?: string
+) {
+  return {
+    data: {
+      drafts: drafts.map((d) => ({ id: d.id, message: { id: d.messageId } })),
+      ...(nextPageToken ? { nextPageToken } : {}),
+    },
+  };
+}
+
+/** Wire `drafts.list` and `drafts.get` to answer from one set of fake drafts. */
+export function stubDrafts(mock: GmailMock, drafts: FakeDraft[]): void {
+  mock.draftsList.mockResolvedValue(
+    draftsListPage(drafts.map((d) => ({ id: d.id, messageId: d.messageId })))
+  );
+  const byId = new Map(drafts.map((d) => [d.id, gmailDraft(d)]));
+  mock.draftsGet.mockImplementation(async (params: MessageIdParams) => {
+    const found = byId.get(params?.id ?? '');
+    if (!found) throw gmailError(404, `Draft ${params?.id} not found`, ['notFound']);
+    return { data: found };
+  });
 }
 
 /** One page of `users.messages.list`. */

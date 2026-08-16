@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { emailService } from './emailService.js';
-import { createTwoUsers, createUser, createEmail, shareThreadWith } from '../test/factories.js';
+import { createTwoUsers, createUser, createEmail, createCustomer, shareThreadWith } from '../test/factories.js';
 
 /**
  * Multi-tenant isolation for the database-backed email queries.
@@ -138,6 +138,253 @@ describe('emailService.findAllThreads — tenant isolation', () => {
       (t) => t.latestEmail?.subject
     );
     expect(trash).toEqual(['Alice trashed']);
+  });
+});
+
+/**
+ * The review flow (`ReviewMailView`) used to fetch `limit=500` once and then
+ * group and unread-filter in the browser. `parsePagination` caps `limit` at
+ * 100, so a wide review was quietly cut to the newest 100 threads, and the
+ * unread toggle — applied after the fetch — could never recover a thread the
+ * cap had already dropped. The flow now asks the server per company, with
+ * `isRead=false` for the unread view and a real page number, which put three
+ * things under test: the `none` sentinel for mail with no customer, that the
+ * new branch cannot widen past ownership, and that paging returns every thread.
+ */
+describe('emailService.findAllThreads — customer scoping for the review flow', () => {
+  it('returns only the caller’s uncategorized threads for customerId=none', async () => {
+    const { alice, bob } = await createTwoUsers();
+    const aliceCustomer = await createCustomer(alice.id);
+    await createEmail(alice.id, { threadId: 'thread-a1', subject: 'Alice linked', customerId: aliceCustomer.id });
+    await createEmail(alice.id, { threadId: 'thread-a2', subject: 'Alice unlinked' });
+    await createEmail(bob.id, { threadId: 'thread-b1', subject: 'Bob unlinked' });
+
+    const subjects = (await emailService.findAllThreads({ customerId: 'none' }, alice.id)).data.map(
+      (t) => t.latestEmail?.subject
+    );
+
+    expect(subjects).toEqual(['Alice unlinked']);
+  });
+
+  it('does not hand over another user’s mail when asked for their customer id', async () => {
+    const { alice, bob } = await createTwoUsers();
+    const bobCustomer = await createCustomer(bob.id);
+    await createEmail(bob.id, { threadId: 'thread-b1', subject: 'Bob linked', customerId: bobCustomer.id });
+
+    const result = await emailService.findAllThreads({ customerId: bobCustomer.id }, alice.id);
+
+    expect(result.data).toHaveLength(0);
+    expect(result.meta.total).toBe(0);
+  });
+
+  it('does not leak another user’s mail through the uncategorized bucket', async () => {
+    const { alice, bob } = await createTwoUsers();
+    // The trigger for the ownership-clobbering bug class: Alice holds a share,
+    // so the ownership filter is itself an OR.
+    await createEmail(bob.id, { threadId: 'thread-shared', subject: 'Shared unlinked' });
+    await shareThreadWith('thread-shared', bob.id, alice.id);
+    await createEmail(alice.id, { threadId: 'thread-alice', subject: 'Alice unlinked' });
+    await createEmail(bob.id, { threadId: 'thread-bob', subject: 'Bob unlinked' });
+
+    const aliceCustomer = await createCustomer(alice.id);
+    type EmailQuery = Parameters<typeof emailService.findAllThreads>[0];
+    const combinations: EmailQuery[] = [
+      { customerId: 'none' },
+      { customerId: 'none', isRead: 'false' },
+      { customerId: `${aliceCustomer.id},none` },
+      { customerId: `${aliceCustomer.id},none`, search: 'unlinked' },
+      { customerId: `${aliceCustomer.id},none`, isRead: 'false', dateAfter: '2000-01-01T00:00:00.000Z' },
+    ];
+
+    for (const query of combinations) {
+      const subjects = (await emailService.findAllThreads(query, alice.id)).data.map(
+        (t) => t.latestEmail?.subject
+      );
+      expect(subjects, `leaked with query ${JSON.stringify(query)}`).not.toContain('Bob unlinked');
+    }
+  });
+
+  it('keeps the customer scope when a search is also present — REGRESSION', async () => {
+    // The uncategorized branch needs its own OR. Assigning it to `where.OR`
+    // would work in isolation and then be overwritten by the search branch
+    // further down, quietly widening the review to every company. It is pushed
+    // onto the AND list instead.
+    const { alice } = await createTwoUsers();
+    const wanted = await createCustomer(alice.id);
+    const other = await createCustomer(alice.id);
+    await createEmail(alice.id, { threadId: 'thread-1', subject: 'Wanted widget', customerId: wanted.id });
+    await createEmail(alice.id, { threadId: 'thread-2', subject: 'Other widget', customerId: other.id });
+    await createEmail(alice.id, { threadId: 'thread-3', subject: 'Unlinked widget' });
+
+    const subjects = (
+      await emailService.findAllThreads({ customerId: `${wanted.id},none`, search: 'widget' }, alice.id)
+    ).data.map((t) => t.latestEmail?.subject);
+
+    expect(subjects.sort()).toEqual(['Unlinked widget', 'Wanted widget']);
+    // The bug: this used to come back too.
+    expect(subjects).not.toContain('Other widget');
+  });
+
+  it('filters unread server-side rather than over an already-paged result', async () => {
+    const { alice } = await createTwoUsers();
+    await createEmail(alice.id, { threadId: 'thread-read', subject: 'Read one', isRead: true });
+    await createEmail(alice.id, { threadId: 'thread-unread', subject: 'Unread one', isRead: false });
+
+    const result = await emailService.findAllThreads({ isRead: 'false' }, alice.id);
+
+    expect(result.data.map((t) => t.latestEmail?.subject)).toEqual(['Unread one']);
+    expect(result.meta.total).toBe(1);
+  });
+});
+
+describe('emailService.findAllThreads — pagination', () => {
+  it('reports the full total and reaches every thread across pages', async () => {
+    const { alice } = await createTwoUsers();
+    const base = new Date('2024-03-01T00:00:00.000Z').getTime();
+    for (let i = 0; i < 5; i++) {
+      await createEmail(alice.id, {
+        threadId: `thread-${i}`,
+        subject: `Mail ${i}`,
+        receivedAt: new Date(base + i * 60_000),
+      });
+    }
+
+    const first = await emailService.findAllThreads({ limit: '2', page: '1' }, alice.id);
+    expect(first.data).toHaveLength(2);
+    // The count is of all matching threads, not of the page — this is what the
+    // "showing X of Y" line in the review header reads.
+    expect(first.meta.total).toBe(5);
+    expect(first.meta.totalPages).toBe(3);
+
+    const seen = new Set<string | null>(first.data.map((t) => t.threadId));
+    for (const page of ['2', '3']) {
+      const res = await emailService.findAllThreads({ limit: '2', page }, alice.id);
+      res.data.forEach((t) => seen.add(t.threadId));
+    }
+
+    expect(seen.size).toBe(5);
+  });
+
+  it('caps limit at 100 — the review’s old limit=500 was never honoured', async () => {
+    const { alice } = await createTwoUsers();
+    await createEmail(alice.id, { subject: 'Only one' });
+
+    const result = await emailService.findAllThreads({ limit: '500' }, alice.id);
+
+    expect(result.meta.limit).toBe(100);
+  });
+
+  it('does not leak another user’s threads on a later page', async () => {
+    const { alice, bob } = await createTwoUsers();
+    for (let i = 0; i < 3; i++) {
+      await createEmail(alice.id, { threadId: `alice-${i}`, subject: `Alice ${i}` });
+      await createEmail(bob.id, { threadId: `bob-${i}`, subject: `Bob ${i}` });
+    }
+
+    for (const page of ['1', '2', '3']) {
+      const subjects = (await emailService.findAllThreads({ limit: '1', page }, alice.id)).data.map(
+        (t) => t.latestEmail?.subject
+      );
+      expect(subjects.every((s) => s?.startsWith('Alice')), `page ${page}: ${subjects}`).toBe(true);
+    }
+  });
+});
+
+describe('emailService.getReviewSummary', () => {
+  const WINDOW = {
+    after: '2024-01-01T00:00:00.000Z',
+    before: '2024-12-31T23:59:59.999Z',
+  };
+  const inWindow = new Date('2024-06-01T12:00:00.000Z');
+
+  it('counts only the caller’s mail', async () => {
+    const { alice, bob } = await createTwoUsers();
+    const aliceCustomer = await createCustomer(alice.id, { name: 'Acme' });
+    const bobCustomer = await createCustomer(bob.id, { name: 'Initech' });
+    await createEmail(alice.id, { customerId: aliceCustomer.id, receivedAt: inWindow });
+    await createEmail(bob.id, { customerId: bobCustomer.id, receivedAt: inWindow });
+    await createEmail(bob.id, { receivedAt: inWindow });
+
+    const summary = await emailService.getReviewSummary(WINDOW.after, WINDOW.before, alice.id);
+
+    expect(summary.data.map((c) => c.customerName)).toEqual(['Acme']);
+    expect(summary.uncategorized.totalEmails).toBe(0);
+    expect(summary.uncategorized.totalThreads).toBe(0);
+  });
+
+  it('counts distinct threads separately from messages', async () => {
+    const { alice } = await createTwoUsers();
+    const customer = await createCustomer(alice.id, { name: 'Acme' });
+    // One three-message thread, one of them unread.
+    await createEmail(alice.id, { threadId: 'thread-x', customerId: customer.id, isRead: true, receivedAt: inWindow });
+    await createEmail(alice.id, { threadId: 'thread-x', customerId: customer.id, isRead: true, receivedAt: inWindow });
+    await createEmail(alice.id, { threadId: 'thread-x', customerId: customer.id, isRead: false, receivedAt: inWindow });
+
+    const summary = await emailService.getReviewSummary(WINDOW.after, WINDOW.before, alice.id);
+    const acme = summary.data.find((c) => c.customerName === 'Acme');
+
+    expect(acme?.totalEmails).toBe(3);
+    expect(acme?.totalThreads).toBe(1);
+    expect(acme?.unreadEmails).toBe(1);
+    expect(acme?.unreadThreads).toBe(1);
+  });
+
+  it('thread counts match what the paged list reports as its total', async () => {
+    // Requirement of the grouped review view: the per-company header count and
+    // the "showing X of Y" line must be the same aggregate, or the header is a
+    // lie the moment paging starts.
+    const { alice } = await createTwoUsers();
+    const customer = await createCustomer(alice.id, { name: 'Acme' });
+    for (let i = 0; i < 4; i++) {
+      await createEmail(alice.id, {
+        threadId: `acme-${i}`,
+        customerId: customer.id,
+        isRead: i % 2 === 0,
+        receivedAt: inWindow,
+      });
+      // Second message in the same thread — must not inflate the thread count.
+      await createEmail(alice.id, { threadId: `acme-${i}`, customerId: customer.id, isRead: true, receivedAt: inWindow });
+    }
+    for (let i = 0; i < 2; i++) {
+      await createEmail(alice.id, { threadId: `loose-${i}`, isRead: false, receivedAt: inWindow });
+    }
+
+    const summary = await emailService.getReviewSummary(WINDOW.after, WINDOW.before, alice.id);
+    const acme = summary.data.find((c) => c.customerName === 'Acme');
+
+    const listed = await emailService.findAllThreads(
+      { customerId: customer.id, dateAfter: WINDOW.after, dateBefore: WINDOW.before, limit: '2' },
+      alice.id
+    );
+    const listedUnread = await emailService.findAllThreads(
+      { customerId: customer.id, dateAfter: WINDOW.after, dateBefore: WINDOW.before, isRead: 'false', limit: '2' },
+      alice.id
+    );
+    const listedUncategorized = await emailService.findAllThreads(
+      { customerId: 'none', dateAfter: WINDOW.after, dateBefore: WINDOW.before, limit: '1' },
+      alice.id
+    );
+
+    expect(acme?.totalThreads).toBe(listed.meta.total);
+    expect(acme?.unreadThreads).toBe(listedUnread.meta.total);
+    expect(summary.uncategorized.totalThreads).toBe(listedUncategorized.meta.total);
+    // …and the page itself is smaller than the total, which is the case the
+    // header count exists to describe.
+    expect(listed.data.length).toBeLessThan(listed.meta.total);
+  });
+
+  it('ignores mail outside the window and mail in the trash', async () => {
+    const { alice } = await createTwoUsers();
+    const customer = await createCustomer(alice.id, { name: 'Acme' });
+    await createEmail(alice.id, { threadId: 'keep', customerId: customer.id, receivedAt: inWindow });
+    await createEmail(alice.id, { threadId: 'old', customerId: customer.id, receivedAt: new Date('2023-01-01T00:00:00.000Z') });
+    await createEmail(alice.id, { threadId: 'gone', customerId: customer.id, isTrashed: true, receivedAt: inWindow });
+
+    const summary = await emailService.getReviewSummary(WINDOW.after, WINDOW.before, alice.id);
+    const acme = summary.data.find((c) => c.customerName === 'Acme');
+
+    expect(acme?.totalEmails).toBe(1);
+    expect(acme?.totalThreads).toBe(1);
   });
 });
 

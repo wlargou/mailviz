@@ -1,5 +1,6 @@
 import * as cron from 'node-cron';
 import { emailService } from '../services/emailService.js';
+import { draftService } from '../services/draftService.js';
 import { env } from '../config/env.js';
 import { wsEmit } from '../websocket.js';
 import { secondsToCron } from '../utils/shared.js';
@@ -39,6 +40,20 @@ async function runSync() {
           // Google not connected or permissions not granted — silently skip
         } else {
           console.error('[EmailSync] Sync failed:', err?.message || err);
+        }
+      }
+
+      // Drafts are reconciled in their own try/catch so a drafts failure never
+      // aborts the mail sync for the remaining users. In the steady state this
+      // is a single `drafts.list` call — see draftService.syncDrafts.
+      try {
+        const drafts = await draftService.syncDrafts(userId);
+        if (drafts.synced > 0 || drafts.removed > 0) {
+          console.log(`[DraftSync] ${drafts.synced} drafts updated, ${drafts.removed} removed`);
+        }
+      } catch (err: any) {
+        if (err?.status !== 400 && err?.status !== 403) {
+          console.error('[DraftSync] Draft sync failed:', err?.message || err);
         }
       }
     }

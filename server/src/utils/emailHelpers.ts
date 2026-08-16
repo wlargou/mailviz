@@ -113,6 +113,13 @@ export function extractBody(payload: any): string | null {
   return null;
 }
 
+/**
+ * Sentinel accepted in the `customerId` query parameter meaning "mail with no
+ * customer link" (the review flow's Uncategorized bucket). Real customer ids
+ * are uuids, so this can never shadow one.
+ */
+export const UNCATEGORIZED_CUSTOMER_ID = 'none';
+
 export interface EmailQueryParams {
   search?: string;
   customerId?: string;

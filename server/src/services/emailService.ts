@@ -16,6 +16,7 @@ import {
   parseEmailList,
   extractAttachments,
   extractBody,
+  UNCATEGORIZED_CUSTOMER_ID,
   type EmailQueryParams,
 } from '../utils/emailHelpers.js';
 import { getSharedThreadIds, canAccessThread } from '../utils/accessControl.js';
@@ -441,15 +442,32 @@ export const emailService = {
     // The ownership filter lives under `AND` so that the search branch below,
     // which assigns `where.OR`, cannot clobber it. Spreading it here instead
     // leaked every user's mail to anyone who had a shared thread and searched.
-    const where: Prisma.EmailWhereInput = { AND: [ownershipFilter] };
+    //
+    // `andFilters` is the same array `where.AND` points at: any branch that
+    // needs its own `OR` must push onto it rather than assign `where.OR`, for
+    // exactly the reason above.
+    const andFilters: Prisma.EmailWhereInput[] = [ownershipFilter];
+    const where: Prisma.EmailWhereInput = { AND: andFilters };
     // By default, hide trashed emails unless explicitly viewing trash folder
     if (query.folder !== 'trash') {
       where.isTrashed = false;
     }
     if (query.customerId) {
-      const ids = query.customerId.split(',').map((s) => s.trim()).filter(Boolean);
-      if (ids.length === 1) where.customerId = ids[0];
-      else if (ids.length > 1) where.customerId = { in: ids };
+      const tokens = query.customerId.split(',').map((s) => s.trim()).filter(Boolean);
+      // The review flow needs to ask for mail that was never linked to a
+      // customer — its "Uncategorized" bucket. `customerId` ids are uuids, so
+      // the sentinel cannot collide with a real one.
+      const wantsUncategorized = tokens.includes(UNCATEGORIZED_CUSTOMER_ID);
+      const ids = tokens.filter((t) => t !== UNCATEGORIZED_CUSTOMER_ID);
+      if (wantsUncategorized && ids.length > 0) {
+        andFilters.push({ OR: [{ customerId: null }, { customerId: { in: ids } }] });
+      } else if (wantsUncategorized) {
+        where.customerId = null;
+      } else if (ids.length === 1) {
+        where.customerId = ids[0];
+      } else if (ids.length > 1) {
+        where.customerId = { in: ids };
+      }
     }
     if (query.isRead === 'true') where.isRead = true;
     if (query.isRead === 'false') where.isRead = false;
@@ -1462,13 +1480,26 @@ export const emailService = {
     return processed;
   },
 
+  /**
+   * Per-customer counts for the review flow's company picker and group headers.
+   *
+   * Returns both *email* counts and *thread* counts. The review list pages
+   * threads, so a group header that showed an email count next to a paged
+   * thread list would never add up; `totalThreads`/`unreadThreads` are what the
+   * grouped view displays, and they are the same distinct-thread aggregate that
+   * `findAllThreads` reports as `meta.total` for the equivalent query
+   * (`customerId=<id>` + the same date window, plus `isRead=false` when the
+   * unread toggle is on).
+   */
   async getReviewSummary(dateAfter: string, dateBefore: string, userId: string) {
+    const after = new Date(dateAfter);
+    const before = new Date(dateBefore);
     const where: Prisma.EmailWhereInput = {
       userId,
       isTrashed: false,
       receivedAt: {
-        gte: new Date(dateAfter),
-        lte: new Date(dateBefore),
+        gte: after,
+        lte: before,
       },
     };
 
@@ -1485,6 +1516,34 @@ export const emailService = {
       where: { ...where, isRead: false },
       _count: { id: true },
     });
+
+    // Distinct-thread counts. Prisma's groupBy cannot express
+    // COUNT(DISTINCT thread_id), and grouping by [customerId, threadId] would
+    // pull one row per thread back into the process — tens of thousands on a
+    // wide period — so this stays in the database.
+    const threadCounts = await prisma.$queryRaw<Array<{
+      customer_id: string | null;
+      total_threads: bigint;
+      unread_threads: bigint;
+    }>>`
+      SELECT
+        customer_id,
+        COUNT(DISTINCT thread_id) AS total_threads,
+        COUNT(DISTINCT thread_id) FILTER (WHERE is_read = false) AS unread_threads
+      FROM emails
+      WHERE user_id = ${userId}
+        AND is_trashed = false
+        AND received_at >= ${after}
+        AND received_at <= ${before}
+      GROUP BY customer_id
+    `;
+
+    const totalThreadMap = new Map(
+      threadCounts.map((r) => [r.customer_id, Number(r.total_threads)])
+    );
+    const unreadThreadMap = new Map(
+      threadCounts.map((r) => [r.customer_id, Number(r.unread_threads)])
+    );
 
     const unreadMap = new Map(
       unreadByCustomer.map((r) => [r.customerId, r._count.id])
@@ -1516,6 +1575,8 @@ export const emailService = {
           isVip: customer?.isVip ?? false,
           totalEmails: r._count.id,
           unreadEmails: unreadMap.get(r.customerId) ?? 0,
+          totalThreads: totalThreadMap.get(r.customerId) ?? 0,
+          unreadThreads: unreadThreadMap.get(r.customerId) ?? 0,
         };
       })
       .sort((a, b) => b.totalEmails - a.totalEmails);
@@ -1524,6 +1585,8 @@ export const emailService = {
     const uncategorized = {
       totalEmails: uncatRow?._count.id ?? 0,
       unreadEmails: unreadMap.get(null) ?? 0,
+      totalThreads: totalThreadMap.get(null) ?? 0,
+      unreadThreads: unreadThreadMap.get(null) ?? 0,
     };
 
     return { data, uncategorized };

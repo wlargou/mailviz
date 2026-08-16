@@ -83,23 +83,39 @@ Design detail for 2.1 and 2.3 is in [`docs/plans/`](docs/plans/).
 
 ## Phase 3 — Genuine product gaps
 
-- [ ] **3.1 Drafts** — Gmail drafts are not synced at all. No save-and-return in
-  compose. The most conspicuous absence for a mail client.
-- [ ] **3.2 Contact dedupe / merge** — auto-discovery creates contacts from every
-  sender domain across ~111k emails and 11k contacts. There is no merge, no
-  dedupe, no "is this the same person" affordance. Most likely to bite at this
-  data volume.
-- [ ] **3.3 Mail Review pagination** — `ReviewMailView.tsx` hardcodes `limit: '500'`
-  and filters client-side, so reviewing a long period silently truncates.
-- [ ] **3.4 Deal value** — deals have no amount, currency, probability or close
-  date; statuses are TO_CHALLENGE / APPROVED / DECLINED. Coherent for *partner
-  deal registration*, which is what this is. But the schema cannot answer "how
-  much is in flight". Only worth doing if pipeline reporting is a goal — decide
-  before building.
+- [x] **3.1 Drafts** — Gmail is the source of truth (`users.drafts`), Postgres a
+  mirror so the folder renders from one query. Explicit save rather than
+  autosave: one save is one Gmail write, so a timer would be a quota problem.
+  Sending uses `drafts.send`, which consumes the draft atomically.
+- [x] **3.2 Contact dedupe / merge** — done. `contactMergeService.findDuplicates`
+  proposes groups from three explainable rules (same address after cleanup; same
+  local part modulo separators on the same root domain; initial form of it) with
+  the last two requiring the display names to agree; "Find duplicates" on the
+  Contacts page reviews them and merges only on confirmation. 106 groups on the
+  real 11.4k-contact database, 36 of the 38 high-confidence ones being an address
+  stored twice, once quote-mangled by calendar sync. Name-only matching was
+  deliberately not offered — it produced 1,587 pairs, nearly all machine senders,
+  including two different people sharing a captured display name. The merge is
+  one transaction, and the losing addresses survive on `contact_email_aliases`
+  so their mail is not orphaned.
+- [x] **3.3 Mail Review pagination** — done. The review now pages per company
+  (`ReviewCustomerGroup`, batches of 25 with "Load more"), and every group shows
+  "Showing X of Y" against `getReviewSummary`'s thread count, so nothing is cut
+  without saying so. The old `limit: '500'` was never even honoured —
+  `parsePagination` caps `limit` at 100.
+- [~] **3.4 Deal value — decided: not doing this.** Deals have no amount,
+  currency, probability or close date, and will not get them. The model is
+  coherent for *partner deal registration*: the question it answers is whether a
+  partner approved your claim on a deal, not how much revenue is forecast.
+  Adding value fields would invite pipeline expectations the rest of the app
+  does not meet. Revisit only if Deals is deliberately repositioned as
+  opportunity management, which is a different product.
 - [ ] **3.5 Email templates / snippets** — zero references anywhere.
 - [ ] **3.6 Snooze and follow-up reminders** — zero references anywhere.
-- [ ] **3.7 CSV import / export** — no way to get data in or out.
-- [ ] **3.8 Mail rules / filters** — no client-side rules engine.
+- [~] **3.7 CSV import / export** — deprioritised. Useful for onboarding data
+  or leaving, not for daily use. Not planned.
+- [~] **3.8 Mail rules / filters** — deprioritised. Gmail's own filters already
+  cover this for mail that syncs in. Not planned.
 
 ## Phase 4 — Testing
 
@@ -155,11 +171,39 @@ are still worth knowing.
 - [ ] **The notification panel is hand-rolled**, not `@carbon/ibm-products`
   `NotificationsPanel` as planned: no `badgeCount`, and a flat list with relative
   timestamps instead of day-bucketed grouping.
-- [ ] **Mail Review's unread filter is client-side**, applied after the fetch
-  rather than as `isRead=false` server-side — so it cannot recover threads the
-  500-row cap (3.3) has already dropped. Fixing 3.3 without this leaves the
-  filter still lossy.
+- [x] **Mail Review's unread filter is client-side** — done with 3.3. The toggle
+  now sends `isRead=false` to `findAllThreads`, so the unread view is its own
+  server-side query rather than a filter over an already-truncated page.
 - [ ] **Mail Review uses a custom collapsible** rather than Carbon `Accordion`.
+
+## Data-quality bug found while building contact dedupe
+
+- [ ] **`extractDomain` / `domainToCompanyName` do not understand multi-part
+  public suffixes.** An address at `someone@acme.co.ma` yields the domain
+  `co.ma` and a company named **"CO"**, not `acme.co.ma` / "Acme". Every
+  organisation on a country-code second-level domain therefore collapses into
+  one junk customer per suffix.
+
+  Measured on the real database: **766 emails and 443 contacts** sit under
+  customers literally named "CO" and "COM" — `co.ma` alone holds 673 emails and
+  278 contacts belonging to many different companies, and there are 28 such
+  buckets (`co.uk`, `co.jp`, `co.il`, `com.tn`, `com.br`, …).
+
+  This is not cosmetic: those emails are linked to the wrong customer, so the
+  per-company views, the dashboard's top-customers list and Mail Review's
+  grouping are all wrong for that mail.
+
+  Fixing it needs a public-suffix list (the `psl` package, or a pinned subset)
+  plus a backfill that re-derives `domain` for existing customers and re-links
+  their emails and contacts. The backfill is the hard part — it has to merge
+  into whatever correct customer already exists rather than creating duplicates,
+  which is exactly what `contactMergeService` now does for contacts.
+
+- [ ] **Test fixtures have leaked into the development database.** Customers
+  named "Alice Corp", "Bob Corp", "Alpha Corp" and "Example" exist on
+  `acme.test`, `shared-domain.test` and `msw9…-N.example.com` domains. Harmless,
+  but they pollute the customer list and any count taken from it. Worth a
+  cleanup query once someone confirms they are not referenced by real mail.
 
 ## Bugs found by the Gmail sync tests
 
@@ -208,14 +252,20 @@ Not blocking, but known and deliberate.
   deliberately — forcing them would change the design. Needs a design decision.
   (Re-measured during the doc audit; the spacing figure was previously
   understated as 31.)
-- [ ] **Carbon A1 — keyboard access on clickable divs.** A P0 from the Carbon
-  audit that was never started. Bare `<div onClick>` with no `role="button"`,
-  `tabIndex` or `onKeyDown`: `dashboard/TopCustomers.tsx:45`,
-  `RecentActivity.tsx:33`, `RecentTasks.tsx:35`, `ExpiringDeals.tsx:34`,
-  `UpcomingEvents.tsx:45`, and `calendar/CalendarDayCell.tsx:127` plus its
-  overflow-popover rows at `:68`/`:79`. Mechanical: the correct pattern is
-  already implemented in six other components (`ThreadItemList`, `MailPage`,
-  `ThreadDetail`, `ReviewMailView`, `CustomerSummary`, `TaskDetailModal`).
+- [x] **Carbon A1 — keyboard access on clickable divs.** Done. Four dashboard
+  rows became real `<button>`s; the two that contain a nested button
+  (UpcomingEvents' Join, the calendar day cell's event pills) keep
+  `role="button"` since buttons cannot nest. Also fixed a keyboard trap found
+  on the way: the calendar overflow popover closed only on an outside
+  mousedown, so a keyboard user could open it and not get out.
+- [ ] **`role="button"` prunes its children from the accessibility tree.** ARIA
+  gives `button` "children presentational: true", and browsers do prune — so on
+  the two rows that had to stay divs, screen readers may not expose the nested
+  Join button or event pills, even though Tab still reaches them. The same
+  limitation exists in the `ThreadItemList` pattern these were modelled on.
+  Fixing it means moving the row-level action onto a dedicated child control
+  (e.g. the day number becomes the "go to day" button and the cell drops its
+  role) — a design change, not a patch.
 - [ ] **Carbon B3 — `ComposeToolbar` colour array.** `ComposeToolbar.tsx:51-56`
   holds 21 raw hex values and never imports `@carbon/colors`. Every value is
   already a real Carbon palette colour, so this is traceability, not a visual

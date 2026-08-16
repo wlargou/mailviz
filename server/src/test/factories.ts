@@ -101,6 +101,7 @@ export async function createEmail(
     isStarred: boolean;
     isArchived: boolean;
     labelIds: string[];
+    receivedAt: Date;
   }> = {}
 ) {
   const id = uniq();
@@ -111,7 +112,7 @@ export async function createEmail(
       threadId: overrides.threadId ?? `thread-${id}`,
       subject: overrides.subject ?? `Subject ${id}`,
       from: overrides.from ?? `sender-${id}@example.com`,
-      receivedAt: new Date(),
+      receivedAt: overrides.receivedAt ?? new Date(),
       ...(overrides.customerId ? { customerId: overrides.customerId } : {}),
       ...(overrides.snippet !== undefined ? { snippet: overrides.snippet } : {}),
       ...(overrides.isRead !== undefined ? { isRead: overrides.isRead } : {}),
@@ -143,6 +144,44 @@ export async function createGoogleAuth(
       email: overrides.email ?? `google-${uniq()}@example.com`,
       ...(overrides.lastHistoryId ? { lastHistoryId: overrides.lastHistoryId } : {}),
       ...(overrides.lastMailSyncAt ? { lastMailSyncAt: overrides.lastMailSyncAt } : {}),
+    },
+  });
+}
+
+/**
+ * A row in the local Gmail-draft mirror.
+ *
+ * Isolation tests use this directly rather than going through `draftService`,
+ * because the question they ask — can Bob reach Alice's draft — has to be
+ * answerable without Gmail being involved at all.
+ */
+export async function createDraft(
+  userId: string,
+  overrides: Partial<{
+    gmailDraftId: string;
+    gmailMessageId: string;
+    threadId: string;
+    to: string[];
+    cc: string[];
+    bcc: string[];
+    subject: string;
+    htmlBody: string;
+    lastEditedAt: Date;
+  }> = {}
+) {
+  const id = uniq();
+  return prisma.emailDraft.create({
+    data: {
+      userId,
+      gmailDraftId: overrides.gmailDraftId ?? `draft-${id}`,
+      gmailMessageId: overrides.gmailMessageId ?? `draft-msg-${id}`,
+      subject: overrides.subject ?? `Draft ${id}`,
+      htmlBody: overrides.htmlBody ?? `<p>Draft body ${id}</p>`,
+      to: overrides.to ?? [`recipient-${id}@example.com`],
+      lastEditedAt: overrides.lastEditedAt ?? new Date(),
+      ...(overrides.threadId ? { threadId: overrides.threadId } : {}),
+      ...(overrides.cc ? { cc: overrides.cc } : {}),
+      ...(overrides.bcc ? { bcc: overrides.bcc } : {}),
     },
   });
 }
