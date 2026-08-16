@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { taskService } from './taskService.js';
+import { prisma } from '../lib/prisma.js';
 import { createTwoUsers, createUser, createTask, shareTaskWith } from '../test/factories.js';
 
 /**
@@ -190,6 +191,121 @@ describe('taskService.findAll — tenant isolation', () => {
     const titles = (await taskService.findAll(alice.id, { search: 'shares' })).data.map((t) => t.title);
 
     expect(titles).toEqual(['Bob shares with Alice']);
+  });
+});
+
+/**
+ * Sort-field whitelisting for tasks.
+ *
+ * `sortBy` and `sortOrder` arrive on the query string and used to be spliced
+ * into Prisma's `orderBy` unchecked. Prisma rejects an unknown key, so
+ * `?sortBy=whatever` was an unhandled 500 that any caller could trigger. Both
+ * are now matched against a whitelist and fall back to the default.
+ *
+ * The whitelist is duplicated here on purpose rather than exported from the
+ * service: the point is to pin down the sorts the API promises to support, so
+ * a field silently disappearing from the service list should fail this file.
+ * `position` in particular is not something the list view sends — the Kanban
+ * board depends on it — and dropping it would break the board rather than
+ * return a 500, which is the harder failure to notice.
+ */
+const TASK_SORT_FIELDS = ['title', 'status', 'priority', 'dueDate', 'position', 'createdAt', 'updatedAt'];
+
+/** Pins createdAt so assertions about the default sort are deterministic. */
+async function pinCreatedAt(id: string, iso: string) {
+  await prisma.task.update({ where: { id }, data: { createdAt: new Date(iso) } });
+}
+
+describe('taskService.findAll — sort whitelisting', () => {
+  it('accepts every whitelisted field in both directions', async () => {
+    const { alice } = await createTwoUsers();
+    await createTask(alice.id, { title: 'Alpha' });
+    await createTask(alice.id, { title: 'Beta' });
+
+    for (const sortBy of TASK_SORT_FIELDS) {
+      for (const sortOrder of ['asc', 'desc']) {
+        const result = await taskService.findAll(alice.id, { sortBy, sortOrder });
+        expect(result.data, `sortBy=${sortBy} sortOrder=${sortOrder}`).toHaveLength(2);
+      }
+    }
+  });
+
+  it('orders by a whitelisted field in the requested direction', async () => {
+    const { alice } = await createTwoUsers();
+    await createTask(alice.id, { title: 'Beta' });
+    await createTask(alice.id, { title: 'Alpha' });
+    await createTask(alice.id, { title: 'Gamma' });
+
+    const asc = await taskService.findAll(alice.id, { sortBy: 'title', sortOrder: 'asc' });
+    const desc = await taskService.findAll(alice.id, { sortBy: 'title', sortOrder: 'desc' });
+
+    expect(asc.data.map((t) => t.title)).toEqual(['Alpha', 'Beta', 'Gamma']);
+    expect(desc.data.map((t) => t.title)).toEqual(['Gamma', 'Beta', 'Alpha']);
+  });
+
+  it('sorts by createdAt descending when no sort is requested', async () => {
+    const { alice } = await createTwoUsers();
+    const older = await createTask(alice.id, { title: 'Older' });
+    const newer = await createTask(alice.id, { title: 'Newer' });
+    await pinCreatedAt(older.id, '2024-01-01T00:00:00.000Z');
+    await pinCreatedAt(newer.id, '2024-06-01T00:00:00.000Z');
+
+    const titles = (await taskService.findAll(alice.id, {})).data.map((t) => t.title);
+
+    expect(titles).toEqual(['Newer', 'Older']);
+  });
+
+  it('falls back to the default sort for a sortBy that is not whitelisted', async () => {
+    // The regression: an unknown key reached Prisma and threw, so anyone could
+    // turn the endpoint into a 500 by appending ?sortBy=whatever.
+    const { alice } = await createTwoUsers();
+    const older = await createTask(alice.id, { title: 'Older' });
+    const newer = await createTask(alice.id, { title: 'Newer' });
+    await pinCreatedAt(older.id, '2024-01-01T00:00:00.000Z');
+    await pinCreatedAt(newer.id, '2024-06-01T00:00:00.000Z');
+
+    // Nonsense, a real-but-not-sortable column, and an injection-shaped key.
+    const unknownSorts = ['whatever', 'userId', 'password', '(SELECT 1)', 'title; DROP TABLE tasks'];
+
+    for (const sortBy of unknownSorts) {
+      const result = await taskService.findAll(alice.id, { sortBy });
+      expect(result.data.map((t) => t.title), `sortBy=${sortBy}`).toEqual(['Newer', 'Older']);
+    }
+  });
+
+  it('falls back to the default direction for a sortOrder that is not asc or desc', async () => {
+    const { alice } = await createTwoUsers();
+    await createTask(alice.id, { title: 'Alpha' });
+    await createTask(alice.id, { title: 'Beta' });
+
+    for (const sortOrder of ['sideways', 'ASC', '', 'asc; DROP TABLE tasks']) {
+      const result = await taskService.findAll(alice.id, { sortBy: 'title', sortOrder });
+      expect(result.data.map((t) => t.title), `sortOrder=${sortOrder}`).toEqual(['Beta', 'Alpha']);
+    }
+  });
+
+  it('keeps the ownership constraint when the sort falls back', async () => {
+    // Falling back must not become a way around the where-clause: the row set
+    // has to stay exactly what an unsorted call would return.
+    const { alice, bob } = await createTwoUsers();
+    const shared = await createTask(bob.id, { title: 'Shared with Alice' });
+    await shareTaskWith(shared.id, bob.id, alice.id);
+    await createTask(alice.id, { title: 'Alice own' });
+    await createTask(bob.id, { title: 'Bob private' });
+
+    type TaskQuery = Parameters<typeof taskService.findAll>[1];
+    const queries: TaskQuery[] = [
+      { sortBy: 'userId' },
+      { sortBy: 'whatever', sortOrder: 'sideways' },
+      { sortBy: 'title; DROP TABLE tasks', sortOrder: 'asc', search: 'Bob' },
+    ];
+
+    for (const query of queries) {
+      const result = await taskService.findAll(alice.id, query);
+      const titles = result.data.map((t) => t.title);
+      expect(titles, `leaked with ${JSON.stringify(query)}`).not.toContain('Bob private');
+      expect(result.meta.total, `over-counted with ${JSON.stringify(query)}`).toBe(titles.length);
+    }
   });
 });
 

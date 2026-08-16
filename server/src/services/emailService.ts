@@ -291,7 +291,17 @@ export const emailService = {
           `[EmailSync] History ID expired; catching up on the last ${env.SYNC_CATCHUP_DAYS} days instead of a full re-sync`
         );
         const result = await this.initialSync(gmail, userId, env.SYNC_CATCHUP_DAYS);
-        return { ...result, labelsChanged: 0 };
+        // Add to what earlier history pages already imported rather than
+        // replacing it. Spreading `result` discarded those counts, and
+        // emailSyncScheduler only broadcasts `emails:synced` when a counter is
+        // non-zero — so mail landed in the database while every open client was
+        // told nothing had changed.
+        return {
+          synced: synced + result.synced,
+          customersCreated: customersCreated + result.customersCreated,
+          contactsCreated: contactsCreated + result.contactsCreated,
+          labelsChanged,
+        };
       }
       throw err;
     }

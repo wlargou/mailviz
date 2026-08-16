@@ -101,45 +101,71 @@ machine-local.
 
 ## Phase 4 — Testing
 
-The single largest risk. There is still no test file anywhere in the repo. CI now
-runs typecheck, migrations and builds, which catches compile-level breakage, but
-nothing verifies behaviour.
+Done. **195 server + 8 client tests**, run in CI against a real Postgres with a
+per-run database. See `server/src/test/README.md` for how the harness works and
+why it is not mocked.
 
-This session alone found a SQL injection, a validation path that returned 500 on
-every failure, and a field that silently could not be set. All three were
-invisible to the build.
+Standing this up found four pre-existing bugs, all invisible to typecheck and
+build: a cross-tenant leak in mail search, six "per-user" unique indexes a
+migration only believed it had dropped, a migration chain that could not apply to
+an empty database, and a `decrypt()` edge case. Three of the four were
+multi-tenant.
 
 - [x] **4.1 Test harness** — Vitest in both workspaces, running against a real
   Postgres (`mailviz_test`). A mocked Prisma would have passed the deal leak,
   so the DB is the point. CI creates the database and runs both suites.
-- [~] **4.2 Money paths** — 132 tests passing.
+- [x] **4.2 Money paths**
   - [x] Multi-tenant isolation: deals, tasks, emails, contacts, customers,
     accessControl — including the search-plus-filter combination that caused
     the original leak.
   - [x] OAuth token encryption, incl. the legacy-plaintext passthrough.
   - [x] JWT sign/verify and the access/refresh secret separation.
   - [x] validate middleware (the Zod v4 `.errors` 500 regression).
-  - [ ] Gmail incremental sync + history fallback — needs the Gmail API mocked;
-    only the DB-backed query paths are covered so far.
-  - [ ] The batch email actions.
+  - [x] Gmail incremental sync, initial sync and the bounded history-expiry
+    catch-up — mocked at the `getGmailClient()` seam (`src/test/gmailMock.ts`).
+  - [x] The batch email actions, including that they cannot cross tenants.
+  - [ ] Send / reply / forward / attachments — still uncovered.
 - [x] **4.3 Client typecheck is blocking in CI** — `continue-on-error` removed.
 
 ---
 
 ## Follow-ups from the test work
 
-- [ ] **`sortBy` is unvalidated** in `taskService`, `customerService` and
-  `dealService` — `orderBy: { [sortBy]: sortOrder }` takes the raw query value.
-  Prisma rejects unknown keys, so this is a 500 rather than an injection or a
-  leak, but only `contactService` has a whitelist. Give the other three one.
-- [ ] **The suite cannot run concurrently with itself.** `src/test/setup.ts`
-  truncates every table between cases, so two simultaneous runs against
-  `mailviz_test` wipe each other's fixtures (FK violations and 40P01
-  deadlocks). Fine for a single CI job; needs a per-run database if parallel
-  jobs or parallel agents are ever expected.
-- [ ] **Gmail-dependent paths are untested** — sync, send, reply, forward, batch
-  operations and attachments all need the Gmail API mocked. Only the DB-backed
-  query paths are covered.
+- [x] **`sortBy` whitelists** — all four services now validate `sortBy` and
+  `sortOrder` against an allow-list instead of passing the raw query value to
+  Prisma's `orderBy`.
+- [x] **The suite is concurrency-safe** — each run creates and drops its own
+  `mailviz_test_<random>` database, so parallel runs cannot truncate each
+  other's fixtures.
+- [ ] **Gmail send paths still untested** — sync and batch operations are now
+  covered; send, reply, forward and attachments are not.
+
+## Bugs found by the Gmail sync tests
+
+Characterisation-tested and named `— KNOWN BUG` in
+`server/src/services/emailService.sync.test.ts`, so each test turns red when the
+bug is fixed. A fourth (sync counters discarded on history expiry) is already
+fixed.
+
+- [ ] **`isArchived` disagrees between the two write paths.** `upsertMessage`
+  computes `isArchived = !INBOX && !TRASH` (false for trashed mail); the
+  incremental `labelsRemoved` handler sets it true from INBOX-removal alone.
+  Gmail sends a trash as one record that removes INBOX and adds TRASH, so the
+  flag depends on which path touched the row last. Masked while `isTrashed` is
+  true — but `untrash()` clears only `isTrashed`, so trash-then-restore leaves
+  the message flagged archived and it never returns to the inbox view.
+- [ ] **`batchTrash`/`trash` accumulate duplicate TRASH labels.**
+  `[...labelIds.filter(l => l !== 'INBOX'), 'TRASH']` strips idempotently but
+  appends unconditionally, so `labelIds` grows on every call. Reachable
+  normally, since the batch actions fan out over a whole thread and re-trash
+  messages already in it. `batchArchive` is unaffected (removal only).
+- [ ] **A 403 from the trailing `getProfile` escapes the reconnect translation**
+  (`emailService.ts:66`, outside the try/catch). It surfaces with no `status`,
+  so `emailSyncScheduler.ts` treats a revoked Gmail grant as unexpected and logs
+  it every 60 seconds forever, and the HTTP layer answers 500 instead of 403.
+- [ ] **The rate limiter is untestable at the Gmail mock seam** — it lives inside
+  `getGmailClient()`, which those tests replace. Its backoff and retry need a
+  unit test against `withGmailRateLimit` directly.
 
 ## Carried-over quality items
 
@@ -164,7 +190,14 @@ Not blocking, but known and deliberate.
   native `title=` attribute. Carbon `Tooltip` is used nowhere.
 - [ ] Carbon audit item C8: `_mail.scss` sets `.cds--content-switcher { width: 100% }`
   and `max-inline-size: none`, deliberately defeating Carbon's width cap.
-- [ ] 27 font sizes and 31 spacing values sit off Carbon's scale. Left alone
+- [ ] ~26 font sizes and ~59 spacing values sit off Carbon's scale. Left alone
   deliberately — forcing them would change the design. Needs a design decision.
+  (Re-measured during the doc audit; the spacing figure was previously
+  understated as 31.)
+- [ ] Fold `TODO-CARBON-AUDIT.md` into this file. Its real state is 11 done /
+  5 partial / 7 open — the old 18/23 over-counted every band but P3 — and the
+  two files have started to disagree. Only A1, B3, B4, D2, D5 need moving.
+  A1 (keyboard access on clickable divs) is a P0 never touched, and the correct
+  pattern already exists in six other components.
 - [ ] `docs/database-schema.md` is untracked and 3 migrations stale (missing
   `AuditLog`, `Notification`, `User.signature`). Commit and regenerate, or delete.

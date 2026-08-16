@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { customerService } from './customerService.js';
-import { createTwoUsers, createCustomer, createContact } from '../test/factories.js';
+import { createTwoUsers, createCustomer, createContact, createEmail } from '../test/factories.js';
 
 /**
  * Multi-tenant isolation for customers.
@@ -74,6 +74,111 @@ describe('customerService.findAll — tenant isolation', () => {
     const result = await customerService.findAll(alice.id, { categoryId: 'no-such-category' });
 
     expect(result.data).toHaveLength(0);
+  });
+});
+
+/**
+ * Sort-field whitelisting for customers.
+ *
+ * `sortBy` and `sortOrder` arrive on the query string and used to be spliced
+ * into Prisma's `orderBy` unchecked. Prisma rejects an unknown key, so
+ * `?sortBy=whatever` was an unhandled 500 that any caller could trigger. Both
+ * are now matched against a whitelist and fall back to the default.
+ *
+ * The default, `emailCount`, is not a column — it is an ordering over the
+ * related email rows — so it is deliberately absent from the whitelist and
+ * handled by its own branch. That makes it the one sort that has to be
+ * exercised through data rather than through the list, which is what the
+ * email-count test below does.
+ */
+const CUSTOMER_SORT_FIELDS = ['name', 'company', 'email', 'domain', 'isVip', 'createdAt', 'updatedAt'];
+
+describe('customerService.findAll — sort whitelisting', () => {
+  it('accepts every whitelisted field in both directions', async () => {
+    const { alice } = await createTwoUsers();
+    await createCustomer(alice.id, { name: 'Alpha Corp' });
+    await createCustomer(alice.id, { name: 'Beta Corp' });
+
+    for (const sortBy of [...CUSTOMER_SORT_FIELDS, 'emailCount']) {
+      for (const sortOrder of ['asc', 'desc']) {
+        const result = await customerService.findAll(alice.id, { sortBy, sortOrder });
+        expect(result.data, `sortBy=${sortBy} sortOrder=${sortOrder}`).toHaveLength(2);
+      }
+    }
+  });
+
+  it('orders by a whitelisted field in the requested direction', async () => {
+    const { alice } = await createTwoUsers();
+    await createCustomer(alice.id, { name: 'Beta Corp' });
+    await createCustomer(alice.id, { name: 'Alpha Corp' });
+    await createCustomer(alice.id, { name: 'Gamma Corp' });
+
+    const asc = await customerService.findAll(alice.id, { sortBy: 'name', sortOrder: 'asc' });
+    const desc = await customerService.findAll(alice.id, { sortBy: 'name', sortOrder: 'desc' });
+
+    expect(asc.data.map((c) => c.name)).toEqual(['Alpha Corp', 'Beta Corp', 'Gamma Corp']);
+    expect(desc.data.map((c) => c.name)).toEqual(['Gamma Corp', 'Beta Corp', 'Alpha Corp']);
+  });
+
+  it('sorts by email count descending when no sort is requested', async () => {
+    const { alice } = await createTwoUsers();
+    const busy = await createCustomer(alice.id, { name: 'Busy Corp' });
+    await createCustomer(alice.id, { name: 'Quiet Corp' });
+    await createEmail(alice.id, { customerId: busy.id });
+    await createEmail(alice.id, { customerId: busy.id });
+
+    const result = await customerService.findAll(alice.id, {});
+
+    expect(result.data.map((c) => c.name)).toEqual(['Busy Corp', 'Quiet Corp']);
+    expect(result.data[0]._count.emails).toBe(2);
+  });
+
+  it('falls back to the default sort for a sortBy that is not whitelisted', async () => {
+    // The regression: an unknown key reached Prisma and threw, so anyone could
+    // turn the endpoint into a 500 by appending ?sortBy=whatever.
+    const { alice } = await createTwoUsers();
+    const busy = await createCustomer(alice.id, { name: 'Busy Corp' });
+    await createCustomer(alice.id, { name: 'Quiet Corp' });
+    await createEmail(alice.id, { customerId: busy.id });
+
+    // Nonsense, a real-but-not-sortable column, and an injection-shaped key.
+    const unknownSorts = ['whatever', 'userId', 'password', '(SELECT 1)', 'name; DROP TABLE customers'];
+
+    for (const sortBy of unknownSorts) {
+      const result = await customerService.findAll(alice.id, { sortBy });
+      expect(result.data.map((c) => c.name), `sortBy=${sortBy}`).toEqual(['Busy Corp', 'Quiet Corp']);
+    }
+  });
+
+  it('falls back to the default direction for a sortOrder that is not asc or desc', async () => {
+    const { alice } = await createTwoUsers();
+    await createCustomer(alice.id, { name: 'Alpha Corp' });
+    await createCustomer(alice.id, { name: 'Beta Corp' });
+
+    for (const sortOrder of ['sideways', 'ASC', '', 'asc; DROP TABLE customers']) {
+      const result = await customerService.findAll(alice.id, { sortBy: 'name', sortOrder });
+      expect(result.data.map((c) => c.name), `sortOrder=${sortOrder}`).toEqual(['Beta Corp', 'Alpha Corp']);
+    }
+  });
+
+  it('keeps the ownership constraint when the sort falls back', async () => {
+    // Falling back must not become a way around the where-clause.
+    const { alice, bob } = await createTwoUsers();
+    await createCustomer(alice.id, { name: 'Alice Corp' });
+    await createCustomer(bob.id, { name: 'Bob Corp' });
+
+    type CustomerQuery = Parameters<typeof customerService.findAll>[1];
+    const queries: CustomerQuery[] = [
+      { sortBy: 'userId' },
+      { sortBy: 'whatever', sortOrder: 'sideways' },
+      { sortBy: 'name; DROP TABLE customers', sortOrder: 'asc', search: 'Corp' },
+    ];
+
+    for (const query of queries) {
+      const result = await customerService.findAll(alice.id, query);
+      expect(result.data.map((c) => c.name), `leaked with ${JSON.stringify(query)}`).toEqual(['Alice Corp']);
+      expect(result.meta.total, `over-counted with ${JSON.stringify(query)}`).toBe(1);
+    }
   });
 });
 

@@ -97,6 +97,10 @@ export async function createEmail(
     snippet: string;
     isRead: boolean;
     isTrashed: boolean;
+    customerId: string;
+    isStarred: boolean;
+    isArchived: boolean;
+    labelIds: string[];
   }> = {}
 ) {
   const id = uniq();
@@ -108,9 +112,37 @@ export async function createEmail(
       subject: overrides.subject ?? `Subject ${id}`,
       from: overrides.from ?? `sender-${id}@example.com`,
       receivedAt: new Date(),
+      ...(overrides.customerId ? { customerId: overrides.customerId } : {}),
       ...(overrides.snippet !== undefined ? { snippet: overrides.snippet } : {}),
       ...(overrides.isRead !== undefined ? { isRead: overrides.isRead } : {}),
       ...(overrides.isTrashed !== undefined ? { isTrashed: overrides.isTrashed } : {}),
+      ...(overrides.isStarred !== undefined ? { isStarred: overrides.isStarred } : {}),
+      ...(overrides.isArchived !== undefined ? { isArchived: overrides.isArchived } : {}),
+      ...(overrides.labelIds !== undefined ? { labelIds: overrides.labelIds } : {}),
+    },
+  });
+}
+
+/**
+ * The Google connection row for a user.
+ *
+ * `lastHistoryId` is the switch `syncFromGmail` reads to choose between the
+ * incremental (history feed) and initial (full list) paths, so sync tests set
+ * it explicitly rather than relying on a default.
+ */
+export async function createGoogleAuth(
+  userId: string,
+  overrides: Partial<{ lastHistoryId: string; email: string; lastMailSyncAt: Date }> = {}
+) {
+  return prisma.googleAuth.create({
+    data: {
+      userId,
+      accessToken: 'test-access-token',
+      refreshToken: 'test-refresh-token',
+      tokenExpiry: new Date(Date.now() + 3_600_000),
+      email: overrides.email ?? `google-${uniq()}@example.com`,
+      ...(overrides.lastHistoryId ? { lastHistoryId: overrides.lastHistoryId } : {}),
+      ...(overrides.lastMailSyncAt ? { lastMailSyncAt: overrides.lastMailSyncAt } : {}),
     },
   });
 }

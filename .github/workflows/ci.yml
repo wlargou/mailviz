@@ -26,9 +26,11 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://mailviz:mailviz_dev@localhost:5432/mailviz_db?schema=public
-      # The suite truncates every table between tests, so it gets its own
-      # database. globalSetup refuses to run against a name not ending in _test.
-      TEST_DATABASE_URL: postgresql://mailviz:mailviz_dev@localhost:5432/mailviz_test?schema=public
+      # The suite creates and drops its OWN database per run (see
+      # src/test/databaseUrl.ts) — it only needs to know where the server is.
+      # Setting TEST_DATABASE_URL instead would pin one database and disable
+      # that isolation.
+      TEST_DATABASE_BASE_URL: postgresql://mailviz:mailviz_dev@localhost:5432/postgres?schema=public
 
     steps:
       - uses: actions/checkout@v4
@@ -52,9 +54,6 @@ jobs:
       - name: Apply migrations
         run: npx prisma migrate deploy --schema=src/prisma/schema.prisma
         working-directory: server
-
-      - name: Create test database
-        run: PGPASSWORD=mailviz_dev psql -h localhost -U mailviz -d postgres -c 'CREATE DATABASE mailviz_test OWNER mailviz;'
 
       # esbuild and Vite strip types without checking them, so the build alone
       # proves nothing. This is the gate that actually reads the types.

@@ -25,6 +25,11 @@ interface TaskQueryParams {
   limit?: string;
 }
 
+// Whitelist of sortable Task columns. `sortBy` comes straight off the query
+// string and is used as a Prisma orderBy key, so it must never be trusted raw.
+// `position` is here because the Kanban board sorts by it.
+const TASK_SORT_FIELDS = ['title', 'status', 'priority', 'dueDate', 'position', 'createdAt', 'updatedAt'] as const;
+
 export const taskService = {
   async findAll(userId: string, query: TaskQueryParams) {
     const pagination = parsePagination(query);
@@ -74,8 +79,11 @@ export const taskService = {
       where.userId = userId;
     }
 
-    const sortBy = query.sortBy || 'createdAt';
-    const sortOrder = (query.sortOrder || 'desc') as Prisma.SortOrder;
+    const requestedSort = query.sortBy || 'createdAt';
+    const sortBy = (TASK_SORT_FIELDS as readonly string[]).includes(requestedSort)
+      ? requestedSort
+      : 'createdAt';
+    const sortOrder: Prisma.SortOrder = query.sortOrder === 'asc' ? 'asc' : 'desc';
     const orderBy: Prisma.TaskOrderByWithRelationInput = { [sortBy]: sortOrder };
 
     const [tasks, total] = await Promise.all([

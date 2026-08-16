@@ -18,24 +18,34 @@ docker compose up -d && npm run dev
 
 # Individual workspace commands
 npm run dev --workspace=server    # tsx watch on port 3002
-npm run dev --workspace=client    # Vite on port 5173
+npm run dev --workspace=client    # Vite on port 5174 (strictPort — fails if taken)
 
 # Database
-npm run db:up                     # Start PostgreSQL (port 5433)
+npm run db:up                     # Start PostgreSQL (host port 5435)
 npm run db:down                   # Stop PostgreSQL
-npm run db:migrate                # npx prisma migrate dev
-npm run db:seed                   # npx prisma db seed
+npm run db:migrate                # prisma migrate dev
+npm run db:seed                   # prisma db seed
+
+# Verify (what CI runs)
+npm run typecheck                 # Both workspaces — esbuild/Vite strip types without checking them
+npm test                          # Vitest, both workspaces
 
 # Prisma (run from server/)
 npx prisma generate               # After schema changes
 npx prisma migrate dev --name X   # Create new migration
-npx prisma migrate deploy         # Apply migrations (prod)
+npx prisma migrate deploy         # Apply migrations (prod/CI)
 npx prisma studio                 # GUI database browser
 
 # Build
-cd client && npx vite build       # Client → client/dist/
-cd server && node esbuild.config.js  # Server → server/dist/
+npm run build --workspace=client  # vite build → client/dist/
+npm run build --workspace=server  # esbuild → server/dist/
 ```
+
+## Testing & CI
+
+- **Vitest in both workspaces.** `npm test` runs server then client.
+- **The server suite runs against a real Postgres**, creating and dropping its own `mailviz_test_<random>` database per run. Read `server/src/test/README.md` before writing or debugging server tests — it covers the per-run database, the single-fork requirement, `TEST_DATABASE_URL` / `TEST_DATABASE_BASE_URL`, and the two-user factory convention.
+- **CI** (`.github/workflows/ci.yml`): prisma generate → `migrate deploy` against an empty DB → typecheck both → test both → build both → `npm audit` (non-blocking).
 
 ## Architecture
 
@@ -46,57 +56,76 @@ cd server && node esbuild.config.js  # Server → server/dist/
 - **Pattern**: Routes → Controllers → Services → Prisma. Zod validators in `validators/`.
 - **Auth**: Google OAuth login → JWT access (15min) + refresh (7d) tokens in httpOnly cookies. Middleware in `middleware/auth.ts`.
 - **Shared Prisma**: Single instance in `lib/prisma.ts` — import from there, never `new PrismaClient()`.
-- **Gmail helper**: `lib/gmail.ts` exports `getGmailClient()` — use instead of manual oauth2Client + google.gmail pattern.
-- **Real-time**: `websocket.ts` broadcasts events (`wsEmit`). Clients auto-refresh on `emails:synced`, `email:updated`, etc.
-- **Background jobs**: `jobs/emailSyncScheduler.ts` (60s) and `jobs/calendarSyncScheduler.ts` (120s) poll Google APIs.
+- **Gmail helper**: `lib/gmail.ts` exports `getGmailClient()` — use instead of manual oauth2Client + google.gmail pattern. It is also the rate-limit choke point (see Key Patterns).
+- **Real-time**: `websocket.ts` broadcasts events (`wsEmit`): `emails:synced`, `email:updated`, `email:sent`, `sync:status`, `sync:progress`, `calendar:synced`, `calendar:sync:status`.
+- **Background jobs** (all node-cron, started in `index.ts`): `emailSyncScheduler` (`SYNC_INTERVAL_SECONDS`, default 60s), `calendarSyncScheduler` (`CALENDAR_SYNC_INTERVAL_SECONDS`, default 120s), `scheduledSendScheduler` (30s), `notificationScheduler` (5min).
 - **Build**: esbuild with `bundle: false` (required for Prisma), ESM format, Node 22 target.
 
 ### Client (`client/src/`)
-- **UI**: IBM Carbon Design System (g100 dark theme). Components from `@carbon/react`, `@carbon/ibm-products`, `@carbon/icons-react`.
-- **State**: Zustand stores in `store/` (auth, tasks, calendar, ui).
+- **UI**: IBM Carbon Design System (g100 dark theme, g10 light toggle). Components from `@carbon/react`, `@carbon/ibm-products`, `@carbon/icons-react`, `@carbon/charts-react`.
+- **State**: Zustand stores in `store/` (auth, tasks, calendar, notification, ui).
 - **API**: Axios client in `api/client.ts` with `withCredentials: true` and 401 → redirect to `/login`.
-- **Routing**: React Router v6. `ProtectedRoute` wraps authenticated pages inside `AppShell` (header + sidebar).
-- **Styles**: SCSS partials in `styles/` — `index.scss` imports `_dashboard`, `_calendar`, `_mail`, `_compose`, `_settings`, `_login`, `_global-search`. All colors use Carbon tokens (`var(--cds-*)`).
+- **Routing**: React Router v7 (`react-router-dom`). `ProtectedRoute` wraps authenticated pages inside `AppShell` (header + sidebar).
+- **WebSocket**: one module-level socket, reference-counted across subscribers, behind `hooks/useEmailWebSocket.ts`. Never open your own — subscribe through the hook.
+- **Styles**: SCSS partials in `styles/`, `@use`d by `index.scss` (which is a pure manifest). `_base.scss` holds app-level base CSS and loads first. All colors use Carbon tokens (`var(--cds-*)`).
 - **Dev proxy**: Vite forwards `/api` and `/ws` to `http://localhost:3002`.
 
 ### Database (PostgreSQL 16)
 - Schema: `server/src/prisma/schema.prisma`
-- Key models: User ↔ GoogleAuth (1:1), Task (dynamic string status via TaskStatus model), Email (Gmail sync), CalendarEvent, Customer ↔ Contact, Label
+- Key models: User ↔ GoogleAuth (1:1), Task (dynamic string status via TaskStatus model), Email (Gmail sync), CalendarEvent, Customer ↔ Contact, Deal ↔ DealPartner, Label, ScheduledEmail, AuditLog, Notification, and the `*Share` join tables (EmailThreadShare, DealShare, TaskShare).
 - Task statuses are dynamic (stored in `task_statuses` table), not enum. The Kanban board reads from this table.
 - Emails auto-link to customers via domain extraction from sender addresses.
+- **Everything user-scoped is multi-tenant.** Uniques are composite on `user_id` (`(user_id, domain)`, `(user_id, gmail_message_id)`, …). Never add a global unique to a user-scoped table, and never build a `where` that can drop the ownership filter — `server/src/prisma/tenantUniques.test.ts` and the service tests exist for exactly this.
 
 ## Key Patterns
 
 - **Error throwing in services**: `throw Object.assign(new Error('msg'), { status: 404 })` — caught by `middleware/errorHandler.ts`
 - **Gmail sync**: Best-effort pattern — DB updated first, Gmail API call wrapped in try/catch to not block on API failures
-- **Modals inside SidePanel**: Use `createPortal(modal, document.body)` to escape SidePanel overflow constraints
-- **Global search**: `GET /api/v1/search?q=` queries emails, tasks, events, customers, contacts in parallel (4 results each)
+- **Gmail rate limiting**: `lib/gmailLimiter.ts` — a per-user Bottleneck Group (Gmail's quota is charged per user) plus retry with exponential backoff on 429 / 403 `rateLimitExceeded`. It is applied inside `getGmailClient()`, so any new Gmail call gets throttling for free by going through that helper. Do not construct `google.gmail(...)` directly — that bypasses it.
+- **Carbon container rubric** (Create Flows pattern — pick by complexity, don't default to SidePanel):
+  - `Modal` (sm) — a couple of fields. e.g. ShareDialog, ConvertToTaskModal.
+  - `SidePanel` — medium complexity *and the user needs page context* (reading mail beside the list, a detail panel next to its row).
+  - `TearsheetNarrow` — medium complexity that may obscure the page. e.g. CustomerCreateModal, ContactModal.
+  - `Tearsheet` (wide) — complex or interactive flows. e.g. MailComposeModal, EventModal. Pass `selectorsFloatingMenus` for anything appending to `<body>` (flatpickr), or the focus-wrap steals focus.
+- **Tearsheet vs SidePanel gutters**: SidePanel supplies its own body gutters (`.create-side-panel__form-item`); Tearsheet hands the body full width and content owns its gutters (`.tearsheet-form__item`, which carries `padding-inline`).
+- **Modals inside SidePanel**: Carbon's `Modal` renders inline, and a `position: fixed` element inside a fixed/transformed SidePanel resolves against the wrong containing block. Use `createPortal(modal, document.body)`. Tearsheets don't need this — `TearsheetShell` self-portals.
+- **Global search**: `GET /api/v1/search?q=` queries emails, tasks, events, customers, contacts, deals in parallel (4 results each)
 - **Batch API pattern**: `POST /batch/{action}` with `{ ids: string[] }` body. Resolves thread IDs from email IDs, acts on all emails in threads.
 - **Optimistic UI**: For bulk/single email actions, update state immediately, then fire API call. Revert state on failure.
 - **Carbon Checkbox click issues**: Carbon's `Checkbox` component captures clicks via internal `<label>`. Workaround: use native `<input type="checkbox">` in a wrapper div with its own click handler and `stopPropagation`.
 
 ## Gotchas & Lessons Learned
 
+- **`server/.env` is the file that is loaded, not the repo-root `.env`.** dotenv reads from the working directory and `npm run dev --workspace=server` runs inside `server/`. A stale root `.env` is silently ignored — copy `.env.example` to **both**.
 - **Prisma migrate dev is interactive** — won't work in non-interactive shells. For CI/scripts, create migration directories manually and use `prisma migrate deploy`.
+- **Migrations must apply to an EMPTY database.** CI proves this every run, as does the test suite. A migration that backfills a column from another table and then sets it `NOT NULL` passes locally and fails on a fresh clone and on first deploy.
+- **`DROP CONSTRAINT IF EXISTS` does not drop a `CREATE UNIQUE INDEX`.** An index created that way is not a constraint, so the `ALTER TABLE ... DROP CONSTRAINT IF EXISTS` succeeds silently and the unique stays live. Six pre-user-scoping global uniques survived five months that way and blocked multi-user entirely (fixed in `20260816120000_drop_pre_user_scoping_unique_indexes`). Use `DROP INDEX IF EXISTS`.
 - **Enum to string migration**: When changing a Prisma enum to a string column, write raw SQL: `ALTER TABLE ... ALTER COLUMN ... TYPE VARCHAR USING ...::text`, then `DROP TYPE IF EXISTS "EnumName"`.
+- **`@types/react` must stay in the workspace root `package.json`.** Every `@carbon/*` package hoists to root; if React's types live only in `client/node_modules`, Carbon's own `.d.ts` files cannot resolve `react` and every React-derived Carbon type silently collapses (`keyof TableBodyProps` became just `'aria-live'`; charts became "not a JSX component"). Root also pins `react`/`react-dom` 19 because Carbon declares an 18 peer — otherwise npm parks 18 at the root and hoisted consumers (`@testing-library/react`) resolve the wrong copy.
+- **IBM Plex is loaded manually, not by Carbon.** Carbon's `$font-path` default (`~@ibm/plex`) is a webpack-ism Vite cannot resolve, so `index.scss` sets `$css--font-face: false` and `main.tsx` imports `@ibm/plex-sans` / `@ibm/plex-mono`. Re-enable Carbon's font emission and the app silently renders in Helvetica.
 - **Vite 8 requires Node 22.12+** — Railway's `nodejs_22` nixPkg is 22.11.0. We use Vite 6 for compatibility.
 - **Multiple tsx watch processes**: If the server behaves erratically (500 errors after reconnecting Gmail), check for stale `tsx watch` processes: `pkill -f "tsx watch"` and restart.
 - **Carbon icon imports**: `@carbon/icons-react` has no `LogoGoogle` icon. If Vite cache causes import errors after removing an icon, clear `.vite` cache.
-- **SCSS file size**: The monolithic `index.scss` was split into partials (`_dashboard`, `_mail`, etc.). New component styles go in their own `_componentname.scss` partial and get `@import`ed in `index.scss`.
+- **SCSS partials use `@use`, not `@import`** (`@import` is removed in Dart Sass 3.0). New component styles go in their own `_componentname.scss` and get `@use`d in `index.scss`. `@use` scopes each file, so a partial needing `type.type-style()`, `$spacing-*` or `colors.*` declares its own `@use` header — it does not inherit them.
 - **SidePanel z-index**: Carbon SidePanel is z-index 8000. Dropdowns/modals that must float above it need z-index 8001+.
-- **Rate limits**: Email send (10/min), bulk ops (20/min), sync (5/min), login (20/15min). Defined in route files, not app.ts.
+- **Rate limits**: Email send (10/min), bulk ops (20/min), sync (5/min) — defined in `routes/emails.ts`. Login (20/15min) is in `app.ts`.
 
 ## Environment Variables
 
-Copy `.env.example` to `.env`. Required for Google integration:
-- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`
-- `JWT_SECRET`, `JWT_REFRESH_SECRET` (auto-generated in dev)
-- `TOKEN_ENCRYPTION_KEY` (hex, 32 bytes — encrypts Google tokens at rest)
+Copy `.env.example` to **both** `.env` and `server/.env` — only `server/.env` is actually read (see Gotchas). Defaults live in `server/src/config/env.ts`.
+
+- `DATABASE_URL` (dev default: localhost **5435**), `CLIENT_URL` (dev default: `http://localhost:5174`), `PORT` (3002)
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` — the redirect URI is bound to the backend port, so moving the frontend port needs no Google Cloud Console change
+- `JWT_SECRET`, `JWT_REFRESH_SECRET` (deterministic dev fallbacks — set in production)
+- `TOKEN_ENCRYPTION_KEY` (hex, 32 bytes — encrypts Google tokens at rest; **unset = plaintext storage**, it falls back silently)
 - `ALLOWED_EMAILS` (comma-separated whitelist, empty = open access)
+- Sync: `SYNC_INTERVAL_SECONDS`, `EMAIL_SYNC_ENABLED`, `CALENDAR_SYNC_ENABLED`, `CALENDAR_SYNC_INTERVAL_SECONDS`, `EMAIL_SYNC_MONTHS`, `CALENDAR_SYNC_PAST_MONTHS`, `CALENDAR_SYNC_FUTURE_MONTHS`, `SYNC_CATCHUP_DAYS` (bounds the catch-up when Gmail rejects the history token, default 7)
+- Gmail throttling: `GMAIL_MAX_CONCURRENT` (5), `GMAIL_MIN_TIME_MS` (50), `GMAIL_MAX_RETRIES` (5), `GMAIL_RETRY_BASE_MS` (1000), `GMAIL_RETRY_MAX_MS` (32000)
+- Tests: `TEST_DATABASE_URL` / `TEST_DATABASE_BASE_URL` — see `server/src/test/README.md`
 
 ## Deployment (Railway)
 
-Configured via `nixpacks.toml`. Uses Node 22 via nixPkgs. Build: `npm ci` → client vite build → server esbuild + prisma generate → `prisma migrate deploy && node dist/index.js`.
+Configured via `nixpacks.toml` + `railway.json`. Node 22 via nixPkgs. Build: `npm ci` → client vite build → server `prisma generate` + esbuild. Start: `cd server && npx prisma migrate deploy && node dist/index.js`. Healthcheck: `/api/health`.
 
 
 ## Database Schema

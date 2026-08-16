@@ -16,6 +16,12 @@ interface CustomerQueryParams {
   categoryId?: string;
 }
 
+// Whitelist of sortable Customer columns. `sortBy` comes straight off the query
+// string and is used as a Prisma orderBy key, so it must never be trusted raw.
+// `emailCount` is absent on purpose — it is not a column, it is the default and
+// the fallback, so it is handled by the branch below rather than by this list.
+const CUSTOMER_SORT_FIELDS = ['name', 'company', 'email', 'domain', 'isVip', 'createdAt', 'updatedAt'] as const;
+
 export const customerService = {
   async findAll(userId: string, query: CustomerQueryParams) {
     const pagination = parsePagination(query);
@@ -32,10 +38,13 @@ export const customerService = {
       where.categoryId = query.categoryId;
     }
 
-    const sortBy = query.sortBy || 'emailCount';
-    const sortOrder = (query.sortOrder || 'desc') as Prisma.SortOrder;
+    const requestedSort = query.sortBy || 'emailCount';
+    const sortBy = (CUSTOMER_SORT_FIELDS as readonly string[]).includes(requestedSort)
+      ? requestedSort
+      : 'emailCount';
+    const sortOrder: Prisma.SortOrder = query.sortOrder === 'asc' ? 'asc' : 'desc';
 
-    const orderBy = sortBy === 'emailCount'
+    const orderBy: Prisma.CustomerOrderByWithRelationInput = sortBy === 'emailCount'
       ? { emails: { _count: sortOrder } }
       : { [sortBy]: sortOrder };
 

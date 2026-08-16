@@ -20,6 +20,10 @@ interface DealQueryParams {
   ownership?: string;
 }
 
+// Whitelist of sortable Deal columns. `sortBy` comes straight off the query
+// string and is used as a Prisma orderBy key, so it must never be trusted raw.
+const DEAL_SORT_FIELDS = ['title', 'status', 'expiryDate', 'createdAt', 'updatedAt'] as const;
+
 const dealIncludes = {
   partner: { select: { id: true, name: true, logoUrl: true } },
   customer: { select: { id: true, name: true, logoUrl: true } },
@@ -59,13 +63,17 @@ export const dealService = {
       where.userId = userId;
     }
 
-    const sortBy = query.sortBy || 'createdAt';
-    const sortOrder = (query.sortOrder || 'desc') as Prisma.SortOrder;
+    const requestedSort = query.sortBy || 'createdAt';
+    const sortBy = (DEAL_SORT_FIELDS as readonly string[]).includes(requestedSort)
+      ? requestedSort
+      : 'createdAt';
+    const sortOrder: Prisma.SortOrder = query.sortOrder === 'asc' ? 'asc' : 'desc';
+    const orderBy: Prisma.DealOrderByWithRelationInput = { [sortBy]: sortOrder };
 
     const [deals, total] = await Promise.all([
       prisma.deal.findMany({
         where,
-        orderBy: { [sortBy]: sortOrder },
+        orderBy,
         skip: pagination.skip,
         take: pagination.limit,
         include: dealIncludes,
