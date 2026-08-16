@@ -1,4 +1,5 @@
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
+import type { Req } from "../types/http.js";
 import { googleAuthService } from '../services/googleAuthService.js';
 import { env } from '../config/env.js';
 import { signAccessToken, signRefreshToken } from '../utils/jwt.js';
@@ -8,7 +9,7 @@ import { prisma } from '../lib/prisma.js';
 export const authController = {
   // ── Login flow ──
 
-  async getLoginGoogleUrl(_req: Request, res: Response, next: NextFunction) {
+  async getLoginGoogleUrl(_req: Req, res: Response, next: NextFunction) {
     try {
       const url = await googleAuthService.getAuthUrl('login');
       res.json({ data: { url } });
@@ -19,7 +20,7 @@ export const authController = {
 
   // ── Session ──
 
-  async getMe(req: Request, res: Response, next: NextFunction) {
+  async getMe(req: Req, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id;
       const user = await prisma.user.findUnique({
@@ -36,7 +37,7 @@ export const authController = {
     }
   },
 
-  async logout(_req: Request, res: Response, next: NextFunction) {
+  async logout(_req: Req, res: Response, next: NextFunction) {
     try {
       clearAuthCookies(res);
       res.json({ data: { success: true } });
@@ -47,7 +48,7 @@ export const authController = {
 
   // ── Google integration (connect Gmail/Calendar) ──
 
-  async getGoogleUrl(req: Request, res: Response, next: NextFunction) {
+  async getGoogleUrl(req: Req, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id;
       const url = await googleAuthService.getAuthUrl('connect', userId);
@@ -57,7 +58,7 @@ export const authController = {
     }
   },
 
-  async googleCallback(req: Request, res: Response, next: NextFunction) {
+  async googleCallback(req: Req, res: Response, next: NextFunction) {
     try {
       const { code, state } = req.query;
       if (!code || typeof code !== 'string') {
@@ -128,7 +129,7 @@ export const authController = {
     }
   },
 
-  async getGoogleStatus(req: Request, res: Response, next: NextFunction) {
+  async getGoogleStatus(req: Req, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id;
       const status = await googleAuthService.getStatus(userId);
@@ -138,7 +139,7 @@ export const authController = {
     }
   },
 
-  async disconnectGoogle(req: Request, res: Response, next: NextFunction) {
+  async disconnectGoogle(req: Req, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id;
       await googleAuthService.disconnect(userId);
@@ -148,7 +149,7 @@ export const authController = {
     }
   },
 
-  async listUsers(req: Request, res: Response, next: NextFunction) {
+  async listUsers(req: Req, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id;
       const users = await prisma.user.findMany({
@@ -162,7 +163,7 @@ export const authController = {
     }
   },
 
-  async getSignature(req: Request, res: Response, next: NextFunction) {
+  async getSignature(req: Req, res: Response, next: NextFunction) {
     try {
       const user = await prisma.user.findUnique({
         where: { id: req.user!.id },
@@ -174,7 +175,7 @@ export const authController = {
     }
   },
 
-  async updateSignature(req: Request, res: Response, next: NextFunction) {
+  async updateSignature(req: Req, res: Response, next: NextFunction) {
     try {
       const { signature } = req.body;
       await prisma.user.update({

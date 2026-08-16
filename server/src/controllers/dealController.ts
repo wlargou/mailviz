@@ -1,8 +1,9 @@
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
+import type { Req } from "../types/http.js";
 import { dealService } from '../services/dealService.js';
 
 export const dealController = {
-  async findAll(req: Request, res: Response, next: NextFunction) {
+  async findAll(req: Req, res: Response, next: NextFunction) {
     try {
       const result = await dealService.findAll(req.user!.id, req.query as Record<string, string>);
       res.json(result);
@@ -11,7 +12,7 @@ export const dealController = {
     }
   },
 
-  async findById(req: Request, res: Response, next: NextFunction) {
+  async findById(req: Req, res: Response, next: NextFunction) {
     try {
       const deal = await dealService.findById(req.user!.id, req.params.id);
       res.json({ data: deal });
@@ -20,7 +21,7 @@ export const dealController = {
     }
   },
 
-  async create(req: Request, res: Response, next: NextFunction) {
+  async create(req: Req, res: Response, next: NextFunction) {
     try {
       const deal = await dealService.create(req.user!.id, req.body);
       res.status(201).json({ data: deal });
@@ -29,7 +30,7 @@ export const dealController = {
     }
   },
 
-  async update(req: Request, res: Response, next: NextFunction) {
+  async update(req: Req, res: Response, next: NextFunction) {
     try {
       const deal = await dealService.update(req.user!.id, req.params.id, req.body);
       res.json({ data: deal });
@@ -38,7 +39,7 @@ export const dealController = {
     }
   },
 
-  async delete(req: Request, res: Response, next: NextFunction) {
+  async delete(req: Req, res: Response, next: NextFunction) {
     try {
       await dealService.delete(req.user!.id, req.params.id);
       res.status(204).send();
@@ -47,7 +48,7 @@ export const dealController = {
     }
   },
 
-  async shareDeal(req: Request, res: Response, next: NextFunction) {
+  async shareDeal(req: Req, res: Response, next: NextFunction) {
     try {
       const { userIds } = req.body;
       if (!Array.isArray(userIds) || userIds.length === 0) {
@@ -61,7 +62,7 @@ export const dealController = {
     }
   },
 
-  async unshareDeal(req: Request, res: Response, next: NextFunction) {
+  async unshareDeal(req: Req, res: Response, next: NextFunction) {
     try {
       const result = await dealService.unshareDeal(req.user!.id, req.params.id, req.params.recipientId);
       res.json({ data: result });
@@ -70,7 +71,7 @@ export const dealController = {
     }
   },
 
-  async getDealShares(req: Request, res: Response, next: NextFunction) {
+  async getDealShares(req: Req, res: Response, next: NextFunction) {
     try {
       const shares = await dealService.getDealShares(req.user!.id, req.params.id);
       res.json({ data: shares });

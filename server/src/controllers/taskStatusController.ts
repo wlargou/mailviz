@@ -1,8 +1,9 @@
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
+import type { Req } from "../types/http.js";
 import { taskStatusService } from '../services/taskStatusService.js';
 
 export const taskStatusController = {
-  async findAll(req: Request, res: Response, next: NextFunction) {
+  async findAll(req: Req, res: Response, next: NextFunction) {
     try {
       const statuses = await taskStatusService.findAll(req.user!.id);
       res.json({ data: statuses });
@@ -11,7 +12,7 @@ export const taskStatusController = {
     }
   },
 
-  async create(req: Request, res: Response, next: NextFunction) {
+  async create(req: Req, res: Response, next: NextFunction) {
     try {
       // Body already validated by Zod middleware (A3)
       const { label, color } = req.body;
@@ -27,7 +28,7 @@ export const taskStatusController = {
     }
   },
 
-  async update(req: Request, res: Response, next: NextFunction) {
+  async update(req: Req, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const { label, color } = req.body;
@@ -38,7 +39,7 @@ export const taskStatusController = {
     }
   },
 
-  async reorder(req: Request, res: Response, next: NextFunction) {
+  async reorder(req: Req, res: Response, next: NextFunction) {
     try {
       // Body already validated by Zod middleware (A3)
       await taskStatusService.reorder(req.user!.id, req.body.items);
@@ -48,7 +49,7 @@ export const taskStatusController = {
     }
   },
 
-  async delete(req: Request, res: Response, next: NextFunction) {
+  async delete(req: Req, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       await taskStatusService.delete(req.user!.id, id as string);

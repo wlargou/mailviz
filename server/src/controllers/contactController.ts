@@ -1,9 +1,10 @@
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
+import type { Req } from "../types/http.js";
 import { prisma } from '../lib/prisma.js';
 import { contactService } from '../services/contactService.js';
 
 export const contactController = {
-  async findAll(req: Request, res: Response, next: NextFunction) {
+  async findAll(req: Req, res: Response, next: NextFunction) {
     try {
       const result = await contactService.findAll(req.user!.id, req.query as Record<string, string>);
       res.json(result);
@@ -12,7 +13,7 @@ export const contactController = {
     }
   },
 
-  async findByEmail(req: Request, res: Response, next: NextFunction) {
+  async findByEmail(req: Req, res: Response, next: NextFunction) {
     try {
       const email = req.query.email as string;
       if (!email) {
@@ -26,7 +27,7 @@ export const contactController = {
     }
   },
 
-  async findById(req: Request, res: Response, next: NextFunction) {
+  async findById(req: Req, res: Response, next: NextFunction) {
     try {
       const contact = await contactService.findById(req.user!.id, req.params.id);
       res.json({ data: contact });
@@ -35,7 +36,7 @@ export const contactController = {
     }
   },
 
-  async findAttachments(req: Request, res: Response, next: NextFunction) {
+  async findAttachments(req: Req, res: Response, next: NextFunction) {
     try {
       const attachments = await contactService.findAttachments(req.user!.id, req.params.id);
       res.json({ data: attachments });
@@ -44,7 +45,7 @@ export const contactController = {
     }
   },
 
-  async findContactEvents(req: Request, res: Response, next: NextFunction) {
+  async findContactEvents(req: Req, res: Response, next: NextFunction) {
     try {
       const events = await contactService.findContactEvents(req.user!.id, req.params.id);
       res.json({ data: events });
@@ -53,7 +54,7 @@ export const contactController = {
     }
   },
 
-  async create(req: Request, res: Response, next: NextFunction) {
+  async create(req: Req, res: Response, next: NextFunction) {
     try {
       const contact = await contactService.create(req.user!.id, req.body);
       res.status(201).json({ data: contact });
@@ -62,7 +63,7 @@ export const contactController = {
     }
   },
 
-  async update(req: Request, res: Response, next: NextFunction) {
+  async update(req: Req, res: Response, next: NextFunction) {
     try {
       const contact = await contactService.update(req.user!.id, req.params.id, req.body);
       res.json({ data: contact });
@@ -71,7 +72,7 @@ export const contactController = {
     }
   },
 
-  async delete(req: Request, res: Response, next: NextFunction) {
+  async delete(req: Req, res: Response, next: NextFunction) {
     try {
       await contactService.delete(req.user!.id, req.params.id);
       res.status(204).send();
@@ -80,7 +81,7 @@ export const contactController = {
     }
   },
 
-  async toggleVip(req: Request, res: Response, next: NextFunction) {
+  async toggleVip(req: Req, res: Response, next: NextFunction) {
     try {
       const contact = await prisma.contact.findFirst({ where: { id: req.params.id, customer: { userId: req.user!.id } } });
       if (!contact) {

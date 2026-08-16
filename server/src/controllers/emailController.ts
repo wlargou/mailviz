@@ -1,9 +1,10 @@
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
+import type { Req } from "../types/http.js";
 import { emailService } from '../services/emailService.js';
 import { isSyncInProgress } from '../jobs/emailSyncScheduler.js';
 
 export const emailController = {
-  async findAllThreads(req: Request, res: Response, next: NextFunction) {
+  async findAllThreads(req: Req, res: Response, next: NextFunction) {
     try {
       const { search, customerId, contactEmail, isRead, hasAttachment, folder, from, to, subject, dateAfter, dateBefore, page, limit } = req.query as Record<string, string>;
       const result = await emailService.findAllThreads({ search, customerId, contactEmail, isRead, hasAttachment, folder, from, to, subject, dateAfter, dateBefore, page, limit }, req.user!.id);
@@ -13,7 +14,7 @@ export const emailController = {
     }
   },
 
-  async findThread(req: Request, res: Response, next: NextFunction) {
+  async findThread(req: Req, res: Response, next: NextFunction) {
     try {
       const emails = await emailService.findThread(req.params.threadId, req.user!.id);
       res.json({ data: emails });
@@ -22,7 +23,7 @@ export const emailController = {
     }
   },
 
-  async findById(req: Request, res: Response, next: NextFunction) {
+  async findById(req: Req, res: Response, next: NextFunction) {
     try {
       const email = await emailService.findById(req.params.id, req.user!.id);
       res.json({ data: email });
@@ -31,7 +32,7 @@ export const emailController = {
     }
   },
 
-  async getAttachment(req: Request, res: Response, next: NextFunction) {
+  async getAttachment(req: Req, res: Response, next: NextFunction) {
     try {
       const { data, mimeType, filename } = await emailService.getAttachment(
         req.params.id,
@@ -49,7 +50,7 @@ export const emailController = {
     }
   },
 
-  async sync(req: Request, res: Response, next: NextFunction) {
+  async sync(req: Req, res: Response, next: NextFunction) {
     try {
       const result = await emailService.syncFromGmail(req.user!.id);
       res.json({ data: result });
@@ -58,7 +59,7 @@ export const emailController = {
     }
   },
 
-  async markAsRead(req: Request, res: Response, next: NextFunction) {
+  async markAsRead(req: Req, res: Response, next: NextFunction) {
     try {
       await emailService.markAsRead(req.params.id, req.user!.id);
       res.json({ success: true });
@@ -67,7 +68,7 @@ export const emailController = {
     }
   },
 
-  async markAsUnread(req: Request, res: Response, next: NextFunction) {
+  async markAsUnread(req: Req, res: Response, next: NextFunction) {
     try {
       await emailService.markAsUnread(req.params.id, req.user!.id);
       res.json({ success: true });
@@ -76,7 +77,7 @@ export const emailController = {
     }
   },
 
-  async toggleStar(req: Request, res: Response, next: NextFunction) {
+  async toggleStar(req: Req, res: Response, next: NextFunction) {
     try {
       const result = await emailService.toggleStar(req.params.id, req.user!.id);
       res.json({ data: result });
@@ -85,7 +86,7 @@ export const emailController = {
     }
   },
 
-  async archive(req: Request, res: Response, next: NextFunction) {
+  async archive(req: Req, res: Response, next: NextFunction) {
     try {
       await emailService.archive(req.params.id, req.user!.id);
       res.json({ success: true });
@@ -94,7 +95,7 @@ export const emailController = {
     }
   },
 
-  async unarchive(req: Request, res: Response, next: NextFunction) {
+  async unarchive(req: Req, res: Response, next: NextFunction) {
     try {
       await emailService.unarchive(req.params.id, req.user!.id);
       res.json({ success: true });
@@ -103,7 +104,7 @@ export const emailController = {
     }
   },
 
-  async trash(req: Request, res: Response, next: NextFunction) {
+  async trash(req: Req, res: Response, next: NextFunction) {
     try {
       await emailService.trash(req.params.id, req.user!.id);
       res.json({ success: true });
@@ -112,7 +113,7 @@ export const emailController = {
     }
   },
 
-  async untrash(req: Request, res: Response, next: NextFunction) {
+  async untrash(req: Req, res: Response, next: NextFunction) {
     try {
       await emailService.untrash(req.params.id, req.user!.id);
       res.json({ success: true });
@@ -121,7 +122,7 @@ export const emailController = {
     }
   },
 
-  async batchMarkAsRead(req: Request, res: Response, next: NextFunction) {
+  async batchMarkAsRead(req: Req, res: Response, next: NextFunction) {
     try {
       const { ids } = req.body;
       if (!Array.isArray(ids) || ids.length === 0) {
@@ -135,7 +136,7 @@ export const emailController = {
     }
   },
 
-  async batchMarkAsUnread(req: Request, res: Response, next: NextFunction) {
+  async batchMarkAsUnread(req: Req, res: Response, next: NextFunction) {
     try {
       const { ids } = req.body;
       if (!Array.isArray(ids) || ids.length === 0) {
@@ -149,7 +150,7 @@ export const emailController = {
     }
   },
 
-  async batchArchive(req: Request, res: Response, next: NextFunction) {
+  async batchArchive(req: Req, res: Response, next: NextFunction) {
     try {
       const { ids } = req.body;
       if (!Array.isArray(ids) || ids.length === 0) {
@@ -163,7 +164,7 @@ export const emailController = {
     }
   },
 
-  async batchTrash(req: Request, res: Response, next: NextFunction) {
+  async batchTrash(req: Req, res: Response, next: NextFunction) {
     try {
       const { ids } = req.body;
       if (!Array.isArray(ids) || ids.length === 0) {
@@ -177,7 +178,7 @@ export const emailController = {
     }
   },
 
-  async convertToTask(req: Request, res: Response, next: NextFunction) {
+  async convertToTask(req: Req, res: Response, next: NextFunction) {
     try {
       const task = await emailService.convertToTask(req.params.id, req.body, req.user!.id);
       res.status(201).json({ data: task });
@@ -186,7 +187,7 @@ export const emailController = {
     }
   },
 
-  async getReviewSummary(req: Request, res: Response, next: NextFunction) {
+  async getReviewSummary(req: Req, res: Response, next: NextFunction) {
     try {
       const { dateAfter, dateBefore } = req.query as Record<string, string>;
       if (!dateAfter || !dateBefore) {
@@ -200,7 +201,7 @@ export const emailController = {
     }
   },
 
-  async getUnreadCount(req: Request, res: Response, next: NextFunction) {
+  async getUnreadCount(req: Req, res: Response, next: NextFunction) {
     try {
       const count = await emailService.getUnreadCount(req.user!.id);
       res.json({ data: { count } });
@@ -209,11 +210,11 @@ export const emailController = {
     }
   },
 
-  async getSyncStatus(_req: Request, res: Response) {
+  async getSyncStatus(_req: Req, res: Response) {
     res.json({ data: { syncing: isSyncInProgress() } });
   },
 
-  async sendEmail(req: Request, res: Response, next: NextFunction) {
+  async sendEmail(req: Req, res: Response, next: NextFunction) {
     try {
       const result = await emailService.sendEmail(req.body, req.user!.id);
       res.status(201).json({ data: result });
@@ -222,7 +223,7 @@ export const emailController = {
     }
   },
 
-  async replyToEmail(req: Request, res: Response, next: NextFunction) {
+  async replyToEmail(req: Req, res: Response, next: NextFunction) {
     try {
       const result = await emailService.replyToEmail(req.params.id, req.body, req.user!.id);
       res.status(201).json({ data: result });
@@ -231,7 +232,7 @@ export const emailController = {
     }
   },
 
-  async forwardEmail(req: Request, res: Response, next: NextFunction) {
+  async forwardEmail(req: Req, res: Response, next: NextFunction) {
     try {
       const result = await emailService.forwardEmail(req.params.id, req.body, req.user!.id);
       res.status(201).json({ data: result });
@@ -240,7 +241,7 @@ export const emailController = {
     }
   },
 
-  async scheduleEmail(req: Request, res: Response, next: NextFunction) {
+  async scheduleEmail(req: Req, res: Response, next: NextFunction) {
     try {
       const result = await emailService.scheduleEmail(req.user!.id, req.body);
       res.status(201).json({ data: result });
@@ -249,7 +250,7 @@ export const emailController = {
     }
   },
 
-  async getScheduledEmails(req: Request, res: Response, next: NextFunction) {
+  async getScheduledEmails(req: Req, res: Response, next: NextFunction) {
     try {
       const emails = await emailService.getScheduledEmails(req.user!.id);
       res.json({ data: emails });
@@ -258,7 +259,7 @@ export const emailController = {
     }
   },
 
-  async updateScheduledEmail(req: Request, res: Response, next: NextFunction) {
+  async updateScheduledEmail(req: Req, res: Response, next: NextFunction) {
     try {
       const result = await emailService.updateScheduledEmail(req.user!.id, req.params.id, req.body);
       res.json({ data: result });
@@ -267,7 +268,7 @@ export const emailController = {
     }
   },
 
-  async cancelScheduledEmail(req: Request, res: Response, next: NextFunction) {
+  async cancelScheduledEmail(req: Req, res: Response, next: NextFunction) {
     try {
       await emailService.cancelScheduledEmail(req.user!.id, req.params.id);
       res.json({ success: true });
@@ -276,7 +277,7 @@ export const emailController = {
     }
   },
 
-  async shareThread(req: Request, res: Response, next: NextFunction) {
+  async shareThread(req: Req, res: Response, next: NextFunction) {
     try {
       const { userIds } = req.body;
       if (!Array.isArray(userIds) || userIds.length === 0) {
@@ -290,7 +291,7 @@ export const emailController = {
     }
   },
 
-  async unshareThread(req: Request, res: Response, next: NextFunction) {
+  async unshareThread(req: Req, res: Response, next: NextFunction) {
     try {
       const result = await emailService.unshareThread(req.user!.id, req.params.threadId, req.params.recipientId);
       res.json({ data: result });
@@ -299,7 +300,7 @@ export const emailController = {
     }
   },
 
-  async getThreadShares(req: Request, res: Response, next: NextFunction) {
+  async getThreadShares(req: Req, res: Response, next: NextFunction) {
     try {
       const shares = await emailService.getThreadShares(req.user!.id, req.params.threadId);
       res.json({ data: shares });

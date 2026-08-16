@@ -1,8 +1,9 @@
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
+import type { Req } from "../types/http.js";
 import { taskService } from '../services/taskService.js';
 
 export const taskController = {
-  async findAll(req: Request, res: Response, next: NextFunction) {
+  async findAll(req: Req, res: Response, next: NextFunction) {
     try {
       const result = await taskService.findAll(req.user!.id, req.query as Record<string, string>);
       res.json(result);
@@ -11,7 +12,7 @@ export const taskController = {
     }
   },
 
-  async findById(req: Request, res: Response, next: NextFunction) {
+  async findById(req: Req, res: Response, next: NextFunction) {
     try {
       const task = await taskService.findById(req.user!.id, req.params.id);
       res.json({ data: task });
@@ -20,7 +21,7 @@ export const taskController = {
     }
   },
 
-  async getSummary(req: Request, res: Response, next: NextFunction) {
+  async getSummary(req: Req, res: Response, next: NextFunction) {
     try {
       const summary = await taskService.getSummary(req.user!.id);
       res.json({ data: summary });
@@ -29,7 +30,7 @@ export const taskController = {
     }
   },
 
-  async create(req: Request, res: Response, next: NextFunction) {
+  async create(req: Req, res: Response, next: NextFunction) {
     try {
       const task = await taskService.create(req.user!.id, req.body);
       res.status(201).json({ data: task });
@@ -38,7 +39,7 @@ export const taskController = {
     }
   },
 
-  async update(req: Request, res: Response, next: NextFunction) {
+  async update(req: Req, res: Response, next: NextFunction) {
     try {
       const task = await taskService.update(req.user!.id, req.params.id, req.body);
       res.json({ data: task });
@@ -47,7 +48,7 @@ export const taskController = {
     }
   },
 
-  async reorder(req: Request, res: Response, next: NextFunction) {
+  async reorder(req: Req, res: Response, next: NextFunction) {
     try {
       const result = await taskService.reorder(req.user!.id, req.body);
       res.json({ data: result });
@@ -56,7 +57,7 @@ export const taskController = {
     }
   },
 
-  async delete(req: Request, res: Response, next: NextFunction) {
+  async delete(req: Req, res: Response, next: NextFunction) {
     try {
       await taskService.delete(req.user!.id, req.params.id);
       res.status(204).send();
@@ -65,7 +66,7 @@ export const taskController = {
     }
   },
 
-  async shareTask(req: Request, res: Response, next: NextFunction) {
+  async shareTask(req: Req, res: Response, next: NextFunction) {
     try {
       const { userIds } = req.body;
       if (!Array.isArray(userIds) || userIds.length === 0) {
@@ -79,7 +80,7 @@ export const taskController = {
     }
   },
 
-  async unshareTask(req: Request, res: Response, next: NextFunction) {
+  async unshareTask(req: Req, res: Response, next: NextFunction) {
     try {
       const result = await taskService.unshareTask(req.user!.id, req.params.id, req.params.recipientId);
       res.json({ data: result });
@@ -88,7 +89,7 @@ export const taskController = {
     }
   },
 
-  async getTaskShares(req: Request, res: Response, next: NextFunction) {
+  async getTaskShares(req: Req, res: Response, next: NextFunction) {
     try {
       const shares = await taskService.getTaskShares(req.user!.id, req.params.id);
       res.json({ data: shares });
@@ -97,7 +98,7 @@ export const taskController = {
     }
   },
 
-  async assignTask(req: Request, res: Response, next: NextFunction) {
+  async assignTask(req: Req, res: Response, next: NextFunction) {
     try {
       const { assignedToId } = req.body;
       const task = await taskService.assignTask(req.user!.id, req.params.id, assignedToId ?? null);

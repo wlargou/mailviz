@@ -1,9 +1,10 @@
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
+import type { Req } from "../types/http.js";
 import { calendarService } from '../services/calendarService.js';
 import { isCalendarSyncInProgress } from '../jobs/calendarSyncScheduler.js';
 
 export const calendarController = {
-  async findAll(req: Request, res: Response, next: NextFunction) {
+  async findAll(req: Req, res: Response, next: NextFunction) {
     try {
       const result = await calendarService.findAll(req.query as { start?: string; end?: string }, req.user!.id);
       res.json(result);
@@ -12,7 +13,7 @@ export const calendarController = {
     }
   },
 
-  async findById(req: Request, res: Response, next: NextFunction) {
+  async findById(req: Req, res: Response, next: NextFunction) {
     try {
       const event = await calendarService.findById(req.params.id, req.user!.id);
       res.json({ data: event });
@@ -21,7 +22,7 @@ export const calendarController = {
     }
   },
 
-  async create(req: Request, res: Response, next: NextFunction) {
+  async create(req: Req, res: Response, next: NextFunction) {
     try {
       const event = await calendarService.create(req.body, req.user!.id);
       res.status(201).json({ data: event });
@@ -30,7 +31,7 @@ export const calendarController = {
     }
   },
 
-  async update(req: Request, res: Response, next: NextFunction) {
+  async update(req: Req, res: Response, next: NextFunction) {
     try {
       const event = await calendarService.update(req.params.id, req.body, req.user!.id);
       res.json({ data: event });
@@ -39,7 +40,7 @@ export const calendarController = {
     }
   },
 
-  async delete(req: Request, res: Response, next: NextFunction) {
+  async delete(req: Req, res: Response, next: NextFunction) {
     try {
       const mode = (req.query.mode as string) === 'all' ? 'all' : 'single';
       await calendarService.delete(req.params.id, req.user!.id, mode);
@@ -49,7 +50,7 @@ export const calendarController = {
     }
   },
 
-  async respond(req: Request, res: Response, next: NextFunction) {
+  async respond(req: Req, res: Response, next: NextFunction) {
     try {
       const event = await calendarService.respond(req.params.id, req.body.response, req.user!.id);
       res.json({ data: event });
@@ -58,7 +59,7 @@ export const calendarController = {
     }
   },
 
-  async sync(req: Request, res: Response, next: NextFunction) {
+  async sync(req: Req, res: Response, next: NextFunction) {
     try {
       const result = await calendarService.syncFromGoogle(false, req.user!.id);
       res.json({ data: result });
@@ -67,7 +68,7 @@ export const calendarController = {
     }
   },
 
-  async getSyncStatus(_req: Request, res: Response) {
+  async getSyncStatus(_req: Req, res: Response) {
     res.json({ data: { syncing: isCalendarSyncInProgress() } });
   },
 };

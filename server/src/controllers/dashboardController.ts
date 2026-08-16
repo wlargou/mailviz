@@ -1,9 +1,10 @@
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
+import type { Req } from "../types/http.js";
 import { dashboardService } from '../services/dashboardService.js';
 import { prisma } from '../lib/prisma.js';
 
 export const dashboardController = {
-  async getStats(req: Request, res: Response, next: NextFunction) {
+  async getStats(req: Req, res: Response, next: NextFunction) {
     try {
       const stats = await dashboardService.getStats(req.user!.id);
       res.json({ data: stats });
@@ -13,7 +14,7 @@ export const dashboardController = {
   },
 
   /** Lightweight badge counts for sidebar navigation */
-  async getNavCounts(req: Request, res: Response, next: NextFunction) {
+  async getNavCounts(req: Req, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id;
       const now = new Date();

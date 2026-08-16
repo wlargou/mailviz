@@ -1,9 +1,10 @@
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
+import type { Req } from "../types/http.js";
 import { prisma } from '../lib/prisma.js';
 import { customerService } from '../services/customerService.js';
 
 export const customerController = {
-  async findAll(req: Request, res: Response, next: NextFunction) {
+  async findAll(req: Req, res: Response, next: NextFunction) {
     try {
       const result = await customerService.findAll(req.user!.id, req.query as Record<string, string>);
       res.json(result);
@@ -12,7 +13,7 @@ export const customerController = {
     }
   },
 
-  async findById(req: Request, res: Response, next: NextFunction) {
+  async findById(req: Req, res: Response, next: NextFunction) {
     try {
       const customer = await customerService.findById(req.user!.id, req.params.id);
       res.json({ data: customer });
@@ -21,7 +22,7 @@ export const customerController = {
     }
   },
 
-  async create(req: Request, res: Response, next: NextFunction) {
+  async create(req: Req, res: Response, next: NextFunction) {
     try {
       const customer = await customerService.create(req.user!.id, req.body);
       res.status(201).json({ data: customer });
@@ -30,7 +31,7 @@ export const customerController = {
     }
   },
 
-  async update(req: Request, res: Response, next: NextFunction) {
+  async update(req: Req, res: Response, next: NextFunction) {
     try {
       const customer = await customerService.update(req.user!.id, req.params.id, req.body);
       res.json({ data: customer });
@@ -39,7 +40,7 @@ export const customerController = {
     }
   },
 
-  async delete(req: Request, res: Response, next: NextFunction) {
+  async delete(req: Req, res: Response, next: NextFunction) {
     try {
       await customerService.delete(req.user!.id, req.params.id);
       res.status(204).send();
@@ -48,7 +49,7 @@ export const customerController = {
     }
   },
 
-  async findAttachments(req: Request, res: Response, next: NextFunction) {
+  async findAttachments(req: Req, res: Response, next: NextFunction) {
     try {
       const attachments = await customerService.findAttachments(req.user!.id, req.params.id);
       res.json({ data: attachments });
@@ -57,7 +58,7 @@ export const customerController = {
     }
   },
 
-  async findLinkedEvents(req: Request, res: Response, next: NextFunction) {
+  async findLinkedEvents(req: Req, res: Response, next: NextFunction) {
     try {
       const events = await customerService.findLinkedEvents(req.user!.id, req.params.id);
       res.json({ data: events });
@@ -66,7 +67,7 @@ export const customerController = {
     }
   },
 
-  async toggleVip(req: Request, res: Response, next: NextFunction) {
+  async toggleVip(req: Req, res: Response, next: NextFunction) {
     try {
       const customer = await prisma.customer.findFirst({ where: { id: req.params.id, userId: req.user!.id } });
       if (!customer) {

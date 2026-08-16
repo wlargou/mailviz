@@ -1,8 +1,9 @@
-import type { Request, Response } from 'express';
+import type { Response } from 'express';
+import type { Req } from "../types/http.js";
 import { auditService } from '../services/auditService.js';
 
 export const auditController = {
-  async findAll(req: Request, res: Response) {
+  async findAll(req: Req, res: Response) {
     const userId = req.user!.id;
     const result = await auditService.findAll(userId, {
       page: req.query.page ? Number(req.query.page) : undefined,
@@ -17,7 +18,7 @@ export const auditController = {
     res.json(result);
   },
 
-  async findById(req: Request, res: Response) {
+  async findById(req: Req, res: Response) {
     const userId = req.user!.id;
     const log = await auditService.findById(userId, req.params.id);
     if (!log) {

@@ -1,8 +1,9 @@
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
+import type { Req } from "../types/http.js";
 import { companyCategoryService } from '../services/companyCategoryService.js';
 
 export const companyCategoryController = {
-  async findAll(req: Request, res: Response, next: NextFunction) {
+  async findAll(req: Req, res: Response, next: NextFunction) {
     try {
       const categories = await companyCategoryService.findAll(req.user!.id);
       res.json({ data: categories });
@@ -11,7 +12,7 @@ export const companyCategoryController = {
     }
   },
 
-  async create(req: Request, res: Response, next: NextFunction) {
+  async create(req: Req, res: Response, next: NextFunction) {
     try {
       // Body already validated by Zod middleware (A3)
       const { label, color } = req.body;
@@ -27,7 +28,7 @@ export const companyCategoryController = {
     }
   },
 
-  async update(req: Request, res: Response, next: NextFunction) {
+  async update(req: Req, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const { label, color } = req.body;
@@ -38,7 +39,7 @@ export const companyCategoryController = {
     }
   },
 
-  async reorder(req: Request, res: Response, next: NextFunction) {
+  async reorder(req: Req, res: Response, next: NextFunction) {
     try {
       // Body already validated by Zod middleware (A3)
       await companyCategoryService.reorder(req.user!.id, req.body.items);
@@ -48,7 +49,7 @@ export const companyCategoryController = {
     }
   },
 
-  async delete(req: Request, res: Response, next: NextFunction) {
+  async delete(req: Req, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       await companyCategoryService.delete(req.user!.id, id as string);
