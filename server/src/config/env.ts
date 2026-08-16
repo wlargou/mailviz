@@ -10,8 +10,8 @@ function devSecret(seed: string): string {
 
 export const env = {
   PORT: parseInt(process.env.PORT || '3002', 10),
-  DATABASE_URL: process.env.DATABASE_URL || 'postgresql://mailviz:mailviz_dev@localhost:5433/mailviz_db?schema=public',
-  CLIENT_URL: process.env.CLIENT_URL || 'http://localhost:5173',
+  DATABASE_URL: process.env.DATABASE_URL || 'postgresql://mailviz:mailviz_dev@localhost:5435/mailviz_db?schema=public',
+  CLIENT_URL: process.env.CLIENT_URL || 'http://localhost:5174',
   NODE_ENV: process.env.NODE_ENV || 'development',
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || '',
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET || '',

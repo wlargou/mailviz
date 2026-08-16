@@ -11,7 +11,10 @@ export default defineConfig({
     sourcemap: false,
   },
   server: {
-    port: 5173,
+    port: 5174,
+    // Fail loudly if the port is taken rather than silently shifting —
+    // a shifted port breaks CLIENT_URL and the OAuth redirect.
+    strictPort: true,
     proxy: {
       '/api': {
         target: 'http://localhost:3002',
