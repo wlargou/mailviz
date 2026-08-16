@@ -2,17 +2,30 @@ import { Modal } from '@carbon/react';
 
 interface ConfirmDeleteModalProps {
   open: boolean;
+  /** Name of the specific record being deleted, shown in the body copy. */
   title: string;
+  /**
+   * What is being deleted, e.g. "company". Used to build the modal heading.
+   * Required because this modal is shared across tasks, companies, contacts
+   * and deals — it previously hardcoded "Delete Task" for all of them.
+   */
+  entityLabel: string;
   onClose: () => void;
   onConfirm: () => void;
 }
 
-export function ConfirmDeleteModal({ open, title, onClose, onConfirm }: ConfirmDeleteModalProps) {
+export function ConfirmDeleteModal({
+  open,
+  title,
+  entityLabel,
+  onClose,
+  onConfirm,
+}: ConfirmDeleteModalProps) {
   return (
     <Modal
       open={open}
       danger
-      modalHeading="Delete Task"
+      modalHeading={`Delete ${entityLabel}`}
       primaryButtonText="Delete"
       secondaryButtonText="Cancel"
       onRequestClose={onClose}

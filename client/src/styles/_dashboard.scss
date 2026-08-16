@@ -241,13 +241,14 @@
 
 
 
-// Email volume chart transparent background
-.email-volume-chart .cds--cc--chart-wrapper {
-  background: transparent !important;
-}
-
 // ─── CHART FILL ────────────────────────────────
-// Makes Carbon Charts fill their parent tile dynamically
+// Makes Carbon Charts fill their parent tile dynamically.
+//
+// The transparent-background !important overrides that used to live here (and
+// the .email-volume-chart one above them) existed because both charts hardcoded
+// `theme: 'g100'`, so they painted an opaque dark background regardless of the
+// app theme. The charts now follow the app theme, so their background matches
+// the surface on its own and the overrides are gone.
 .chart-fill {
   display: flex;
   flex-direction: column;
@@ -263,12 +264,6 @@
     flex: 1;
     min-height: 0;
     width: 100%;
-  }
-
-  // Make chart background transparent (g100 theme adds dark bg)
-  svg.cds--cc--area,
-  .cds--cc--chart-wrapper svg {
-    background-color: transparent !important;
   }
 }
 

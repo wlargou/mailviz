@@ -14,7 +14,7 @@ export function CategoryTag({ category }: CategoryTagProps) {
       className="category-tag"
       style={{
         backgroundColor: category.color,
-        color: '#fff',
+        color: 'var(--cds-text-on-color)',
       }}
     >
       {category.label}

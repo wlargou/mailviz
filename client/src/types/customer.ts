@@ -76,4 +76,5 @@ export interface UpdateContactInput {
   email?: string;
   phone?: string;
   role?: string;
+  isVip?: boolean;
 }

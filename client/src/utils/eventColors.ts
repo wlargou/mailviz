@@ -17,6 +17,8 @@ import {
   cyan40, cyan50, cyan70, cyan80, cyan10,
   magenta40, magenta50, magenta70, magenta80, magenta10,
   gray50, gray60, gray70, gray80, gray10,
+  yellow10, yellow30, yellow40, yellow70, yellow80,
+  orange10, orange40, orange50, orange80, orange90,
 } from '@carbon/colors';
 
 export interface EventColor {
@@ -41,10 +43,10 @@ const EVENT_COLORS: Record<string, EventColor> = {
   '3': { dot: magenta40, bg: magenta80, accent: magenta50, text: magenta10, textSub: magenta40, hover: magenta70 },
   // 4 - Flamingo
   '4': { dot: red40, bg: red80, accent: red50, text: red10, textSub: red40, hover: red70 },
-  // 5 - Banana
-  '5': { dot: '#f1c21b', bg: '#3d3000', accent: '#f1c21b', text: '#fcf4d6', textSub: '#d2a106', hover: '#4e3e00' },
+  // 5 - Banana. Yellow's vivid step is 30 rather than 40, so dot/accent use it.
+  '5': { dot: yellow30, bg: yellow80, accent: yellow30, text: yellow10, textSub: yellow40, hover: yellow70 },
   // 6 - Tangerine
-  '6': { dot: '#ff832b', bg: '#3e1a00', accent: '#ff832b', text: '#fff2e8', textSub: '#eb6200', hover: '#5e2900' },
+  '6': { dot: orange40, bg: orange90, accent: orange40, text: orange10, textSub: orange50, hover: orange80 },
   // 7 - Peacock (default calendar)
   '7': { dot: teal40, bg: teal80, accent: teal50, text: teal10, textSub: teal40, hover: teal70 },
   // 8 - Graphite

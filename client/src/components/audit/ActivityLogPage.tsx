@@ -24,6 +24,7 @@ import { PageHeader } from '../shared/PageHeader';
 import { EmptyState } from '../shared/EmptyState';
 import { TableFilterFlyout } from '../shared/TableFilterFlyout';
 import { useUIStore } from '../../store/uiStore';
+import { toolbarSearchValue } from '../../utils/carbonSearch';
 
 interface AuditLogEntry {
   id: string;
@@ -207,21 +208,21 @@ export function ActivityLogPage() {
                 <TableToolbarContent>
                   <TableToolbarSearch
                     placeholder="Search activity..."
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setSearch(e.target.value); setPage(1); }}
+                    onChange={(e) => { setSearch(toolbarSearchValue(e)); setPage(1); }}
                     persistent
                   />
                   <TableFilterFlyout
-                    hasActiveFilters={!!entityTypeFilter}
+                    activeFilterCount={entityTypeFilter ? 1 : 0}
                     onReset={() => { setEntityTypeFilter(''); setPage(1); }}
-                    onApply={() => setPage(1)}
                   >
                     <Dropdown
                       id="entity-type-filter"
                       titleText="Entity type"
+                      label="All types"
                       items={entityTypeItems}
-                      itemToString={(item: { text: string }) => item?.text || ''}
+                      itemToString={(item) => item?.text || ''}
                       selectedItem={entityTypeItems.find((i) => i.id === entityTypeFilter) || entityTypeItems[0]}
-                      onChange={({ selectedItem }: { selectedItem: { id: string } }) => setEntityTypeFilter(selectedItem?.id || '')}
+                      onChange={({ selectedItem }) => setEntityTypeFilter(selectedItem?.id || '')}
                     />
                   </TableFilterFlyout>
                 </TableToolbarContent>

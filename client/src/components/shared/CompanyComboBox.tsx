@@ -89,9 +89,9 @@ export function CompanyComboBox({
       titleText={titleText}
       placeholder={placeholder}
       items={items}
-      itemToString={(item: CompanyItem | null) => item?.text || ''}
+      itemToString={(item) => item?.text || ''}
       selectedItem={selectedItem}
-      onChange={({ selectedItem: item }: { selectedItem: CompanyItem | null }) => {
+      onChange={({ selectedItem: item }) => {
         setSelectedItem(item || null);
         onChange(item?.id || null);
       }}

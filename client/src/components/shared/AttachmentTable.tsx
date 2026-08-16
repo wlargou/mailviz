@@ -21,6 +21,7 @@ import { EmptyState } from './EmptyState';
 import { emailsApi } from '../../api/emails';
 import { getFileTypeInfo, formatFileSize } from '../../utils/fileTypes';
 import type { AttachmentWithEmail } from '../../types/email';
+import { toolbarSearchValue } from '../../utils/carbonSearch';
 
 interface AttachmentTableProps {
   attachments: AttachmentWithEmail[];
@@ -135,8 +136,8 @@ export function AttachmentTable({ attachments, emptyDescription = 'No attachment
               <TableToolbarContent>
                 <TableToolbarSearch
                   placeholder="Search attachments..."
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                    setSearchTerm(e.target.value);
+                  onChange={(e) => {
+                    setSearchTerm(toolbarSearchValue(e));
                     setPage(1);
                   }}
                   persistent

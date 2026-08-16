@@ -43,6 +43,7 @@ import type { Contact } from '../../types/customer';
 import type { CalendarEvent } from '../../types/calendar';
 import type { EmailThread, AttachmentWithEmail } from '../../types/email';
 import { ThreadItemList } from '../shared/ThreadItemList';
+import { toolbarSearchValue } from '../../utils/carbonSearch';
 
 const eventHeaders = [
   { key: 'title', header: 'Title' },
@@ -272,7 +273,7 @@ export function ContactDetailPage() {
                           <TableContainer>
                             <TableToolbar>
                               <TableToolbarContent>
-                                <TableToolbarSearch placeholder="Search events..." onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setEventSearch(e.target.value); setEventPage(1); }} persistent />
+                                <TableToolbarSearch placeholder="Search events..." onChange={(e) => { setEventSearch(toolbarSearchValue(e)); setEventPage(1); }} persistent />
                               </TableToolbarContent>
                             </TableToolbar>
                             <Table {...getTableProps()} size="lg">
@@ -318,10 +319,11 @@ export function ContactDetailPage() {
                 ) : (
                   <>
                     <div style={{ marginBottom: '0.5rem' }}>
-                      <TableToolbar><TableToolbarContent><TableToolbarSearch placeholder="Search emails..." onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                        setEmailSearch(e.target.value);
+                      <TableToolbar><TableToolbarContent><TableToolbarSearch placeholder="Search emails..." onChange={(e) => {
+                        const value = toolbarSearchValue(e);
+                        setEmailSearch(value);
                         setEmailPage(1);
-                        if (contact?.email) fetchEmails(contact.email, 1, emailPageSize, e.target.value || undefined);
+                        if (contact?.email) fetchEmails(contact.email, 1, emailPageSize, value || undefined);
                       }} persistent /></TableToolbarContent></TableToolbar>
                     </div>
                     <ThreadItemList

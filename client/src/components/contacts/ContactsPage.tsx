@@ -24,6 +24,7 @@ import { TableFilterFlyout } from '../shared/TableFilterFlyout';
 import { CompanyComboBox } from '../shared/CompanyComboBox';
 import type { Contact } from '../../types/customer';
 import type { PaginationMeta } from '../../types/api';
+import { toolbarSearchValue } from '../../utils/carbonSearch';
 
 const headers = [
   { key: 'name', header: 'Name' },
@@ -108,9 +109,8 @@ export function ContactsPage() {
                         ref={searchRef}
                         placeholder="Search contacts..."
                         value={search}
-                        onChange={(e: any) => {
-                          const val = typeof e === 'string' ? e : (e?.target?.value ?? '');
-                          setSearch(val);
+                        onChange={(e) => {
+                          setSearch(toolbarSearchValue(e));
                           setPage(1);
                         }}
                         persistent

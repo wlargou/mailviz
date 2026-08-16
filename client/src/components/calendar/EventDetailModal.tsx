@@ -492,7 +492,7 @@ export function EventDetailModal({ event, open, onClose, onEdit, onDelete, onRes
                 legendText=""
                 name="delete-mode"
                 valueSelected={deleteMode}
-                onChange={(value: string) => setDeleteMode(value as 'single' | 'all')}
+                onChange={(selection) => setDeleteMode(selection === 'all' ? 'all' : 'single')}
                 orientation="vertical"
               >
                 <RadioButton labelText="This event only" value="single" id="delete-single" />

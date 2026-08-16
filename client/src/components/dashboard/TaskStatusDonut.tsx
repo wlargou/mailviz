@@ -1,8 +1,11 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { SkeletonText } from '@carbon/react';
 import { DonutChart } from '@carbon/charts-react';
-import { blue50, yellow30, green40 } from '@carbon/colors';
+import { gray50 } from '@carbon/colors';
 import type { DashboardStats } from '../../types/dashboard';
+import type { TaskStatusConfig } from '../../types/task';
+import { taskStatusesApi } from '../../api/taskStatuses';
+import { useUIStore } from '../../store/uiStore';
 
 import '@carbon/charts-react/styles.css';
 
@@ -44,7 +47,28 @@ function useCenterDonut(containerRef: React.RefObject<HTMLDivElement | null>) {
 
 export function TaskStatusDonut({ data, loading }: TaskStatusDonutProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const theme = useUIStore((s) => s.theme);
+  // Task statuses are user-defined (task_statuses table), so the slices, their
+  // labels and their colors all have to come from the server rather than a
+  // hardcoded TODO/IN_PROGRESS/DONE triple.
+  const [statuses, setStatuses] = useState<TaskStatusConfig[]>([]);
+
   useCenterDonut(containerRef);
+
+  useEffect(() => {
+    let cancelled = false;
+    taskStatusesApi
+      .getAll()
+      .then(({ data: res }) => {
+        if (!cancelled) setStatuses(res.data);
+      })
+      .catch(() => {
+        /* fall back to raw status keys below */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (loading || !data) {
     return (
@@ -57,17 +81,34 @@ export function TaskStatusDonut({ data, loading }: TaskStatusDonutProps) {
     );
   }
 
-  const total = (data.TODO || 0) + (data.IN_PROGRESS || 0) + (data.DONE || 0);
+  const total = Object.values(data).reduce((sum, n) => sum + n, 0);
 
-  const chartData = [
-    { group: 'To Do', value: data.TODO || 0 },
-    { group: 'In Progress', value: data.IN_PROGRESS || 0 },
-    { group: 'Done', value: data.DONE || 0 },
+  const configByName = new Map(statuses.map((s) => [s.name, s]));
+
+  // Order by the user's configured status order, then any status that has
+  // counts but no matching config (e.g. deleted mid-session).
+  const names = [
+    ...statuses.map((s) => s.name).filter((n) => n in data),
+    ...Object.keys(data).filter((n) => !configByName.has(n)),
   ];
+
+  const labelFor = (name: string) => configByName.get(name)?.label ?? name;
+
+  const chartData = names.map((name) => ({
+    group: labelFor(name),
+    value: data[name] ?? 0,
+  }));
+
+  const colorScale: Record<string, string> = {};
+  for (const name of names) {
+    colorScale[labelFor(name)] = configByName.get(name)?.color ?? gray50;
+  }
 
   const options = {
     title: 'Tasks by Status',
-    theme: 'g100' as const,
+    // Follows the app theme. Hardcoding g100 kept the chart dark in light mode
+    // and forced the transparent-background overrides in _dashboard.scss.
+    theme,
     height: '100%',
     resizable: true,
     donut: {
@@ -77,11 +118,7 @@ export function TaskStatusDonut({ data, loading }: TaskStatusDonutProps) {
       },
     },
     color: {
-      scale: {
-        'To Do': blue50,
-        'In Progress': yellow30,
-        Done: green40,
-      },
+      scale: colorScale,
     },
     legend: {
       alignment: 'center' as const,

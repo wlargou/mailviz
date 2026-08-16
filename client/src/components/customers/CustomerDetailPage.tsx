@@ -55,6 +55,7 @@ import type { Task } from '../../types/task';
 import type { CalendarEvent } from '../../types/calendar';
 import type { EmailThread, AttachmentWithEmail } from '../../types/email';
 import { ThreadItemList } from '../shared/ThreadItemList';
+import { toolbarSearchValue } from '../../utils/carbonSearch';
 
 const contactHeaders = [
   { key: 'name', header: 'Name' },
@@ -320,7 +321,7 @@ export function CustomerDetailPage() {
                     <DataTable rows={rows} headers={contactHeaders} isSortable>
                       {({ rows: tableRows, headers: tableHeaders, getTableProps, getHeaderProps, getRowProps }) => (
                         <TableContainer>
-                          <TableToolbar><TableToolbarContent><TableToolbarSearch placeholder="Search contacts..." onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setContactSearch(e.target.value); setContactPage(1); }} persistent /></TableToolbarContent></TableToolbar>
+                          <TableToolbar><TableToolbarContent><TableToolbarSearch placeholder="Search contacts..." onChange={(e) => { setContactSearch(toolbarSearchValue(e)); setContactPage(1); }} persistent /></TableToolbarContent></TableToolbar>
                           <Table {...getTableProps()} size="lg">
                             <TableHead><TableRow>{tableHeaders.map((h) => <TableHeader {...getHeaderProps({ header: h })} key={h.key} isSortable={h.key !== 'actions'}>{h.header}</TableHeader>)}</TableRow></TableHead>
                             <TableBody>
@@ -362,7 +363,7 @@ export function CustomerDetailPage() {
                     <DataTable rows={rows} headers={taskHeaders} isSortable>
                       {({ rows: tableRows, headers: tableHeaders, getTableProps, getHeaderProps, getRowProps }) => (
                         <TableContainer>
-                          <TableToolbar><TableToolbarContent><TableToolbarSearch placeholder="Search tasks..." onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setTaskSearch(e.target.value); setTaskPage(1); }} persistent /></TableToolbarContent></TableToolbar>
+                          <TableToolbar><TableToolbarContent><TableToolbarSearch placeholder="Search tasks..." onChange={(e) => { setTaskSearch(toolbarSearchValue(e)); setTaskPage(1); }} persistent /></TableToolbarContent></TableToolbar>
                           <Table {...getTableProps()} size="lg">
                             <TableHead><TableRow>{tableHeaders.map((h) => <TableHeader {...getHeaderProps({ header: h })} key={h.key}>{h.header}</TableHeader>)}</TableRow></TableHead>
                             <TableBody>
@@ -398,7 +399,7 @@ export function CustomerDetailPage() {
                     <DataTable rows={rows} headers={eventHeaders} isSortable>
                       {({ rows: tableRows, headers: tableHeaders, getTableProps, getHeaderProps, getRowProps }) => (
                         <TableContainer>
-                          <TableToolbar><TableToolbarContent><TableToolbarSearch placeholder="Search events..." onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setEventSearch(e.target.value); setEventPage(1); }} persistent /></TableToolbarContent></TableToolbar>
+                          <TableToolbar><TableToolbarContent><TableToolbarSearch placeholder="Search events..." onChange={(e) => { setEventSearch(toolbarSearchValue(e)); setEventPage(1); }} persistent /></TableToolbarContent></TableToolbar>
                           <Table {...getTableProps()} size="lg">
                             <TableHead><TableRow>{tableHeaders.map((h) => <TableHeader {...getHeaderProps({ header: h })} key={h.key}>{h.header}</TableHeader>)}</TableRow></TableHead>
                             <TableBody>
@@ -427,10 +428,11 @@ export function CustomerDetailPage() {
                 ) : (
                   <>
                     <div style={{ marginBottom: '0.5rem' }}>
-                      <TableToolbar><TableToolbarContent><TableToolbarSearch placeholder="Search emails..." onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                        setEmailSearch(e.target.value);
+                      <TableToolbar><TableToolbarContent><TableToolbarSearch placeholder="Search emails..." onChange={(e) => {
+                        const value = toolbarSearchValue(e);
+                        setEmailSearch(value);
                         setEmailPage(1);
-                        if (id) fetchCompanyEmails(id, 1, emailPageSize, e.target.value || undefined);
+                        if (id) fetchCompanyEmails(id, 1, emailPageSize, value || undefined);
                       }} persistent /></TableToolbarContent></TableToolbar>
                     </div>
                     <ThreadItemList
@@ -472,6 +474,7 @@ export function CustomerDetailPage() {
       <ConfirmDeleteModal
         open={!!deleteContact}
         title={deleteContact ? `${deleteContact.firstName} ${deleteContact.lastName}` : ''}
+        entityLabel="contact"
         onClose={() => setDeleteContact(null)}
         onConfirm={handleDeleteContact}
       />

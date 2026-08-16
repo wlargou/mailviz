@@ -32,6 +32,7 @@ import type { Deal, DealPartner, DealStatus } from '../../types/deal';
 import { DEAL_STATUS_LABELS, DEAL_STATUS_TAG_TYPE } from '../../types/deal';
 import type { PaginationMeta } from '../../types/api';
 import { format, isPast } from 'date-fns';
+import { toolbarSearchValue } from '../../utils/carbonSearch';
 
 const headers = [
   { key: 'title', header: 'Title' },
@@ -169,9 +170,8 @@ export function DealsPage() {
                         ref={searchRef}
                         placeholder="Search deals..."
                         defaultValue={search}
-                        onChange={(e: any) => {
-                          const val = typeof e === 'string' ? e : (e?.target?.value ?? '');
-                          setSearch(val);
+                        onChange={(e) => {
+                          setSearch(toolbarSearchValue(e));
                           setPage(1);
                         }}
                         persistent
@@ -364,6 +364,7 @@ export function DealsPage() {
       <ConfirmDeleteModal
         open={!!deleteDeal}
         title={deleteDeal?.title || ''}
+        entityLabel="deal"
         onClose={() => setDeleteDeal(null)}
         onConfirm={handleDelete}
       />

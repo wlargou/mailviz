@@ -30,6 +30,7 @@ import { companyCategoriesApi } from '../../api/companyCategories';
 import { useUIStore } from '../../store/uiStore';
 import type { Customer, CompanyCategory } from '../../types/customer';
 import type { PaginationMeta } from '../../types/api';
+import { toolbarSearchValue } from '../../utils/carbonSearch';
 
 const headers = [
   { key: 'name', header: 'Name' },
@@ -137,9 +138,8 @@ export function CustomersPage() {
                         ref={searchRef}
                         placeholder="Search companies..."
                         defaultValue={search}
-                        onChange={(e: any) => {
-                          const val = typeof e === 'string' ? e : (e?.target?.value ?? '');
-                          setSearch(val);
+                        onChange={(e) => {
+                          setSearch(toolbarSearchValue(e));
                           setPage(1);
                         }}
                         persistent
@@ -277,6 +277,7 @@ export function CustomersPage() {
       <ConfirmDeleteModal
         open={!!deleteCustomer}
         title={deleteCustomer?.name || ''}
+        entityLabel="company"
         onClose={() => setDeleteCustomer(null)}
         onConfirm={handleDelete}
       />

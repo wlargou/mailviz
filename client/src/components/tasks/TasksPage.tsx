@@ -123,6 +123,7 @@ export function TasksPage() {
       <ConfirmDeleteModal
         open={!!deleteTask}
         title={deleteTask?.title || ''}
+        entityLabel="task"
         onClose={() => setDeleteTask(null)}
         onConfirm={handleDelete}
       />

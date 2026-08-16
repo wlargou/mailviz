@@ -416,13 +416,13 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
             id="event-start-time"
             labelText="Start time"
             value={startTime12}
-            onChange={(e: any) => handleStartTimeChange(e.target.value)}
+            onChange={(e) => handleStartTimeChange(e.target.value)}
           >
             <TimePickerSelect
               id="event-start-ampm"
-              labelText="AM/PM"
+              aria-label="AM/PM"
               value={startAmPm}
-              onChange={(e: any) => handleStartTimeChange(startTime12, e.target.value)}
+              onChange={(e) => handleStartTimeChange(startTime12, e.target.value)}
             >
               <SelectItem value="AM" text="AM" />
               <SelectItem value="PM" text="PM" />
@@ -437,6 +437,7 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
           <Dropdown
             id="event-duration"
             titleText="Duration"
+            label="Duration"
             items={DURATION_OPTIONS}
             itemToString={(item) => item?.label || ''}
             selectedItem={DURATION_OPTIONS.find((d) => d.id === durationId) || DURATION_OPTIONS[7]}
@@ -449,13 +450,13 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
               id="event-end-time"
               labelText="End time"
               value={endTime12}
-              onChange={(e: any) => setEndTime12(e.target.value)}
+              onChange={(e) => setEndTime12(e.target.value)}
             >
               <TimePickerSelect
                 id="event-end-ampm"
-                labelText="AM/PM"
+                aria-label="AM/PM"
                 value={endAmPm}
-                onChange={(e: any) => setEndAmPm(e.target.value)}
+                onChange={(e) => setEndAmPm(e.target.value)}
               >
                 <SelectItem value="AM" text="AM" />
                 <SelectItem value="PM" text="PM" />

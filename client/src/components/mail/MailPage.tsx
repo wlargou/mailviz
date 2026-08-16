@@ -431,9 +431,12 @@ export function MailPage() {
               : filters.folder === 'scheduled' ? 6
               : 0
             }
-            onChange={(e: { index: number }) => {
+            onChange={({ index }) => {
+              // Carbon only fires onChange once it has resolved an index, but
+              // `SwitchEventHandlersParams['index']` is optional.
+              if (index === undefined) return;
               const folders = [null, 'inbox', 'sent', 'starred', 'archived', 'trash', 'scheduled'];
-              handleFolderChange(folders[e.index]);
+              handleFolderChange(folders[index]);
             }}
           >
             <Switch name="all" text="All" />

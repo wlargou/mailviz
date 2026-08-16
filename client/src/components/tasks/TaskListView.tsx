@@ -29,6 +29,7 @@ import { taskStatusesApi } from '../../api/taskStatuses';
 import { tasksApi } from '../../api/tasks';
 import { useUIStore } from '../../store/uiStore';
 import type { Task, Label, TaskStatusConfig } from '../../types/task';
+import { toolbarSearchValue, type TableToolbarSearchChangeEvent } from '../../utils/carbonSearch';
 
 const headers = [
   { key: 'title', header: 'Title' },
@@ -83,8 +84,8 @@ export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreat
 
   const activeFilterCount = (filters.status ? 1 : 0) + (filters.priority ? 1 : 0) + (filters.labelId ? 1 : 0);
 
-  const handleSearchChange = useCallback((e: any) => {
-    const val = typeof e === 'string' ? e : (e?.target?.value ?? '');
+  const handleSearchChange = useCallback((e: TableToolbarSearchChangeEvent) => {
+    const val = toolbarSearchValue(e);
     setLocalSearch(val);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {

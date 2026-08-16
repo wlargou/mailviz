@@ -291,7 +291,11 @@ export function GlobalSearch() {
           scopes={SCOPES}
           selectedScopes={selectedScopes}
           scopesTypeLabel="Scope"
-          scopeToString={(scope: Scope) => scope.text}
+          scopeToString={(scope) =>
+            typeof scope === 'object' && 'text' in scope && typeof scope.text === 'string'
+              ? scope.text
+              : String(scope)
+          }
           onFocus={() => { if (flatResults.length > 0) setOpen(true); }}
         />
       </div>

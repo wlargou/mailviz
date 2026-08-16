@@ -4,6 +4,7 @@ import { ScaleTypes } from '@carbon/charts';
 import { blue50, green40 } from '@carbon/colors';
 import { format } from 'date-fns';
 import type { DashboardStats } from '../../types/dashboard';
+import { useUIStore } from '../../store/uiStore';
 
 import '@carbon/charts-react/styles.css';
 
@@ -13,6 +14,9 @@ interface EmailVolumeChartProps {
 }
 
 export function EmailVolumeChart({ data, loading }: EmailVolumeChartProps) {
+  // Must precede the early return — hooks cannot be called conditionally.
+  const theme = useUIStore((s) => s.theme);
+
   if (loading || !data) {
     return (
       <div className="skeleton-block">
@@ -35,7 +39,9 @@ export function EmailVolumeChart({ data, loading }: EmailVolumeChartProps) {
       left: { mapsTo: 'value', title: 'Emails' },
       bottom: { mapsTo: 'date', scaleType: ScaleTypes.LABELS },
     },
-    theme: 'g100' as const,
+    // Follows the app theme. Hardcoding g100 kept the chart dark in light mode
+    // and forced the transparent-background overrides in _dashboard.scss.
+    theme,
     height: '100%',
     resizable: true,
     color: {
