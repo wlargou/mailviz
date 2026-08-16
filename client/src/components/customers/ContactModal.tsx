@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { TextInput, Toggle } from '@carbon/react';
-import { SidePanel } from '@carbon/ibm-products';
+import { TearsheetNarrow } from '@carbon/ibm-products';
 import { contactsApi } from '../../api/customers';
 import { useUIStore } from '../../store/uiStore';
 import type { Contact } from '../../types/customer';
@@ -79,12 +79,14 @@ export function ContactModal({ open, contact, customerId, onClose, onSaved }: Co
   };
 
   return (
-    <SidePanel
+    <TearsheetNarrow
       open={open}
-      onRequestClose={onClose}
+      onClose={onClose}
       title={isEdit ? 'Edit Contact' : 'Add Contact'}
-      subtitle={isEdit ? 'Update contact information' : 'Add a new contact to this company'}
-      size="md"
+      label="Contacts"
+      description={isEdit ? 'Update contact information' : 'Add a new contact to this company'}
+      hasCloseIcon
+      selectorPrimaryFocus="#contact-first-name"
       actions={[
         {
           label: isEdit ? 'Save' : 'Add',
@@ -153,6 +155,6 @@ export function ContactModal({ open, contact, customerId, onClose, onSaved }: Co
         onToggle={(checked: boolean) => setIsVip(checked)}
         className="create-side-panel__form-item"
       />
-    </SidePanel>
+    </TearsheetNarrow>
   );
 }

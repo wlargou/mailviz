@@ -11,7 +11,7 @@ import {
   TimePickerSelect,
   SelectItem,
 } from '@carbon/react';
-import { SidePanel } from '@carbon/ibm-products';
+import { Tearsheet } from '@carbon/ibm-products';
 import { Launch, VideoChat } from '@carbon/icons-react';
 import { calendarApi } from '../../api/calendar';
 import { contactsApi } from '../../api/contacts';
@@ -353,12 +353,14 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
   };
 
   return (
-    <SidePanel
+    <Tearsheet
       open={open}
-      onRequestClose={onClose}
+      onClose={onClose}
       title={event ? 'Edit Event' : 'New Event'}
-      subtitle={event ? 'Update event details' : 'Add a new event to your calendar'}
-      size="lg"
+      label="Calendar"
+      description={event ? 'Update event details' : 'Add a new event to your calendar'}
+      hasCloseIcon
+      selectorsFloatingMenus={['.cds--date-picker__calendar']}
       actions={[
         {
           label: event ? 'Save Changes' : 'Create Event',
@@ -643,6 +645,6 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
         rows={3}
         className="create-side-panel__form-item"
       />
-    </SidePanel>
+    </Tearsheet>
   );
 }

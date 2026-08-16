@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { TextInput, TextArea } from '@carbon/react';
-import { SidePanel } from '@carbon/ibm-products';
+import { TearsheetNarrow } from '@carbon/ibm-products';
 import { customersApi } from '../../api/customers';
 import { useUIStore } from '../../store/uiStore';
 
@@ -53,12 +53,14 @@ export function CustomerCreateModal({ open, onClose, onCreated }: CustomerCreate
   };
 
   return (
-    <SidePanel
+    <TearsheetNarrow
       open={open}
-      onRequestClose={() => { resetForm(); onClose(); }}
+      onClose={() => { resetForm(); onClose(); }}
       title="New Company"
-      subtitle="Add a new company to your CRM"
-      size="md"
+      label="Companies"
+      description="Add a new company to your CRM"
+      hasCloseIcon
+      selectorPrimaryFocus="#customer-name"
       actions={[
         {
           label: 'Create',
@@ -124,6 +126,6 @@ export function CustomerCreateModal({ open, onClose, onCreated }: CustomerCreate
         onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNotes(e.target.value)}
         className="create-side-panel__form-item"
       />
-    </SidePanel>
+    </TearsheetNarrow>
   );
 }

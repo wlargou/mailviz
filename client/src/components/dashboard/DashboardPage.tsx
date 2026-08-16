@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Grid, Column, Tile } from '@carbon/react';
+import { Grid, Column, Tile, MenuButton, MenuItem } from '@carbon/react';
 import { useNavigate } from 'react-router-dom';
-import { Add, Email as EmailIcon, TaskComplete, Calendar as CalendarIcon, Partnership } from '@carbon/icons-react';
+import { Email as EmailIcon, TaskComplete, Calendar as CalendarIcon, Partnership } from '@carbon/icons-react';
 import { SidePanel } from '@carbon/ibm-products';
 import { TaskSummaryTiles } from './TaskSummaryTiles';
 import { RecentEmails } from './RecentActivity';
@@ -120,28 +120,12 @@ export function DashboardPage() {
           <h1>Dashboard</h1>
           <p className="page-header__subtitle">Overview of your CRM activity</p>
         </div>
-        <div className="dashboard-create-menu">
-          <button className="dashboard-create-btn" onClick={() => {
-            const el = document.querySelector('.dashboard-create-dropdown') as HTMLElement;
-            if (el) el.style.display = el.style.display === 'block' ? 'none' : 'block';
-          }}>
-            <Add size={16} /> Create
-          </button>
-          <div className="dashboard-create-dropdown" style={{ display: 'none' }}>
-            <button onClick={() => { setShowCompose(true); (document.querySelector('.dashboard-create-dropdown') as HTMLElement).style.display = 'none'; }}>
-              <EmailIcon size={16} /> New Email
-            </button>
-            <button onClick={() => { setShowCreateTask(true); (document.querySelector('.dashboard-create-dropdown') as HTMLElement).style.display = 'none'; }}>
-              <TaskComplete size={16} /> New Task
-            </button>
-            <button onClick={() => { setShowCreateEvent(true); (document.querySelector('.dashboard-create-dropdown') as HTMLElement).style.display = 'none'; }}>
-              <CalendarIcon size={16} /> New Event
-            </button>
-            <button onClick={() => { setShowCreateDeal(true); (document.querySelector('.dashboard-create-dropdown') as HTMLElement).style.display = 'none'; }}>
-              <Partnership size={16} /> New Deal
-            </button>
-          </div>
-        </div>
+        <MenuButton label="Create" menuAlignment="bottom-end">
+          <MenuItem label="New Email" renderIcon={EmailIcon} onClick={() => setShowCompose(true)} />
+          <MenuItem label="New Task" renderIcon={TaskComplete} onClick={() => setShowCreateTask(true)} />
+          <MenuItem label="New Event" renderIcon={CalendarIcon} onClick={() => setShowCreateEvent(true)} />
+          <MenuItem label="New Deal" renderIcon={Partnership} onClick={() => setShowCreateDeal(true)} />
+        </MenuButton>
       </div>
 
       {/* Row 1: KPI metric tiles */}

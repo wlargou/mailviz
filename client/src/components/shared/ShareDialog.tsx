@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { TextInput, Button, InlineLoading } from '@carbon/react';
-import { SidePanel } from '@carbon/ibm-products';
-import { TrashCan, UserAvatar, Checkmark, Share } from '@carbon/icons-react';
+import { createPortal } from 'react-dom';
+import { TextInput, Button, InlineLoading, Modal } from '@carbon/react';
+import { TrashCan, UserAvatar, Checkmark } from '@carbon/icons-react';
 import { authApi } from '../../api/auth';
 
 interface ShareUser {
@@ -93,22 +93,17 @@ export function ShareDialog({
     onRefresh();
   };
 
-  return (
-    <SidePanel
+  return createPortal(
+    <Modal
       open={open}
       onRequestClose={onClose}
-      title={`Share: ${title}`}
-      size="md"
-      className="share-dialog-panel"
-      actions={selectedIds.size > 0 ? [
-        {
-          label: sharing ? 'Sharing...' : `Share with ${selectedIds.size} user${selectedIds.size !== 1 ? 's' : ''}`,
-          onClick: handleShare,
-          kind: 'primary' as const,
-          disabled: sharing,
-          icon: Share,
-        },
-      ] : []}
+      onRequestSubmit={handleShare}
+      modalHeading={`Share: ${title}`}
+      size="sm"
+      passiveModal={selectedIds.size === 0}
+      primaryButtonText={sharing ? 'Sharing...' : `Share with ${selectedIds.size} user${selectedIds.size !== 1 ? 's' : ''}`}
+      primaryButtonDisabled={sharing}
+      selectorPrimaryFocus="#share-search"
     >
       <div className="share-dialog">
         <TextInput
@@ -182,6 +177,7 @@ export function ShareDialog({
           </>
         )}
       </div>
-    </SidePanel>
+    </Modal>,
+    document.body,
   );
 }

@@ -5,8 +5,8 @@ import {
   TextArea,
   Dropdown,
   Tag,
+  Modal,
 } from '@carbon/react';
-import { SidePanel } from '@carbon/ibm-products';
 import { emailsApi } from '../../api/emails';
 import { useUIStore } from '../../store/uiStore';
 import type { EmailMessage } from '../../types/email';
@@ -52,26 +52,20 @@ export function ConvertToTaskModal({ email, open, onClose, onConverted }: Conver
   };
 
   return createPortal(
-    <SidePanel
+    <Modal
       open={open}
       onRequestClose={onClose}
-      title="Convert Email to Task"
-      subtitle="Create a task linked to this email"
-      size="md"
-      actions={[
-        {
-          label: 'Create Task',
-          onClick: handleSubmit,
-          kind: 'primary' as const,
-          disabled: !title.trim() || submitting,
-          loading: submitting,
-        },
-        {
-          label: 'Cancel',
-          onClick: onClose,
-          kind: 'secondary' as const,
-        },
-      ]}
+      onRequestSubmit={handleSubmit}
+      onSecondarySubmit={onClose}
+      modalHeading="Convert Email to Task"
+      modalLabel="Create a task linked to this email"
+      size="sm"
+      primaryButtonText="Create Task"
+      secondaryButtonText="Cancel"
+      primaryButtonDisabled={!title.trim() || submitting}
+      loadingStatus={submitting ? 'active' : 'inactive'}
+      loadingDescription="Creating task..."
+      selectorPrimaryFocus="#convert-task-title"
     >
       <TextInput
         id="convert-task-title"
@@ -115,7 +109,7 @@ export function ConvertToTaskModal({ email, open, onClose, onConverted }: Conver
         rows={3}
         className="create-side-panel__form-item"
       />
-    </SidePanel>,
+    </Modal>,
     document.body,
   );
 }

@@ -24,8 +24,6 @@ import {
   Pagination,
   Tag,
   SkeletonText,
-  TextInput,
-  Modal,
   InlineLoading,
 } from '@carbon/react';
 import { Edit, Calendar, Email, Enterprise, Attachment } from '@carbon/icons-react';
@@ -36,6 +34,7 @@ import { format } from 'date-fns';
 import { EmptyState } from '../shared/EmptyState';
 import { AttachmentTable } from '../shared/AttachmentTable';
 import { ThreadDetail } from '../mail/ThreadDetail';
+import { ContactModal } from '../customers/ContactModal';
 import { contactsApi } from '../../api/customers';
 import { emailsApi } from '../../api/emails';
 import { useUIStore } from '../../store/uiStore';
@@ -76,11 +75,6 @@ export function ContactDetailPage() {
 
   // Edit contact state
   const [editOpen, setEditOpen] = useState(false);
-  const [editFirstName, setEditFirstName] = useState('');
-  const [editLastName, setEditLastName] = useState('');
-  const [editEmail, setEditEmail] = useState('');
-  const [editPhone, setEditPhone] = useState('');
-  const [editRole, setEditRole] = useState('');
 
   const fetchEmails = useCallback(async (contactEmail: string, page: number, pageSize: number, search?: string) => {
     setEmailLoading(true);
@@ -141,30 +135,7 @@ export function ContactDetailPage() {
 
   const openEditContact = () => {
     if (!contact) return;
-    setEditFirstName(contact.firstName);
-    setEditLastName(contact.lastName);
-    setEditEmail(contact.email || '');
-    setEditPhone(contact.phone || '');
-    setEditRole(contact.role || '');
     setEditOpen(true);
-  };
-
-  const handleUpdateContact = async () => {
-    if (!contact || !editFirstName.trim() || !editLastName.trim()) return;
-    try {
-      await contactsApi.update(contact.id, {
-        firstName: editFirstName.trim(),
-        lastName: editLastName.trim(),
-        email: editEmail.trim() || undefined,
-        phone: editPhone.trim() || undefined,
-        role: editRole.trim() || undefined,
-      });
-      addNotification({ kind: 'success', title: 'Contact updated' });
-      setEditOpen(false);
-      fetchData();
-    } catch {
-      addNotification({ kind: 'error', title: 'Failed to update contact' });
-    }
   };
 
   if (loading) {
@@ -355,35 +326,13 @@ export function ContactDetailPage() {
         </Column>
       </Grid>
 
-      <Modal
+      <ContactModal
         open={editOpen}
-        onRequestClose={() => setEditOpen(false)}
-        onRequestSubmit={handleUpdateContact}
-        modalHeading="Edit Contact"
-        primaryButtonText="Save"
-        secondaryButtonText="Cancel"
-        primaryButtonDisabled={!editFirstName.trim() || !editLastName.trim()}
-      >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <div style={{ display: 'flex', gap: '1rem' }}>
-            <div style={{ flex: 1 }}>
-              <TextInput id="edit-contact-fn" labelText="First name" value={editFirstName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditFirstName(e.target.value)} required />
-            </div>
-            <div style={{ flex: 1 }}>
-              <TextInput id="edit-contact-ln" labelText="Last name" value={editLastName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditLastName(e.target.value)} required />
-            </div>
-          </div>
-          <TextInput id="edit-contact-email" labelText="Email" value={editEmail} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditEmail(e.target.value)} />
-          <div style={{ display: 'flex', gap: '1rem' }}>
-            <div style={{ flex: 1 }}>
-              <TextInput id="edit-contact-phone" labelText="Phone" value={editPhone} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditPhone(e.target.value)} />
-            </div>
-            <div style={{ flex: 1 }}>
-              <TextInput id="edit-contact-role" labelText="Role" value={editRole} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditRole(e.target.value)} />
-            </div>
-          </div>
-        </div>
-      </Modal>
+        contact={contact}
+        customerId={contact.customerId}
+        onClose={() => setEditOpen(false)}
+        onSaved={fetchData}
+      />
 
       <SidePanel
         open={!!selectedThread}

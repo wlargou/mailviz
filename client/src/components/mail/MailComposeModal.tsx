@@ -1,7 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import { TextInput, Button, InlineLoading, Tag, DatePicker, DatePickerInput, TimePicker } from '@carbon/react';
-import { SidePanel } from '@carbon/ibm-products';
+import { Tearsheet } from '@carbon/ibm-products';
 import { SendAlt, Attachment, Close, Time } from '@carbon/icons-react';
 import DOMPurify from 'dompurify';
 import { format } from 'date-fns';
@@ -351,14 +350,41 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail }: 
   };
 
   const panelTitle = mode === 'new' ? 'New Email' : mode === 'reply' ? 'Reply' : mode === 'replyAll' ? 'Reply All' : 'Forward';
+  const panelDescription =
+    mode === 'new'
+      ? 'Compose a new message'
+      : mode === 'forward'
+        ? 'Forward this message to new recipients'
+        : 'Reply to this conversation';
 
-  return createPortal(
-    <SidePanel
+  return (
+    <Tearsheet
       open={open}
-      onRequestClose={onClose}
+      onClose={onClose}
       title={panelTitle}
-      size="lg"
-      className="compose-side-panel"
+      label="Mail"
+      description={panelDescription}
+      hasCloseIcon
+      selectorsFloatingMenus={['.cds--date-picker__calendar']}
+      actions={[
+        {
+          key: 'send',
+          label: sending ? 'Sending...' : isUploading ? 'Reading files...' : 'Send',
+          onClick: handleSend,
+          kind: 'primary' as const,
+          disabled: sending || isUploading,
+          loading: sending,
+          renderIcon: SendAlt,
+        },
+        {
+          key: 'schedule',
+          label: 'Schedule',
+          onClick: () => setShowSchedulePicker(!showSchedulePicker),
+          kind: 'secondary' as const,
+          disabled: sending,
+          renderIcon: Time,
+        },
+      ]}
     >
       <div
         className={`compose-form${isDragging ? ' compose-form--dragging' : ''}`}
@@ -460,26 +486,8 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail }: 
           </div>
         )}
 
-        <div className="compose-form__actions">
-          <Button
-            kind="primary"
-            size="md"
-            renderIcon={SendAlt}
-            onClick={handleSend}
-            disabled={sending || isUploading}
-          >
-            {sending ? 'Sending...' : isUploading ? 'Reading files...' : 'Send'}
-          </Button>
-          <Button
-            kind="secondary"
-            size="md"
-            renderIcon={Time}
-            onClick={() => setShowSchedulePicker(!showSchedulePicker)}
-            disabled={sending}
-          >
-            Schedule
-          </Button>
-          {scheduledAt && (
+        {scheduledAt && (
+          <div className="compose-form__actions">
             <div className="compose-schedule-info">
               <Time size={14} />
               <span>{format(scheduledAt, 'MMM d, h:mm a')}</span>
@@ -487,9 +495,8 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail }: 
                 <Close size={14} />
               </button>
             </div>
-          )}
-          {sending && <InlineLoading description="" />}
-        </div>
+          </div>
+        )}
 
         {/* Schedule picker */}
         {showSchedulePicker && (
@@ -512,7 +519,6 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail }: 
           />
         )}
       </div>
-    </SidePanel>,
-    document.body
+    </Tearsheet>
   );
 }
