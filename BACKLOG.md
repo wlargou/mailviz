@@ -188,8 +188,13 @@ are still worth knowing.
 
 ## Data-quality bug found while building contact dedupe
 
-- [ ] **`extractDomain` / `domainToCompanyName` do not understand multi-part
-  public suffixes.** An address at `someone@acme.co.ma` yields the domain
+- [x] **`extractDomain` / `domainToCompanyName` do not understand multi-part
+  public suffixes.** Fixed in `domainResolver`, and `contactMatching`'s stricter
+  local copy now delegates to it so the two cannot drift. Repaired on the dev
+  database with `scripts/repairJunkDomains.ts` (dry-run by default): 767 emails
+  and 469 contacts moved onto 135 real companies, 31 junk customers removed,
+  totals unchanged and zero orphans. **Run the script on any other environment
+  that carries this data.** Original text: An address at `someone@acme.co.ma` yields the domain
   `co.ma` and a company named **"CO"**, not `acme.co.ma` / "Acme". Every
   organisation on a country-code second-level domain therefore collapses into
   one junk customer per suffix.
@@ -209,7 +214,12 @@ are still worth knowing.
   into whatever correct customer already exists rather than creating duplicates,
   which is exactly what `contactMergeService` now does for contacts.
 
-- [ ] **Test fixtures have leaked into the development database.** Customers
+- [x] **Test fixtures have leaked into the development database.** Cleaned:
+  532 of 533 users were test data (one real account, `l.walid@powerm.ma`).
+  Deleted with verification that the real account's row counts did not move; all
+  86 share rows were checked first and none mixed a test user with the real one.
+  The per-run test database plus the new guard in `test/setup.ts` prevent a
+  recurrence. Original text: Customers
   named "Alice Corp", "Bob Corp", "Alpha Corp" and "Example" exist on
   `acme.test`, `shared-domain.test` and `msw9…-N.example.com` domains. Harmless,
   but they pollute the customer list and any count taken from it. Worth a
