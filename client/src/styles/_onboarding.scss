@@ -144,6 +144,25 @@
   }
 }
 
+// The Settings tile's configuration summary. Carbon's list marker renders as a
+// dash beside each Tag, which reads as debris next to a pill.
+.onboarding-status {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-03;
+  list-style: none;
+
+  .cds--list__item {
+    @include type.type-style('body-compact-01');
+    color: var(--cds-text-secondary);
+    display: flex;
+    align-items: center;
+    gap: $spacing-03;
+
+    &::before { content: none; }
+  }
+}
+
 .onboarding-facts {
   display: flex;
   flex-direction: column;

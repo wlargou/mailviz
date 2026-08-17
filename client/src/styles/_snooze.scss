@@ -38,11 +38,32 @@
 }
 
 .snooze-form__custom {
-  display: flex;
+  // Date column takes the width Carbon's date input insists on, Time takes what
+  // is left. Sizing the row around the input rather than trying to shrink it:
+  // `width` and `min-width` on `.cds--date-picker__input` have no effect even
+  // with `!important`, so the field cannot be talked down from its intrinsic
+  // 288px. Left to wrap instead, Time dropped to a second row and fell below the
+  // small modal's fold — reachable only by scrolling a dialog that looks like it
+  // holds nothing more.
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
   gap: $spacing-05;
   align-items: flex-start;
-  flex-wrap: wrap;
   padding-inline-start: $spacing-06;
+  padding-inline-end: $spacing-03;
+
+  .cds--form-item {
+    min-width: 0;
+  }
+
+  // Time has no such floor, so it absorbs whatever the date column leaves.
+  .cds--time-picker,
+  .cds--time-picker__input,
+  .cds--time-picker__input-field {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+  }
 }
 
 .snooze-form__error {

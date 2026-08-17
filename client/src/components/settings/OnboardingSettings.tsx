@@ -113,7 +113,7 @@ export function OnboardingSettings() {
         )}
 
         {status && (
-          <UnorderedList className="onboarding-step__list">
+          <UnorderedList className="onboarding-status">
             <ListItem>
               Google account{' '}
               <Tag type={status.steps.googleConnected ? 'green' : 'red'} size="sm">
