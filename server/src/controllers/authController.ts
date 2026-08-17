@@ -105,8 +105,24 @@ export const authController = {
           },
         });
 
-        // Store Google auth tokens linked to user
-        await googleAuthService.upsertGoogleAuth(user.id, result.tokens);
+        // Store Google auth tokens linked to user.
+        //
+        // Google omits the refresh token on a re-authorisation. When one is
+        // already stored that is fine — it stays valid — but for a first
+        // connection there is nothing to fall back on, and an access token alone
+        // dies in an hour with no way to renew. Rather than fail the login, send
+        // the user back through the flow with consent forced, which is the only
+        // request Google answers with a refresh token.
+        try {
+          await googleAuthService.upsertGoogleAuth(user.id, result.tokens);
+        } catch (err: any) {
+          if (err?.code === 'GOOGLE_REFRESH_TOKEN_MISSING') {
+            console.warn('[Auth] No refresh token returned; retrying with consent forced');
+            res.redirect(await googleAuthService.getAuthUrl('login', user.id, { forceConsent: true }));
+            return;
+          }
+          throw err;
+        }
 
         // Start syncing immediately rather than waiting for the next scheduler
         // tick. A new account otherwise sits empty for up to a full interval

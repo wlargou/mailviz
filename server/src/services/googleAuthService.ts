@@ -25,7 +25,13 @@ interface ExchangeResult {
   avatarUrl: string | null;
   tokens: {
     accessToken: string;
-    refreshToken: string;
+    /**
+     * Absent whenever Google has already granted this app to this account and
+     * the request did not force consent — which is most logins. The old type
+     * claimed it was always present and the exchange asserted it with `!`, so
+     * the value reached `encrypt()` as undefined and threw.
+     */
+    refreshToken?: string;
     expiryDate: number;
   };
 }
@@ -36,14 +42,28 @@ export const googleAuthService = {
    * intent='login': used for the login flow (state=login)
    * intent='connect': used for connecting Gmail/Calendar (state is a signed JWT containing userId)
    */
-  async getAuthUrl(intent: 'login' | 'connect' = 'login', userId?: string) {
+  async getAuthUrl(
+    intent: 'login' | 'connect' = 'login',
+    userId?: string,
+    options: { forceConsent?: boolean } = {}
+  ) {
     const oauth2Client = createOAuth2Client();
 
-    // Force consent if connecting OR if no Google auth exists (e.g., after disconnect)
-    // This ensures all scopes (including gmail.modify) are re-granted
-    let needsConsent = intent === 'connect';
-    if (!needsConsent) {
-      const existingAuth = await prisma.googleAuth.findFirst();
+    /**
+     * Consent is forced when connecting, when the caller asks (the callback's
+     * recovery path), or when this account has no Google connection yet — only
+     * a consent prompt yields a refresh token.
+     *
+     * The account check used to be `findFirst()` with no `where`, asking whether
+     * *anybody* in the database had connected Google. Once one account had, every
+     * later login — including a second user's very first — was sent with
+     * `prompt: select_account`, so Google withheld the refresh token and the
+     * callback threw. On a login there is no user to scope by yet, which is
+     * exactly why the recovery path in the callback exists.
+     */
+    let needsConsent = intent === 'connect' || options.forceConsent === true;
+    if (!needsConsent && userId) {
+      const existingAuth = await prisma.googleAuth.findUnique({ where: { userId } });
       if (!existingAuth) needsConsent = true;
     }
 
@@ -103,7 +123,7 @@ export const googleAuthService = {
       avatarUrl,
       tokens: {
         accessToken: tokens.access_token!,
-        refreshToken: tokens.refresh_token!,
+        refreshToken: tokens.refresh_token ?? undefined,
         expiryDate: tokens.expiry_date!,
       },
     };
@@ -118,10 +138,14 @@ export const googleAuthService = {
 
     const authData = {
       accessToken: encrypt(tokens.accessToken),
-      refreshToken: encrypt(tokens.refreshToken),
       tokenExpiry: new Date(tokens.expiryDate),
       scope: SCOPES.join(' '),
       userId,
+      // Only when Google actually sent one. On a re-authorisation it does not,
+      // and the stored token stays valid — overwriting it with undefined is what
+      // produced the 500, and blanking it would have been worse: the account
+      // could never refresh again.
+      ...(tokens.refreshToken ? { refreshToken: encrypt(tokens.refreshToken) } : {}),
     };
 
     if (existing) {
@@ -130,8 +154,17 @@ export const googleAuthService = {
         data: { ...authData, email: user?.email || existing.email },
       });
     } else {
+      if (!tokens.refreshToken) {
+        // Nothing stored and nothing granted: an access token alone expires in an
+        // hour with no way to renew it, so this connection would silently die.
+        // The caller re-runs the flow forcing consent.
+        throw Object.assign(new Error('Google did not return a refresh token'), {
+          status: 400,
+          code: 'GOOGLE_REFRESH_TOKEN_MISSING',
+        });
+      }
       await prisma.googleAuth.create({
-        data: { ...authData, email: user?.email || null },
+        data: { ...authData, refreshToken: encrypt(tokens.refreshToken), email: user?.email || null },
       });
     }
 
