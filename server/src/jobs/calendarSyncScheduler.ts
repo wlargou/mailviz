@@ -1,7 +1,7 @@
 import * as cron from 'node-cron';
 import { calendarService } from '../services/calendarService.js';
 import { env } from '../config/env.js';
-import { wsEmit } from '../websocket.js';
+import { wsEmitToUser } from '../websocket.js';
 import { secondsToCron } from '../utils/shared.js';
 import { prisma } from '../lib/prisma.js';
 
@@ -15,11 +15,12 @@ async function runSync() {
   }
 
   isSyncing = true;
-  wsEmit('calendar:sync:status', { syncing: true });
   try {
     // S1: Sync for ALL users with GoogleAuth records
     const authRecords = await prisma.googleAuth.findMany({ select: { userId: true } });
     for (const { userId } of authRecords) {
+      // Per-account, like the mail scheduler — see the note there.
+      wsEmitToUser(userId, 'calendar:sync:status', { syncing: true });
       try {
         const result = await calendarService.syncFromGoogle(false, userId);
         const hasChanges = result.synced > 0 || result.customersCreated > 0 || result.contactsCreated > 0;
@@ -27,7 +28,7 @@ async function runSync() {
           console.log(
             `[CalendarSync] Synced ${result.synced} events, ${result.customersCreated} companies, ${result.contactsCreated} contacts`
           );
-          wsEmit('calendar:synced', {
+          wsEmitToUser(userId, 'calendar:synced', {
             synced: result.synced,
             customersCreated: result.customersCreated,
             contactsCreated: result.contactsCreated,
@@ -39,13 +40,16 @@ async function runSync() {
         } else {
           console.error('[CalendarSync] Sync failed:', err?.message || err);
         }
+      } finally {
+        // In a finally so a thrown sync still clears the indicator — otherwise a
+        // single failure leaves the spinner running until the page is reloaded.
+        wsEmitToUser(userId, 'calendar:sync:status', { syncing: false });
       }
     }
   } catch (err: any) {
     console.error('[CalendarSync] Scheduler error:', err?.message || err);
   } finally {
     isSyncing = false;
-    wsEmit('calendar:sync:status', { syncing: false });
   }
 }
 

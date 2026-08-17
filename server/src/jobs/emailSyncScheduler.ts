@@ -2,7 +2,7 @@ import * as cron from 'node-cron';
 import { emailService } from '../services/emailService.js';
 import { draftService } from '../services/draftService.js';
 import { env } from '../config/env.js';
-import { wsEmit } from '../websocket.js';
+import { wsEmitToUser } from '../websocket.js';
 import { secondsToCron } from '../utils/shared.js';
 import { prisma } from '../lib/prisma.js';
 
@@ -16,52 +16,69 @@ async function runSync() {
   }
 
   isSyncing = true;
-  wsEmit('sync:status', { syncing: true });
   try {
     // S1: Sync for ALL users with GoogleAuth records
     const authRecords = await prisma.googleAuth.findMany({ select: { userId: true } });
     for (const { userId } of authRecords) {
-      try {
-        const result = await emailService.syncFromGmail(userId);
-        const hasChanges = result.synced > 0 || result.customersCreated > 0 || result.contactsCreated > 0 || (result.labelsChanged ?? 0) > 0;
-        if (hasChanges) {
-          console.log(
-            `[EmailSync] Synced ${result.synced} emails, ${result.labelsChanged ?? 0} label changes, ${result.customersCreated} companies, ${result.contactsCreated} contacts`
-          );
-          wsEmit('emails:synced', {
-            synced: result.synced,
-            labelsChanged: result.labelsChanged ?? 0,
-            customersCreated: result.customersCreated,
-            contactsCreated: result.contactsCreated,
-          });
-        }
-      } catch (err: any) {
-        if (err?.status === 400 || err?.status === 403) {
-          // Google not connected or permissions not granted — silently skip
-        } else {
-          console.error('[EmailSync] Sync failed:', err?.message || err);
-        }
-      }
+      // Status is per-account, not global. Broadcast, this lit up every connected
+      // user's sync indicator whenever anybody synced, and leaked another
+      // account's mailbox volume through the progress counts.
+      wsEmitToUser(userId, 'sync:status', { syncing: true });
 
-      // Drafts are reconciled in their own try/catch so a drafts failure never
-      // aborts the mail sync for the remaining users. In the steady state this
-      // is a single `drafts.list` call — see draftService.syncDrafts.
       try {
-        const drafts = await draftService.syncDrafts(userId);
-        if (drafts.synced > 0 || drafts.removed > 0) {
-          console.log(`[DraftSync] ${drafts.synced} drafts updated, ${drafts.removed} removed`);
+        try {
+          const result = await emailService.syncFromGmail(userId);
+          const hasChanges =
+            result.synced > 0 ||
+            result.customersCreated > 0 ||
+            result.contactsCreated > 0 ||
+            (result.labelsChanged ?? 0) > 0;
+          if (hasChanges) {
+            console.log(
+              `[EmailSync] Synced ${result.synced} emails, ${result.labelsChanged ?? 0} label changes, ${result.customersCreated} companies, ${result.contactsCreated} contacts`
+            );
+            wsEmitToUser(userId, 'emails:synced', {
+              synced: result.synced,
+              labelsChanged: result.labelsChanged ?? 0,
+              customersCreated: result.customersCreated,
+              contactsCreated: result.contactsCreated,
+            });
+          }
+          if (result.failed > 0) {
+            console.warn(`[EmailSync] ${result.failed} message(s) failed to fetch and will be retried`);
+          }
+        } catch (err: any) {
+          if (err?.status === 400 || err?.status === 403) {
+            // Google not connected or permissions not granted — silently skip
+          } else {
+            console.error('[EmailSync] Sync failed:', err?.message || err);
+          }
         }
-      } catch (err: any) {
-        if (err?.status !== 400 && err?.status !== 403) {
-          console.error('[DraftSync] Draft sync failed:', err?.message || err);
+
+        // Drafts are reconciled in their own try/catch so a drafts failure never
+        // aborts the mail sync for the remaining users. In the steady state this
+        // is a single `drafts.list` call — see draftService.syncDrafts.
+        try {
+          const drafts = await draftService.syncDrafts(userId);
+          if (drafts.synced > 0 || drafts.removed > 0) {
+            console.log(`[DraftSync] ${drafts.synced} drafts updated, ${drafts.removed} removed`);
+          }
+        } catch (err: any) {
+          if (err?.status !== 400 && err?.status !== 403) {
+            console.error('[DraftSync] Draft sync failed:', err?.message || err);
+          }
         }
+      } finally {
+        // In a finally so an unexpected throw still clears this account's
+        // indicator — otherwise one failure leaves the spinner running until the
+        // page is reloaded.
+        wsEmitToUser(userId, 'sync:status', { syncing: false });
       }
     }
   } catch (err: any) {
     console.error('[EmailSync] Scheduler error:', err?.message || err);
   } finally {
     isSyncing = false;
-    wsEmit('sync:status', { syncing: false });
   }
 }
 

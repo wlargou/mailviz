@@ -238,6 +238,15 @@ model GoogleAuth {
   lastMailSyncAt DateTime? @map("last_mail_sync_at")
   lastHistoryId      String?   @map("last_history_id") @db.VarChar(50)
   calendarSyncToken  String?   @map("calendar_sync_token") @db.Text
+
+  /// Gmail message ids whose fetch failed during a sync.
+  ///
+  /// A failed fetch used to be swallowed and forgotten: the message was skipped,
+  /// the history cursor advanced past it, and it was never seen again. Recording
+  /// the ids lets each subsequent sync retry them until they land, which is the
+  /// difference between a transient error costing a delay and costing a message.
+  /// Capped in code so a permanently poisoned id cannot grow this without bound.
+  syncFailedMessageIds String[] @map("sync_failed_message_ids")
   userId       String    @unique @map("user_id")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")

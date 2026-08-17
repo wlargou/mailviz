@@ -890,3 +890,243 @@ describe('emailService batch operations — tenant isolation', () => {
     expect(calledMessageIds(gmail.messagesTrash)).toEqual(['ag1']);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 6. First-login correctness: the cursor, and messages that fail to fetch
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The two ways a first sync used to lose mail silently.
+ *
+ * Both are invisible in normal operation: nothing errors, nothing is logged, the
+ * counts look right. The message simply never appears, and because the history
+ * cursor has moved past it, nothing will ever fetch it again.
+ */
+describe('emailService.syncFromGmail — first sync does not lose mail', () => {
+  it('takes the history cursor BEFORE listing, not after — REGRESSION', async () => {
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+
+    // The mailbox moves while the sync runs, so `historyId` depends on WHEN it is
+    // read. Keyed off whether listing has happened rather than off call order, so
+    // the assertion distinguishes the two orderings instead of just counting
+    // calls — an earlier version of this test used mockResolvedValueOnce and
+    // passed even with the fix reverted, because the broken path makes exactly
+    // one call and consumed the same value.
+    let listed = false;
+    gmail.getProfile.mockImplementation(async () => ({
+      data: { emailAddress: 'me@powerm.ma', historyId: listed ? '9000' : '1000' },
+    }));
+    gmail.messagesList.mockImplementation(async () => {
+      listed = true;
+      return listPage(['m1']);
+    });
+    stubMessagesGet(gmail, [{ id: 'm1', from: 'a@acme.com', subject: 'One' }]);
+
+    await emailService.syncFromGmail(user.id);
+
+    const auth = await prisma.googleAuth.findFirst({ where: { userId: user.id } });
+    expect(auth?.lastHistoryId).toBe('1000');
+  });
+
+  it('records a message it could not fetch instead of dropping it — REGRESSION', async () => {
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+    stubMessagesListPages(gmail, [['ok1', 'boom', 'ok2']]);
+    stubMessagesGet(
+      gmail,
+      [
+        { id: 'ok1', from: 'a@acme.com', subject: 'First' },
+        { id: 'ok2', from: 'b@acme.com', subject: 'Second' },
+      ],
+      { boom: gmailError(500, 'Backend error') }
+    );
+
+    const result = await emailService.syncFromGmail(user.id);
+
+    // The good messages still land — one bad fetch must not abort the sync.
+    expect(result.synced).toBe(2);
+    expect(result.failed).toBe(1);
+    const auth = await prisma.googleAuth.findFirst({ where: { userId: user.id } });
+    expect(auth?.syncFailedMessageIds).toEqual(['boom']);
+  });
+
+  it('retries a recorded failure on the next sync and clears it once it lands', async () => {
+    const user = await createUser();
+    await createGoogleAuth(user.id, { lastHistoryId: '500' });
+    await prisma.googleAuth.updateMany({
+      where: { userId: user.id },
+      data: { syncFailedMessageIds: ['recovered'] },
+    });
+    gmail.historyList.mockResolvedValue(historyPage([]));
+    stubMessagesGet(gmail, [{ id: 'recovered', from: 'c@acme.com', subject: 'Late arrival' }]);
+
+    const result = await emailService.syncFromGmail(user.id);
+
+    expect(result.synced).toBe(1);
+    expect(
+      await prisma.email.count({ where: { userId: user.id, gmailMessageId: 'recovered' } })
+    ).toBe(1);
+    const auth = await prisma.googleAuth.findFirst({ where: { userId: user.id } });
+    expect(auth?.syncFailedMessageIds).toEqual([]);
+  });
+
+  it('stops retrying a message Gmail no longer has', async () => {
+    const user = await createUser();
+    await createGoogleAuth(user.id, { lastHistoryId: '500' });
+    await prisma.googleAuth.updateMany({
+      where: { userId: user.id },
+      data: { syncFailedMessageIds: ['gone'] },
+    });
+    gmail.historyList.mockResolvedValue(historyPage([]));
+    // Nothing stubbed, so `messages.get` 404s — the message was deleted.
+    stubMessagesGet(gmail, []);
+
+    await emailService.syncFromGmail(user.id);
+
+    const auth = await prisma.googleAuth.findFirst({ where: { userId: user.id } });
+    expect(auth?.syncFailedMessageIds).toEqual([]);
+  });
+
+  it('keeps a still-failing message queued rather than giving up', async () => {
+    const user = await createUser();
+    await createGoogleAuth(user.id, { lastHistoryId: '500' });
+    await prisma.googleAuth.updateMany({
+      where: { userId: user.id },
+      data: { syncFailedMessageIds: ['stubborn'] },
+    });
+    gmail.historyList.mockResolvedValue(historyPage([]));
+    stubMessagesGet(gmail, [], { stubborn: gmailError(500, 'Still broken') });
+
+    await emailService.syncFromGmail(user.id);
+
+    const auth = await prisma.googleAuth.findFirst({ where: { userId: user.id } });
+    expect(auth?.syncFailedMessageIds).toEqual(['stubborn']);
+  });
+
+  it('advances the cursor after a catch-up so the next sync is not another catch-up — REGRESSION', async () => {
+    const user = await createUser();
+    await createGoogleAuth(user.id, { lastHistoryId: 'expired' });
+    gmail.historyList.mockRejectedValue(historyExpiredError());
+    stubMessagesListPages(gmail, [[]]);
+    gmail.getProfile.mockResolvedValue({
+      data: { emailAddress: 'me@powerm.ma', historyId: '7777' },
+    });
+
+    await emailService.syncFromGmail(user.id);
+
+    // The catch-up re-lists by date and cannot report a feed position. Left null,
+    // the expired cursor would persist and every future sync would 404 into
+    // another catch-up.
+    const auth = await prisma.googleAuth.findFirst({ where: { userId: user.id } });
+    expect(auth?.lastHistoryId).toBe('7777');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 7. A message is never filed against the account's own company
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * `upsertMessage` files a message against the first non-personal domain among
+ * from/to/cc. For outbound mail that is the sender — the user — so every message
+ * the user sent was filed under the user's own company.
+ *
+ * On the real database that made "Powerm" the largest customer in the system:
+ * 33,309 emails, of which 32,359 were the user's own sent mail, while the actual
+ * recipient's company showed none of it. The per-company views, the dashboard's
+ * top customers and Review's grouping all saw inbound only.
+ *
+ * The calendar importer already skips the account holder via the attendee `self`
+ * flag. These are the mail-side equivalents.
+ */
+describe('emailService.upsertMessage — own-domain filing', () => {
+  it('files a sent message against the recipient, not the sender — REGRESSION', async () => {
+    const user = await createUser({ email: 'me@powerm.ma' });
+    await createGoogleAuth(user.id);
+    stubMessagesListPages(gmail, [['sent1']]);
+    stubMessagesGet(gmail, [
+      { id: 'sent1', from: 'me@powerm.ma', to: ['buyer@intelcom.co.ma'], subject: 'Our quote' },
+    ]);
+
+    await emailService.syncFromGmail(user.id);
+
+    const email = await prisma.email.findFirst({
+      where: { userId: user.id, gmailMessageId: 'sent1' },
+      include: { customer: { select: { domain: true } } },
+    });
+    expect(email?.customer?.domain).toBe('intelcom.co.ma');
+  });
+
+  it('still records colleagues as contacts', async () => {
+    const user = await createUser({ email: 'me@powerm.ma' });
+    await createGoogleAuth(user.id);
+    stubMessagesListPages(gmail, [['internal1']]);
+    stubMessagesGet(gmail, [
+      { id: 'internal1', from: 'colleague@powerm.ma', to: ['me@powerm.ma'], subject: 'Internal' },
+    ]);
+
+    await emailService.syncFromGmail(user.id);
+
+    // An internal address is worth knowing about; it just must not become the
+    // company a message is filed against.
+    const contact = await prisma.contact.findFirst({
+      where: { email: 'colleague@powerm.ma', customer: { userId: user.id } },
+    });
+    expect(contact).not.toBeNull();
+  });
+
+  it('leaves a purely internal message unlinked rather than misfiled', async () => {
+    const user = await createUser({ email: 'me@powerm.ma' });
+    await createGoogleAuth(user.id);
+    stubMessagesListPages(gmail, [['internal2']]);
+    stubMessagesGet(gmail, [
+      { id: 'internal2', from: 'colleague@powerm.ma', to: ['me@powerm.ma'], subject: 'Standup' },
+    ]);
+
+    await emailService.syncFromGmail(user.id);
+
+    const email = await prisma.email.findFirst({
+      where: { userId: user.id, gmailMessageId: 'internal2' },
+    });
+    // No counterparty means no customer. Null is honest; the user's own company
+    // is not.
+    expect(email?.customerId).toBeNull();
+  });
+
+  it('still files an inbound message against its sender', async () => {
+    const user = await createUser({ email: 'me@powerm.ma' });
+    await createGoogleAuth(user.id);
+    stubMessagesListPages(gmail, [['in1']]);
+    stubMessagesGet(gmail, [
+      { id: 'in1', from: 'seller@lydec.co.ma', to: ['me@powerm.ma'], subject: 'Renewal' },
+    ]);
+
+    await emailService.syncFromGmail(user.id);
+
+    const email = await prisma.email.findFirst({
+      where: { userId: user.id, gmailMessageId: 'in1' },
+      include: { customer: { select: { domain: true } } },
+    });
+    expect(email?.customer?.domain).toBe('lydec.co.ma');
+  });
+
+  it('treats a personal-mailbox account as having no own domain to exclude', async () => {
+    // A gmail.com account has no company domain, so nothing should be excluded
+    // and normal inbound filing must still work.
+    const user = await createUser({ email: 'someone@gmail.com' });
+    await createGoogleAuth(user.id);
+    stubMessagesListPages(gmail, [['p1']]);
+    stubMessagesGet(gmail, [
+      { id: 'p1', from: 'seller@lydec.co.ma', to: ['someone@gmail.com'], subject: 'Hello' },
+    ]);
+
+    await emailService.syncFromGmail(user.id);
+
+    const email = await prisma.email.findFirst({
+      where: { userId: user.id, gmailMessageId: 'p1' },
+      include: { customer: { select: { domain: true } } },
+    });
+    expect(email?.customer?.domain).toBe('lydec.co.ma');
+  });
+});

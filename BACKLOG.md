@@ -225,6 +225,59 @@ are still worth knowing.
   but they pollute the customer list and any count taken from it. Worth a
   cleanup query once someone confirms they are not referenced by real mail.
 
+## Sync audit — fixed
+
+- [x] **The history cursor was taken after the initial sync, not before.** Mail
+  arriving during a first sync was in neither half: too late for the id list, too
+  early for a feed starting at the end. With `EMAIL_SYNC_MONTHS=0` a first sync is
+  one `messages.get` per message — hours on a large mailbox — so everything
+  received while it ran was lost silently.
+- [x] **A failed message fetch was swallowed and forgotten.** `.catch(() => null)`
+  skipped it while the cursor moved past, so a transient 500 cost a message
+  permanently with nothing to show it existed. Failures are now recorded on
+  `google_auth.sync_failed_message_ids` and retried each sync; a 404 (genuinely
+  deleted) is dropped rather than retried forever.
+- [x] **Outbound mail was filed under the account's own company.** "Powerm" was
+  the largest customer in the database at 33,309 emails, 32,359 of them the
+  user's own sent mail, while the recipient's company showed none of it. Fixed in
+  `upsertMessage`, and repaired with `scripts/refileOwnDomainEmails.ts`: 20,974
+  emails moved onto the counterparty, 12,335 genuinely internal ones unlinked,
+  totals unchanged, the 120 colleague contacts kept. The calendar importer already
+  did this correctly via the attendee `self` flag.
+- [x] **Sync and mail events were broadcast to every connected client.** All of
+  `sync:status`, `sync:progress`, `emails:synced`, `email:updated` and
+  `email:sent` used `wsEmit`, so one account's activity refetched every other
+  account's client and leaked its mailbox volume and email ids. Now
+  `wsEmitToUser` — which the same file already used correctly for scheduled sends.
+
+## Sync audit — still open
+
+- [ ] **A routine calendar sync-token expiry wipes and re-imports the calendar.**
+  Full sync starts with `deleteMany({ userId })`, and a 410 clears the token and
+  recurses into that path. Events outside the ±window (24 months back, 12 forward)
+  are deleted and never re-imported. The `deleted` count also reports the wipe, so
+  the UI is told thousands of events vanished.
+- [ ] **The calendar sync token comes from a different query than the data.** The
+  initial listing uses `singleEvents: true`; the token is fetched separately with
+  no `singleEvents` and an empty `timeMin==timeMax` range. Google requires
+  consistent parameters, so incremental syncs return unexpanded recurring masters
+  while the initial sync stored expanded instances — the same event changes shape
+  depending on which path imported it.
+- [ ] **One account's initial sync starves every other account.** Both schedulers
+  use a single module-level `isSyncing` flag and loop users sequentially, so a
+  multi-hour first sync blocks everyone else's mail — including label propagation.
+- [ ] **`extractDomain` does not validate.** Six customers exist on impossible
+  domains (`powerm.ma/o=`, `ibm.comclaudiabeisiegel/poughkeepsie/ibm`) captured
+  from mangled Exchange and Domino headers.
+- [ ] **Mailing lists become customers.** After the re-filing,
+  `connectedcommunity.org` (12,758) and `googlegroups.com` (3,735) rank second and
+  fifth by volume. They are lists, not companies — the personal-domain exclusion
+  needs a list/no-reply equivalent.
+- [ ] **Login does not trigger a sync**, so a new account waits up to 60s (longer
+  behind the global lock) while onboarding claims the first pass is running.
+- [ ] **Progress stalls on failures** — `if (synced % 50 < 10)` never fires if a
+  whole batch fails, since `synced` does not advance.
+
 ## Follow-ups from onboarding
 
 - [ ] **The welcome overlay has no focus trap.** It covers the app and is

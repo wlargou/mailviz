@@ -37,6 +37,54 @@ import { snoozeService } from './snoozeService.js';
  * trash-then-restore left the message flagged archived and it never came back
  * to the inbox view.
  */
+/**
+ * A failed fetch is remembered so a later sync can retry it.
+ *
+ * Capped because a permanently poisoned id would otherwise accumulate on every
+ * run. The cap drops the oldest, on the reasoning that a recent failure is far
+ * more likely to be transient — and therefore worth a retry — than one that has
+ * already survived many attempts.
+ */
+const MAX_TRACKED_FAILURES = 500;
+
+/**
+ * The normalised domain of the account's own address, or null for a personal
+ * mailbox (a gmail.com account has no company domain to exclude).
+ *
+ * Cached per process: it is read once per message otherwise, and it cannot change
+ * without the user changing their address.
+ */
+const ownDomainCache = new Map<string, string | null>();
+
+async function ownEmailDomain(userId: string): Promise<string | null> {
+  const cached = ownDomainCache.get(userId);
+  if (cached !== undefined) return cached;
+
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+  const raw = user?.email ? extractDomain(user.email) : null;
+  const domain = raw && !isPersonalDomain(raw) ? normalizeDomain(raw) : null;
+  ownDomainCache.set(userId, domain);
+  return domain;
+}
+
+async function addFailedMessageIds(userId: string, ids: string[]) {
+  if (ids.length === 0) return;
+  const auth = await prisma.googleAuth.findFirst({
+    where: { userId },
+    select: { id: true, syncFailedMessageIds: true },
+  });
+  if (!auth) return;
+  const merged = [...new Set([...auth.syncFailedMessageIds, ...ids])].slice(-MAX_TRACKED_FAILURES);
+  await prisma.googleAuth.update({ where: { id: auth.id }, data: { syncFailedMessageIds: merged } });
+}
+
+async function replaceFailedMessageIds(userId: string, ids: string[]) {
+  await prisma.googleAuth.updateMany({
+    where: { userId },
+    data: { syncFailedMessageIds: ids.slice(-MAX_TRACKED_FAILURES) },
+  });
+}
+
 function flagsFromLabels(labelIds: string[]) {
   return {
     isRead: !labelIds.includes('UNREAD'),
@@ -56,31 +104,59 @@ export const emailService = {
     let customersCreated = 0;
     let contactsCreated = 0;
     let labelsChanged = 0;
+    let failed = 0;
     let historyId: string | null = null;
 
     try {
       if (auth.lastHistoryId) {
-        // Incremental sync
+        // Incremental sync. The next cursor comes from the history response
+        // itself, which is the point in the feed we have actually consumed to —
+        // reading it from getProfile afterwards would skip anything that arrived
+        // while we were working.
         const result = await this.incrementalSync(gmail, auth.lastHistoryId, userId);
         synced = result.synced;
         customersCreated = result.customersCreated;
         contactsCreated = result.contactsCreated;
         labelsChanged = result.labelsChanged;
+        failed = result.failed;
+        historyId = result.newHistoryId;
       } else {
-        // Initial sync — honours EMAIL_SYNC_MONTHS (0 = the whole mailbox)
+        /**
+         * Initial sync — honours EMAIL_SYNC_MONTHS (0 = the whole mailbox).
+         *
+         * The cursor is taken BEFORE listing, not after. Taken afterwards, any
+         * message arriving during the sync was in neither half: too late for the
+         * id list, too early for a history feed starting at the end. With
+         * EMAIL_SYNC_MONTHS=0 an initial sync is one `messages.get` per message
+         * — hours on a large mailbox — so that gap silently swallowed everything
+         * received while it ran. Replaying a few already-imported messages is
+         * free (`upsertMessage` is idempotent); missing them is not.
+         */
+        const baseline = await gmail.users.getProfile({ userId: 'me' });
+        historyId = baseline.data.historyId || null;
+
         const result = await this.initialSync(gmail, userId);
         synced = result.synced;
         customersCreated = result.customersCreated;
         contactsCreated = result.contactsCreated;
+        failed = result.failed;
       }
 
-      // Inside the try on purpose: this is a Gmail call like any other, and a
-      // revoked grant fails here just as readily. Left outside, its 403 escaped
-      // the translation below with no `status`, so emailSyncScheduler classified
-      // a revoked grant as an unexpected error and logged it every 60 seconds
-      // forever, while the HTTP layer answered 500 instead of 403.
-      const profile = await gmail.users.getProfile({ userId: 'me' });
-      historyId = profile.data.historyId || null;
+      // The history-expiry catch-up re-lists by date and so cannot report a feed
+      // position. Without this fallback the cursor would keep its expired value,
+      // Gmail would 404 again on the next run, and every sync from then on would
+      // be a catch-up.
+      if (!historyId) {
+        const profile = await gmail.users.getProfile({ userId: 'me' });
+        historyId = profile.data.historyId || null;
+      }
+
+      // Retry anything an earlier run could not fetch. Kept inside the try so a
+      // revoked grant here is translated below like any other Gmail failure.
+      const retry = await this.retryFailedMessages(gmail, userId, auth.syncFailedMessageIds);
+      synced += retry.synced;
+      customersCreated += retry.customersCreated;
+      contactsCreated += retry.contactsCreated;
     } catch (err: any) {
       // A plain 403 means the gmail scope was never granted. A 403 carrying a
       // rateLimitExceeded reason is throttling that outlived the limiter's
@@ -103,7 +179,53 @@ export const emailService = {
       },
     });
 
-    return { synced, customersCreated, contactsCreated, labelsChanged };
+    return { synced, customersCreated, contactsCreated, labelsChanged, failed };
+  },
+
+  /**
+   * Re-attempt message fetches that failed on an earlier run.
+   *
+   * Ids that succeed are cleared; ids that fail again are kept for the next
+   * sync. This is what makes a transient fetch error cost a delay rather than a
+   * message — the history cursor has already moved past them, so nothing else
+   * will ever come back for them.
+   */
+  async retryFailedMessages(
+    gmail: ReturnType<typeof google.gmail>,
+    userId: string,
+    failedIds: string[]
+  ) {
+    let synced = 0;
+    let customersCreated = 0;
+    let contactsCreated = 0;
+    if (failedIds.length === 0) return { synced, customersCreated, contactsCreated };
+
+    console.log(`[EmailSync] Retrying ${failedIds.length} message(s) that failed earlier`);
+    const stillFailing: string[] = [];
+
+    for (const id of failedIds) {
+      try {
+        const res = await gmail.users.messages.get({ userId: 'me', id, format: 'full' });
+        const result = await this.upsertMessage(res.data, userId);
+        if (result) {
+          synced++;
+          customersCreated += result.customersCreated;
+          contactsCreated += result.contactsCreated;
+        }
+      } catch (err: any) {
+        // A 404 means the message is genuinely gone from Gmail — deleted between
+        // the failed fetch and now. Retrying forever would never succeed, so it
+        // is dropped rather than kept.
+        if (err?.code === 404 || err?.status === 404) continue;
+        stillFailing.push(id);
+      }
+    }
+
+    await replaceFailedMessageIds(userId, stillFailing);
+    if (stillFailing.length > 0) {
+      console.warn(`[EmailSync] ${stillFailing.length} message(s) still failing; will retry next sync`);
+    }
+    return { synced, customersCreated, contactsCreated };
   },
 
   /**
@@ -127,7 +249,7 @@ export const emailService = {
         : undefined;
 
     // Phase 1: Collect ALL message IDs (cheap — only IDs, no content)
-    wsEmit('sync:progress', { type: 'email', synced: 0, total: 0, phase: 'counting' });
+    wsEmitToUser(userId, 'sync:progress', { type: 'email', synced: 0, total: 0, phase: 'counting' });
     const allMessageIds: string[] = [];
     let pageToken: string | undefined;
 
@@ -147,26 +269,36 @@ export const emailService = {
     } while (pageToken);
 
     const total = allMessageIds.length;
-    wsEmit('sync:progress', { type: 'email', synced: 0, total, phase: 'syncing' });
+    wsEmitToUser(userId, 'sync:progress', { type: 'email', synced: 0, total, phase: 'syncing' });
     console.log(`[EmailSync] Initial sync: ${total} messages to process`);
 
     // Phase 2: Process messages in batches of 10
+    // Ids whose fetch failed. Recorded rather than skipped: the cursor moves past
+    // them once this completes, so a swallowed failure was a message lost for
+    // good with nothing to show it had ever existed.
+    const failedIds: string[] = [];
+
     for (let i = 0; i < allMessageIds.length; i += 10) {
       const batch = allMessageIds.slice(i, i + 10);
       const results = await Promise.all(
         batch.map((id) =>
-          currentGmail.users.messages.get({
-            userId: 'me',
-            id,
-            format: 'full',
-          }).catch(() => null)
+          currentGmail.users.messages
+            .get({ userId: 'me', id, format: 'full' })
+            .then((res) => ({ ok: true as const, res }))
+            .catch((err: any) => ({ ok: false as const, id, err }))
         )
       );
 
-      for (const res of results) {
-        if (!res) continue;
-        const msg = res.data;
-        const result = await this.upsertMessage(msg, userId);
+      for (const outcome of results) {
+        if (!outcome.ok) {
+          // A 404 is a message deleted since the id was listed — not a failure
+          // worth retrying.
+          if (outcome.err?.code !== 404 && outcome.err?.status !== 404) {
+            failedIds.push(outcome.id);
+          }
+          continue;
+        }
+        const result = await this.upsertMessage(outcome.res.data, userId);
         if (result) {
           synced++;
           customersCreated += result.customersCreated;
@@ -178,7 +310,7 @@ export const emailService = {
 
       // Emit progress every 50 messages
       if (synced % 50 < 10) {
-        wsEmit('sync:progress', { type: 'email', synced, total, phase: 'syncing' });
+        wsEmitToUser(userId, 'sync:progress', { type: 'email', synced, total, phase: 'syncing' });
       }
 
       // Force-refresh Gmail client every 500 messages to get a fresh token
@@ -193,8 +325,15 @@ export const emailService = {
       }
     }
 
-    wsEmit('sync:progress', { type: 'email', synced, total, phase: 'complete' });
-    return { synced, customersCreated, contactsCreated, labelsChanged: 0 };
+    if (failedIds.length > 0) {
+      console.warn(
+        `[EmailSync] ${failedIds.length} message(s) could not be fetched; recorded for retry on the next sync`
+      );
+      await addFailedMessageIds(userId, failedIds);
+    }
+
+    wsEmitToUser(userId, 'sync:progress', { type: 'email', synced, total, phase: 'complete' });
+    return { synced, customersCreated, contactsCreated, labelsChanged: 0, failed: failedIds.length };
   },
 
   async incrementalSync(gmail: ReturnType<typeof google.gmail>, startHistoryId: string, userId: string) {
@@ -203,6 +342,10 @@ export const emailService = {
     let contactsCreated = 0;
     let labelsChanged = 0;
     let pageToken: string | undefined;
+    // The furthest point in the feed we have actually consumed. Returned as the
+    // next cursor so nothing arriving mid-sync is stepped over.
+    let newHistoryId: string | null = null;
+    const failedIds: string[] = [];
 
     try {
       do {
@@ -215,6 +358,7 @@ export const emailService = {
 
         const histories = historyRes.data.history || [];
         pageToken = historyRes.data.nextPageToken || undefined;
+        if (historyRes.data.historyId) newHistoryId = historyRes.data.historyId;
 
         for (const history of histories) {
           // Handle new messages
@@ -233,8 +377,13 @@ export const emailService = {
                   customersCreated += result.customersCreated;
                   contactsCreated += result.contactsCreated;
                 }
-              } catch {
-                // Message may have been deleted
+              } catch (err: any) {
+                // A 404 is a message deleted between the history event and now.
+                // Anything else is a fetch that should be retried rather than
+                // forgotten — the cursor is about to move past this id.
+                if (err?.code !== 404 && err?.status !== 404) {
+                  failedIds.push(added.message.id);
+                }
               }
             }
           }
@@ -310,17 +459,29 @@ export const emailService = {
         // emailSyncScheduler only broadcasts `emails:synced` when a counter is
         // non-zero — so mail landed in the database while every open client was
         // told nothing had changed.
+        if (failedIds.length > 0) await addFailedMessageIds(userId, failedIds);
         return {
           synced: synced + result.synced,
           customersCreated: customersCreated + result.customersCreated,
           contactsCreated: contactsCreated + result.contactsCreated,
           labelsChanged,
+          failed: failedIds.length + result.failed,
+          // The catch-up re-listed by date, so the feed position is unknown here;
+          // syncFromGmail falls back to getProfile when this is null.
+          newHistoryId: null as string | null,
         };
       }
       throw err;
     }
 
-    return { synced, customersCreated, contactsCreated, labelsChanged };
+    if (failedIds.length > 0) {
+      console.warn(
+        `[EmailSync] ${failedIds.length} message(s) could not be fetched; recorded for retry on the next sync`
+      );
+      await addFailedMessageIds(userId, failedIds);
+    }
+
+    return { synced, customersCreated, contactsCreated, labelsChanged, failed: failedIds.length, newHistoryId };
   },
 
   async upsertMessage(msg: any, userId: string) {
@@ -352,6 +513,22 @@ export const emailService = {
     let customersCreated = 0;
     let contactsCreated = 0;
 
+    /**
+     * The account's own domain, which must never be the customer a message is
+     * filed against.
+     *
+     * Without this, an outbound message resolved `from` first — the user's own
+     * address — and was filed under the user's own company. On this database
+     * that made "Powerm" the largest customer in the system at 33,309 emails, of
+     * which 32,359 were the user's own sent mail, while the actual recipient's
+     * company showed none of it. Every per-company view, the dashboard's top
+     * customers and Review's grouping saw inbound only.
+     *
+     * The calendar importer already skips the account holder via the attendee
+     * `self` flag; this is the mail side of the same rule.
+     */
+    const ownDomain = await ownEmailDomain(userId);
+
     // Collect all email addresses for customer/contact linking
     const allEmails = [fromEmail, ...toList, ...ccList];
     for (const email of allEmails) {
@@ -361,7 +538,9 @@ export const emailService = {
 
       try {
         const { customer, created: cCreated } = await customerService.findOrCreateByDomain(userId, domain);
-        if (!customerId) customerId = customer.id;
+        // Colleagues still become contacts — an internal address is worth
+        // knowing — but the message is never *filed* against your own company.
+        if (!customerId && domain !== ownDomain) customerId = customer.id;
         if (cCreated) customersCreated++;
 
         // Try to find display name for this email
@@ -715,7 +894,7 @@ export const emailService = {
     if (!email) throw Object.assign(new Error('Email not found'), { status: 404 });
 
     await prisma.email.update({ where: { id }, data: { isRead: true } });
-    wsEmit('email:updated', { id, isRead: true });
+    wsEmitToUser(userId, 'email:updated', { id, isRead: true });
 
     // Sync to Gmail (best effort) — only if user owns the email
     if (email.gmailMessageId && email.userId === userId) {
@@ -742,7 +921,7 @@ export const emailService = {
     if (!email) throw Object.assign(new Error('Email not found'), { status: 404 });
 
     await prisma.email.update({ where: { id }, data: { isRead: false } });
-    wsEmit('email:updated', { id, isRead: false });
+    wsEmitToUser(userId, 'email:updated', { id, isRead: false });
 
     if (email.gmailMessageId && email.userId === userId) {
       try {
@@ -769,7 +948,7 @@ export const emailService = {
 
     const newStarred = !email.isStarred;
     await prisma.email.update({ where: { id }, data: { isStarred: newStarred } });
-    wsEmit('email:updated', { id, isStarred: newStarred });
+    wsEmitToUser(userId, 'email:updated', { id, isStarred: newStarred });
 
     if (email.gmailMessageId && email.userId === userId) {
       try {
@@ -812,7 +991,7 @@ export const emailService = {
       where: { id },
       data: { isArchived: true, labelIds: email.labelIds.filter((l) => l !== 'INBOX') },
     });
-    wsEmit('email:updated', { id, isArchived: true });
+    wsEmitToUser(userId, 'email:updated', { id, isArchived: true });
 
     auditService.log({ userId, action: 'EMAIL_ARCHIVED', entityType: 'email', entityId: id, details: { subject: email.subject, from: email.from } });
   },
@@ -841,7 +1020,7 @@ export const emailService = {
       where: { id },
       data: { isArchived: false, labelIds: [...email.labelIds, 'INBOX'] },
     });
-    wsEmit('email:updated', { id, isArchived: false });
+    wsEmitToUser(userId, 'email:updated', { id, isArchived: false });
 
     auditService.log({ userId, action: 'EMAIL_UNARCHIVED', entityType: 'email', entityId: id, details: { subject: email.subject, from: email.from } });
   },
@@ -869,7 +1048,7 @@ export const emailService = {
       where: { id },
       data: { isTrashed: true, labelIds: [...new Set([...email.labelIds.filter((l) => l !== 'INBOX'), 'TRASH'])] },
     });
-    wsEmit('email:updated', { id, isTrashed: true });
+    wsEmitToUser(userId, 'email:updated', { id, isTrashed: true });
 
     await auditService.logSync({ userId, action: 'EMAIL_TRASHED', entityType: 'email', entityId: id, details: emailDetails });
   },
@@ -895,7 +1074,7 @@ export const emailService = {
       where: { id },
       data: { isTrashed: false, labelIds: email.labelIds.filter((l) => l !== 'TRASH') },
     });
-    wsEmit('email:updated', { id, isTrashed: false });
+    wsEmitToUser(userId, 'email:updated', { id, isTrashed: false });
 
     auditService.log({ userId, action: 'EMAIL_UNTRASHED', entityType: 'email', entityId: id, details: { subject: email.subject, from: email.from } });
   },
@@ -921,7 +1100,7 @@ export const emailService = {
       }
     } catch (err: any) { console.warn('[EmailSync] Gmail API call failed:', err?.message || err); }
 
-    for (const email of allEmails) wsEmit('email:updated', { id: email.id, isRead: true });
+    for (const email of allEmails) wsEmitToUser(userId, 'email:updated', { id: email.id, isRead: true });
 
     auditService.log({ userId, action: 'EMAIL_BATCH_MARK_READ', entityType: 'email', details: { count: ids.length } });
     return { count: threadIds.length };
@@ -947,7 +1126,7 @@ export const emailService = {
       }
     } catch (err: any) { console.warn('[EmailSync] Gmail API call failed:', err?.message || err); }
 
-    for (const email of allEmails) wsEmit('email:updated', { id: email.id, isRead: false });
+    for (const email of allEmails) wsEmitToUser(userId, 'email:updated', { id: email.id, isRead: false });
 
     auditService.log({ userId, action: 'EMAIL_BATCH_MARK_UNREAD', entityType: 'email', details: { count: ids.length } });
     return { count: threadIds.length };
@@ -977,7 +1156,7 @@ export const emailService = {
         where: { id: email.id },
         data: { isArchived: true, labelIds: email.labelIds.filter((l) => l !== 'INBOX') },
       });
-      wsEmit('email:updated', { id: email.id, isArchived: true });
+      wsEmitToUser(userId, 'email:updated', { id: email.id, isArchived: true });
     }
 
     auditService.log({ userId, action: 'EMAIL_BATCH_ARCHIVE', entityType: 'email', details: { count: ids.length } });
@@ -1005,7 +1184,7 @@ export const emailService = {
         where: { id: email.id },
         data: { isTrashed: true, labelIds: [...new Set([...email.labelIds.filter((l) => l !== 'INBOX'), 'TRASH'])] },
       });
-      wsEmit('email:updated', { id: email.id, isTrashed: true });
+      wsEmitToUser(userId, 'email:updated', { id: email.id, isTrashed: true });
     }
 
     await auditService.logSync({ userId, action: 'EMAIL_BATCH_TRASH', entityType: 'email', details: { count: ids.length, subjects: allEmails.map(e => e.subject).slice(0, 10) } });
@@ -1085,7 +1264,7 @@ export const emailService = {
       }
     }
 
-    wsEmit('email:sent', { threadId: sendRes.data.threadId });
+    wsEmitToUser(userId, 'email:sent', { threadId: sendRes.data.threadId });
 
     await auditService.logSync({ userId, action: 'EMAIL_SENT', entityType: 'email', entityId: sendRes.data.id || undefined, details: { to: data.to, cc: data.cc, subject: data.subject, hasAttachments: !!(data.attachments?.length) } });
 
@@ -1175,7 +1354,7 @@ export const emailService = {
       }
     }
 
-    wsEmit('email:sent', { threadId: sendRes.data.threadId });
+    wsEmitToUser(userId, 'email:sent', { threadId: sendRes.data.threadId });
 
     await auditService.logSync({ userId, action: 'EMAIL_REPLY', entityType: 'email', entityId: emailId, details: { to: to, cc: cc.length > 0 ? cc : undefined, subject: original.subject, originalFrom: original.from } });
 
@@ -1272,7 +1451,7 @@ export const emailService = {
       }
     }
 
-    wsEmit('email:sent', { threadId: sendRes.data.threadId });
+    wsEmitToUser(userId, 'email:sent', { threadId: sendRes.data.threadId });
 
     await auditService.logSync({ userId, action: 'EMAIL_FORWARD', entityType: 'email', entityId: emailId, details: { to: data.to, subject: original.subject, originalFrom: original.from } });
 
