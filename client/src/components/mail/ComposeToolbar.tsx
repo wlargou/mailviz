@@ -23,6 +23,14 @@ import {
   Attachment,
 } from '@carbon/icons-react';
 import type { Editor } from '@tiptap/react';
+import {
+  blue30, blue40, blue50, blue60,
+  gray10, gray50, gray70, gray100,
+  green20, green40, green50,
+  orange40, purple30, purple40, purple60,
+  red40, red50, red60,
+  teal60, white, yellow30,
+} from '@carbon/colors';
 
 interface ComposeToolbarProps {
   editor: Editor | null;
@@ -47,12 +55,20 @@ const FONT_SIZES = [
   { label: 'Huge', value: '1.5rem' },
 ];
 
-// Carbon Design System color palette
+/**
+ * The text-colour swatches.
+ *
+ * Literal values rather than `var(--cds-*)` on purpose: these are written into
+ * the message body and have to survive in the recipient's mail client, which has
+ * none of this app's CSS. Taking them from `@carbon/colors` keeps them traceable
+ * to the palette instead of being 21 anonymous hex strings — every one was
+ * already a real Carbon colour, so nothing here changes what is rendered.
+ */
 const TEXT_COLORS = [
-  '#161616', '#525252', '#8d8d8d', '#f4f4f4', '#ffffff',
-  '#da1e28', '#ff832b', '#f1c21b', '#24a148', '#007d79',
-  '#0f62fe', '#4589ff', '#8a3ffc', '#fa4d56', '#ff8389',
-  '#78a9ff', '#a6c8ff', '#be95ff', '#d4bbff', '#42be65', '#a7f0ba',
+  gray100, gray70, gray50, gray10, white,
+  red60, orange40, yellow30, green50, teal60,
+  blue60, blue50, purple60, red50, red40,
+  blue40, blue30, purple40, purple30, green40, green20,
 ];
 
 function DropdownMenu({ children, trigger }: { children: React.ReactNode; trigger: React.ReactNode }) {

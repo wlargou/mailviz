@@ -4,21 +4,6 @@
 @use '@carbon/react/scss/spacing' as *;
 
 // ─── Shared card-level empty state ───
-.card-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: $spacing-03;
-  padding: $spacing-07 $spacing-05;
-  color: var(--cds-text-secondary);
-  text-align: center;
-  @include type.type-style('body-compact-01');
-
-  p {
-    margin: 0;
-  }
-}
-
 // ─── Shared skeleton/loading classes ───
 .skeleton-row {
   padding: $spacing-03 $spacing-05;
@@ -954,6 +939,43 @@ td.table-cell--center .cds--tag {
   p {
     margin: 0;
     @include type.type-style('body-compact-01');
+  }
+
+  // Was `.card-empty`, an ad-hoc div used by every dashboard card because the
+  // bordered box above is larger than the card holding it. Same look, one
+  // component.
+  &--sm {
+    padding: $spacing-07 $spacing-05;
+    border: 0;
+    gap: $spacing-03;
+    @include type.type-style('body-compact-01');
+
+    h4 {
+      margin: 0;
+      @include type.type-style('body-compact-01');
+      color: var(--cds-text-secondary);
+      font-weight: 400;
+    }
+
+    // Bare icon, no circle. At card density the 3rem disc above is bigger than
+    // the message it decorates — the markup this replaced rendered the glyph on
+    // its own, and that was right.
+    .empty-state__icon {
+      inline-size: auto;
+      block-size: auto;
+      background: none;
+      border-radius: 0;
+      margin-block-end: 0;
+      color: var(--cds-text-secondary);
+    }
+
+    .empty-state__action {
+      margin-block-start: $spacing-03;
+    }
+  }
+
+  &__action {
+    margin-block-start: $spacing-05;
   }
 }
 

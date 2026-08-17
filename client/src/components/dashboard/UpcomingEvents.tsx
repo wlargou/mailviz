@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Calendar, ArrowRight, Launch } from '@carbon/icons-react';
 import { format, isToday } from 'date-fns';
 import type { DashboardStats } from '../../types/dashboard';
+import { EmptyState } from '../shared/EmptyState';
 
 interface UpcomingEventsProps {
   stats: DashboardStats | null;
@@ -25,13 +26,16 @@ export function UpcomingEvents({ stats, loading, onEventClick }: UpcomingEventsP
 
   if (upcomingEvents.length === 0) {
     return (
-      <div className="card-empty">
-        <Calendar size={20} />
-        <p>No upcoming events</p>
-        <Button kind="ghost" size="sm" onClick={() => navigate('/calendar')}>
-          Open Calendar
-        </Button>
-      </div>
+      <EmptyState
+        size="sm"
+        icon={<Calendar size={20} />}
+        title="No upcoming events"
+        action={
+          <Button kind="ghost" size="sm" onClick={() => navigate('/calendar')}>
+            Open Calendar
+          </Button>
+        }
+      />
     );
   }
 

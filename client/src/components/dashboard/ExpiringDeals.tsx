@@ -3,6 +3,7 @@ import { ArrowRight, WarningAlt, Calendar } from '@carbon/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import type { DashboardStats } from '../../types/dashboard';
+import { EmptyState } from '../shared/EmptyState';
 
 interface ExpiringDealsProps {
   deals: DashboardStats['expiringDeals'] | undefined;
@@ -22,9 +23,7 @@ export function ExpiringDeals({ deals, loading }: ExpiringDealsProps) {
 
   if (deals.length === 0) {
     return (
-      <div className="card-empty">
-        <p>No deals expiring in the next 15 days</p>
-      </div>
+      <EmptyState size="sm" title="No deals expiring in the next 15 days" />
     );
   }
 

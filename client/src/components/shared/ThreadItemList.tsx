@@ -2,6 +2,7 @@ import { Tag, Pagination, Button } from '@carbon/react';
 import { StarFilled, Star, Attachment, TrashCan, Undo, Email as EmailIcon, EmailNew, ReplyAll, TaskComplete as Task } from '@carbon/icons-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { EmailThread } from '../../types/email';
+import { EmptyState } from './EmptyState';
 
 const entityEl = typeof document !== 'undefined' ? document.createElement('textarea') : null;
 function decodeEntities(text: string | null | undefined): string {
@@ -38,7 +39,7 @@ export function ThreadItemList({
   showActions = true,
 }: ThreadItemListProps) {
   if (threads.length === 0 && !loading) {
-    return <div className="card-empty">{emptyMessage}</div>;
+    return <EmptyState size="sm" title={emptyMessage} />;
   }
 
   const handleAction = (action: ThreadAction, thread: EmailThread, ev: React.MouseEvent) => {

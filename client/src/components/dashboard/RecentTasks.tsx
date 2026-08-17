@@ -5,6 +5,7 @@ import { TaskStatusTag } from '../shared/TaskStatusTag';
 import { PriorityBadge } from '../shared/PriorityBadge';
 import type { DashboardStats } from '../../types/dashboard';
 import type { Task } from '../../types/task';
+import { EmptyState } from '../shared/EmptyState';
 
 interface RecentTasksProps {
   stats: DashboardStats | null;
@@ -26,7 +27,7 @@ export function RecentTasks({ stats, loading, onTaskClick }: RecentTasksProps) {
   const { tasks } = stats;
 
   if (tasks.recentTasks.length === 0) {
-    return <div className="card-empty">No tasks yet</div>;
+    return <EmptyState size="sm" title="No tasks yet" />;
   }
 
   return (

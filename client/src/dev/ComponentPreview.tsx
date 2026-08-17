@@ -4,6 +4,9 @@ import { ContactDuplicatesPage } from '../components/contacts/ContactDuplicatesP
 import { SnoozeModal } from '../components/mail/SnoozeModal';
 import { TemplateSettings } from '../components/settings/TemplateSettings';
 import { OnboardingSettings } from '../components/settings/OnboardingSettings';
+import { EmptyState } from '../components/shared/EmptyState';
+import { Button as CarbonButton } from '@carbon/react';
+import { Calendar } from '@carbon/icons-react';
 import { contactsApi } from '../api/customers';
 import { templatesApi } from '../api/templates';
 import { onboardingApi } from '../api/onboarding';
@@ -186,7 +189,7 @@ function stubApis() {
 // meant a state update in the render phase, which took the whole app down.
 stubApis();
 
-type Screen = 'duplicates' | 'templates' | 'snooze' | 'onboarding-tile';
+type Screen = 'duplicates' | 'templates' | 'snooze' | 'onboarding-tile' | 'empty';
 
 export function ComponentPreview() {
   const [theme, setTheme] = useState<'g100' | 'g10'>('g100');
@@ -208,7 +211,9 @@ export function ComponentPreview() {
           }}
         >
           <ContentSwitcher
-            selectedIndex={['duplicates', 'templates', 'snooze', 'onboarding-tile'].indexOf(screen)}
+            selectedIndex={['duplicates', 'templates', 'snooze', 'onboarding-tile', 'empty'].indexOf(
+              screen
+            )}
             onChange={({ name }) => setScreen(name as Screen)}
             size="sm"
           >
@@ -216,10 +221,38 @@ export function ComponentPreview() {
             <Switch name="templates" text="Templates" />
             <Switch name="snooze" text="Snooze" />
             <Switch name="onboarding-tile" text="Setup tile" />
+            <Switch name="empty" text="Empty states" />
           </ContentSwitcher>
           <Button size="sm" kind="tertiary" onClick={() => setTheme(theme === 'g100' ? 'g10' : 'g100')}>
             {theme}
           </Button>
+          {screen === 'empty' && (
+            <div style={{ display: 'grid', gap: '2rem', padding: '2rem', maxWidth: '60rem' }}>
+              <div>
+                <p style={{ marginBottom: '0.5rem', color: 'var(--cds-text-secondary)' }}>
+                  size="md" — an empty page or panel
+                </p>
+                <EmptyState
+                  title="No duplicates found"
+                  description="Every contact looks distinct. Run this again after your next sync."
+                  action={<CarbonButton kind="tertiary" size="sm">Back to contacts</CarbonButton>}
+                />
+              </div>
+              <div style={{ maxWidth: '22rem', border: '1px solid var(--cds-border-subtle-01)' }}>
+                <p style={{ marginBottom: '0.5rem', color: 'var(--cds-text-secondary)' }}>
+                  size="sm" — inside a dashboard card
+                </p>
+                <EmptyState size="sm" title="No tasks yet" />
+                <EmptyState
+                  size="sm"
+                  icon={<Calendar size={20} />}
+                  title="No upcoming events"
+                  action={<CarbonButton kind="ghost" size="sm">Open Calendar</CarbonButton>}
+                />
+              </div>
+            </div>
+          )}
+
           {screen === 'snooze' && (
             <Button size="sm" kind="ghost" onClick={() => setSnoozeOpen(true)}>
               Reopen

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Email, TaskComplete } from '@carbon/icons-react';
 import type { DashboardStats } from '../../types/dashboard';
 import { CompanyLogo } from '../shared/CompanyLogo';
+import { EmptyState } from '../shared/EmptyState';
 
 interface TopCustomersProps {
   stats: DashboardStats | null;
@@ -33,7 +34,7 @@ export function TopCustomers({ stats, loading }: TopCustomersProps) {
   const { topCustomers } = stats.customers;
 
   if (topCustomers.length === 0) {
-    return <div className="card-empty"><p>No company data yet</p></div>;
+    return <EmptyState size="sm" title="No company data yet" />;
   }
 
   return (

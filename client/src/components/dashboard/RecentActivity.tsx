@@ -3,6 +3,7 @@ import { ArrowRight } from '@carbon/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import type { DashboardStats } from '../../types/dashboard';
+import { EmptyState } from '../shared/EmptyState';
 
 interface RecentEmailsProps {
   stats: DashboardStats | null;
@@ -24,7 +25,7 @@ export function RecentEmails({ stats, loading, onEmailClick }: RecentEmailsProps
   const { emails } = stats;
 
   if (emails.recentEmails.length === 0) {
-    return <div className="card-empty">No recent emails</div>;
+    return <EmptyState size="sm" title="No recent emails" />;
   }
 
   return (
