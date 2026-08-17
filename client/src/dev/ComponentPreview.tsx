@@ -185,13 +185,30 @@ function stubApis() {
     }) as never;
 }
 
-// Applied at module load, before any component mounts — stubbing during render
-// meant a state update in the render phase, which took the whole app down.
-stubApis();
-
 type Screen = 'duplicates' | 'templates' | 'snooze' | 'onboarding-tile' | 'empty';
 
 export function ComponentPreview() {
+  /**
+   * Stubbing happens when this preview mounts — never at module scope.
+   *
+   * It used to run on import, and `App.tsx` imports this file statically, so
+   * every page load replaced the real `onboardingApi`, `contactsApi` and
+   * `templatesApi` with fixtures. The visible symptom was the onboarding welcome
+   * appearing for an account with 112k emails, because the gate was reading a
+   * fabricated status that says the account is empty.
+   *
+   * The `import.meta.env.DEV` guard on the route did not help: it gates
+   * rendering, not the import, and a module-scope side effect cannot be
+   * tree-shaken — so this would have reached production.
+   *
+   * A `useState` initialiser rather than an effect: children render before the
+   * parent's effects run, so an effect would leave the first render unstubbed.
+   */
+  useState(() => {
+    stubApis();
+    return null;
+  });
+
   const [theme, setTheme] = useState<'g100' | 'g10'>('g100');
   const [screen, setScreen] = useState<Screen>('duplicates');
   const [snoozeOpen, setSnoozeOpen] = useState(true);
