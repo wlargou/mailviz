@@ -252,17 +252,22 @@ are still worth knowing.
 
 ## Sync audit — still open
 
-- [ ] **A routine calendar sync-token expiry wipes and re-imports the calendar.**
-  Full sync starts with `deleteMany({ userId })`, and a 410 clears the token and
-  recurses into that path. Events outside the ±window (24 months back, 12 forward)
-  are deleted and never re-imported. The `deleted` count also reports the wipe, so
-  the UI is told thousands of events vanished.
-- [ ] **The calendar sync token comes from a different query than the data.** The
-  initial listing uses `singleEvents: true`; the token is fetched separately with
-  no `singleEvents` and an empty `timeMin==timeMax` range. Google requires
-  consistent parameters, so incremental syncs return unexpanded recurring masters
-  while the initial sync stored expanded instances — the same event changes shape
-  depending on which path imported it.
+- [x] **Calendar sync had no tests at all**, while being the only Google-facing
+  path that deletes rows in bulk. It built its client inline, so there was nothing
+  to substitute a fake for; `lib/calendar.ts` now mirrors the `lib/gmail.ts`
+  choke point and `test/calendarMock.ts` fakes the API.
+
+- [x] **A routine calendar sync-token expiry wipes and re-imports the calendar.**
+  The clean-slate `deleteMany({ userId })` is replaced by a reconciliation scoped
+  to what the sync could actually see: Google-sourced events, inside the window,
+  absent from a full response. Events outside the window and events created
+  locally and never pushed now survive, and `deleted` reports real removals
+  instead of counting its own wipe.
+- [x] **The calendar sync token comes from a different query than the data.** The
+  token request now carries `singleEvents: true` and drops the empty
+  `timeMin==timeMax` range, so it describes the same view the data was imported
+  in. Google withholds `nextSyncToken` from any request with `timeMin`, `timeMax`
+  or `orderBy`, which is why it still has to be a separate call.
 - [ ] **One account's initial sync starves every other account.** Both schedulers
   use a single module-level `isSyncing` flag and loop users sequentially, so a
   multi-hour first sync blocks everyone else's mail — including label propagation.

@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { google } from 'googleapis';
 import { prisma } from '../lib/prisma.js';
+import { getCalendarClient } from '../lib/calendar.js';
 import { googleAuthService } from './googleAuthService.js';
 import { customerService } from './customerService.js';
 import { extractDomain, isPersonalDomain, normalizeDomain } from '../utils/domainResolver.js';
@@ -251,10 +252,7 @@ export const calendarService = {
   },
 
   async syncFromGoogle(retried = false, userId: string): Promise<{ synced: number; deleted: number; customersCreated: number; contactsCreated: number }> {
-    const oauth2Client = await googleAuthService.getAuthenticatedClient(userId);
-    if (!oauth2Client) throw Object.assign(new Error('Google Calendar not connected'), { status: 400 });
-
-    const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+    const calendar = await getCalendarClient(userId);
     const auth = await prisma.googleAuth.findFirst({ where: { userId } });
     if (!auth) throw Object.assign(new Error('Google Calendar not connected'), { status: 400 });
 
@@ -279,6 +277,19 @@ export const calendarService = {
       }
     };
 
+    // The window a full sync covers. Computed once so the reconciliation below can
+    // scope its deletes to exactly the range this sync had visibility of.
+    const windowStart = new Date();
+    windowStart.setMonth(windowStart.getMonth() - env.CALENDAR_SYNC_PAST_MONTHS);
+    const windowEnd = new Date();
+    windowEnd.setMonth(windowEnd.getMonth() + env.CALENDAR_SYNC_FUTURE_MONTHS);
+
+    const isFullSync = !auth.calendarSyncToken;
+    // Google event ids seen in this sync. Only meaningful for a full sync, where
+    // absence from the response is information; during an incremental sync the
+    // response is a delta and says nothing about events it does not mention.
+    const seenGoogleIds = new Set<string>();
+
     try {
       let pageToken: string | undefined;
 
@@ -295,26 +306,25 @@ export const calendarService = {
             conferenceDataVersion: 1,
           } as any);
         } else {
-          // Initial/fresh full sync — clean slate to remove orphaned events
-          if (!pageToken) {
-            // First page of initial sync: delete all existing events to prevent orphans
-            // (cancelled recurring instances aren't returned by singleEvents:true)
-            const cleanResult = await prisma.calendarEvent.deleteMany({ where: { userId } });
-            if (cleanResult.count > 0) {
-              console.log(`[CalendarSync] Clean slate: removed ${cleanResult.count} existing events`);
-              deleted += cleanResult.count;
-            }
-          }
-
-          const timeMin = new Date();
-          timeMin.setMonth(timeMin.getMonth() - env.CALENDAR_SYNC_PAST_MONTHS);
-          const timeMax = new Date();
-          timeMax.setMonth(timeMax.getMonth() + env.CALENDAR_SYNC_FUTURE_MONTHS);
-
+          /**
+           * Full sync over the configured window.
+           *
+           * This used to begin by deleting every event the user had, on the
+           * reasoning that `singleEvents: true` omits cancelled recurring
+           * instances rather than returning them as cancelled, so there was no
+           * other way to notice one had gone. The cost was everything else:
+           * events outside the window and events created locally and never
+           * pushed were destroyed too — and since a routine 410 routes here, that
+           * happened during ordinary operation, not just on a first sync.
+           *
+           * The reconciliation after the loop achieves the same cleanup by
+           * deleting only what this sync could actually see: Google-sourced events
+           * inside the window that the response did not mention.
+           */
           response = await calendar.events.list({
             calendarId: 'primary',
-            timeMin: timeMin.toISOString(),
-            timeMax: timeMax.toISOString(),
+            timeMin: windowStart.toISOString(),
+            timeMax: windowEnd.toISOString(),
             maxResults: 500,
             singleEvents: true,
             orderBy: 'startTime',
@@ -339,6 +349,7 @@ export const calendarService = {
             continue;
           }
 
+          if (isFullSync) seenGoogleIds.add(gEvent.id);
           const result = await this.upsertGoogleEvent(calendar, gEvent, recurrenceCache, getRecurrence, userId);
           synced++;
           customersCreated += result.customersCreated;
@@ -362,17 +373,61 @@ export const calendarService = {
       throw err;
     }
 
-    // singleEvents:true does NOT return a sync token.
-    // If we did an initial sync (no token), obtain one with a separate call.
-    if (!nextSyncToken && !auth.calendarSyncToken) {
+    /**
+     * Remove Google-sourced events inside the window that this sync did not
+     * return — the cancelled recurring instances that `singleEvents: true` omits
+     * instead of reporting.
+     *
+     * Scoped three ways, each one a row the old clean slate destroyed:
+     *  - `googleEventId: { not: null }` — an event created here and never pushed
+     *    is unknown to Google, so its absence means nothing.
+     *  - the window — outside it the response is silent by construction, not
+     *    because the event is gone.
+     *  - full syncs only — an incremental response is a delta, so absence from it
+     *    is the normal case for every event that simply did not change.
+     */
+    if (isFullSync) {
+      const orphans = await prisma.calendarEvent.deleteMany({
+        where: {
+          userId,
+          startTime: { gte: windowStart, lte: windowEnd },
+          // Both conditions are on `googleEventId`, so they go under AND. As
+          // sibling keys the second silently replaced the first, leaving the
+          // not-null guard off — it only behaved because SQL `NOT IN` does not
+          // match NULL, which is the wrong reason for it to work.
+          AND: [
+            { googleEventId: { not: null } },
+            ...(seenGoogleIds.size > 0
+              ? [{ googleEventId: { notIn: [...seenGoogleIds] } }]
+              : []),
+          ],
+        },
+      });
+      if (orphans.count > 0) {
+        console.log(`[CalendarSync] Removed ${orphans.count} event(s) no longer on Google`);
+        deleted += orphans.count;
+      }
+    }
+
+    /**
+     * A full sync cannot return a sync token: Google withholds `nextSyncToken`
+     * from any request carrying `timeMin`, `timeMax` or `orderBy`, all of which
+     * the windowed listing above needs. So the token is fetched separately.
+     *
+     * `singleEvents: true` matters here and was previously missing. A token
+     * inherits the shape of the request that produced it, so one obtained without
+     * it described the unexpanded recurring-master view while the data had been
+     * stored as expanded instances — after the first incremental sync the same
+     * event arrived in a different form than it was imported in.
+     */
+    if (!nextSyncToken && isFullSync) {
       try {
         let tokenPageToken: string | undefined;
         do {
           const tokenRes = await calendar.events.list({
             calendarId: 'primary',
-            timeMin: new Date().toISOString(),
-            timeMax: new Date().toISOString(), // empty range, just need the token
-            maxResults: 1,
+            singleEvents: true,
+            maxResults: 2500,
             pageToken: tokenPageToken,
           } as any);
           nextSyncToken = tokenRes.data.nextSyncToken || null;
