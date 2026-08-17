@@ -3,55 +3,46 @@ import { calendarService } from '../services/calendarService.js';
 import { env } from '../config/env.js';
 import { wsEmitToUser } from '../websocket.js';
 import { secondsToCron } from '../utils/shared.js';
-import { prisma } from '../lib/prisma.js';
+import { createPerUserRunner } from './perUserRunner.js';
 
-let isSyncing = false;
 let syncTask: ReturnType<typeof cron.schedule> | null = null;
 
-async function runSync() {
-  if (isSyncing) {
-    console.log('[CalendarSync] Skipping — sync already in progress');
-    return;
-  }
-
-  isSyncing = true;
+async function syncAccount(userId: string): Promise<void> {
+  // Per-account, like the mail scheduler — see the note there.
+  wsEmitToUser(userId, 'calendar:sync:status', { syncing: true });
   try {
-    // S1: Sync for ALL users with GoogleAuth records
-    const authRecords = await prisma.googleAuth.findMany({ select: { userId: true } });
-    for (const { userId } of authRecords) {
-      // Per-account, like the mail scheduler — see the note there.
-      wsEmitToUser(userId, 'calendar:sync:status', { syncing: true });
-      try {
-        const result = await calendarService.syncFromGoogle(false, userId);
-        const hasChanges = result.synced > 0 || result.customersCreated > 0 || result.contactsCreated > 0;
-        if (hasChanges) {
-          console.log(
-            `[CalendarSync] Synced ${result.synced} events, ${result.customersCreated} companies, ${result.contactsCreated} contacts`
-          );
-          wsEmitToUser(userId, 'calendar:synced', {
-            synced: result.synced,
-            customersCreated: result.customersCreated,
-            contactsCreated: result.contactsCreated,
-          });
-        }
-      } catch (err: any) {
-        if (err?.status === 400) {
-          // Google not connected — silently skip
-        } else {
-          console.error('[CalendarSync] Sync failed:', err?.message || err);
-        }
-      } finally {
-        // In a finally so a thrown sync still clears the indicator — otherwise a
-        // single failure leaves the spinner running until the page is reloaded.
-        wsEmitToUser(userId, 'calendar:sync:status', { syncing: false });
-      }
+    const result = await calendarService.syncFromGoogle(false, userId);
+    const hasChanges = result.synced > 0 || result.customersCreated > 0 || result.contactsCreated > 0;
+    if (hasChanges) {
+      console.log(
+        `[CalendarSync] Synced ${result.synced} events, ${result.customersCreated} companies, ${result.contactsCreated} contacts`
+      );
+      wsEmitToUser(userId, 'calendar:synced', {
+        synced: result.synced,
+        customersCreated: result.customersCreated,
+        contactsCreated: result.contactsCreated,
+      });
     }
   } catch (err: any) {
-    console.error('[CalendarSync] Scheduler error:', err?.message || err);
+    if (err?.status === 400) {
+      // Google not connected — silently skip
+    } else {
+      console.error('[CalendarSync] Sync failed:', err?.message || err);
+    }
   } finally {
-    isSyncing = false;
+    // In a finally so a thrown sync still clears the indicator — otherwise a
+    // single failure leaves the spinner running until the page is reloaded.
+    wsEmitToUser(userId, 'calendar:sync:status', { syncing: false });
   }
 }
+
+// Per-account guard, not global: a long first sync for one account must not hold
+// up everybody else's calendar. See jobs/perUserRunner.ts.
+const runner = createPerUserRunner({
+  label: 'CalendarSync',
+  concurrency: env.SYNC_MAX_CONCURRENT_ACCOUNTS,
+  run: syncAccount,
+});
 
 export function startCalendarSyncScheduler() {
   if (!env.CALENDAR_SYNC_ENABLED) {
@@ -64,10 +55,10 @@ export function startCalendarSyncScheduler() {
 
   console.log(`[CalendarSync] Starting background sync every ${interval}s (cron: ${cronExpr})`);
 
-  syncTask = cron.schedule(cronExpr, runSync);
+  syncTask = cron.schedule(cronExpr, () => runner.runAll());
 
   // Run an initial sync 10 seconds after startup (staggered from email sync at 5s)
-  setTimeout(runSync, 10000);
+  setTimeout(() => void runner.runAll(), 10000);
 }
 
 export function stopCalendarSyncScheduler() {
@@ -78,7 +69,17 @@ export function stopCalendarSyncScheduler() {
   }
 }
 
-/** Expose syncing status for the API */
-export function isCalendarSyncInProgress(): boolean {
-  return isSyncing;
+/**
+ * Whether this account's calendar is mid-sync.
+ *
+ * Per-account now that the guard is. Answered globally, the endpoint told a user
+ * their calendar was syncing because somebody else's was.
+ */
+export function isCalendarSyncInProgress(userId: string): boolean {
+  return runner.isInFlight(userId);
+}
+
+/** Start a calendar sync for one account immediately — see the mail equivalent. */
+export function syncCalendarNow(userId: string): Promise<void> {
+  return runner.runOne(userId);
 }

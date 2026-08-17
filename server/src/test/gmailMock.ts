@@ -171,6 +171,8 @@ export interface FakeMessage {
   snippet?: string;
   /** Epoch milliseconds; Gmail sends this as a string. */
   internalDate?: number;
+  /** RFC 2919 `List-Id`, marking the message as distributed by a mailing list. */
+  listId?: string;
 }
 
 /** A `users.messages.get` payload, shaped the way Gmail returns `format: 'full'`. */
@@ -182,6 +184,8 @@ export function gmailMessage(msg: FakeMessage): gmail_v1.Schema$Message {
     { name: 'Message-ID', value: `<${msg.id}@mail.example.com>` },
   ];
   if (msg.cc?.length) headers.push({ name: 'Cc', value: msg.cc.join(', ') });
+  // RFC 2919. Its presence is how the sync recognises list-distributed mail.
+  if (msg.listId) headers.push({ name: 'List-Id', value: msg.listId });
 
   return {
     id: msg.id,

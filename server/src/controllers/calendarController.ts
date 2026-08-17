@@ -68,7 +68,7 @@ export const calendarController = {
     }
   },
 
-  async getSyncStatus(_req: Req, res: Response) {
-    res.json({ data: { syncing: isCalendarSyncInProgress() } });
+  async getSyncStatus(req: Req, res: Response) {
+    res.json({ data: { syncing: isCalendarSyncInProgress(req.user!.id) } });
   },
 };

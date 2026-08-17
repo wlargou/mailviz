@@ -2,7 +2,7 @@ import { Response, NextFunction } from 'express';
 import type { Req } from "../types/http.js";
 import { emailService } from '../services/emailService.js';
 import { draftService } from '../services/draftService.js';
-import { isSyncInProgress } from '../jobs/emailSyncScheduler.js';
+import { isSyncInProgressFor } from '../jobs/emailSyncScheduler.js';
 
 export const emailController = {
   async findAllThreads(req: Req, res: Response, next: NextFunction) {
@@ -219,8 +219,8 @@ export const emailController = {
     }
   },
 
-  async getSyncStatus(_req: Req, res: Response) {
-    res.json({ data: { syncing: isSyncInProgress() } });
+  async getSyncStatus(req: Req, res: Response) {
+    res.json({ data: { syncing: isSyncInProgressFor(req.user!.id) } });
   },
 
   async sendEmail(req: Req, res: Response, next: NextFunction) {

@@ -1,5 +1,7 @@
 import { Response, NextFunction } from 'express';
 import type { Req } from "../types/http.js";
+import { syncAccountNow } from '../jobs/emailSyncScheduler.js';
+import { syncCalendarNow } from '../jobs/calendarSyncScheduler.js';
 import { googleAuthService } from '../services/googleAuthService.js';
 import { env } from '../config/env.js';
 import { signAccessToken, signRefreshToken } from '../utils/jwt.js';
@@ -105,6 +107,20 @@ export const authController = {
 
         // Store Google auth tokens linked to user
         await googleAuthService.upsertGoogleAuth(user.id, result.tokens);
+
+        // Start syncing immediately rather than waiting for the next scheduler
+        // tick. A new account otherwise sits empty for up to a full interval
+        // while onboarding tells the user their mail is already on its way.
+        //
+        // Deliberately not awaited: a first sync can run for hours, and the
+        // browser is waiting on this redirect. The runner's per-account guard
+        // makes a concurrent tick a no-op, so nothing races.
+        void syncAccountNow(user.id).catch((err) => {
+          console.warn('[Auth] Post-login mail sync failed:', err?.message || err);
+        });
+        void syncCalendarNow(user.id).catch((err) => {
+          console.warn('[Auth] Post-login calendar sync failed:', err?.message || err);
+        });
 
         // Issue JWT cookies
         const accessToken = signAccessToken(user.id);

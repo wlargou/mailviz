@@ -25,6 +25,10 @@ export const env = {
   // Gmail retains history for roughly a week, so 7 days covers everything the
   // history feed could have returned. Bounded on purpose: the alternative is a
   // full mailbox re-sync triggered by a condition we do not control.
+  // How many accounts may sync at once. The guard is per-account, so this only
+  // bounds local resources (database connections above all) — Gmail's quota is
+  // charged per user and gets its own limiter per user.
+  SYNC_MAX_CONCURRENT_ACCOUNTS: Math.max(1, parseInt(process.env.SYNC_MAX_CONCURRENT_ACCOUNTS || '3', 10)),
   SYNC_CATCHUP_DAYS: parseInt(process.env.SYNC_CATCHUP_DAYS || '7', 10),
   CALENDAR_SYNC_PAST_MONTHS: parseInt(process.env.CALENDAR_SYNC_PAST_MONTHS || '24', 10),
   CALENDAR_SYNC_FUTURE_MONTHS: parseInt(process.env.CALENDAR_SYNC_FUTURE_MONTHS || '12', 10),

@@ -1130,3 +1130,82 @@ describe('emailService.upsertMessage — own-domain filing', () => {
     expect(email?.customer?.domain).toBe('lydec.co.ma');
   });
 });
+
+describe('emailService.upsertMessage — what may become a company', () => {
+  it('creates no company or contact for mail that arrived via a mailing list', async () => {
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+
+    stubMessagesListPages(gmail, [['m-list']]);
+    stubMessagesGet(gmail, [
+      {
+        id: 'm-list',
+        from: 'someone@acme-supplier.com',
+        to: ['ibm-community@connectedcommunity.org'],
+        // RFC 2919: this message was distributed by a list, which is the only
+        // reason every participant's address is on it.
+        listId: '<ibm-community.connectedcommunity.org>',
+      },
+    ]);
+
+    const result = await emailService.syncFromGmail(user.id);
+
+    expect(result.synced).toBe(1);
+    // The message is kept — it is real mail. It just populates no CRM rows.
+    expect(await prisma.email.count({ where: { userId: user.id } })).toBe(1);
+    expect(await prisma.customer.count({ where: { userId: user.id } })).toBe(0);
+  });
+
+  it('does not turn a list host into a company even without List-Id', async () => {
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+
+    stubMessagesListPages(gmail, [['m-groups']]);
+    stubMessagesGet(gmail, [
+      { id: 'm-groups', from: 'discussion@googlegroups.com', to: ['me@powerm.ma'] },
+    ]);
+
+    await emailService.syncFromGmail(user.id);
+
+    const domains = (
+      await prisma.customer.findMany({ where: { userId: user.id }, select: { domain: true } })
+    ).map((c) => c.domain);
+    expect(domains).not.toContain('googlegroups.com');
+  });
+
+  it('still creates a company for an ordinary supplier', async () => {
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+
+    stubMessagesListPages(gmail, [['m-real']]);
+    stubMessagesGet(gmail, [
+      { id: 'm-real', from: 'sales@acme-supplier.com', to: ['me@powerm.ma'] },
+    ]);
+
+    await emailService.syncFromGmail(user.id);
+
+    const domains = (
+      await prisma.customer.findMany({ where: { userId: user.id }, select: { domain: true } })
+    ).map((c) => c.domain);
+    expect(domains).toContain('acme-supplier.com');
+  });
+
+  it('creates no company from an unparseable domain', async () => {
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+
+    stubMessagesListPages(gmail, [['m-mangled']]);
+    stubMessagesGet(gmail, [
+      // A real captured Exchange fragment. This used to become a customer called
+      // "Powerm" on the domain `powerm.ma/o=`.
+      { id: 'm-mangled', from: 'someone@powerm.ma/o=exchangelabs', to: ['me@powerm.ma'] },
+    ]);
+
+    await emailService.syncFromGmail(user.id);
+
+    const domains = (
+      await prisma.customer.findMany({ where: { userId: user.id }, select: { domain: true } })
+    ).map((c) => c.domain);
+    expect(domains.some((d) => d?.includes('/'))).toBe(false);
+  });
+});

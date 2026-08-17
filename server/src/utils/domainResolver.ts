@@ -71,12 +71,63 @@ export function isBarePublicSuffix(domain: string): boolean {
   );
 }
 
+/**
+ * Domains belonging to mailing-list and community platforms rather than to a
+ * company you do business with.
+ *
+ * The personal-domain exclusion has always kept Gmail and Outlook out of the
+ * customer list; these are the same idea for lists. Without them the two largest
+ * "customers" after the account's own company were `connectedcommunity.org`
+ * (12,758 messages) and `googlegroups.com` (3,735) — a community platform and a
+ * list host, neither of which is an organisation anyone sells to.
+ */
+const MAILING_LIST_DOMAINS = new Set([
+  'googlegroups.com', 'connectedcommunity.org', 'higherlogic.com',
+  'groups.io', 'freelists.org', 'librelist.com', 'simplelists.com',
+  'mailman.com', 'listserv.com', 'sympa.org', 'topicbox.com',
+]);
+
+/**
+ * Leading labels that mark a host as list infrastructure — `lists.example.org`
+ * is the list server, not the organisation's mail domain.
+ */
+const MAILING_LIST_PREFIXES = new Set(['lists', 'list', 'listserv', 'groups', 'group', 'mailman']);
+
+/**
+ * A syntactically valid hostname: dot-separated labels of alphanumerics and
+ * hyphens, no empty labels, hyphens never on a boundary, and an alphabetic TLD.
+ *
+ * `extractDomain` used to return whatever followed the last `@`, so mangled
+ * Exchange and Domino headers produced customers on domains like `powerm.ma/o=`
+ * and `ibm.comclaudiabeisiegel/poughkeepsie/ibm`.
+ */
+const VALID_DOMAIN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}$/;
+
+function isValidDomain(domain: string): boolean {
+  if (domain.length > 253) return false;
+  if (!VALID_DOMAIN.test(domain)) return false;
+  return domain.split('.').every((label) => label.length >= 1 && label.length <= 63);
+}
+
+/** True when a domain is a mailing list or community platform, not a company. */
+export function isMailingListDomain(domain: string): boolean {
+  const lower = domain.toLowerCase();
+  if (MAILING_LIST_DOMAINS.has(lower) || MAILING_LIST_DOMAINS.has(normalizeDomain(lower))) {
+    return true;
+  }
+  const labels = lower.split('.');
+  return labels.length > 2 && MAILING_LIST_PREFIXES.has(labels[0]);
+}
+
 export function extractDomain(email: string): string | null {
   // Strip angle brackets, quotes, and whitespace that may trail from malformed email headers
   const cleaned = email.replace(/[<>"';\s]+/g, '');
   const at = cleaned.lastIndexOf('@');
   if (at < 1) return null;
-  return cleaned.slice(at + 1).toLowerCase().trim() || null;
+  const domain = cleaned.slice(at + 1).toLowerCase().trim();
+  if (!domain) return null;
+  // Rejected rather than returned as-is: an unparseable domain became a customer.
+  return isValidDomain(domain) ? domain : null;
 }
 
 /**

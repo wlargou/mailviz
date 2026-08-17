@@ -4,7 +4,13 @@ import { prisma } from '../lib/prisma.js';
 import { getGmailClient } from '../lib/gmail.js';
 import { isGmailRateLimitError } from '../lib/gmailLimiter.js';
 import { customerService } from './customerService.js';
-import { extractDomain, isPersonalDomain, normalizeDomain, parseName } from '../utils/domainResolver.js';
+import {
+  extractDomain,
+  isMailingListDomain,
+  isPersonalDomain,
+  normalizeDomain,
+  parseName,
+} from '../utils/domainResolver.js';
 import { parsePagination, paginationMeta } from '../utils/pagination.js';
 import { wsEmit, wsEmitToUser } from '../websocket.js';
 import { buildMimeMessage, type MimeAttachment } from '../utils/mimeBuilder.js';
@@ -277,6 +283,10 @@ export const emailService = {
     // them once this completes, so a swallowed failure was a message lost for
     // good with nothing to show it had ever existed.
     const failedIds: string[] = [];
+    // Attempted, whether or not the fetch succeeded — this is what drives the
+    // progress indicator.
+    let processed = 0;
+    let lastProgressAt = 0;
 
     for (let i = 0; i < allMessageIds.length; i += 10) {
       const batch = allMessageIds.slice(i, i + 10);
@@ -307,10 +317,22 @@ export const emailService = {
       }
 
       messagesSinceRefresh += batch.length;
+      processed += batch.length;
 
-      // Emit progress every 50 messages
-      if (synced % 50 < 10) {
-        wsEmitToUser(userId, 'sync:progress', { type: 'email', synced, total, phase: 'syncing' });
+      // Progress is driven by messages *attempted*, not by `synced`. Keyed off
+      // `synced % 50 < 10`, the bar froze whenever a run of batches failed
+      // wholesale — the sync was working, the counter was not moving, and the
+      // only visible difference from a hung sync was none.
+      if (processed - lastProgressAt >= 50) {
+        lastProgressAt = processed;
+        wsEmitToUser(userId, 'sync:progress', {
+          type: 'email',
+          synced,
+          processed,
+          failed: failedIds.length,
+          total,
+          phase: 'syncing',
+        });
       }
 
       // Force-refresh Gmail client every 500 messages to get a fresh token
@@ -529,11 +551,24 @@ export const emailService = {
      */
     const ownDomain = await ownEmailDomain(userId);
 
+    /**
+     * Mail that arrived via a mailing list creates no companies or contacts.
+     *
+     * `List-Id` (RFC 2919) is the precise signal: it means this message was
+     * distributed by a list, which is why every participant's address is on it.
+     * Deliberately not keyed off `List-Unsubscribe`, which ordinary vendor
+     * marketing also carries — a real supplier who emails you should still become
+     * a company.
+     */
+    const viaMailingList = Boolean(headers['list-id']);
+
     // Collect all email addresses for customer/contact linking
-    const allEmails = [fromEmail, ...toList, ...ccList];
+    const allEmails = viaMailingList ? [] : [fromEmail, ...toList, ...ccList];
     for (const email of allEmails) {
       const rawDomain = extractDomain(email);
       if (!rawDomain || isPersonalDomain(rawDomain)) continue;
+      // A list host is infrastructure, not an organisation you deal with.
+      if (isMailingListDomain(rawDomain)) continue;
       const domain = normalizeDomain(rawDomain);
 
       try {

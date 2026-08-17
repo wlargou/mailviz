@@ -268,20 +268,43 @@ are still worth knowing.
   `timeMin==timeMax` range, so it describes the same view the data was imported
   in. Google withholds `nextSyncToken` from any request with `timeMin`, `timeMax`
   or `orderBy`, which is why it still has to be a separate call.
-- [ ] **One account's initial sync starves every other account.** Both schedulers
-  use a single module-level `isSyncing` flag and loop users sequentially, so a
-  multi-hour first sync blocks everyone else's mail — including label propagation.
-- [ ] **`extractDomain` does not validate.** Six customers exist on impossible
-  domains (`powerm.ma/o=`, `ibm.comclaudiabeisiegel/poughkeepsie/ibm`) captured
-  from mangled Exchange and Domino headers.
-- [ ] **Mailing lists become customers.** After the re-filing,
-  `connectedcommunity.org` (12,758) and `googlegroups.com` (3,735) rank second and
-  fifth by volume. They are lists, not companies — the personal-domain exclusion
-  needs a list/no-reply equivalent.
-- [ ] **Login does not trigger a sync**, so a new account waits up to 60s (longer
-  behind the global lock) while onboarding claims the first pass is running.
-- [ ] **Progress stalls on failures** — `if (synced % 50 < 10)` never fires if a
-  whole batch fails, since `synced` does not advance.
+- [x] **One account's initial sync starves every other account.** The guard is
+  now per account (`jobs/perUserRunner.ts`), shared by both schedulers, with
+  accounts running concurrently up to `SYNC_MAX_CONCURRENT_ACCOUNTS` (3). The
+  guard is still needed per account so two syncs cannot race one history cursor.
+  The two sync-status endpoints answer for the requesting account rather than
+  globally — asked globally they reported "syncing" because somebody else was.
+- [x] **`extractDomain` does not validate.** It now rejects anything that is not
+  a syntactically valid hostname, so mangled Exchange and Domino fragments produce
+  no customer. Whitespace stripping still happens first — that is deliberate, and
+  how wrapped headers are recovered. **The 6 existing junk customers are not
+  cleaned up**; they hold no mail, so it is cosmetic.
+- [x] **Mailing lists become customers.** Two exclusions: `List-Id` (RFC 2919) on
+  a message means it was distributed by a list, so it creates no companies or
+  contacts at all; and known list hosts plus `lists.`/`groups.` prefixes are never
+  companies. Keyed off `List-Id` rather than `List-Unsubscribe` on purpose — the
+  latter is on ordinary vendor marketing, and a real supplier should still become
+  a company. **Existing list customers are not cleaned up** — see the new item
+  below.
+- [x] **Login does not trigger a sync.** The OAuth callback now kicks off mail and
+  calendar syncs for that account, deliberately un-awaited: a first sync can run
+  for hours and the browser is waiting on the redirect. The per-account guard
+  makes a concurrent scheduler tick a no-op.
+- [x] **Progress stalls on failures.** Progress is driven by messages *attempted*
+  rather than by `synced`, and the event now carries `processed` and `failed`
+  alongside `synced`.
+
+## Cleanup left after the sync fixes
+
+- [ ] **Existing mailing-list customers are still in the database.**
+  `connectedcommunity.org` (12,758 emails) and `googlegroups.com` (3,735) remain
+  as customers with their contacts; the fix only stops new ones. Re-filing them is
+  not the same problem as the `co.ma` repair — those messages belong to no company
+  at all, so the right move is to unlink them and delete the customer, which needs
+  a decision about the contacts harvested from those lists.
+- [ ] **Six customers on invalid domains** (`powerm.ma/o=`, the Domino fragment)
+  still exist. They hold no mail. One `deleteMany` once someone confirms the
+  contacts under them are not wanted.
 
 ## Follow-ups from onboarding
 

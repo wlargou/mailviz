@@ -4,83 +4,73 @@ import { draftService } from '../services/draftService.js';
 import { env } from '../config/env.js';
 import { wsEmitToUser } from '../websocket.js';
 import { secondsToCron } from '../utils/shared.js';
-import { prisma } from '../lib/prisma.js';
+import { createPerUserRunner } from './perUserRunner.js';
 
-let isSyncing = false;
 let syncTask: ReturnType<typeof cron.schedule> | null = null;
 
-async function runSync() {
-  if (isSyncing) {
-    console.log('[EmailSync] Skipping — sync already in progress');
-    return;
-  }
+/** Sync one account: mail, then its drafts. */
+async function syncAccount(userId: string): Promise<void> {
+  // Status is per-account, not global. Broadcast, this lit up every connected
+  // user's sync indicator whenever anybody synced, and leaked another
+  // account's mailbox volume through the progress counts.
+  wsEmitToUser(userId, 'sync:status', { syncing: true });
 
-  isSyncing = true;
   try {
-    // S1: Sync for ALL users with GoogleAuth records
-    const authRecords = await prisma.googleAuth.findMany({ select: { userId: true } });
-    for (const { userId } of authRecords) {
-      // Status is per-account, not global. Broadcast, this lit up every connected
-      // user's sync indicator whenever anybody synced, and leaked another
-      // account's mailbox volume through the progress counts.
-      wsEmitToUser(userId, 'sync:status', { syncing: true });
-
-      try {
-        try {
-          const result = await emailService.syncFromGmail(userId);
-          const hasChanges =
-            result.synced > 0 ||
-            result.customersCreated > 0 ||
-            result.contactsCreated > 0 ||
-            (result.labelsChanged ?? 0) > 0;
-          if (hasChanges) {
-            console.log(
-              `[EmailSync] Synced ${result.synced} emails, ${result.labelsChanged ?? 0} label changes, ${result.customersCreated} companies, ${result.contactsCreated} contacts`
-            );
-            wsEmitToUser(userId, 'emails:synced', {
-              synced: result.synced,
-              labelsChanged: result.labelsChanged ?? 0,
-              customersCreated: result.customersCreated,
-              contactsCreated: result.contactsCreated,
-            });
-          }
-          if (result.failed > 0) {
-            console.warn(`[EmailSync] ${result.failed} message(s) failed to fetch and will be retried`);
-          }
-        } catch (err: any) {
-          if (err?.status === 400 || err?.status === 403) {
-            // Google not connected or permissions not granted — silently skip
-          } else {
-            console.error('[EmailSync] Sync failed:', err?.message || err);
-          }
-        }
-
-        // Drafts are reconciled in their own try/catch so a drafts failure never
-        // aborts the mail sync for the remaining users. In the steady state this
-        // is a single `drafts.list` call — see draftService.syncDrafts.
-        try {
-          const drafts = await draftService.syncDrafts(userId);
-          if (drafts.synced > 0 || drafts.removed > 0) {
-            console.log(`[DraftSync] ${drafts.synced} drafts updated, ${drafts.removed} removed`);
-          }
-        } catch (err: any) {
-          if (err?.status !== 400 && err?.status !== 403) {
-            console.error('[DraftSync] Draft sync failed:', err?.message || err);
-          }
-        }
-      } finally {
-        // In a finally so an unexpected throw still clears this account's
-        // indicator — otherwise one failure leaves the spinner running until the
-        // page is reloaded.
-        wsEmitToUser(userId, 'sync:status', { syncing: false });
+    try {
+      const result = await emailService.syncFromGmail(userId);
+      const hasChanges =
+        result.synced > 0 ||
+        result.customersCreated > 0 ||
+        result.contactsCreated > 0 ||
+        (result.labelsChanged ?? 0) > 0;
+      if (hasChanges) {
+        console.log(
+          `[EmailSync] Synced ${result.synced} emails, ${result.labelsChanged ?? 0} label changes, ${result.customersCreated} companies, ${result.contactsCreated} contacts`
+        );
+        wsEmitToUser(userId, 'emails:synced', {
+          synced: result.synced,
+          labelsChanged: result.labelsChanged ?? 0,
+          customersCreated: result.customersCreated,
+          contactsCreated: result.contactsCreated,
+        });
+      }
+      if (result.failed > 0) {
+        console.warn(`[EmailSync] ${result.failed} message(s) failed to fetch and will be retried`);
+      }
+    } catch (err: any) {
+      if (err?.status === 400 || err?.status === 403) {
+        // Google not connected or permissions not granted — silently skip
+      } else {
+        console.error('[EmailSync] Sync failed:', err?.message || err);
       }
     }
-  } catch (err: any) {
-    console.error('[EmailSync] Scheduler error:', err?.message || err);
+
+    // Drafts are reconciled in their own try/catch so a drafts failure never
+    // aborts the mail sync for the remaining users. In the steady state this
+    // is a single `drafts.list` call — see draftService.syncDrafts.
+    try {
+      const drafts = await draftService.syncDrafts(userId);
+      if (drafts.synced > 0 || drafts.removed > 0) {
+        console.log(`[DraftSync] ${drafts.synced} drafts updated, ${drafts.removed} removed`);
+      }
+    } catch (err: any) {
+      if (err?.status !== 400 && err?.status !== 403) {
+        console.error('[DraftSync] Draft sync failed:', err?.message || err);
+      }
+    }
   } finally {
-    isSyncing = false;
+    // In a finally so an unexpected throw still clears this account's
+    // indicator — otherwise one failure leaves the spinner running until the
+    // page is reloaded.
+    wsEmitToUser(userId, 'sync:status', { syncing: false });
   }
 }
+
+const runner = createPerUserRunner({
+  label: 'EmailSync',
+  concurrency: env.SYNC_MAX_CONCURRENT_ACCOUNTS,
+  run: syncAccount,
+});
 
 export function startEmailSyncScheduler() {
   if (!env.EMAIL_SYNC_ENABLED) {
@@ -93,10 +83,10 @@ export function startEmailSyncScheduler() {
 
   console.log(`[EmailSync] Starting background sync every ${interval}s (cron: ${cronExpr})`);
 
-  syncTask = cron.schedule(cronExpr, runSync);
+  syncTask = cron.schedule(cronExpr, () => runner.runAll());
 
   // Run an initial sync 5 seconds after startup
-  setTimeout(runSync, 5000);
+  setTimeout(() => void runner.runAll(), 5000);
 }
 
 export function stopEmailSyncScheduler() {
@@ -107,7 +97,25 @@ export function stopEmailSyncScheduler() {
   }
 }
 
-/** Expose syncing status for the API */
+/**
+ * Start a mail sync for one account immediately, without waiting for the next
+ * tick. Used by the login callback so a new account does not sit empty for up to
+ * a full interval while onboarding tells the user their mail is on its way.
+ *
+ * Returns once that account's sync finishes; callers that must not block should
+ * not await it. Safe to call while a sync for the same account is running — the
+ * runner's per-account guard makes it a no-op.
+ */
+export function syncAccountNow(userId: string): Promise<void> {
+  return runner.runOne(userId);
+}
+
+/** Whether any account is mid-sync. */
 export function isSyncInProgress(): boolean {
-  return isSyncing;
+  return runner.inFlightCount() > 0;
+}
+
+/** Whether this specific account is mid-sync. */
+export function isSyncInProgressFor(userId: string): boolean {
+  return runner.isInFlight(userId);
 }

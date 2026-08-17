@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   extractDomain,
+  isMailingListDomain,
   normalizeDomain,
   isPersonalDomain,
   domainToCompanyName,
@@ -134,5 +135,71 @@ describe('isPersonalDomain', () => {
   it('does not treat a company domain as personal', () => {
     expect(isPersonalDomain('intelcom.co.ma')).toBe(false);
     expect(isPersonalDomain('powerm.ma')).toBe(false);
+  });
+});
+
+describe('extractDomain — rejects what cannot be a domain', () => {
+  /**
+   * These are real captured values. Mangled Exchange and Domino headers used to
+   * become customers, because whatever followed the last `@` was returned as-is.
+   */
+  it.each([
+    'someone@powerm.ma/o=exchangelabs',
+    'claudia@ibm.comclaudiabeisiegel/poughkeepsie/ibm',
+    'a@medte',
+    'a@n',
+    'a@-leading.com',
+    'a@trailing-.com',
+    'a@double..dot.com',
+    'a@.leading.dot',
+    'a@trailing.dot.',
+    'a@under_score.com',
+    'a@1.2.3.4',
+  ])('rejects %s', (address) => {
+    expect(extractDomain(address)).toBeNull();
+  });
+
+  it('strips embedded whitespace before validating, rather than rejecting', () => {
+    // Whitespace removal is deliberate — it is how wrapped and mangled headers
+    // are recovered — so this yields a usable domain instead of nothing.
+    expect(extractDomain('a@spaced domain.com')).toBe('spaceddomain.com');
+  });
+
+  it.each([
+    ['someone@intelcom.co.ma', 'intelcom.co.ma'],
+    ['someone@ibm.com', 'ibm.com'],
+    ['someone@mail.smtp.acme.co.uk', 'mail.smtp.acme.co.uk'],
+    ['someone@my-company.io', 'my-company.io'],
+    ['someone@a1.example.com', 'a1.example.com'],
+  ])('still accepts %s', (address, expected) => {
+    expect(extractDomain(address)).toBe(expected);
+  });
+});
+
+describe('isMailingListDomain', () => {
+  it.each([
+    'googlegroups.com',
+    'connectedcommunity.org',
+    'groups.io',
+    'lists.apache.org',
+    'listserv.example.org',
+    'groups.acme.com',
+  ])('treats %s as list infrastructure', (domain) => {
+    expect(isMailingListDomain(domain)).toBe(true);
+  });
+
+  it('catches a subdomain of a known list host', () => {
+    expect(isMailingListDomain('foo.googlegroups.com')).toBe(true);
+  });
+
+  it.each([
+    'intelcom.co.ma',
+    'ibm.com',
+    'powerm.ma',
+    // A company that merely *has* a word like "group" in its name is not a list.
+    'groupe-renault.fr',
+    'grouponsupplier.com',
+  ])('does not treat %s as a list', (domain) => {
+    expect(isMailingListDomain(domain)).toBe(false);
   });
 });
