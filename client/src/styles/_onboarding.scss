@@ -8,19 +8,70 @@
 @use '@carbon/react/scss/spacing' as *;
 @use '@carbon/react/scss/type' as type;
 
+.onboarding-fullpage {
+  position: fixed;
+  inset: 0;
+  z-index: 9000; // above SidePanel (8000) and its dropdowns (8001+)
+  background: var(--cds-background);
+
+  // CreateFullPage sizes itself from its container, so the container has to be
+  // the viewport for its action bar to land on the bottom edge.
+  > * {
+    block-size: 100%;
+  }
+
+  // The flow top-aligns step content inside a tall scrolling area, which leaves a
+  // large void beneath a short step. Centring it reads as deliberate.
+  //
+  // Auto margins rather than `justify-content: center`: a step taller than the
+  // area then scrolls from its top instead of having it clipped, which is what
+  // centred flex content does inside `overflow: auto`.
+  .c4p--create-full-page__form {
+    min-block-size: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  // Only the margins — NOT `display`. Carbon hides inactive steps with
+  // `display: none`, and overriding display here made every step render at once,
+  // stacked down the page. A hidden step is not a flex item, so auto margins
+  // centre whichever step is actually visible.
+  .c4p--create-full-page__step {
+    margin-block: auto;
+  }
+}
+
 .onboarding-step {
-  display: flex;
-  flex-direction: column;
-  gap: $spacing-05;
-  padding-inline: $spacing-05;
-  max-width: 40rem;
+  // Copy on the left, a supporting panel on the right. A full-page flow gives
+  // each step the whole viewport; a single narrow column of prose in that space
+  // reads as unfinished.
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.85fr);
+  gap: $spacing-09;
+  align-items: start;
+  max-inline-size: 62rem;
+  // CreateFullPage's content area has no trailing gutter, so without this the
+  // supporting panel sits flush against the window edge.
+  padding-inline-end: $spacing-07;
+
+  @media (max-width: 60rem) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: $spacing-06;
+  }
+
+  &__main {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-05;
+    min-inline-size: 0;
+  }
 
   &__body {
     @include type.type-style('body-01');
     color: var(--cds-text-primary);
   }
 
-  // Secondary guidance: true but not the point of the step.
+  // Secondary guidance: true, but not the point of the step.
   &__note {
     @include type.type-style('label-01');
     color: var(--cds-text-secondary);
@@ -32,55 +83,322 @@
   &__ok {
     fill: var(--cds-support-success);
     flex-shrink: 0;
-    // Nudge onto the cap height of the first line rather than its box.
+    // Onto the cap height of the first line rather than its box.
     margin-block-start: $spacing-01;
   }
 
-  &__list {
+  &__aside {
     display: flex;
     flex-direction: column;
-    gap: $spacing-03;
-
-    li {
-      @include type.type-style('body-01');
-      color: var(--cds-text-primary);
-    }
+    gap: $spacing-04;
+    min-inline-size: 0;
   }
 
-  &__pending {
+  &__aside-label {
+    @include type.type-style('label-01');
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--cds-text-helper);
+  }
+}
+
+// A sketch of the Kanban board for the columns step.
+.onboarding-board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: $spacing-03;
+  padding: $spacing-04;
+  background: var(--cds-layer-01);
+  border: 1px solid var(--cds-border-subtle-01);
+
+  &__col {
     display: flex;
     flex-direction: column;
     gap: $spacing-03;
+    min-inline-size: 0;
+  }
+
+  // A column-direction flex stretches its children, which makes each Tag as wide
+  // as the column and stops it reading as a pill.
+  .cds--tag {
+    align-self: flex-start;
+    max-inline-size: 100%;
+  }
+
+  &__card {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-02;
+    padding: $spacing-03;
+    background: var(--cds-layer-02);
+    border-inline-start: 2px solid var(--cds-border-interactive);
+  }
+
+  // Placeholder text — deliberately not lorem ipsum, which reads as content.
+  &__line {
+    display: block;
+    block-size: 0.375rem;
+    background: var(--cds-border-subtle-02);
+
+    &--short { inline-size: 60%; }
+  }
+}
+
+.onboarding-facts {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-04;
+  list-style: none;
+
+  &__item {
+    @include type.type-style('body-compact-01');
+    color: var(--cds-text-secondary);
+    display: flex;
+    align-items: flex-start;
+    gap: $spacing-03;
+
+    svg {
+      fill: var(--cds-icon-interactive);
+      flex-shrink: 0;
+      margin-block-start: 0.125rem;
+    }
+
+    strong { color: var(--cds-text-primary); }
+  }
+
+  &__dot {
+    flex-shrink: 0;
+    inline-size: 0.5rem;
+    block-size: 0.5rem;
+    border-radius: 50%;
+    background: var(--cds-support-success);
+    margin-block-start: 0.375rem;
+  }
+}
+
+// The signature step's live preview: a fragment of a reply with the signature
+// under it, so the sign-off is seen in the shape it will actually take.
+.onboarding-preview {
+  padding: $spacing-05;
+  background: var(--cds-layer-01);
+  border: 1px solid var(--cds-border-subtle-01);
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-05;
+
+  &__body {
+    @include type.type-style('body-compact-01');
+    color: var(--cds-text-secondary);
+  }
+
+  &__signature {
+    @include type.type-style('body-compact-01');
+    color: var(--cds-text-primary);
+    // Honour the newlines the user typed.
+    white-space: pre-wrap;
+    padding-block-start: $spacing-04;
+    border-block-start: 1px solid var(--cds-border-subtle-01);
+  }
+
+  &__signature--empty {
+    color: var(--cds-text-placeholder);
+    font-style: italic;
+  }
+}
+
+.onboarding-count {
+  padding: $spacing-05;
+  background: var(--cds-layer-01);
+  border: 1px solid var(--cds-border-subtle-01);
+  border-block-start: 2px solid var(--cds-border-interactive);
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-02;
+
+  &__value {
+    @include type.type-style('productive-heading-04');
+    color: var(--cds-text-primary);
+
+    &--pending { color: var(--cds-text-secondary); }
+  }
+
+  &__label {
+    @include type.type-style('label-01');
+    color: var(--cds-text-secondary);
   }
 }
 
 .onboarding-welcome {
-  &__view {
-    display: flex;
-    flex-direction: column;
-    gap: $spacing-05;
-    max-width: 42rem;
+  position: fixed;
+  inset: 0;
+  z-index: 9000; // above SidePanel (8000) and its dropdowns (8001+)
+  overflow-y: auto;
+  background: var(--cds-background);
 
-    p {
-      @include type.type-style('body-01');
-      color: var(--cds-text-primary);
+  // The gradient field behind the content, echoing the login page so signing in
+  // and arriving read as one continuous moment.
+  &__field {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(circle at 78% 18%, rgba(69, 137, 255, 0.20), transparent 55%),
+      radial-gradient(circle at 12% 88%, rgba(138, 63, 252, 0.16), transparent 50%),
+      radial-gradient(circle at 50% 50%, rgba(69, 137, 255, 0.05), transparent 70%);
+  }
+
+  // Two columns so the primary action stays above the fold. Stacked in one
+  // column, the capability cards pushed "Set up mailviz" off a 840px-tall
+  // viewport — a welcome screen you have to scroll before you can act on is a
+  // worse first impression than one that says slightly less.
+  &__inner {
+    position: relative;
+    min-block-size: 100vh;
+    max-inline-size: 82rem;
+    margin: 0 auto;
+    padding: $spacing-08 $spacing-07;
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+    align-items: center;
+    gap: $spacing-10;
+
+    @media (max-width: 66rem) {
+      grid-template-columns: minmax(0, 1fr);
+      gap: $spacing-08;
+      align-items: start;
     }
   }
 
-  &__list {
+  &__col {
     display: flex;
     flex-direction: column;
-    gap: $spacing-04;
+    gap: $spacing-07;
+    min-inline-size: 0;
+  }
+
+  &__head {
+    max-inline-size: 34rem;
+    // `balance` spreads the headline evenly instead of leaving a two-word orphan
+    // on the last line, which a hard <br> could only get right at one width.
+    h1 { text-wrap: balance; }
+  }
+
+  &__mark {
+    margin-block-end: $spacing-06;
+    line-height: 0;
+  }
+
+  &__eyebrow {
+    @include type.type-style('label-01');
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: var(--cds-text-secondary);
+    margin-block-end: $spacing-04;
+  }
+
+  // Light weight and large size, matching `.login-panel__title`.
+  &__title {
+    font-size: clamp(2rem, 3.4vw, 3rem);
+    font-weight: 300;
+    line-height: 1.12;
+    letter-spacing: -0.01em;
+    color: var(--cds-text-primary);
+    margin: 0 0 $spacing-06;
+  }
+
+  &__lead {
+    @include type.type-style('body-01');
+    color: var(--cds-text-secondary);
+    max-inline-size: 34rem;
+    margin: 0;
+  }
+
+  &__grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: $spacing-05;
     list-style: none;
 
-    li {
-      @include type.type-style('body-01');
-      color: var(--cds-text-primary);
+    @media (max-width: 40rem) {
+      grid-template-columns: minmax(0, 1fr);
     }
+  }
 
-    strong {
-      color: var(--cds-text-primary);
-      font-weight: 600;
+  &__card {
+    padding: $spacing-06;
+    background: var(--cds-layer-01);
+    border: 1px solid var(--cds-border-subtle-01);
+    // A hairline of brand colour, not a full border — enough to lift the card off
+    // the gradient without competing with the primary action.
+    border-block-start: 2px solid var(--cds-border-interactive);
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-03;
+    transition: background 110ms ease, transform 110ms ease;
+
+    &:hover {
+      background: var(--cds-layer-hover-01);
+      transform: translateY(-2px);
     }
+  }
+
+  &__card-icon {
+    color: var(--cds-icon-interactive);
+    line-height: 0;
+    margin-block-end: $spacing-02;
+  }
+
+  &__card-title {
+    @include type.type-style('heading-compact-02');
+    color: var(--cds-text-primary);
+    margin: 0;
+  }
+
+  &__card-body {
+    @include type.type-style('body-compact-01');
+    color: var(--cds-text-secondary);
+    margin: 0;
+  }
+
+  &__foot {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-05;
+    padding-block-start: $spacing-06;
+    border-block-start: 1px solid var(--cds-border-subtle-01);
+    max-inline-size: 34rem;
+  }
+
+  &__status {
+    @include type.type-style('body-compact-01');
+    color: var(--cds-text-secondary);
+    display: flex;
+    align-items: baseline;
+    gap: $spacing-03;
+    max-inline-size: 34rem;
+    margin: 0;
+  }
+
+  &__dot {
+    flex-shrink: 0;
+    inline-size: 0.5rem;
+    block-size: 0.5rem;
+    border-radius: 50%;
+    translate: 0 -0.1rem;
+
+    &--ok { background: var(--cds-support-success); }
+    &--warn { background: var(--cds-support-warning); }
+  }
+
+  &__actions {
+    display: flex;
+    align-items: center;
+    gap: $spacing-03;
+  }
+
+  &__fineprint {
+    @include type.type-style('label-01');
+    color: var(--cds-text-helper);
+    margin: 0;
   }
 }

@@ -71,7 +71,9 @@ describe('OnboardingGate', () => {
     mockStatus(status());
     render(<OnboardingGate />);
 
-    expect(await screen.findByText('Welcome to mailviz')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: /your mail and your customers/i })
+    ).toBeInTheDocument();
   });
 
   it('renders nothing for an account that already completed setup', async () => {
@@ -80,7 +82,7 @@ describe('OnboardingGate', () => {
 
     await waitFor(() => expect(onboardingApi.getStatus).toHaveBeenCalled());
     expect(container).toBeEmptyDOMElement();
-    expect(screen.queryByText('Welcome to mailviz')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /your mail and your customers/i })).toBeNull();
   });
 
   it('stays silent when the status call fails', async () => {
@@ -95,24 +97,19 @@ describe('OnboardingGate', () => {
   it('records a dismissal as skipped so it does not reappear every login', async () => {
     mockStatus(status());
     render(<OnboardingGate />);
-    await screen.findByText('Welcome to mailviz');
+    await screen.findByRole('heading', { name: /your mail and your customers/i });
 
     await userEvent.click(await screen.findByRole('button', { name: /explore on my own/i }));
 
     await waitFor(() => expect(onboardingApi.complete).toHaveBeenCalledWith(true));
-    expect(screen.queryByText('Welcome to mailviz')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /your mail and your customers/i })).toBeNull();
   });
 
   it('moves from the tour into the wizard', async () => {
     mockStatus(status());
     render(<OnboardingGate />);
-    await screen.findByText('Welcome to mailviz');
+    await screen.findByRole('heading', { name: /your mail and your customers/i });
 
-    // Walk to the last view, where the setup call to action lives. Awaited
-    // rather than queried synchronously: the header renders before the body
-    // finishes building its steps, so the footer buttons appear a tick later.
-    await userEvent.click(await screen.findByRole('button', { name: /^next$/i }));
-    await userEvent.click(await screen.findByRole('button', { name: /^next$/i }));
     await userEvent.click(await screen.findByRole('button', { name: /set up mailviz/i }));
 
     // Matched by role — the step title also appears as a label in the progress
@@ -130,9 +127,7 @@ describe('OnboardingGate', () => {
       })
     );
     render(<OnboardingGate />);
-    await screen.findByText('Welcome to mailviz');
-    await userEvent.click(await screen.findByRole('button', { name: /^next$/i }));
-    await userEvent.click(await screen.findByRole('button', { name: /^next$/i }));
+    await screen.findByRole('heading', { name: /your mail and your customers/i });
     await userEvent.click(await screen.findByRole('button', { name: /set up mailviz/i }));
 
     expect(await screen.findByText(/already have 4 columns/i)).toBeInTheDocument();

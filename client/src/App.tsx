@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AppShell } from './components/layout/AppShell';
 import { LoginPage } from './components/auth/LoginPage';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
+import { OnboardingPreview } from './dev/OnboardingPreview';
 import { DashboardPage } from './components/dashboard/DashboardPage';
 import { TasksPage } from './components/tasks/TasksPage';
 import { CustomersPage } from './components/customers/CustomersPage';
@@ -21,6 +22,9 @@ export function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        {import.meta.env.DEV && (
+          <Route path="/dev/onboarding" element={<OnboardingPreview />} />
+        )}
         <Route element={<ProtectedRoute />}>
           <Route element={<AppShell />}>
             <Route path="/" element={<DashboardPage />} />

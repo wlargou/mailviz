@@ -225,6 +225,18 @@ are still worth knowing.
   but they pollute the customer list and any count taken from it. Worth a
   cleanup query once someone confirms they are not referenced by real mail.
 
+## Follow-ups from onboarding
+
+- [ ] **The welcome overlay has no focus trap.** It covers the app and is
+  announced as `aria-modal`, and focus moves into it on mount with Escape to
+  dismiss, but Tab can still reach the app underneath. Either trap focus or mark
+  the shell `inert` while it is open.
+- [ ] **`/dev/onboarding` is a dev-only preview route** (`import.meta.env.DEV`,
+  so it is tree-shaken from production builds). It exists because every
+  authenticated screen sits behind Google OAuth, which makes UI review impossible
+  without a live session. Worth extending to the other hard-to-reach screens, or
+  removing once there is a better answer.
+
 ## Follow-ups from templates and snooze
 
 - [ ] **Snooze/reply race.** The snooze scheduler and the mail sync are

@@ -1,6 +1,7 @@
-import { Button, ButtonSet } from '@carbon/react';
-import { ArrowRight } from '@carbon/icons-react';
-import { InterstitialScreen, InterstitialScreenView } from '@carbon/ibm-products';
+import { useEffect, useRef } from 'react';
+import { Button } from '@carbon/react';
+import { ArrowRight, Email, Building, Money, Time } from '@carbon/icons-react';
+import { MailvizLogo } from '../shared/MailvizLogo';
 
 interface WelcomeInterstitialProps {
   open: boolean;
@@ -11,131 +12,137 @@ interface WelcomeInterstitialProps {
 }
 
 /**
- * The first thing a new account sees.
+ * The first screen a new account sees — a full-page welcome.
  *
- * `InterstitialScreen` is Carbon's component for exactly this — its own docs
- * describe it as shown "the first time a user accesses a new experience (e.g.
- * upon first login)", and it lives under Onboarding in the ibm-products
- * Storybook. It handles the step progress indicator itself; each
- * `InterstitialScreenView` contributes one step.
+ * Built from Carbon primitives and tokens rather than wrapped around
+ * `InterstitialScreen`. That component was the first attempt and it was the
+ * wrong tool here: its full-screen variant is laid out for substantial content
+ * or artwork, so three short paragraphs left most of the viewport empty, and its
+ * footer applies `cds--btn-set` by descendant selector, stretching every button
+ * into a full-width slab. Fighting that produced a worse result than composing
+ * the layout directly.
  *
- * Full screen rather than modal, because there is nothing behind it worth
- * showing: on first login the app has no mail, no companies and no tasks, so a
- * modal would frame an empty page.
- *
- * This screen only explains. Nothing here writes configuration — that is the
- * wizard's job, and keeping them separate is why the tour can be skipped
- * without leaving half-made settings behind.
+ * The visual language is deliberately the login page's — the same orbit mark,
+ * the same gradient field, the same light type weight — so signing in and
+ * arriving read as one continuous moment rather than two unrelated screens.
  */
+
+const CAPABILITIES = [
+  {
+    icon: Email,
+    title: 'Mail that knows its sender',
+    body: 'Reply, schedule, snooze, and keep templates for what you send constantly.',
+  },
+  {
+    icon: Time,
+    title: 'Catch up by company',
+    body: 'Review groups what you missed by the company behind it, not one endless list.',
+  },
+  {
+    icon: Building,
+    title: 'Customers build themselves',
+    body: 'Companies and contacts come from your inbox, with a finder for duplicates.',
+  },
+  {
+    icon: Money,
+    title: 'Tasks and deals in context',
+    body: 'Turn a thread into a task, or register a deal against a partner.',
+  },
+];
+
 export function WelcomeInterstitial({
   open,
   googleConnected,
   onStartSetup,
   onSkip,
 }: WelcomeInterstitialProps) {
+  const primaryRef = useRef<HTMLButtonElement>(null);
+
+  /**
+   * Move focus into the overlay and let Escape dismiss it.
+   *
+   * The screen covers the app and is announced as a dialog, so leaving focus on
+   * whatever was behind it would strand a keyboard or screen-reader user outside
+   * the thing they are looking at. This is not a full focus trap — tabbing can
+   * still reach the app underneath, which is tracked as a follow-up.
+   */
+  useEffect(() => {
+    if (!open) return;
+    primaryRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onSkip();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [open, onSkip]);
+
+  if (!open) return null;
+
   return (
-    <InterstitialScreen
-      open={open}
-      isFullScreen
-      ariaLabel="Welcome to mailviz"
-      onClose={onSkip}
-    >
-      <InterstitialScreen.Header
-        headerTitle="Welcome to mailviz"
-        headerSubTitle="Your mail and your customers in one place"
-      />
-      <InterstitialScreen.Body
-        contentRenderer={() => (
-          <>
-            <InterstitialScreenView stepTitle="What this is">
-              <div className="onboarding-welcome__view">
-                <p>
-                  mailviz reads your Gmail and builds a picture of the companies behind it. Every
-                  message is filed against the customer it came from, so a thread, the contact who
-                  sent it, the meetings you have had and the deals in flight all sit together.
-                </p>
-                <p>
-                  Nothing is filed by hand. Companies and contacts are created from the addresses in
-                  your mail as it arrives.
-                </p>
-              </div>
-            </InterstitialScreenView>
+    <div className="onboarding-welcome" role="dialog" aria-modal="true" aria-label="Welcome to mailviz">
+      <div className="onboarding-welcome__field" aria-hidden="true" />
 
-            <InterstitialScreenView stepTitle="What you can do">
-              <div className="onboarding-welcome__view">
-                <ul className="onboarding-welcome__list">
-                  <li>
-                    <strong>Mail</strong> — read, reply, schedule for later, snooze a thread until
-                    you can deal with it, and save templates for the replies you send constantly.
-                  </li>
-                  <li>
-                    <strong>Review</strong> — work through everything you missed, grouped by
-                    company rather than as one long list.
-                  </li>
-                  <li>
-                    <strong>Companies &amp; contacts</strong> — built from your mail, with a
-                    duplicate finder for when the same person appears twice.
-                  </li>
-                  <li>
-                    <strong>Tasks &amp; deals</strong> — turn a message into a task, or register a
-                    deal against a partner.
-                  </li>
-                </ul>
-              </div>
-            </InterstitialScreenView>
+      <div className="onboarding-welcome__inner">
+        <div className="onboarding-welcome__col">
+        <header className="onboarding-welcome__head">
+          <div className="onboarding-welcome__mark">
+            <MailvizLogo size={72} variant="animated" />
+          </div>
+          <p className="onboarding-welcome__eyebrow">Welcome</p>
+          <h1 className="onboarding-welcome__title">
+            Your mail and your customers, in one place
+          </h1>
+          <p className="onboarding-welcome__lead">
+            mailviz reads your Gmail and builds a picture of the companies behind it. A thread, the
+            person who sent it, the meetings you have had and the deals in flight all sit together —
+            assembled as your mail arrives, not filed by you.
+          </p>
+        </header>
 
-            <InterstitialScreenView stepTitle="Before you start">
-              <div className="onboarding-welcome__view">
-                {googleConnected ? (
-                  <p>
-                    Your Google account is already connected — signing in was the consent, so mail
-                    and calendar are syncing now.
-                  </p>
-                ) : (
-                  <p>
-                    Your Google account is not connected yet. You can link it from Settings, and
-                    until then mail and calendar will stay empty.
-                  </p>
-                )}
-                <p>
-                  Two things need a moment of your input: the columns on your task board, and the
-                  partner you register deals against. Setup takes about a minute, and everything in
-                  it can be changed later.
-                </p>
-              </div>
-            </InterstitialScreenView>
-          </>
-        )}
-      />
-      <InterstitialScreen.Footer
-        actionButtonRenderer={({ handleGotoStep, progStep = 0, stepCount = 0 }) => {
-          const lastStep = stepCount - 1;
-          const goto = (target: number) =>
-            handleGotoStep?.(Math.min(Math.max(target, 0), lastStep));
-          return (
-            <ButtonSet>
-              <Button kind="ghost" size="lg" onClick={onSkip}>
-                Explore on my own
-              </Button>
-              {progStep > 0 && (
-                <Button kind="secondary" size="lg" onClick={() => goto(progStep - 1)}>
-                  Back
-                </Button>
-              )}
-              {progStep < lastStep && (
-                <Button size="lg" renderIcon={ArrowRight} onClick={() => goto(progStep + 1)}>
-                  Next
-                </Button>
-              )}
-              {progStep === lastStep && (
-                <Button size="lg" renderIcon={ArrowRight} onClick={onStartSetup}>
-                  Set up mailviz
-                </Button>
-              )}
-            </ButtonSet>
-          );
-        }}
-      />
-    </InterstitialScreen>
+        <footer className="onboarding-welcome__foot">
+          <p className="onboarding-welcome__status">
+            {googleConnected ? (
+              <>
+                <span className="onboarding-welcome__dot onboarding-welcome__dot--ok" />
+                Google is connected — signing in was the consent, so your mail and calendar are
+                syncing now. Two small things need you: your board columns, and the partner you
+                register deals against.
+              </>
+            ) : (
+              <>
+                <span className="onboarding-welcome__dot onboarding-welcome__dot--warn" />
+                Google is not connected yet, so mail and calendar stay empty until you link it in
+                Settings.
+              </>
+            )}
+          </p>
+          <div className="onboarding-welcome__actions">
+            <Button ref={primaryRef} size="lg" renderIcon={ArrowRight} onClick={onStartSetup}>
+              Set up mailviz
+            </Button>
+            <Button kind="ghost" size="lg" onClick={onSkip}>
+              Explore on my own
+            </Button>
+          </div>
+          <p className="onboarding-welcome__fineprint">
+            Takes about a minute. Everything is editable later.
+          </p>
+        </footer>
+        </div>
+
+        <ul className="onboarding-welcome__grid">
+          {CAPABILITIES.map(({ icon: Icon, title, body }) => (
+            <li key={title} className="onboarding-welcome__card">
+              <span className="onboarding-welcome__card-icon">
+                <Icon size={20} />
+              </span>
+              <h2 className="onboarding-welcome__card-title">{title}</h2>
+              <p className="onboarding-welcome__card-body">{body}</p>
+            </li>
+          ))}
+        </ul>
+
+      </div>
+    </div>
   );
 }
