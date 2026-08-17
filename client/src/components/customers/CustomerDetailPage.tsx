@@ -56,6 +56,7 @@ import type { CalendarEvent } from '../../types/calendar';
 import type { EmailThread, AttachmentWithEmail } from '../../types/email';
 import { ThreadItemList } from '../shared/ThreadItemList';
 import { toolbarSearchValue } from '../../utils/carbonSearch';
+import { CompanyLogo } from '../shared/CompanyLogo';
 
 const contactHeaders = [
   { key: 'name', header: 'Name' },
@@ -248,14 +249,7 @@ export function CustomerDetailPage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-                  {customer.logoUrl && (
-                    <img
-                      src={customer.logoUrl}
-                      alt=""
-                      className="customer-logo customer-logo--lg"
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                    />
-                  )}
+                  <CompanyLogo src={customer.logoUrl} name={customer.name} size="lg" />
                   <h2 style={{ margin: 0 }}>{customer.name}</h2>
                   <VipBadge
                     isVip={customer.isVip}

@@ -2,6 +2,7 @@ import { SkeletonText, Tag } from '@carbon/react';
 import { useNavigate } from 'react-router-dom';
 import { Email, TaskComplete } from '@carbon/icons-react';
 import type { DashboardStats } from '../../types/dashboard';
+import { CompanyLogo } from '../shared/CompanyLogo';
 
 interface TopCustomersProps {
   stats: DashboardStats | null;
@@ -47,18 +48,7 @@ export function TopCustomers({ stats, loading }: TopCustomersProps) {
             aria-label={`${customer.name}, ${customer.emailCount} emails, ${customer.taskCount} tasks`}
             onClick={() => navigate(`/customers/${customer.id}`)}
           >
-            {logo ? (
-              <img
-                src={logo}
-                alt=""
-                className="top-customer__logo"
-                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-              />
-            ) : (
-              <span className="top-customer__logo top-customer__logo--placeholder" aria-hidden="true">
-                {customer.name.charAt(0).toUpperCase()}
-              </span>
-            )}
+            <CompanyLogo src={logo} name={customer.name} className="top-customer__logo" />
             <span className="top-customer__name">{customer.name}</span>
             <span className="top-customer__badges">
               <Tag size="sm" type="blue">

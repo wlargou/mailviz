@@ -26,6 +26,7 @@ import { CompanyComboBox } from '../shared/CompanyComboBox';
 import type { Contact } from '../../types/customer';
 import type { PaginationMeta } from '../../types/api';
 import { toolbarSearchValue } from '../../utils/carbonSearch';
+import { CompanyLogo } from '../shared/CompanyLogo';
 
 const headers = [
   { key: 'name', header: 'Name' },
@@ -162,14 +163,10 @@ export function ContactsPage() {
                             className="contact-name-cell"
                             onClick={() => navigate(`/contacts/${contact.id}`)}
                           >
-                            {contact.customer?.logoUrl && (
-                              <img
-                                src={contact.customer.logoUrl}
-                                alt=""
-                                className="customer-logo"
-                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                              />
-                            )}
+                            <CompanyLogo
+                              src={contact.customer?.logoUrl}
+                              name={contact.customer?.name ?? contact.firstName}
+                            />
                             {contact.firstName} {contact.lastName}
                           </span>
                         </TableCell>

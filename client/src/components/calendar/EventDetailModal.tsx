@@ -12,6 +12,7 @@ import { SidePanel } from '@carbon/ibm-products';
 import { Edit, TrashCan, Location, Time, UserMultiple, Launch, Checkmark, Close, Help, EventSchedule, Repeat, User, Enterprise, ChevronDown, ChevronUp } from '@carbon/icons-react';
 import { format } from 'date-fns';
 import type { CalendarEvent, EventAttendee } from '../../types/calendar';
+import { CompanyLogo } from '../shared/CompanyLogo';
 
 type ResponseStatus = EventAttendee['responseStatus'];
 
@@ -384,12 +385,7 @@ export function EventDetailModal({ event, open, onClose, onEdit, onDelete, onRes
                     <div key={group.key} className="event-detail__group">
                       <div className="event-detail__group-header" onClick={toggleExpand}>
                         {group.logoUrl ? (
-                          <img
-                            src={group.logoUrl}
-                            alt=""
-                            className="customer-logo"
-                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                          />
+                          <CompanyLogo src={group.logoUrl} name={group.label} />
                         ) : (
                           <Enterprise size={14} />
                         )}

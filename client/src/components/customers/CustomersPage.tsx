@@ -31,6 +31,7 @@ import { useUIStore } from '../../store/uiStore';
 import type { Customer, CompanyCategory } from '../../types/customer';
 import type { PaginationMeta } from '../../types/api';
 import { toolbarSearchValue } from '../../utils/carbonSearch';
+import { CompanyLogo } from '../shared/CompanyLogo';
 
 const headers = [
   { key: 'name', header: 'Name' },
@@ -202,14 +203,7 @@ export function CustomersPage() {
                             onClick={() => navigate(`/customers/${customer.id}`)}
                           >
                             {customer.isVip && <VipBadge isVip size={16} />}
-                            {customer.logoUrl && (
-                              <img
-                                src={customer.logoUrl}
-                                alt=""
-                                className="customer-logo"
-                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                              />
-                            )}
+                            <CompanyLogo src={customer.logoUrl} name={customer.name} />
                             {customer.name}
                           </span>
                         </TableCell>

@@ -19,6 +19,7 @@ import { contactsApi } from '../../api/customers';
 import { useUIStore } from '../../store/uiStore';
 import type { DuplicateContact, DuplicateGroup } from '../../types/customer';
 import type { PaginationMeta } from '../../types/api';
+import { CompanyLogo } from '../shared/CompanyLogo';
 
 /**
  * Review-and-merge for duplicate contacts.
@@ -87,14 +88,7 @@ function GroupCard({ group, onMerged }: GroupCardProps) {
     <Tile className="duplicate-group">
       <div className="duplicate-group__header">
         <div className="duplicate-group__company">
-          {group.customer.logoUrl && (
-            <img
-              src={group.customer.logoUrl}
-              alt=""
-              className="customer-logo"
-              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-            />
-          )}
+          <CompanyLogo src={group.customer.logoUrl} name={group.customer.name} />
           <span>{group.customer.name}</span>
           <Tag type={group.confidence === 'high' ? 'green' : 'teal'} size="sm">
             {group.confidence === 'high' ? 'Same address' : 'Likely the same person'}

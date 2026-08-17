@@ -929,6 +929,24 @@
   object-fit: contain;
   vertical-align: middle;
 
+  // Shown by `shared/CompanyLogo` when there is no logo or the fetch fails.
+  // It occupies the same box as the image so a row without a logo lines up with
+  // one that has it — they used to be indented differently.
+  &--placeholder {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--cds-layer-02);
+    color: var(--cds-text-secondary);
+    font-size: 0.625rem;
+    font-weight: 600;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+
+  &--md.customer-logo--placeholder { font-size: 0.75rem; }
+  &--lg.customer-logo--placeholder { font-size: 1.125rem; }
+
   &--md {
     width: 24px;
     height: 24px;

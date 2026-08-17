@@ -43,6 +43,7 @@ import type { CalendarEvent } from '../../types/calendar';
 import type { EmailThread, AttachmentWithEmail } from '../../types/email';
 import { ThreadItemList } from '../shared/ThreadItemList';
 import { toolbarSearchValue } from '../../utils/carbonSearch';
+import { CompanyLogo } from '../shared/CompanyLogo';
 
 const eventHeaders = [
   { key: 'title', header: 'Title' },
@@ -166,14 +167,11 @@ export function ContactDetailPage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-                  {contact.customer?.logoUrl && (
-                    <img
-                      src={contact.customer.logoUrl}
-                      alt=""
-                      className="customer-logo customer-logo--lg"
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                    />
-                  )}
+                  <CompanyLogo
+                    src={contact.customer?.logoUrl}
+                    name={contact.customer?.name ?? contact.firstName}
+                    size="lg"
+                  />
                   <h2 style={{ margin: 0 }}>{contact.firstName} {contact.lastName}</h2>
                   <VipBadge
                     isVip={contact.isVip}
