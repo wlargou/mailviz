@@ -33,6 +33,7 @@ import { DEAL_STATUS_LABELS, DEAL_STATUS_TAG_TYPE } from '../../types/deal';
 import type { PaginationMeta } from '../../types/api';
 import { format, isPast } from 'date-fns';
 import { toolbarSearchValue } from '../../utils/carbonSearch';
+import { useTableSort } from '../../hooks/useTableSort';
 
 /** Restrict the list to deals the user does not own ('shared') or does own ('owned'). */
 type DealOwnership = 'shared' | 'owned';
@@ -43,13 +44,18 @@ const ownershipItems: Array<{ id: DealOwnership | '__all__'; text: string }> = [
   { id: 'owned', text: 'Owned by me' },
 ];
 
+/**
+ * `sortField` is the API field (`DEAL_SORT_FIELDS` in dealService); note it is
+ * not the column key for Expiry. Partner and Customer are relations and Products
+ * is free text the endpoint does not order on.
+ */
 const headers = [
-  { key: 'title', header: 'Title' },
+  { key: 'title', header: 'Title', sortField: 'title' },
   { key: 'partner', header: 'Partner' },
   { key: 'customer', header: 'Customer' },
   { key: 'products', header: 'Products' },
-  { key: 'status', header: 'Status' },
-  { key: 'expiry', header: 'Expiry Date' },
+  { key: 'status', header: 'Status', sortField: 'status' },
+  { key: 'expiry', header: 'Expiry Date', sortField: 'expiryDate' },
   { key: 'actions', header: '' },
 ];
 
@@ -59,6 +65,7 @@ export function DealsPage() {
   const [meta, setMeta] = useState<PaginationMeta | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const { params: sortParams, headerProps } = useTableSort('expiryDate', 'asc');
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [partners, setPartners] = useState<DealPartner[]>([]);
@@ -90,7 +97,11 @@ export function DealsPage() {
   const fetchDeals = useCallback(async () => {
     setLoading(true);
     try {
-      const params: Record<string, string> = { page: String(page), limit: String(pageSize) };
+      const params: Record<string, string> = {
+        page: String(page),
+        limit: String(pageSize),
+        ...sortParams,
+      };
       if (debouncedSearch) params.search = debouncedSearch;
       if (selectedStatus) params.status = selectedStatus;
       if (selectedPartnerId) params.partnerId = selectedPartnerId;
@@ -114,7 +125,7 @@ export function DealsPage() {
         });
       }
     }
-  }, [page, pageSize, debouncedSearch, selectedStatus, selectedPartnerId, selectedOwnership, addNotification]);
+  }, [page, pageSize, debouncedSearch, selectedStatus, selectedPartnerId, selectedOwnership, addNotification, sortParams.sortBy, sortParams.sortOrder]);
 
   useEffect(() => {
     fetchDeals();
@@ -259,7 +270,10 @@ export function DealsPage() {
                     <TableHead>
                       <TableRow>
                         {headers.map((header) => (
-                          <TableHeader key={header.key}>
+                          <TableHeader
+                            key={header.key}
+                            {...(header.sortField ? headerProps(header.sortField) : {})}
+                          >
                             {header.header}
                           </TableHeader>
                         ))}

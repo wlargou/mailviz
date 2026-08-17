@@ -31,12 +31,18 @@ import { tasksApi } from '../../api/tasks';
 import { useUIStore } from '../../store/uiStore';
 import type { Task, Label, TaskStatusConfig } from '../../types/task';
 import { toolbarSearchValue, type TableToolbarSearchChangeEvent } from '../../utils/carbonSearch';
+import type { DataTableSortState } from '@carbon/react';
 
+/**
+ * `sortField` names the API field a column orders by (`TASK_SORT_FIELDS` in
+ * taskService). Columns without one are not sortable: company and labels come
+ * from relations the endpoint does not order on.
+ */
 const headers = [
-  { key: 'title', header: 'Title' },
-  { key: 'status', header: 'Status' },
-  { key: 'priority', header: 'Priority' },
-  { key: 'dueDate', header: 'Due Date' },
+  { key: 'title', header: 'Title', sortField: 'title' },
+  { key: 'status', header: 'Status', sortField: 'status' },
+  { key: 'priority', header: 'Priority', sortField: 'priority' },
+  { key: 'dueDate', header: 'Due Date', sortField: 'dueDate' },
   { key: 'customer', header: 'Company' },
   { key: 'labels', header: 'Labels' },
   { key: 'actions', header: '' },
@@ -67,6 +73,35 @@ interface TaskListViewProps {
 
 export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreateNew }: TaskListViewProps) {
   const { meta, setPage, setPageSize, setFilter, filters, currentPage, pageSize, resetFilters } = useTaskStore();
+
+  /**
+   * Sorting goes through the store, which already put `sortBy`/`sortOrder` in the
+   * request — the headers were simply never wired to it.
+   *
+   * They previously spread `getHeaderProps`, so Carbon rendered a sortable header
+   * with a direction indicator while the body mapped over the unsorted `tasks`
+   * array. The arrows moved and nothing else did.
+   */
+  const sortHeaderProps = (field: string) => {
+    const active = filters.sortBy === field;
+    return {
+      isSortable: true,
+      isSortHeader: active,
+      sortDirection: (active
+        ? filters.sortOrder === 'asc'
+          ? 'ASC'
+          : 'DESC'
+        : 'NONE') as DataTableSortState,
+      onClick: () => {
+        if (active) {
+          setFilter('sortOrder', filters.sortOrder === 'asc' ? 'desc' : 'asc');
+        } else {
+          setFilter('sortBy', field);
+          setFilter('sortOrder', 'asc');
+        }
+      },
+    };
+  };
   const [localSearch, setLocalSearch] = useState(filters.search || '');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -152,7 +187,7 @@ export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreat
   return (
     <>
       <DataTable rows={rows} headers={headers}>
-        {({ getTableProps, getHeaderProps }) => (
+        {({ getTableProps }) => (
           <TableContainer className="tasks-table">
             <TableToolbar>
               <TableToolbarContent>
@@ -217,7 +252,10 @@ export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreat
               <TableHead>
                 <TableRow>
                   {headers.map((header) => (
-                    <TableHeader {...getHeaderProps({ header })} key={header.key}>
+                    <TableHeader
+                      key={header.key}
+                      {...(header.sortField ? sortHeaderProps(header.sortField) : {})}
+                    >
                       {header.header}
                     </TableHeader>
                   ))}

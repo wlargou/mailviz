@@ -27,10 +27,17 @@ import type { Contact } from '../../types/customer';
 import type { PaginationMeta } from '../../types/api';
 import { toolbarSearchValue } from '../../utils/carbonSearch';
 import { CompanyLogo } from '../shared/CompanyLogo';
+import { useTableSort } from '../../hooks/useTableSort';
 
+/**
+ * `sortField` is the API field, which is not always the column key:
+ * `CONTACT_SORT_FIELDS` has no combined "name", so Name orders by surname.
+ * Company is a relation and Emails is a computed count — neither is orderable by
+ * the endpoint, so neither gets an affordance.
+ */
 const headers = [
-  { key: 'name', header: 'Name' },
-  { key: 'email', header: 'Email' },
+  { key: 'name', header: 'Name', sortField: 'lastName' },
+  { key: 'email', header: 'Email', sortField: 'email' },
   { key: 'company', header: 'Company' },
   { key: 'emails', header: 'Emails' },
 ];
@@ -41,6 +48,7 @@ export function ContactsPage() {
   const [meta, setMeta] = useState<PaginationMeta | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const { params: sortParams, headerProps } = useTableSort('lastName', 'asc');
   const [searchParams] = useSearchParams();
   const initialSearch = useMemo(() => searchParams.get('search') || '', []);
   const [search, setSearch] = useState(initialSearch);
@@ -59,7 +67,11 @@ export function ContactsPage() {
   const fetchContacts = useCallback(async () => {
     setLoading(true);
     try {
-      const params: Record<string, string> = { page: String(page), limit: String(pageSize) };
+      const params: Record<string, string> = {
+        page: String(page),
+        limit: String(pageSize),
+        ...sortParams,
+      };
       if (debouncedSearch) params.search = debouncedSearch;
       if (selectedCustomerId) params.customerId = selectedCustomerId;
       const { data: response } = await contactsApi.getAll(params);
@@ -81,7 +93,7 @@ export function ContactsPage() {
         });
       }
     }
-  }, [page, pageSize, debouncedSearch, selectedCustomerId, addNotification]);
+  }, [page, pageSize, debouncedSearch, selectedCustomerId, addNotification, sortParams.sortBy, sortParams.sortOrder]);
 
   useEffect(() => {
     fetchContacts();
@@ -149,6 +161,7 @@ export function ContactsPage() {
                           <TableHeader
                             key={header.key}
                             className={header.key === 'emails' ? 'table-cell--center' : undefined}
+                            {...(header.sortField ? headerProps(header.sortField) : {})}
                           >
                             {header.header}
                           </TableHeader>

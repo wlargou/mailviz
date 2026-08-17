@@ -32,9 +32,16 @@ import type { Customer, CompanyCategory } from '../../types/customer';
 import type { PaginationMeta } from '../../types/api';
 import { toolbarSearchValue } from '../../utils/carbonSearch';
 import { CompanyLogo } from '../shared/CompanyLogo';
+import { useTableSort } from '../../hooks/useTableSort';
 
+/**
+ * `sortable` marks the columns the API can actually order by
+ * (`CUSTOMER_SORT_FIELDS` in customerService). The count columns are computed
+ * per row, so ordering by them needs aggregate SQL the endpoint does not do yet —
+ * and a sort arrow that does nothing when clicked is worse than none.
+ */
 const headers = [
-  { key: 'name', header: 'Name' },
+  { key: 'name', header: 'Name', sortField: 'name' },
   { key: 'category', header: 'Category' },
   { key: 'contacts', header: 'Contacts' },
   { key: 'tasks', header: 'Tasks' },
@@ -48,6 +55,7 @@ export function CustomersPage() {
   const [meta, setMeta] = useState<PaginationMeta | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const { params: sortParams, headerProps } = useTableSort('name', 'asc');
   const [urlParams] = useSearchParams();
   const [search, setSearch] = useState(() => urlParams.get('search') || '');
   const [debouncedSearch, setDebouncedSearch] = useState(() => urlParams.get('search') || '');
@@ -75,7 +83,11 @@ export function CustomersPage() {
   const fetchCustomers = useCallback(async () => {
     setLoading(true);
     try {
-      const params: Record<string, string> = { page: String(page), limit: String(pageSize) };
+      const params: Record<string, string> = {
+        page: String(page),
+        limit: String(pageSize),
+        ...sortParams,
+      };
       if (debouncedSearch) params.search = debouncedSearch;
       if (selectedCategoryId) params.categoryId = selectedCategoryId;
       const { data: response } = await customersApi.getAll(params);
@@ -99,7 +111,7 @@ export function CustomersPage() {
         });
       }
     }
-  }, [page, pageSize, debouncedSearch, selectedCategoryId, addNotification, search]);
+  }, [page, pageSize, debouncedSearch, selectedCategoryId, addNotification, search, sortParams.sortBy, sortParams.sortOrder]);
 
   useEffect(() => {
     fetchCustomers();
@@ -188,6 +200,7 @@ export function CustomersPage() {
                           <TableHeader
                             key={header.key}
                             className={['contacts', 'tasks', 'emails'].includes(header.key) ? 'table-cell--center' : undefined}
+                            {...(header.sortField ? headerProps(header.sortField) : {})}
                           >
                             {header.header}
                           </TableHeader>
