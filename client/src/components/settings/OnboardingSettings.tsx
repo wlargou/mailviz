@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Button, InlineNotification, ListItem, Stack, Tag, Tile, UnorderedList } from '@carbon/react';
 import { Compass } from '@carbon/icons-react';
 import { onboardingApi } from '../../api/onboarding';
+import { OnboardingFlow } from '../onboarding/OnboardingFlow';
 import { useUIStore } from '../../store/uiStore';
 import type { OnboardingBlocker, OnboardingStatus } from '../../types/onboarding';
 
@@ -30,6 +31,7 @@ export function OnboardingSettings() {
   const addNotification = useUIStore((state) => state.addNotification);
   const [status, setStatus] = useState<OnboardingStatus | null>(null);
   const [replaying, setReplaying] = useState(false);
+  const [running, setRunning] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,19 +48,36 @@ export function OnboardingSettings() {
     };
   }, []);
 
+  /**
+   * Runs the flow here and now rather than only clearing the server flag.
+   *
+   * The gate exempts an account that is already working, so a replay that just
+   * reset the flag would be swallowed by that exemption — the button would
+   * appear to do nothing for precisely the established users who click it. The
+   * reset still happens, so the stored state matches what the user is doing.
+   */
   async function handleReplay() {
     setReplaying(true);
     try {
+      const { data } = await onboardingApi.getStatus();
+      setStatus(data.data);
       await onboardingApi.reset();
-      addNotification({
-        kind: 'info',
-        title: 'Setup guide will run again',
-        subtitle: 'Reload the page to start it.',
-      });
+      setRunning(true);
     } catch {
       addNotification({ kind: 'error', title: 'Could not restart the setup guide' });
     } finally {
       setReplaying(false);
+    }
+  }
+
+  async function handleFinish() {
+    setRunning(false);
+    try {
+      await onboardingApi.complete(false);
+      const { data } = await onboardingApi.getStatus();
+      setStatus(data.data);
+    } catch {
+      // The tile is a summary; a stale count is not worth an error toast.
     }
   }
 
@@ -123,8 +142,10 @@ export function OnboardingSettings() {
         )}
 
         <Button kind="tertiary" size="md" onClick={handleReplay} disabled={replaying}>
-          {replaying ? 'Restarting…' : 'Run the setup guide again'}
+          {replaying ? 'Starting…' : 'Run the setup guide again'}
         </Button>
+
+        {running && status && <OnboardingFlow status={status} onFinish={handleFinish} />}
       </Stack>
     </Tile>
   );

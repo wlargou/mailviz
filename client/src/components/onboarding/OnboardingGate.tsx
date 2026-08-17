@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { onboardingApi } from '../../api/onboarding';
 import type { OnboardingStatus } from '../../types/onboarding';
-import { WelcomeInterstitial } from './WelcomeInterstitial';
-import { SetupWizard } from './SetupWizard';
+import { OnboardingFlow } from './OnboardingFlow';
 
-type Phase = 'loading' | 'welcome' | 'wizard' | 'done';
+type Phase = 'loading' | 'running' | 'done';
 
 /**
  * Decides whether a signed-in user sees first-run onboarding, and sequences the
@@ -30,7 +29,7 @@ export function OnboardingGate() {
       .then(({ data }) => {
         if (cancelled) return;
         setStatus(data.data);
-        setPhase(data.data.needsOnboarding ? 'welcome' : 'done');
+        setPhase(data.data.needsOnboarding ? 'running' : 'done');
       })
       .catch(() => {
         // Onboarding is guidance. If the status call fails there is nothing to
@@ -52,16 +51,7 @@ export function OnboardingGate() {
     });
   }, []);
 
-  if (phase === 'loading' || phase === 'done' || !status) return null;
+  if (phase !== 'running' || !status) return null;
 
-  return phase === 'welcome' ? (
-    <WelcomeInterstitial
-      open
-      googleConnected={status.steps.googleConnected}
-      onStartSetup={() => setPhase('wizard')}
-      onSkip={() => finish({ skipped: true })}
-    />
-  ) : (
-    <SetupWizard open status={status} onFinish={finish} />
-  );
+  return <OnboardingFlow status={status} onFinish={finish} />;
 }
