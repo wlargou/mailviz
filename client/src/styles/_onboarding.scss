@@ -1,0 +1,86 @@
+// First-run onboarding: the welcome interstitial and the setup wizard.
+//
+// Both containers are Carbon components that own their own chrome, so this file
+// only styles the content inside them. Per the repo convention a Tearsheet hands
+// its body full width and the content owns its gutters — hence the
+// `padding-inline` on the step wrapper, matching `.tearsheet-form__item`.
+
+@use '@carbon/react/scss/spacing' as *;
+@use '@carbon/react/scss/type' as type;
+
+.onboarding-step {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-05;
+  padding-inline: $spacing-05;
+  max-width: 40rem;
+
+  &__body {
+    @include type.type-style('body-01');
+    color: var(--cds-text-primary);
+  }
+
+  // Secondary guidance: true but not the point of the step.
+  &__note {
+    @include type.type-style('label-01');
+    color: var(--cds-text-secondary);
+    display: flex;
+    align-items: flex-start;
+    gap: $spacing-02;
+  }
+
+  &__ok {
+    fill: var(--cds-support-success);
+    flex-shrink: 0;
+    // Nudge onto the cap height of the first line rather than its box.
+    margin-block-start: $spacing-01;
+  }
+
+  &__list {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-03;
+
+    li {
+      @include type.type-style('body-01');
+      color: var(--cds-text-primary);
+    }
+  }
+
+  &__pending {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-03;
+  }
+}
+
+.onboarding-welcome {
+  &__view {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-05;
+    max-width: 42rem;
+
+    p {
+      @include type.type-style('body-01');
+      color: var(--cds-text-primary);
+    }
+  }
+
+  &__list {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-04;
+    list-style: none;
+
+    li {
+      @include type.type-style('body-01');
+      color: var(--cds-text-primary);
+    }
+
+    strong {
+      color: var(--cds-text-primary);
+      font-weight: 600;
+    }
+  }
+}

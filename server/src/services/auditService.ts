@@ -68,7 +68,10 @@ export type AuditAction =
   | 'GOOGLE_CONNECTED'
   | 'GOOGLE_DISCONNECTED'
   | 'USER_LOGIN'
-  | 'USER_LOGOUT';
+  | 'USER_LOGOUT'
+  // First-run setup
+  | 'ONBOARDING_COMPLETED'
+  | 'ONBOARDING_SKIPPED';
 
 export type EntityType = 'email' | 'task' | 'deal' | 'event' | 'company' | 'contact' | 'label' | 'auth' | 'scheduled_email' | 'email_draft' | 'email_template';
 

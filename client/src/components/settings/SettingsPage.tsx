@@ -55,6 +55,7 @@ import { useSearchParams } from 'react-router-dom';
 import { authApi } from '../../api/auth';
 import { TiptapEditor } from '../mail/TiptapEditor';
 import { TemplateSettings } from './TemplateSettings';
+import { OnboardingSettings } from './OnboardingSettings';
 import { taskStatusesApi } from '../../api/taskStatuses';
 import { companyCategoriesApi } from '../../api/companyCategories';
 import { dealPartnersApi } from '../../api/dealPartners';
@@ -787,6 +788,8 @@ export function SettingsPage() {
         </Tile>
 
         {/* ─── Email Templates & Snippets ─── */}
+        <OnboardingSettings />
+
         <TemplateSettings />
 
         {/* ─── Task Statuses ─── */}

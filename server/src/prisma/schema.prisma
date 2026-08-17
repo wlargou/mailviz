@@ -188,6 +188,13 @@ model User {
   name      String?     @db.VarChar(255)
   avatarUrl String?     @map("avatar_url") @db.VarChar(500)
   signature String?     @db.Text
+
+  /// When the user finished (or dismissed) first-run setup. Null means the
+  /// welcome and setup wizard have not been seen yet. A timestamp rather than a
+  /// boolean so it is possible to tell a long-standing account from one that
+  /// completed setup after a change to the flow.
+  onboardingCompletedAt DateTime? @map("onboarding_completed_at")
+
   createdAt DateTime    @default(now()) @map("created_at")
   updatedAt DateTime    @updatedAt @map("updated_at")
 
