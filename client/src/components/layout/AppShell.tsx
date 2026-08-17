@@ -19,6 +19,7 @@ function mapNotificationKind(type: string): 'error' | 'warning' | 'info' {
 
 export function AppShell() {
   const theme = useUIStore((s) => s.theme);
+  const sideNavOpen = useUIStore((s) => s.sideNavOpen);
   const addToast = useUIStore((s) => s.addNotification);
   const addRealtime = useNotificationStore((s) => s.addRealtime);
 
@@ -43,9 +44,21 @@ export function AppShell() {
     <Theme theme={theme}>
       <div data-carbon-theme={theme}>
         <AppHeader />
-        <div className="app-container">
+        {/*
+          The rail/expanded distinction drives the content offset from *our* state,
+          not from Carbon's classes. Carbon adds `cds--side-nav--expanded` when the
+          rail expands on hover, so a selector keyed off that class shifted the
+          whole page every time the pointer crossed the nav.
+        */}
+        <div className={`app-container${sideNavOpen ? '' : ' app-container--nav-rail'}`}>
           <AppSideNav />
-          <main className="app-content">
+          {/*
+            `id` and `tabIndex` are what Carbon's SkipToContent targets — without
+            them the link has nowhere to land. Keyboard users otherwise tab the
+            whole navigation on every page, which the rail makes worse rather than
+            better: collapsed, the links are still in the tab order.
+          */}
+          <main id="main-content" className="app-content" tabIndex={-1}>
             <Outlet />
           </main>
         </div>

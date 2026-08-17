@@ -10,6 +10,11 @@
 @use '@carbon/react/scss/theme';
 @use '@carbon/react/scss/type' as type;
 @use '@carbon/react/scss/spacing' as *;
+
+// Carbon's own UI Shell dimensions, named so the content offset and the nav
+// cannot drift apart. Both are fixed by the component, not by us.
+$sidenav-expanded-width: 16rem; // 256px
+$sidenav-rail-width: 3rem; // 48px
 @use '@carbon/colors';
 
 :root {
@@ -84,6 +89,15 @@ body {
   opacity: 0.7;
   pointer-events: none;
   animation: sidebar-logo-float 10s ease-in-out infinite;
+  // Fades with the rail rather than being clipped by it. At 140px in a 48px rail
+  // the mark was sliced down the middle, which read as a rendering fault.
+  transition: opacity 150ms ease;
+}
+
+// Hidden while the nav is a rail, and restored when the rail expands on hover so
+// the decoration follows the panel rather than the toggle state.
+.cds--side-nav--rail:not(.cds--side-nav--expanded) .sidebar-logo-container {
+  opacity: 0;
 }
 
 @keyframes sidebar-logo-float {
@@ -106,7 +120,7 @@ body {
 
 .app-content {
   flex: 1;
-  margin-left: 256px;
+  margin-left: $sidenav-expanded-width;
   margin-top: var(--app-header-height);
   padding: $spacing-05 $spacing-06;
   transition: margin-left 0.3s ease;
@@ -124,9 +138,37 @@ body {
   }
 }
 
-// Collapsed side nav — content takes full width
-.app-container:has(.cds--side-nav:not(.cds--side-nav--expanded)) .app-content {
-  margin-left: 0;
+// Carbon's rail is supposed to widen when it gains `--side-nav--expanded` on
+// hover or focus, but in this app's cascade the component's base 48px width wins
+// and the rail never opens — measured: `--expanded` alone still computes to 48px.
+// Two classes give this the specificity to settle it, so the labels are reachable
+// by pointer and by keyboard.
+.cds--side-nav--rail.cds--side-nav--expanded {
+  // `!important` because nothing short of it wins. Two classes already out-specify
+  // every width rule Carbon ships for this element, and the computed value stayed
+  // 48px regardless — so the override is coming from somewhere the cascade does not
+  // expose to inspection. Overriding a vendor component's own dimension is the one
+  // case where this is the honest tool rather than a shortcut.
+  inline-size: $sidenav-expanded-width !important;
+}
+
+// Railed: content reclaims 208px of the 256, leaving the icon rail.
+//
+// Keyed off our own state class, not Carbon's `--expanded`. Carbon adds that
+// class when the rail expands on hover, so a `:has(:not(--expanded))` selector
+// shifted the entire page by 208px every time the pointer crossed the nav. The
+// rail is meant to expand *over* the content, which it now does.
+.app-container--nav-rail .app-content {
+  margin-left: $sidenav-rail-width;
+}
+
+// Below Carbon's `lg` breakpoint the fixed nav is not shown at all, so content
+// starts at the viewport edge in either state.
+@media (max-width: 1055px) {
+  .app-content,
+  .app-container--nav-rail .app-content {
+    margin-left: 0;
+  }
 }
 
 .page-header__breadcrumb {

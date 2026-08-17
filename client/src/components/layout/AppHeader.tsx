@@ -1,9 +1,10 @@
 import {
   Header,
-  HeaderName,
-  HeaderMenuButton,
-  HeaderGlobalBar,
   HeaderGlobalAction,
+  HeaderGlobalBar,
+  HeaderMenuButton,
+  HeaderName,
+  SkipToContent,
 } from '@carbon/react';
 import { Light, Asleep, Logout } from '@carbon/icons-react';
 import { useUIStore } from '../../store/uiStore';
@@ -19,6 +20,7 @@ export function AppHeader() {
 
   return (
     <Header aria-label="Mailviz Productivity Hub">
+      <SkipToContent />
       <HeaderMenuButton
         aria-label={sideNavOpen ? 'Close menu' : 'Open menu'}
         onClick={() => setSideNavOpen(!sideNavOpen)}

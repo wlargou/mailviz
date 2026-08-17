@@ -21,7 +21,10 @@ interface UIState {
 
 export const useUIStore = create<UIState>((set) => ({
   theme: (localStorage.getItem('mailviz-theme') as CarbonTheme) || 'g100',
-  sideNavOpen: true,
+  // Persisted like the theme. Collapsing the nav is a lasting preference about
+  // how much of the window belongs to content, and re-expanding it on every
+  // reload made the toggle feel like it had not worked.
+  sideNavOpen: localStorage.getItem('mailviz-sidenav') !== 'collapsed',
   notifications: [],
 
   toggleTheme: () =>
@@ -31,7 +34,10 @@ export const useUIStore = create<UIState>((set) => ({
       return { theme: newTheme };
     }),
 
-  setSideNavOpen: (open) => set({ sideNavOpen: open }),
+  setSideNavOpen: (open) => {
+    localStorage.setItem('mailviz-sidenav', open ? 'expanded' : 'collapsed');
+    set({ sideNavOpen: open });
+  },
 
   addNotification: (notification) =>
     set((state) => ({

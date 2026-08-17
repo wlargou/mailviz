@@ -48,7 +48,13 @@ export function AppSideNav() {
     <SideNav
       aria-label="Side navigation"
       expanded={sideNavOpen}
-      isFixedNav
+      // A rail rather than nothing. Collapsing used to hide navigation outright,
+      // so reaching another page meant reopening the panel first; Carbon's rail
+      // keeps the icons at 48px and expands over the content on hover or focus.
+      // That is what makes the collapsed state usable rather than just narrow.
+      isRail
+      isChildOfHeader
+      href="#main-content"
     >
       <SideNavItems>
         <SideNavLink
