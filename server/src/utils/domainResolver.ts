@@ -54,6 +54,23 @@ function hasCountrySecondLevel(parts: string[]): boolean {
   );
 }
 
+/**
+ * True when a domain is *nothing but* a two-part public suffix — `co.ma`,
+ * `com.tn`, `co.uk`. No organisation owns such a domain, so a customer holding
+ * one was produced by the resolver bug this module used to have, and every
+ * message filed under it belongs to some other company.
+ *
+ * Used by the repair script to identify the junk customers.
+ */
+export function isBarePublicSuffix(domain: string): boolean {
+  const parts = domain.toLowerCase().split('.');
+  return (
+    parts.length === 2 &&
+    COUNTRY_SECOND_LEVEL_LABELS.has(parts[0]) &&
+    CCTLD_PATTERN.test(parts[1])
+  );
+}
+
 export function extractDomain(email: string): string | null {
   // Strip angle brackets, quotes, and whitespace that may trail from malformed email headers
   const cleaned = email.replace(/[<>"';\s]+/g, '');
