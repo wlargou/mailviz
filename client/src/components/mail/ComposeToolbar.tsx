@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Button } from '@carbon/react';
+import { Button, OverflowMenu, OverflowMenuItem } from '@carbon/react';
 import {
   TextBold,
   TextItalic,
@@ -64,16 +64,42 @@ const FONT_SIZES = [
  * to the palette instead of being 21 anonymous hex strings — every one was
  * already a real Carbon colour, so nothing here changes what is rendered.
  */
-const TEXT_COLORS = [
-  gray100, gray70, gray50, gray10, white,
-  red60, orange40, yellow30, green50, teal60,
-  blue60, blue50, purple60, red50, red40,
-  blue40, blue30, purple40, purple30, green40, green20,
+const TEXT_COLORS: Array<{ value: string; name: string }> = [
+  { value: gray100, name: 'Gray 100' }, { value: gray70, name: 'Gray 70' },
+  { value: gray50, name: 'Gray 50' }, { value: gray10, name: 'Gray 10' },
+  { value: white, name: 'White' },
+  { value: red60, name: 'Red 60' }, { value: orange40, name: 'Orange 40' },
+  { value: yellow30, name: 'Yellow 30' }, { value: green50, name: 'Green 50' },
+  { value: teal60, name: 'Teal 60' },
+  { value: blue60, name: 'Blue 60' }, { value: blue50, name: 'Blue 50' },
+  { value: purple60, name: 'Purple 60' }, { value: red50, name: 'Red 50' },
+  { value: red40, name: 'Red 40' },
+  { value: blue40, name: 'Blue 40' }, { value: blue30, name: 'Blue 30' },
+  { value: purple40, name: 'Purple 40' }, { value: purple30, name: 'Purple 30' },
+  { value: green40, name: 'Green 40' }, { value: green20, name: 'Green 20' },
 ];
 
-function DropdownMenu({ children, trigger }: { children: React.ReactNode; trigger: React.ReactNode }) {
+/**
+ * The colour-swatch popover.
+ *
+ * The font and size pickers moved to Carbon's `OverflowMenu`; a 21-swatch grid is
+ * not a menu, so this one stays bespoke. What it gained is the accessibility the
+ * hand-rolled version never had: a real button trigger carrying
+ * `aria-haspopup`/`aria-expanded`, Escape to dismiss, and focus returned to the
+ * trigger afterwards rather than left nowhere.
+ */
+function ColorDropdown({
+  children,
+  icon,
+  label,
+}: {
+  children: React.ReactNode;
+  icon: React.ComponentType<{ size?: number }>;
+  label: string;
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -85,13 +111,53 @@ function DropdownMenu({ children, trigger }: { children: React.ReactNode; trigge
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  function close(returnFocus: boolean) {
+    setOpen(false);
+    if (returnFocus) triggerRef.current?.focus();
+  }
+
   return (
-    <div className="compose-toolbar__dropdown" ref={ref}>
-      <div onMouseDown={(e) => { e.preventDefault(); setOpen((o) => !o); }}>
-        {trigger}
-      </div>
+    <div
+      className="compose-toolbar__dropdown"
+      ref={ref}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape' && open) {
+          e.stopPropagation();
+          close(true);
+        }
+      }}
+    >
+      <Button
+        ref={triggerRef}
+        kind="ghost"
+        size="sm"
+        hasIconOnly
+        iconDescription={label}
+        renderIcon={icon}
+        aria-haspopup="true"
+        aria-expanded={open}
+        // Two paths, deliberately. `mousedown` with preventDefault is what keeps
+        // the editor's selection alive for a mouse user — but preventing the
+        // default also prevents focus, and a button that never receives focus
+        // never sees Enter. So the keyboard is handled separately. `click` is not
+        // used for either: mouse clicks fire mousedown *and* click, which would
+        // toggle twice and leave the popover shut.
+        onMouseDown={(e) => {
+          e.preventDefault();
+          setOpen((o) => !o);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setOpen((o) => !o);
+          }
+        }}
+      />
       {open && (
-        <div className="compose-toolbar__dropdown-menu" onMouseDown={(e) => e.preventDefault()}>
+        <div
+          className="compose-toolbar__dropdown-menu"
+          onMouseDown={(e) => e.preventDefault()}
+        >
           {children}
         </div>
       )}
@@ -149,41 +215,42 @@ export function ComposeToolbar({ editor, onAttach }: ComposeToolbarProps) {
 
   return (
     <div className="compose-toolbar">
-      {/* Font Family Dropdown */}
-      <DropdownMenu
-        trigger={
-          <Button kind="ghost" size="sm" hasIconOnly iconDescription="Font" renderIcon={TextFont} />
-        }
+      {/* Font family. Carbon's OverflowMenu rather than a hand-rolled div: the
+          previous version had no keyboard navigation and no ARIA at all, so the
+          font and size pickers were mouse-only. The handlers all end in
+          `editor.chain().focus()`, which is why moving from onMouseDown to
+          onClick does not cost the editor its selection. */}
+      <OverflowMenu
+        size="sm"
+        renderIcon={TextFont}
+        iconDescription="Font"
+        aria-label="Font"
+        flipped
       >
         {FONT_FAMILIES.map((f) => (
-          <div
+          <OverflowMenuItem
             key={f.value}
-            className={`compose-toolbar__dropdown-item${editor.isActive('textStyle', { fontFamily: f.value }) ? ' compose-toolbar__dropdown-item--active' : ''}`}
-            onMouseDown={(e) => { e.preventDefault(); handleFontFamily(f.value); }}
-            style={{ fontFamily: f.value }}
-          >
-            {f.label}
-          </div>
+            itemText={<span style={{ fontFamily: f.value }}>{f.label}</span>}
+            onClick={() => handleFontFamily(f.value)}
+          />
         ))}
-      </DropdownMenu>
+      </OverflowMenu>
 
-      {/* Font Size Dropdown */}
-      <DropdownMenu
-        trigger={
-          <Button kind="ghost" size="sm" hasIconOnly iconDescription="Text size" renderIcon={TextScale} />
-        }
+      <OverflowMenu
+        size="sm"
+        renderIcon={TextScale}
+        iconDescription="Text size"
+        aria-label="Text size"
+        flipped
       >
-        {FONT_SIZES.map((s) => (
-          <div
-            key={s.label}
-            className="compose-toolbar__dropdown-item"
-            onMouseDown={(e) => { e.preventDefault(); handleFontSize(s.value); }}
-            style={{ fontSize: s.value || '0.875rem' }}
-          >
-            {s.label}
-          </div>
+        {FONT_SIZES.map((size) => (
+          <OverflowMenuItem
+            key={size.label}
+            itemText={<span style={{ fontSize: size.value || '0.875rem' }}>{size.label}</span>}
+            onClick={() => handleFontSize(size.value)}
+          />
         ))}
-      </DropdownMenu>
+      </OverflowMenu>
 
       <div className="compose-toolbar__separator" />
 
@@ -199,23 +266,22 @@ export function ComposeToolbar({ editor, onAttach }: ComposeToolbarProps) {
         className={editor.isActive('underline') ? 'compose-toolbar__btn--active' : ''} />
 
       {/* Text Color Dropdown */}
-      <DropdownMenu
-        trigger={
-          <Button kind="ghost" size="sm" hasIconOnly iconDescription="Text color" renderIcon={TextColor} />
-        }
-      >
-        <div className="compose-toolbar__color-grid">
+      <ColorDropdown icon={TextColor} label="Text colour">
+        <div className="compose-toolbar__color-grid" role="group" aria-label="Text colour">
           {TEXT_COLORS.map((color) => (
             <button
-              key={color}
+              key={color.value}
+              type="button"
               className="compose-toolbar__color-swatch"
-              style={{ backgroundColor: color }}
-              title={color}
-              onMouseDown={(e) => { e.preventDefault(); handleColor(color); }}
+              style={{ backgroundColor: color.value }}
+              // A hex string is not a name. Screen readers announced "#0f62fe".
+              aria-label={color.name}
+              title={color.name}
+              onMouseDown={(e) => { e.preventDefault(); handleColor(color.value); }}
             />
           ))}
         </div>
-      </DropdownMenu>
+      </ColorDropdown>
 
       <div className="compose-toolbar__separator" />
 
