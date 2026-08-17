@@ -28,6 +28,8 @@
  *    `contact@intelcom.co.ma` away from `contact@lydec.co.ma`.
  */
 
+import { normalizeDomain } from './domainResolver.js';
+
 export type MatchRule = 'exact_email' | 'alias_local_part' | 'initial_form';
 export type MatchConfidence = 'high' | 'medium';
 
@@ -61,30 +63,14 @@ export interface ParsedAddress {
 }
 
 /**
- * Second-level labels that are part of the public suffix rather than the
- * organisation, when they sit under a two-letter country TLD: `intelcom.co.ma`
- * and `lydec.co.ma` are two different companies, not one.
+ * The registrable domain: `help.dell.com` → `dell.com`, `gti.co.ma` → `gti.co.ma`.
  *
- * `domainResolver.normalizeDomain` stops at two labels for these and would give
- * both the root `co.ma`. That is tolerable when it only affects a company's
- * display name; here it would merge two organisations' contacts into one row,
- * so matching uses its own stricter root.
+ * This used to be a stricter local copy, because `normalizeDomain` collapsed
+ * every `*.co.ma` sender to the bare suffix and matching cannot afford to treat
+ * two organisations as one. That bug is fixed at the source, so there is now a
+ * single definition of a root domain and the two cannot drift apart.
  */
-const COUNTRY_SECOND_LEVEL_LABELS = new Set([
-  'co', 'com', 'net', 'org', 'gov', 'gob', 'edu', 'ac', 'mil', 'or', 'ne', 'in', 'info', 'biz',
-]);
-
-/** The registrable domain: `help.dell.com` → `dell.com`, `gti.co.ma` → `gti.co.ma`. */
-function rootDomain(domain: string): string {
-  const parts = domain.split('.');
-  if (parts.length <= 2) return domain;
-  const tld = parts[parts.length - 1];
-  const sld = parts[parts.length - 2];
-  if (tld.length === 2 && COUNTRY_SECOND_LEVEL_LABELS.has(sld)) {
-    return parts.slice(-3).join('.');
-  }
-  return parts.slice(-2).join('.');
-}
+const rootDomain = normalizeDomain;
 
 /**
  * Split an address into its parts, tolerating the junk that reaches us from
