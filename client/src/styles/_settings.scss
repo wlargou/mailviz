@@ -241,3 +241,109 @@
     flex: 1;
   }
 }
+
+// ─── Settings sections ─────────────────────────────────────────────────────
+//
+// One heading treatment shared by every section, and one list editor shared by
+// the four that edit a list. Both were previously written out per section, which
+// is how the page reached 1,364 lines with eight hand-rolled SVG icons in it.
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-06;
+
+  &__header {
+    display: flex;
+    align-items: flex-start;
+    gap: $spacing-04;
+  }
+
+  &__icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 2rem;
+    block-size: 2rem;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: var(--cds-layer-02);
+    color: var(--cds-icon-primary);
+  }
+
+  &__title {
+    @include type.type-style('heading-compact-02');
+    color: var(--cds-text-primary);
+    margin: 0 0 $spacing-02;
+  }
+
+  &__desc {
+    @include type.type-style('body-compact-01');
+    color: var(--cds-text-secondary);
+    margin: 0;
+    // A settings description is prose; at full page width it would run the whole
+    // viewport, which is unreadable regardless of how much room there is.
+    max-inline-size: 44rem;
+  }
+}
+
+.settings-list-editor {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-05;
+
+  &__add {
+    display: flex;
+    align-items: flex-end;
+    gap: $spacing-03;
+    max-inline-size: 32rem;
+
+    .cds--form-item {
+      flex: 1;
+      min-inline-size: 0;
+    }
+  }
+}
+
+.settings-list__empty {
+  @include type.type-style('body-compact-01');
+  color: var(--cds-text-secondary);
+  padding-block: $spacing-05;
+}
+
+.settings-row-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: $spacing-02;
+}
+
+// The tab panels carry the page's breathing room, so the tiles inside do not
+// need their own outer margin.
+.cds--tab-content {
+  padding-inline: 0;
+  padding-block-start: $spacing-06;
+}
+
+/**
+ * Wide viewports get more sections side by side, not wider rows.
+ *
+ * Stretching a settings row to 1,760px puts its edit and delete buttons a screen
+ * away from the label they act on. Using the space for a second column instead
+ * keeps every row at a readable measure and still fills the page — which is the
+ * point of a full-width layout.
+ */
+.settings-panel-grid {
+  display: grid;
+  gap: $spacing-07;
+  grid-template-columns: repeat(auto-fit, minmax(30rem, 1fr));
+  align-items: start;
+}
+
+// A form is prose plus controls; neither reads well at full page width.
+.settings-tile {
+  max-inline-size: 60rem;
+}
+
+.settings-panel-grid .settings-tile {
+  max-inline-size: none;
+}

@@ -1,39 +1,31 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Button,
+  Column,
+  Grid,
   InlineLoading,
   InlineNotification,
-  TextInput,
-  Tag,
-  Tile,
-  Stack,
-  StructuredListWrapper,
-  StructuredListHead,
-  StructuredListBody,
-  StructuredListRow,
-  StructuredListCell,
   Layer,
-  Grid,
-  Column,
-  Modal,
-  UnorderedList,
   ListItem,
+  Modal,
   ProgressBar,
+  Stack,
+  StructuredListBody,
+  StructuredListCell,
+  StructuredListHead,
+  StructuredListRow,
+  StructuredListWrapper,
+  Tab,
+  TabList,
+  TabPanel,
+  TabPanels,
+  Tabs,
+  Tag,
+  TextInput,
+  Tile,
+  UnorderedList,
 } from '@carbon/react';
-import {
-  Checkmark,
-  Misuse,
-  Renew,
-  WarningAlt,
-  Add,
-  TrashCan,
-  Edit,
-  Calendar,
-  Email,
-  Pen,
-  Draggable,
-  Tag as TagIcon,
-} from '@carbon/icons-react';
+import { Add, Calendar, Checkmark, Draggable, Edit, Email, Enterprise, Misuse, Partnership, Pen, Renew, Tag as TagIcon, TaskComplete, TrashCan, WarningAlt } from '@carbon/icons-react';
 import {
   DndContext,
   KeyboardSensor,
@@ -66,6 +58,8 @@ import type { CompanyCategory } from '../../types/customer';
 import type { DealPartner } from '../../types/deal';
 import type { GoogleStatus } from '../../types/calendar';
 import { format } from 'date-fns';
+import { SettingsListEditor } from './SettingsListEditor';
+import { SettingsSection } from './SettingsSection';
 
 const STATUS_COLORS = [
   { hex: '#4589ff', label: 'Blue' },
@@ -390,11 +384,10 @@ export function SettingsPage() {
     }
   };
 
-  const handleAddStatus = async () => {
-    if (!newStatusLabel.trim()) return;
+  const handleAddStatus = async (label: string) => {
+    if (!label.trim()) return;
     try {
-      await taskStatusesApi.create({ label: newStatusLabel.trim() });
-      setNewStatusLabel('');
+      await taskStatusesApi.create({ label: label.trim() });
       fetchTaskStatuses();
       addNotification({ kind: 'success', title: 'Status created' });
     } catch {
@@ -438,18 +431,16 @@ export function SettingsPage() {
     }
   };
 
-  const handleSaveEditStatus = async (id: string) => {
-    if (!editLabel.trim()) return;
-    await taskStatusesApi.update(id, { label: editLabel.trim() });
-    setEditingStatusId(null);
+  const handleSaveEditStatus = async (id: string, label: string) => {
+    if (!label.trim()) return;
+    await taskStatusesApi.update(id, { label: label.trim() });
     fetchTaskStatuses();
   };
 
-  const handleAddCategory = async () => {
-    if (!newCategoryLabel.trim()) return;
+  const handleAddCategory = async (label: string) => {
+    if (!label.trim()) return;
     try {
-      await companyCategoriesApi.create({ label: newCategoryLabel.trim() });
-      setNewCategoryLabel('');
+      await companyCategoriesApi.create({ label: label.trim() });
       fetchCategories();
       addNotification({ kind: 'success', title: 'Category created' });
     } catch {
@@ -493,19 +484,17 @@ export function SettingsPage() {
     }
   };
 
-  const handleSaveEditCategory = async (id: string) => {
-    if (!editCategoryLabel.trim()) return;
-    await companyCategoriesApi.update(id, { label: editCategoryLabel.trim() });
-    setEditingCategoryId(null);
+  const handleSaveEditCategory = async (id: string, label: string) => {
+    if (!label.trim()) return;
+    await companyCategoriesApi.update(id, { label: label.trim() });
     fetchCategories();
   };
 
   // ── Label handlers ──
-  const handleAddLabel = async () => {
-    if (!newLabelName.trim()) return;
+  const handleAddLabel = async (name: string) => {
+    if (!name.trim()) return;
     try {
-      await labelsApi.create({ name: newLabelName.trim(), color: newLabelColor });
-      setNewLabelName('');
+      await labelsApi.create({ name: name.trim(), color: newLabelColor });
       fetchLabels();
       addNotification({ kind: 'success', title: 'Label created' });
     } catch (err) {
@@ -533,9 +522,8 @@ export function SettingsPage() {
     }
   };
 
-  const handleSaveEditLabel = async (id: string) => {
-    const name = editLabelName.trim();
-    setEditingLabelId(null);
+  const handleSaveEditLabel = async (id: string, value: string) => {
+    const name = value.trim();
     const current = labels.find((l) => l.id === id);
     if (!name || !current || name === current.name) return;
     try {
@@ -551,15 +539,10 @@ export function SettingsPage() {
   };
 
   // ── Deal Partner handlers ──
-  const handleAddPartner = async () => {
-    if (!newPartnerName.trim()) return;
+  const handleAddPartner = async (name: string) => {
+    if (!name.trim()) return;
     try {
-      await dealPartnersApi.create({
-        name: newPartnerName.trim(),
-        registrationUrl: newPartnerUrl.trim() || undefined,
-      });
-      setNewPartnerName('');
-      setNewPartnerUrl('');
+      await dealPartnersApi.create({ name: name.trim() });
       addNotification({ kind: 'success', title: 'Partner added' });
       fetchDealPartners();
     } catch (err: any) {
@@ -583,14 +566,20 @@ export function SettingsPage() {
     }
   };
 
-  const handleSaveEditPartner = async (id: string) => {
-    if (!editPartnerName.trim()) return;
+  /** The registration URL is edited in its own column, independently of the name. */
+  const handleSavePartnerUrl = async (id: string, registrationUrl: string) => {
     try {
-      await dealPartnersApi.update(id, {
-        name: editPartnerName.trim(),
-        registrationUrl: editPartnerUrl.trim() || undefined,
-      });
-      setEditingPartnerId(null);
+      await dealPartnersApi.update(id, { registrationUrl: registrationUrl.trim() || undefined });
+      fetchDealPartners();
+    } catch {
+      addNotification({ kind: 'error', title: 'Failed to update registration URL' });
+    }
+  };
+
+  const handleSaveEditPartner = async (id: string, name: string) => {
+    if (!name.trim()) return;
+    try {
+      await dealPartnersApi.update(id, { name: name.trim() });
       fetchDealPartners();
     } catch (err: any) {
       addNotification({
@@ -610,699 +599,338 @@ export function SettingsPage() {
       </div>
 
       <Grid fullWidth>
-        <Column lg={10} md={8} sm={4}>
-      <Stack gap={7}>
-        {/* ─── Google Integration ─── */}
-        <Tile className="settings-tile">
-          <Stack gap={5}>
-            <div className="settings-tile__header">
-              <div className="settings-tile__icon settings-tile__icon--google">
-                <svg viewBox="0 0 24 24" width="20" height="20">
-                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" />
-                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-                </svg>
-              </div>
-              <div>
-                <h4 className="settings-tile__title">Google Account</h4>
-                <p className="settings-tile__desc">Sync your calendar events and emails</p>
-              </div>
-            </div>
+        <Column lg={16} md={8} sm={4}>
+          {/*
+            Tabs rather than one column of stacked tiles.
 
-            {loading ? (
-              <InlineLoading description="Checking connection..." />
-            ) : status?.connected ? (
-              <Stack gap={4}>
-                <div className="settings-connection-status">
-                  <Tag type="green" size="sm" renderIcon={Checkmark}>Connected</Tag>
-                  {status.email && <span className="settings-connection-email">{status.email}</span>}
-                  <div className="settings-connection-status__action">
-                    {status.needsReauth ? (
-                      <Button kind="primary" size="sm" renderIcon={WarningAlt} onClick={handleConnect}>
-                        Reconnect
-                      </Button>
-                    ) : (
-                      <Button kind="danger--ghost" size="sm" renderIcon={Misuse} onClick={() => setDisconnectConfirmOpen(true)} disabled={disconnecting}>
-                        {disconnecting ? 'Disconnecting...' : 'Disconnect'}
-                      </Button>
-                    )}
-                  </div>
+            Eight sections in a single scroll came to 3,397px: reaching Deal
+            partners meant scrolling past everything else, and nothing on screen
+            said the section existed. Grouping is also why the four list editors
+            can now sit together — they are one kind of thing and belong in one
+            place.
+          */}
+          <Tabs>
+            <TabList aria-label="Settings sections" contained>
+              <Tab>Account</Tab>
+              <Tab>Mail</Tab>
+              <Tab>Workspace</Tab>
+              <Tab>Getting started</Tab>
+            </TabList>
+            <TabPanels>
+          <TabPanel>
+            <Stack gap={7}>
+          <Tile className="settings-tile">
+            <Stack gap={5}>
+              <div className="settings-tile__header">
+                <div className="settings-tile__icon settings-tile__icon--google">
+                  <svg viewBox="0 0 24 24" width="20" height="20">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" />
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                  </svg>
                 </div>
-
-                {status.needsReauth && (
-                  <InlineNotification
-                    kind="warning"
-                    title="Permissions upgrade needed"
-                    subtitle="Reconnect to enable email actions."
-                    lowContrast
-                    hideCloseButton
-                  />
-                )}
-
-                <Layer>
-                  <div className="settings-sync-grid">
-                    <div className="settings-sync-item">
-                      <Calendar size={16} />
-                      <div className="settings-sync-item__info">
-                        <span className="settings-sync-item__label">Calendar</span>
-                        <span className="settings-sync-item__time">
-                          {syncing
-                            ? ''
-                            : status.lastSyncAt
-                              ? `Last synced ${format(new Date(status.lastSyncAt), 'MMM d, h:mm a')}`
-                              : 'Not synced yet'}
-                        </span>
-                      </div>
-                      {syncing ? (
-                        calendarProgress && calendarProgress.synced > 0 ? (
-                          <div style={{ minWidth: '180px' }}>
-                            <ProgressBar
-                              label={`${calendarProgress.synced} events synced`}
-                              helperText="Syncing calendar..."
-                              max={100}
-                            />
-                          </div>
-                        ) : (
-                          <InlineLoading description="Syncing calendar..." />
-                        )
-                      ) : (
-                        <Button kind="tertiary" size="sm" renderIcon={Renew} onClick={handleSync}>
-                          Sync
-                        </Button>
-                      )}
-                    </div>
-                    <div className="settings-sync-item">
-                      <Email size={16} />
-                      <div className="settings-sync-item__info">
-                        <span className="settings-sync-item__label">Gmail</span>
-                        <span className="settings-sync-item__time">
-                          {syncingMail
-                            ? ''
-                            : status.lastMailSyncAt
-                              ? `Last synced ${format(new Date(status.lastMailSyncAt), 'MMM d, h:mm a')}`
-                              : 'Auto-syncs every 60s'}
-                        </span>
-                      </div>
-                      {syncingMail ? (
-                        emailProgress?.phase === 'counting' ? (
-                          <InlineLoading description="Counting emails..." />
-                        ) : emailProgress && emailProgress.total > 0 ? (
-                          <div style={{ minWidth: '200px' }}>
-                            <ProgressBar
-                              label={`${emailProgress.synced} / ${emailProgress.total} emails`}
-                              helperText={`${Math.round((emailProgress.synced / emailProgress.total) * 100)}% complete`}
-                              value={Math.round((emailProgress.synced / emailProgress.total) * 100)}
-                              max={100}
-                            />
-                          </div>
-                        ) : (
-                          <InlineLoading description="Syncing emails..." />
-                        )
-                      ) : (
-                        <Button kind="tertiary" size="sm" renderIcon={Renew} onClick={handleMailSync}>
-                          Sync
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </Layer>
-
-              </Stack>
-            ) : (
-              <Stack gap={4}>
-                <p className="settings-tile__desc">
-                  No Google account connected. Connect to sync your calendar and emails.
-                </p>
                 <div>
-                  <Button kind="primary" size="md" onClick={handleConnect}>
-                    Connect Google Account
-                  </Button>
+                  <h4 className="settings-tile__title">Google Account</h4>
+                  <p className="settings-tile__desc">Sync your calendar events and emails</p>
                 </div>
-              </Stack>
-            )}
-          </Stack>
-        </Tile>
+              </div>
 
-        {/* ─── Email Signature ─── */}
-        <Tile className="settings-tile">
-          <Stack gap={5}>
-            <div className="settings-tile__header">
-              <Pen size={24} />
-              <div>
-                <h4 className="settings-tile__title">Email Signature</h4>
-                <p className="settings-tile__subtitle">Automatically included in new emails, replies, and forwards</p>
+              {loading ? (
+                <InlineLoading description="Checking connection..." />
+              ) : status?.connected ? (
+                <Stack gap={4}>
+                  <div className="settings-connection-status">
+                    <Tag type="green" size="sm" renderIcon={Checkmark}>Connected</Tag>
+                    {status.email && <span className="settings-connection-email">{status.email}</span>}
+                    <div className="settings-connection-status__action">
+                      {status.needsReauth ? (
+                        <Button kind="primary" size="sm" renderIcon={WarningAlt} onClick={handleConnect}>
+                          Reconnect
+                        </Button>
+                      ) : (
+                        <Button kind="danger--ghost" size="sm" renderIcon={Misuse} onClick={() => setDisconnectConfirmOpen(true)} disabled={disconnecting}>
+                          {disconnecting ? 'Disconnecting...' : 'Disconnect'}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {status.needsReauth && (
+                    <InlineNotification
+                      kind="warning"
+                      title="Permissions upgrade needed"
+                      subtitle="Reconnect to enable email actions."
+                      lowContrast
+                      hideCloseButton
+                    />
+                  )}
+
+                  <Layer>
+                    <div className="settings-sync-grid">
+                      <div className="settings-sync-item">
+                        <Calendar size={16} />
+                        <div className="settings-sync-item__info">
+                          <span className="settings-sync-item__label">Calendar</span>
+                          <span className="settings-sync-item__time">
+                            {syncing
+                              ? ''
+                              : status.lastSyncAt
+                                ? `Last synced ${format(new Date(status.lastSyncAt), 'MMM d, h:mm a')}`
+                                : 'Not synced yet'}
+                          </span>
+                        </div>
+                        {syncing ? (
+                          calendarProgress && calendarProgress.synced > 0 ? (
+                            <div style={{ minWidth: '180px' }}>
+                              <ProgressBar
+                                label={`${calendarProgress.synced} events synced`}
+                                helperText="Syncing calendar..."
+                                max={100}
+                              />
+                            </div>
+                          ) : (
+                            <InlineLoading description="Syncing calendar..." />
+                          )
+                        ) : (
+                          <Button kind="tertiary" size="sm" renderIcon={Renew} onClick={handleSync}>
+                            Sync
+                          </Button>
+                        )}
+                      </div>
+                      <div className="settings-sync-item">
+                        <Email size={16} />
+                        <div className="settings-sync-item__info">
+                          <span className="settings-sync-item__label">Gmail</span>
+                          <span className="settings-sync-item__time">
+                            {syncingMail
+                              ? ''
+                              : status.lastMailSyncAt
+                                ? `Last synced ${format(new Date(status.lastMailSyncAt), 'MMM d, h:mm a')}`
+                                : 'Auto-syncs every 60s'}
+                          </span>
+                        </div>
+                        {syncingMail ? (
+                          emailProgress?.phase === 'counting' ? (
+                            <InlineLoading description="Counting emails..." />
+                          ) : emailProgress && emailProgress.total > 0 ? (
+                            <div style={{ minWidth: '200px' }}>
+                              <ProgressBar
+                                label={`${emailProgress.synced} / ${emailProgress.total} emails`}
+                                helperText={`${Math.round((emailProgress.synced / emailProgress.total) * 100)}% complete`}
+                                value={Math.round((emailProgress.synced / emailProgress.total) * 100)}
+                                max={100}
+                              />
+                            </div>
+                          ) : (
+                            <InlineLoading description="Syncing emails..." />
+                          )
+                        ) : (
+                          <Button kind="tertiary" size="sm" renderIcon={Renew} onClick={handleMailSync}>
+                            Sync
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </Layer>
+
+                </Stack>
+              ) : (
+                <Stack gap={4}>
+                  <p className="settings-tile__desc">
+                    No Google account connected. Connect to sync your calendar and emails.
+                  </p>
+                  <div>
+                    <Button kind="primary" size="md" onClick={handleConnect}>
+                      Connect Google Account
+                    </Button>
+                  </div>
+                </Stack>
+              )}
+            </Stack>
+          </Tile>
+            </Stack>
+          </TabPanel>
+          <TabPanel>
+            <Stack gap={7}>
+          <Tile className="settings-tile">
+            <Stack gap={5}>
+              <div className="settings-tile__header">
+                <Pen size={24} />
+                <div>
+                  <h4 className="settings-tile__title">Email Signature</h4>
+                  <p className="settings-tile__subtitle">Automatically included in new emails, replies, and forwards</p>
+                </div>
               </div>
-            </div>
-            {signatureLoaded && (
-              <div style={{ border: '1px solid var(--cds-border-subtle)', borderRadius: '4px', minHeight: '120px' }}>
-                <TiptapEditor
-                  content={signature}
-                  editorRef={signatureEditorRef}
-                  placeholder="Write your email signature..."
-                />
+              {signatureLoaded && (
+                <div style={{ border: '1px solid var(--cds-border-subtle)', borderRadius: '4px', minHeight: '120px' }}>
+                  <TiptapEditor
+                    content={signature}
+                    editorRef={signatureEditorRef}
+                    placeholder="Write your email signature..."
+                  />
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <Button
+                  size="sm"
+                  kind="primary"
+                  onClick={handleSaveSignature}
+                  disabled={savingSignature}
+                >
+                  {savingSignature ? 'Saving...' : 'Save Signature'}
+                </Button>
+                <Button
+                  size="sm"
+                  kind="ghost"
+                  onClick={() => {
+                    if (signatureEditorRef.current) {
+                      signatureEditorRef.current.commands.clearContent();
+                    }
+                  }}
+                >
+                  Clear
+                </Button>
               </div>
-            )}
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <Button
-                size="sm"
-                kind="primary"
-                onClick={handleSaveSignature}
-                disabled={savingSignature}
-              >
-                {savingSignature ? 'Saving...' : 'Save Signature'}
-              </Button>
-              <Button
-                size="sm"
-                kind="ghost"
-                onClick={() => {
-                  if (signatureEditorRef.current) {
-                    signatureEditorRef.current.commands.clearContent();
+            </Stack>
+          </Tile>
+
+          <TemplateSettings />
+            </Stack>
+          </TabPanel>
+          <TabPanel>
+            <div className="settings-panel-grid">
+          <Tile className="settings-tile">
+            <SettingsSection
+              icon={<TaskComplete size={20} />}
+              title="Task statuses"
+              description="The columns on your Kanban board. Drag to reorder."
+            >
+              <SettingsListEditor
+                items={taskStatuses.map((s) => ({ id: s.id, label: s.label, color: s.color, badge: s.name }))}
+                labelHeading="Label"
+                badgeHeading="Key"
+                addPlaceholder="e.g. Blocked, In review"
+                addLabel="Add status"
+                emptyMessage="No statuses yet — your board has no columns."
+                colors={STATUS_COLORS}
+                sensors={sensors}
+                onReorder={handleReorderStatuses}
+                onAdd={handleAddStatus}
+                onRename={handleSaveEditStatus}
+                onRecolor={async (id, color) => {
+                  setTaskStatuses((prev) => prev.map((t) => (t.id === id ? { ...t, color } : t)));
+                  try {
+                    await taskStatusesApi.update(id, { color });
+                  } catch {
+                    fetchTaskStatuses();
                   }
                 }}
-              >
-                Clear
-              </Button>
-            </div>
-          </Stack>
-        </Tile>
+                onDelete={(item) => {
+                  const status = taskStatuses.find((t) => t.id === item.id);
+                  if (status) handleDeleteStatus(status);
+                }}
+              />
+            </SettingsSection>
+          </Tile>
 
-        {/* ─── Email Templates & Snippets ─── */}
-        <OnboardingSettings />
-
-        <TemplateSettings />
-
-        {/* ─── Task Statuses ─── */}
-        <Tile className="settings-tile">
-          <Stack gap={5}>
-            <div className="settings-tile__header">
-              <div className="settings-tile__icon">
-                <svg viewBox="0 0 32 32" width="20" height="20" fill="var(--cds-icon-primary)">
-                  <path d="M14 21.414l-5-5L10.413 15 14 18.586 21.585 11 23 12.414z" />
-                  <path d="M16 2a14 14 0 1014 14A14 14 0 0016 2zm0 26a12 12 0 1112-12 12 12 0 01-12 12z" />
-                </svg>
-              </div>
-              <div>
-                <h4 className="settings-tile__title">Task Statuses</h4>
-                <p className="settings-tile__desc">Manage the columns for your Kanban board</p>
-              </div>
-            </div>
-
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleReorderStatuses}
+          <Tile className="settings-tile">
+            <SettingsSection
+              icon={<Enterprise size={20} />}
+              title="Company categories"
+              description="How companies are grouped. Drag to reorder."
             >
-            <StructuredListWrapper isCondensed>
-              <StructuredListHead>
-                <StructuredListRow head>
-                  <StructuredListCell head className="settings-drag-cell">{''}</StructuredListCell>
-                  <StructuredListCell head>Color</StructuredListCell>
-                  <StructuredListCell head>Label</StructuredListCell>
-                  <StructuredListCell head>Key</StructuredListCell>
-                  <StructuredListCell head>{''}</StructuredListCell>
-                </StructuredListRow>
-              </StructuredListHead>
-              <StructuredListBody>
-                <SortableContext
-                  items={taskStatuses.map((s) => s.id)}
-                  strategy={verticalListSortingStrategy}
-                >
-                {taskStatuses.map((s) => (
-                  <SortableSettingsRow
-                    key={s.id}
-                    id={s.id}
-                    dragDescription={`Reorder status "${s.label}"`}
-                  >
-                    <StructuredListCell>
-                      <div className="settings-color-swatch-wrapper">
-                        <button
-                          className="settings-status-dot"
-                          style={{ backgroundColor: s.color }}
-                          title="Change color"
-                          onClick={() => setColorPickerOpen(colorPickerOpen === s.id ? null : s.id)}
-                        />
-                        {colorPickerOpen === s.id && (
-                          <div className="settings-color-popover">
-                            {STATUS_COLORS.map((c) => (
-                              <button
-                                key={c.hex}
-                                className={`settings-color-option${s.color === c.hex ? ' settings-color-option--selected' : ''}`}
-                                style={{ backgroundColor: c.hex }}
-                                title={c.label}
-                                onClick={async () => {
-                                  setTaskStatuses((prev) =>
-                                    prev.map((ts) => ts.id === s.id ? { ...ts, color: c.hex } : ts)
-                                  );
-                                  setColorPickerOpen(null);
-                                  try {
-                                    await taskStatusesApi.update(s.id, { color: c.hex });
-                                  } catch {
-                                    fetchTaskStatuses();
-                                  }
-                                }}
-                              />
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </StructuredListCell>
-                    <StructuredListCell>
-                      {editingStatusId === s.id ? (
-                        <TextInput
-                          id={`edit-status-${s.id}`}
-                          labelText=""
-                          hideLabel
-                          size="sm"
-                          value={editLabel}
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditLabel(e.target.value)}
-                          onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
-                            if (e.key === 'Enter') handleSaveEditStatus(s.id);
-                            if (e.key === 'Escape') setEditingStatusId(null);
-                          }}
-                          onBlur={() => handleSaveEditStatus(s.id)}
-                          autoFocus
-                        />
-                      ) : (
-                        <span>{s.label}</span>
-                      )}
-                    </StructuredListCell>
-                    <StructuredListCell>
-                      <Tag size="sm" type="cool-gray">{s.name}</Tag>
-                    </StructuredListCell>
-                    <StructuredListCell>
-                      <div className="settings-status-actions">
-                        <Button kind="ghost" size="sm" hasIconOnly iconDescription="Rename" renderIcon={Edit}
-                          onClick={() => { setEditingStatusId(s.id); setEditLabel(s.label); }}
-                        />
-                        <Button kind="ghost" size="sm" hasIconOnly iconDescription="Delete" renderIcon={TrashCan}
-                          onClick={() => handleDeleteStatus(s)}
-                        />
-                      </div>
-                    </StructuredListCell>
-                  </SortableSettingsRow>
-                ))}
-                </SortableContext>
-              </StructuredListBody>
-            </StructuredListWrapper>
-            </DndContext>
-
-            <div className="settings-status-add">
-              <TextInput
-                id="new-status-label"
-                labelText="Add new status"
-                placeholder="e.g. Orders, Delivery..."
-                size="sm"
-                value={newStatusLabel}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewStatusLabel(e.target.value)}
-                onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') handleAddStatus(); }}
+              <SettingsListEditor
+                items={categories.map((c) => ({ id: c.id, label: c.label, color: c.color, badge: c.name }))}
+                labelHeading="Label"
+                badgeHeading="Key"
+                addPlaceholder="e.g. Partner, Prospect"
+                addLabel="Add category"
+                emptyMessage="No categories yet."
+                colors={STATUS_COLORS}
+                sensors={sensors}
+                onReorder={handleReorderCategories}
+                onAdd={handleAddCategory}
+                onRename={handleSaveEditCategory}
+                onRecolor={async (id, color) => {
+                  setCategories((prev) => prev.map((c) => (c.id === id ? { ...c, color } : c)));
+                  try {
+                    await companyCategoriesApi.update(id, { color });
+                  } catch {
+                    fetchCategories();
+                  }
+                }}
+                onDelete={(item) => {
+                  const category = categories.find((c) => c.id === item.id);
+                  if (category) handleDeleteCategory(category);
+                }}
               />
-              <Button kind="primary" size="sm" renderIcon={Add} disabled={!newStatusLabel.trim()} onClick={handleAddStatus}>
-                Add
-              </Button>
-            </div>
-          </Stack>
-        </Tile>
+            </SettingsSection>
+          </Tile>
 
-        {/* ─── Company Categories ─── */}
-        <Tile className="settings-tile">
-          <Stack gap={5}>
-            <div className="settings-tile__header">
-              <div className="settings-tile__icon">
-                <svg viewBox="0 0 32 32" width="20" height="20" fill="var(--cds-icon-primary)">
-                  <path d="M28 12h-8V4h8zm-6-2h4V6h-4zM17 15H9V7h8zM11 13h4V9h-4zM28 26h-8v-8h8zm-6-2h4v-4h-4zM17 26H9v-8h8zm-6-2h4v-4h-4z" />
-                </svg>
-              </div>
-              <div>
-                <h4 className="settings-tile__title">Company Categories</h4>
-                <p className="settings-tile__desc">Categorize your companies (e.g. Customers, Distributors, Partners)</p>
-              </div>
-            </div>
-
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleReorderCategories}
+          <Tile className="settings-tile">
+            <SettingsSection
+              icon={<TagIcon size={20} />}
+              title="Labels"
+              description="Tags you can attach to tasks."
             >
-            <StructuredListWrapper isCondensed>
-              <StructuredListHead>
-                <StructuredListRow head>
-                  <StructuredListCell head className="settings-drag-cell">{''}</StructuredListCell>
-                  <StructuredListCell head>Color</StructuredListCell>
-                  <StructuredListCell head>Label</StructuredListCell>
-                  <StructuredListCell head>Key</StructuredListCell>
-                  <StructuredListCell head>{''}</StructuredListCell>
-                </StructuredListRow>
-              </StructuredListHead>
-              <StructuredListBody>
-                <SortableContext
-                  items={categories.map((c) => c.id)}
-                  strategy={verticalListSortingStrategy}
-                >
-                {categories.map((c) => (
-                  <SortableSettingsRow
-                    key={c.id}
-                    id={c.id}
-                    dragDescription={`Reorder category "${c.label}"`}
-                  >
-                    <StructuredListCell>
-                      <div className="settings-color-swatch-wrapper">
-                        <button
-                          className="settings-status-dot"
-                          style={{ backgroundColor: c.color }}
-                          title="Change color"
-                          onClick={() => setCategoryColorPickerOpen(categoryColorPickerOpen === c.id ? null : c.id)}
-                        />
-                        {categoryColorPickerOpen === c.id && (
-                          <div className="settings-color-popover">
-                            {STATUS_COLORS.map((sc) => (
-                              <button
-                                key={sc.hex}
-                                className={`settings-color-option${c.color === sc.hex ? ' settings-color-option--selected' : ''}`}
-                                style={{ backgroundColor: sc.hex }}
-                                title={sc.label}
-                                onClick={async () => {
-                                  setCategories((prev) =>
-                                    prev.map((cat) => cat.id === c.id ? { ...cat, color: sc.hex } : cat)
-                                  );
-                                  setCategoryColorPickerOpen(null);
-                                  try {
-                                    await companyCategoriesApi.update(c.id, { color: sc.hex });
-                                  } catch {
-                                    fetchCategories();
-                                  }
-                                }}
-                              />
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </StructuredListCell>
-                    <StructuredListCell>
-                      {editingCategoryId === c.id ? (
-                        <TextInput
-                          id={`edit-category-${c.id}`}
-                          labelText=""
-                          hideLabel
-                          size="sm"
-                          value={editCategoryLabel}
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditCategoryLabel(e.target.value)}
-                          onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
-                            if (e.key === 'Enter') handleSaveEditCategory(c.id);
-                            if (e.key === 'Escape') setEditingCategoryId(null);
-                          }}
-                          onBlur={() => handleSaveEditCategory(c.id)}
-                          autoFocus
-                        />
-                      ) : (
-                        <span>{c.label}</span>
-                      )}
-                    </StructuredListCell>
-                    <StructuredListCell>
-                      <Tag size="sm" type="cool-gray">{c.name}</Tag>
-                    </StructuredListCell>
-                    <StructuredListCell>
-                      <div className="settings-status-actions">
-                        <Button kind="ghost" size="sm" hasIconOnly iconDescription="Rename" renderIcon={Edit}
-                          onClick={() => { setEditingCategoryId(c.id); setEditCategoryLabel(c.label); }}
-                        />
-                        <Button kind="ghost" size="sm" hasIconOnly iconDescription="Delete" renderIcon={TrashCan}
-                          onClick={() => handleDeleteCategory(c)}
-                        />
-                      </div>
-                    </StructuredListCell>
-                  </SortableSettingsRow>
-                ))}
-                </SortableContext>
-              </StructuredListBody>
-            </StructuredListWrapper>
-            </DndContext>
-
-            <div className="settings-status-add">
-              <TextInput
-                id="new-category-label"
-                labelText="Add new category"
-                placeholder="e.g. Vendors, Agencies..."
-                size="sm"
-                value={newCategoryLabel}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewCategoryLabel(e.target.value)}
-                onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') handleAddCategory(); }}
+              <SettingsListEditor
+                items={labels.map((l) => ({ id: l.id, label: l.name, color: l.color }))}
+                labelHeading="Name"
+                addPlaceholder="e.g. Urgent, Follow-up"
+                addLabel="Add label"
+                emptyMessage="No labels yet."
+                colors={STATUS_COLORS}
+                onAdd={handleAddLabel}
+                onRename={handleSaveEditLabel}
+                onRecolor={async (id, color) => {
+                  setLabels((prev) => prev.map((l) => (l.id === id ? { ...l, color } : l)));
+                  try {
+                    await labelsApi.update(id, { color });
+                  } catch {
+                    fetchLabels();
+                  }
+                }}
+                onDelete={(item) => {
+                  const label = labels.find((l) => l.id === item.id);
+                  if (label) handleDeleteLabel(label);
+                }}
               />
-              <Button kind="primary" size="sm" renderIcon={Add} disabled={!newCategoryLabel.trim()} onClick={handleAddCategory}>
-                Add
-              </Button>
-            </div>
-          </Stack>
-        </Tile>
+            </SettingsSection>
+          </Tile>
 
-        {/* ─── Labels ─── */}
-        <Tile className="settings-tile">
-          <Stack gap={5}>
-            <div className="settings-tile__header">
-              <div className="settings-tile__icon">
-                <TagIcon size={20} />
-              </div>
-              <div>
-                <h4 className="settings-tile__title">Labels</h4>
-                <p className="settings-tile__desc">Tag your tasks (e.g. Urgent, Follow-up, Billing)</p>
-              </div>
-            </div>
-
-            <StructuredListWrapper isCondensed>
-              <StructuredListHead>
-                <StructuredListRow head>
-                  <StructuredListCell head>Color</StructuredListCell>
-                  <StructuredListCell head>Name</StructuredListCell>
-                  <StructuredListCell head>Tasks</StructuredListCell>
-                  <StructuredListCell head>{''}</StructuredListCell>
-                </StructuredListRow>
-              </StructuredListHead>
-              <StructuredListBody>
-                {labels.map((l) => (
-                  <StructuredListRow key={l.id}>
-                    <StructuredListCell>
-                      <div className="settings-color-swatch-wrapper">
-                        <button
-                          className="settings-status-dot"
-                          style={{ backgroundColor: l.color }}
-                          title="Change color"
-                          onClick={() => setLabelColorPickerOpen(labelColorPickerOpen === l.id ? null : l.id)}
-                        />
-                        {labelColorPickerOpen === l.id && (
-                          <div className="settings-color-popover">
-                            {STATUS_COLORS.map((sc) => (
-                              <button
-                                key={sc.hex}
-                                className={`settings-color-option${l.color === sc.hex ? ' settings-color-option--selected' : ''}`}
-                                style={{ backgroundColor: sc.hex }}
-                                title={sc.label}
-                                onClick={async () => {
-                                  setLabels((prev) =>
-                                    prev.map((lb) => lb.id === l.id ? { ...lb, color: sc.hex } : lb)
-                                  );
-                                  setLabelColorPickerOpen(null);
-                                  try {
-                                    await labelsApi.update(l.id, { color: sc.hex });
-                                  } catch {
-                                    fetchLabels();
-                                  }
-                                }}
-                              />
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </StructuredListCell>
-                    <StructuredListCell>
-                      {editingLabelId === l.id ? (
-                        <TextInput
-                          id={`edit-label-${l.id}`}
-                          labelText=""
-                          hideLabel
-                          size="sm"
-                          value={editLabelName}
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditLabelName(e.target.value)}
-                          onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
-                            if (e.key === 'Enter') handleSaveEditLabel(l.id);
-                            if (e.key === 'Escape') setEditingLabelId(null);
-                          }}
-                          onBlur={() => handleSaveEditLabel(l.id)}
-                          autoFocus
-                        />
-                      ) : (
-                        <span>{l.name}</span>
-                      )}
-                    </StructuredListCell>
-                    <StructuredListCell>
-                      <Tag size="sm" type="cool-gray">
-                        {`${l._count?.tasks ?? 0} ${(l._count?.tasks ?? 0) === 1 ? 'task' : 'tasks'}`}
-                      </Tag>
-                    </StructuredListCell>
-                    <StructuredListCell>
-                      <div className="settings-status-actions">
-                        <Button kind="ghost" size="sm" hasIconOnly iconDescription="Rename" renderIcon={Edit}
-                          onClick={() => { setEditingLabelId(l.id); setEditLabelName(l.name); }}
-                        />
-                        <Button kind="ghost" size="sm" hasIconOnly iconDescription="Delete" renderIcon={TrashCan}
-                          onClick={() => setLabelToDelete(l)}
-                        />
-                      </div>
-                    </StructuredListCell>
-                  </StructuredListRow>
-                ))}
-              </StructuredListBody>
-            </StructuredListWrapper>
-
-            <div className="settings-status-add">
-              <div style={{ display: 'flex', alignItems: 'center', height: '2rem' }}>
-                <div className="settings-color-swatch-wrapper">
-                  <button
-                    className="settings-status-dot"
-                    style={{ backgroundColor: newLabelColor }}
-                    title="Pick a color"
-                    onClick={() => setNewLabelColorPickerOpen((open) => !open)}
-                  />
-                  {newLabelColorPickerOpen && (
-                    <div className="settings-color-popover">
-                      {STATUS_COLORS.map((sc) => (
-                        <button
-                          key={sc.hex}
-                          className={`settings-color-option${newLabelColor === sc.hex ? ' settings-color-option--selected' : ''}`}
-                          style={{ backgroundColor: sc.hex }}
-                          title={sc.label}
-                          onClick={() => { setNewLabelColor(sc.hex); setNewLabelColorPickerOpen(false); }}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-              <TextInput
-                id="new-label-name"
-                labelText="Add new label"
-                placeholder="e.g. Urgent, Follow-up..."
-                size="sm"
-                value={newLabelName}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewLabelName(e.target.value)}
-                onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter') handleAddLabel(); }}
+          <Tile className="settings-tile">
+            <SettingsSection
+              icon={<Partnership size={20} />}
+              title="Deal partners"
+              description="Vendors and distributors you register deals against. A deal cannot be created without one."
+            >
+              <SettingsListEditor
+                items={dealPartners.map((p) => ({ id: p.id, label: p.name, secondary: p.registrationUrl }))}
+                labelHeading="Name"
+                secondaryHeading="Registration URL"
+                addPlaceholder="e.g. Dell, IBM, Fortinet"
+                addLabel="Add partner"
+                emptyMessage="No partners yet — deals cannot be created until you add one."
+                onAdd={handleAddPartner}
+                onRename={handleSaveEditPartner}
+                onEditSecondary={handleSavePartnerUrl}
+                onDelete={(item) => {
+                  const partner = dealPartners.find((p) => p.id === item.id);
+                  if (partner) handleDeletePartner(partner);
+                }}
               />
-              <Button kind="primary" size="sm" renderIcon={Add} disabled={!newLabelName.trim()} onClick={handleAddLabel}>
-                Add
-              </Button>
+            </SettingsSection>
+          </Tile>
             </div>
-          </Stack>
-        </Tile>
-
-        {/* ─── Deal Partners ─── */}
-        <Tile className="settings-tile">
-          <Stack gap={5}>
-            <div className="settings-tile__header">
-              <div className="settings-tile__icon">
-                <svg viewBox="0 0 32 32" width="20" height="20" fill="var(--cds-icon-primary)">
-                  <path d="M8 9H4a2 2 0 0 0-2 2v14h2v-6h4v6h2V11a2 2 0 0 0-2-2zm-4 8v-6h4v6zm24-8h-4a2 2 0 0 0-2 2v14h2v-6h4v6h2V11a2 2 0 0 0-2-2zm-4 8v-6h4v6zm-2-8h-8a2 2 0 0 0-2 2v14h2v-6h8v6h2V11a2 2 0 0 0-2-2zm-8 8v-6h8v6z" />
-                </svg>
-              </div>
-              <div>
-                <h4 className="settings-tile__title">Deal Partners</h4>
-                <p className="settings-tile__desc">Manage partners for deal registration (IBM, Red Hat, etc.)</p>
-              </div>
-            </div>
-
-            <StructuredListWrapper isCondensed>
-              <StructuredListHead>
-                <StructuredListRow head>
-                  <StructuredListCell head>Name</StructuredListCell>
-                  <StructuredListCell head>Registration URL</StructuredListCell>
-                  <StructuredListCell head>{''}</StructuredListCell>
-                </StructuredListRow>
-              </StructuredListHead>
-              <StructuredListBody>
-                {dealPartners.map((p) => (
-                  <StructuredListRow key={p.id}>
-                    <StructuredListCell>
-                      {editingPartnerId === p.id ? (
-                        <TextInput
-                          id={`edit-partner-name-${p.id}`}
-                          labelText=""
-                          hideLabel
-                          size="sm"
-                          value={editPartnerName}
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditPartnerName(e.target.value)}
-                          onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
-                            if (e.key === 'Enter') handleSaveEditPartner(p.id);
-                            if (e.key === 'Escape') setEditingPartnerId(null);
-                          }}
-                          autoFocus
-                        />
-                      ) : (
-                        <span>{p.name}</span>
-                      )}
-                    </StructuredListCell>
-                    <StructuredListCell>
-                      {editingPartnerId === p.id ? (
-                        <TextInput
-                          id={`edit-partner-url-${p.id}`}
-                          labelText=""
-                          hideLabel
-                          size="sm"
-                          value={editPartnerUrl}
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditPartnerUrl(e.target.value)}
-                          onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
-                            if (e.key === 'Enter') handleSaveEditPartner(p.id);
-                            if (e.key === 'Escape') setEditingPartnerId(null);
-                          }}
-                        />
-                      ) : (
-                        <span className="settings-partner-url">{p.registrationUrl || '—'}</span>
-                      )}
-                    </StructuredListCell>
-                    <StructuredListCell>
-                      <div className="settings-status-actions">
-                        {editingPartnerId === p.id ? (
-                          <Button kind="primary" size="sm" onClick={() => handleSaveEditPartner(p.id)}>
-                            Save
-                          </Button>
-                        ) : (
-                          <Button kind="ghost" size="sm" hasIconOnly iconDescription="Edit" renderIcon={Edit}
-                            onClick={() => { setEditingPartnerId(p.id); setEditPartnerName(p.name); setEditPartnerUrl(p.registrationUrl || ''); }}
-                          />
-                        )}
-                        <Button kind="ghost" size="sm" hasIconOnly iconDescription="Delete" renderIcon={TrashCan}
-                          onClick={() => handleDeletePartner(p)}
-                        />
-                      </div>
-                    </StructuredListCell>
-                  </StructuredListRow>
-                ))}
-              </StructuredListBody>
-            </StructuredListWrapper>
-
-            <div className="settings-status-add">
-              <TextInput
-                id="new-partner-name"
-                labelText="Partner name"
-                placeholder="e.g. Oracle, Cisco..."
-                size="sm"
-                value={newPartnerName}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPartnerName(e.target.value)}
-                onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter' && newPartnerName.trim()) handleAddPartner(); }}
-              />
-              <TextInput
-                id="new-partner-url"
-                labelText="Registration URL"
-                placeholder="https://partner-portal.com/register"
-                size="sm"
-                value={newPartnerUrl}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPartnerUrl(e.target.value)}
-                onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter' && newPartnerName.trim()) handleAddPartner(); }}
-              />
-              <Button kind="primary" size="sm" renderIcon={Add} disabled={!newPartnerName.trim()} onClick={handleAddPartner}>
-                Add
-              </Button>
-            </div>
-          </Stack>
-        </Tile>
-      </Stack>
+          </TabPanel>
+          <TabPanel>
+            <Stack gap={7}>
+          <OnboardingSettings />
+            </Stack>
+          </TabPanel>
+            </TabPanels>
+          </Tabs>
         </Column>
       </Grid>
 
