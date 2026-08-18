@@ -361,6 +361,22 @@ failing against the fix before being rewritten.
   inside `getGmailClient()`, which those tests replace. Its backoff and retry
   need a unit test against `withGmailRateLimit` directly.
 
+## Shell and navigation
+
+- [x] **The side nav collapses to a Carbon rail, not to nothing.** It was already
+  collapsible, but collapsed to zero width — reaching another page meant reopening
+  the panel. Now `isRail`: a 48px icon strip that expands over the content on hover
+  or focus. The choice is persisted like the theme, `SkipToContent` was added with a
+  real target, and the content offset is driven by our own state rather than
+  Carbon's `--expanded` class (which the rail also sets on hover, and would have
+  reflowed the page by 208px every time the pointer crossed the nav).
+  - [ ] **Unverified:** the `<1055px` breakpoint. The browser would not resize below
+    ~2016px CSS pixels in testing, so the media query that zeroes the content margin
+    below Carbon's `lg` has never been seen render.
+  - [ ] **`!important` on the rail width.** Two classes already out-specify every
+    width rule Carbon ships for that element and the computed value stayed 48px
+    anyway. It works, but the reason it was needed is unexplained.
+
 ## Carried-over quality items
 
 Not blocking, but known and deliberate.
@@ -373,13 +389,20 @@ Not blocking, but known and deliberate.
   `ReviewMailView`, `shared/ThreadItemList`).
 - [ ] `shared/PageHeader` is used by 3 of ~14 pages; the rest hand-roll the same
   markup and therefore have no breadcrumbs.
-- [ ] The four main list pages (Customers, Contacts, Deals, Tasks) use `DataTable`
-  as a styling shell only — they pass throwaway rows and destructure just
-  `getTableProps`, so **none of them can sort**. No `TableSelectRow` /
-  `TableBatchActions` anywhere; the bulk-action bar in `MailPage` is hand-rolled
-  outside the table system.
-- [ ] `ComposeToolbar` still uses a hand-rolled `DropdownMenu` (no keyboard nav,
-  no ARIA) — should be Carbon `MenuButton`, as the dashboard Create menu now is.
+- [x] **List pages can sort.** Done in the query, not in `DataTable` — these pages
+  fetch one page at a time, so a client-side sort would reorder twenty visible
+  rows and present it as the whole set. All four services already accepted
+  `sortBy`/`sortOrder`; nothing had ever sent them. Tasks was worse than "cannot
+  sort": it spread `getHeaderProps`, so the arrows moved and the rows did not.
+  Sortable now: Tasks 4 columns, Deals 3, Contacts 2, Customers 1.
+  - [ ] **Still open from this item:** no `TableSelectRow` / `TableBatchActions`
+    anywhere; `MailPage`'s bulk-action bar remains hand-rolled outside the table
+    system. And Customers' count columns need aggregate SQL before they can sort.
+- [x] **`ComposeToolbar`'s pickers are keyboard-usable.** Font and size are Carbon
+  `OverflowMenu` (`MenuButton` needs a text label; these are icon triggers). The
+  21-swatch colour grid is not a menu, so it stays bespoke but gained a real button
+  trigger, `aria-haspopup`/`aria-expanded`, Escape-to-dismiss with focus returned,
+  and swatches named "Blue 60" rather than announcing `#0f62fe`.
 - [ ] `EventTooltip` is a hand-rolled global tooltip singleton; ~10 places use the
   native `title=` attribute. Carbon `Tooltip` is used nowhere.
 - [ ] Carbon audit item C8: `_mail.scss` sets `.cds--content-switcher { width: 100% }`
@@ -402,26 +425,23 @@ Not blocking, but known and deliberate.
   Fixing it means moving the row-level action onto a dedicated child control
   (e.g. the day number becomes the "go to day" button and the cell drops its
   role) — a design change, not a patch.
-- [ ] **Carbon B3 — `ComposeToolbar` colour array.** `ComposeToolbar.tsx:51-56`
-  holds 21 raw hex values and never imports `@carbon/colors`. Every value is
-  already a real Carbon palette colour, so this is traceability, not a visual
-  change. Cheap now that the `carbon-colors.d.ts` stub which shadowed the
-  package's real types is gone.
+- [x] **Carbon B3 — `ComposeToolbar` colour array.** Now from `@carbon/colors`.
+  They stay literal values rather than `var(--cds-*)` because they are written into
+  the message body and must survive in a recipient's mail client. Asserted the
+  resulting array is byte-identical to what shipped before.
 - [ ] **Carbon B4 — inline `style={{}}` objects.** 106 across 27 files (was
   "54+" when first filed). Worst: `SettingsPage` (16), `CustomerDetailPage` (15),
   `TaskDetailModal` / `CalendarWeekView` / `CalendarDayView` (8 each).
   **Rescope before starting** — calendar views compute per-event pixel offsets
   and the badges paint per-record colours, so a real fraction are legitimately
   dynamic and should not be extracted.
-- [ ] **Carbon D2 — logo fallback.** `TopCustomers.tsx:56` shows the company
-  initial when there is no logo URL, but `onError` at `:53` only sets
-  `display: none` — so a Clearbit 404, the exact case this was filed for, renders
-  nothing. Point `onError` at the same placeholder element.
-- [ ] **Carbon D5 — consistent empty states.** `shared/EmptyState.tsx` is used by
-  10 components, but all five dashboard cards use ad-hoc `.card-empty` divs
-  (`TopCustomers:35`, `RecentTasks:29`, `RecentActivity:27`, `ExpiringDeals:25`,
-  `UpcomingEvents:28`) and the Review flow uses its own
-  (`ReviewMailView:195`, `CustomerSummary:115`). If the cards need a denser
-  look, add a `size` prop rather than keeping two markup families.
+- [x] **Carbon D2 — logo fallback.** It was broken in **seven** places, not one,
+  and three of them had no placeholder at all — so a row with a logo and a row
+  without were indented differently. One `shared/CompanyLogo` now keeps the failure
+  in state rather than mutating a style, and always fills the slot.
+- [x] **Carbon D5 — consistent empty states.** Density is a `size` prop, as
+  suggested; `.card-empty` deleted rather than kept as an alias. At `sm` the icon is
+  omitted unless asked for, and renders bare when it is — the 3rem disc was bigger
+  than the message it decorated.
 - [ ] `docs/database-schema.md` is untracked and 3 migrations stale (missing
   `AuditLog`, `Notification`, `User.signature`). Commit and regenerate, or delete.
