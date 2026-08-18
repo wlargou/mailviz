@@ -14,7 +14,8 @@
     "prisma:studio": "prisma studio",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "backfill": "tsx src/scripts/backfillAll.ts"
   },
   "prisma": {
     "schema": "src/prisma/schema.prisma",
