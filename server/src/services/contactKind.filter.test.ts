@@ -91,3 +91,58 @@ describe('findOrCreateContact classifies on the way in', () => {
     expect(contact.kind).toBe(expected);
   });
 });
+
+describe('engagement — maintained by sync, filterable on the list', () => {
+  it.each([
+    ['any', ['both@acme.test', 'recv@acme.test', 'send@acme.test']],
+    ['both', ['both@acme.test']],
+    ['sender', ['send@acme.test']],
+    ['receiver', ['recv@acme.test']],
+    ['none', ['bystander@acme.test']],
+  ])('filters to %s', async (engagement, expected) => {
+    const user = await createUser();
+    const customer = await createCustomer(user.id, { name: 'Acme', domain: 'acme.test' });
+    for (const [email, value] of [
+      ['both@acme.test', 'both'],
+      ['send@acme.test', 'sender'],
+      ['recv@acme.test', 'receiver'],
+      ['bystander@acme.test', 'none'],
+    ] as const) {
+      await prisma.contact.create({
+        data: { customerId: customer.id, firstName: 'A', lastName: 'B', email, engagement: value },
+      });
+    }
+
+    const { data } = await contactService.findAll(user.id, {
+      engagement,
+      sortBy: 'email',
+      sortOrder: 'asc',
+    });
+    expect(data.map((c) => c.email).sort()).toEqual([...expected].sort());
+  });
+
+  it('ignores an unrecognised engagement rather than returning nothing', async () => {
+    const user = await createUser();
+    const customer = await createCustomer(user.id, { name: 'Acme', domain: 'acme.test' });
+    await prisma.contact.create({
+      data: { customerId: customer.id, firstName: 'A', lastName: 'B', email: 'x@acme.test' },
+    });
+
+    const { data } = await contactService.findAll(user.id, { engagement: "' OR 1=1 --" });
+    expect(data).toHaveLength(1);
+  });
+
+  it('combines with the kind filter rather than replacing it', async () => {
+    const user = await createUser();
+    const customer = await createCustomer(user.id, { name: 'Acme', domain: 'acme.test' });
+    await prisma.contact.create({
+      data: { customerId: customer.id, firstName: 'A', lastName: 'B', email: 'person@acme.test', kind: 'person', engagement: 'both' },
+    });
+    await prisma.contact.create({
+      data: { customerId: customer.id, firstName: 'A', lastName: 'B', email: 'noreply@acme.test', kind: 'automated', engagement: 'both' },
+    });
+
+    const { data } = await contactService.findAll(user.id, { kind: 'people', engagement: 'both' });
+    expect(data.map((c) => c.email)).toEqual(['person@acme.test']);
+  });
+});

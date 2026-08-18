@@ -1209,3 +1209,72 @@ describe('emailService.upsertMessage — what may become a company', () => {
     expect(domains.some((d) => d?.includes('/'))).toBe(false);
   });
 });
+
+describe('emailService — engagement follows the direction of the mail', () => {
+  it('an inbound message makes its sender a sender, not its other recipients', async () => {
+    const user = await createUser({ email: 'me@powerm.test' });
+    await createGoogleAuth(user.id);
+
+    stubMessagesListPages(gmail, [['m1']]);
+    stubMessagesGet(gmail, [
+      {
+        id: 'm1',
+        from: 'writer@acme-supplier.com',
+        to: ['me@powerm.test'],
+        cc: ['bystander@acme-supplier.com'],
+      },
+    ]);
+    await emailService.syncFromGmail(user.id);
+
+    const contacts = await prisma.contact.findMany({
+      where: { customer: { userId: user.id } },
+      select: { email: true, engagement: true },
+    });
+    const byEmail = Object.fromEntries(contacts.map((c) => [c.email, c.engagement]));
+
+    expect(byEmail['writer@acme-supplier.com']).toBe('sender');
+    // Being cc'd on someone else's message is not correspondence — this is the
+    // 43% the filter exists to separate.
+    expect(byEmail['bystander@acme-supplier.com']).toBe('none');
+  });
+
+  it('a message this account sent makes its recipients receivers', async () => {
+    const user = await createUser({ email: 'me@powerm.test' });
+    await createGoogleAuth(user.id);
+
+    stubMessagesListPages(gmail, [['m2']]);
+    stubMessagesGet(gmail, [
+      { id: 'm2', from: 'me@powerm.test', to: ['client@acme-supplier.com'] },
+    ]);
+    await emailService.syncFromGmail(user.id);
+
+    const contact = await prisma.contact.findFirst({
+      where: { email: 'client@acme-supplier.com', customer: { userId: user.id } },
+    });
+    expect(contact?.engagement).toBe('receiver');
+  });
+
+  it('widens to both once mail has gone each way, and never narrows again', async () => {
+    const user = await createUser({ email: 'me@powerm.test' });
+    await createGoogleAuth(user.id);
+
+    stubMessagesListPages(gmail, [['in1']]);
+    stubMessagesGet(gmail, [
+      { id: 'in1', from: 'peer@acme-supplier.com', to: ['me@powerm.test'] },
+    ]);
+    await emailService.syncFromGmail(user.id);
+
+    // A later sync sees a message going the other way.
+    await prisma.googleAuth.updateMany({ where: { userId: user.id }, data: { lastHistoryId: null } });
+    stubMessagesListPages(gmail, [['out1']]);
+    stubMessagesGet(gmail, [
+      { id: 'out1', from: 'me@powerm.test', to: ['peer@acme-supplier.com'] },
+    ]);
+    await emailService.syncFromGmail(user.id);
+
+    const contact = await prisma.contact.findFirst({
+      where: { email: 'peer@acme-supplier.com', customer: { userId: user.id } },
+    });
+    expect(contact?.engagement).toBe('both');
+  });
+});

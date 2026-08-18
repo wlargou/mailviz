@@ -41,6 +41,24 @@ import { useTableSort } from '../../hooks/useTableSort';
  * `noreply@`. Splitting those two into separate options is what lets you find
  * `support@` without wading through delivery notifications.
  */
+/**
+ * Named from the contact's side, matching the stored value: `sender` means they
+ * wrote to you.
+ *
+ * Defaults to `all` rather than `any`, deliberately. Filtering to "has exchanged
+ * mail" by default would hide 5,918 of 11,694 contacts, and someone looking up an
+ * address they were once cc'd on would conclude it was never captured. The
+ * default should not silently answer a different question than the one asked.
+ */
+const ENGAGEMENT_FILTERS = [
+  { id: 'all', label: 'Any correspondence' },
+  { id: 'any', label: 'Has exchanged mail' },
+  { id: 'both', label: 'Two-way' },
+  { id: 'sender', label: 'They wrote to me' },
+  { id: 'receiver', label: 'I wrote to them' },
+  { id: 'none', label: 'Never exchanged' },
+];
+
 const KIND_FILTERS = [
   { id: 'people', label: 'People and shared mailboxes' },
   { id: 'person', label: 'People only' },
@@ -76,6 +94,7 @@ export function ContactsPage() {
    * question is "who has ever emailed me from that domain".
    */
   const [kindFilter, setKindFilter] = useState<string>('people');
+  const [engagementFilter, setEngagementFilter] = useState<string>('all');
   const searchRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const addNotification = useUIStore((s) => s.addNotification);
@@ -97,6 +116,7 @@ export function ContactsPage() {
       if (debouncedSearch) params.search = debouncedSearch;
       if (selectedCustomerId) params.customerId = selectedCustomerId;
       if (kindFilter !== 'all') params.kind = kindFilter;
+      if (engagementFilter !== 'all') params.engagement = engagementFilter;
       const { data: response } = await contactsApi.getAll(params);
       setContacts(response.data);
       setMeta(response.meta || null);
@@ -116,7 +136,7 @@ export function ContactsPage() {
         });
       }
     }
-  }, [page, pageSize, debouncedSearch, selectedCustomerId, kindFilter, addNotification, sortParams.sortBy, sortParams.sortOrder]);
+  }, [page, pageSize, debouncedSearch, selectedCustomerId, kindFilter, engagementFilter, addNotification, sortParams.sortBy, sortParams.sortOrder]);
 
   useEffect(() => {
     fetchContacts();
@@ -163,8 +183,17 @@ export function ContactsPage() {
                         persistent
                       />
                       <TableFilterFlyout
-                        activeFilterCount={(selectedCustomerId ? 1 : 0) + (kindFilter !== 'people' ? 1 : 0)}
-                        onReset={() => { setSelectedCustomerId(null); setKindFilter('people'); setPage(1); }}
+                        activeFilterCount={
+                          (selectedCustomerId ? 1 : 0) +
+                          (kindFilter !== 'people' ? 1 : 0) +
+                          (engagementFilter !== 'all' ? 1 : 0)
+                        }
+                        onReset={() => {
+                          setSelectedCustomerId(null);
+                          setKindFilter('people');
+                          setEngagementFilter('all');
+                          setPage(1);
+                        }}
                       >
                         <Dropdown
                           id="kind-filter"
@@ -178,6 +207,21 @@ export function ContactsPage() {
                           selectedItem={KIND_FILTERS.find((k) => k.id === kindFilter) ?? KIND_FILTERS[0]}
                           onChange={({ selectedItem }) => {
                             setKindFilter(selectedItem?.id ?? 'people');
+                            setPage(1);
+                          }}
+                        />
+                        <Dropdown
+                          id="engagement-filter"
+                          titleText="Correspondence"
+                          label="Select correspondence"
+                          size="sm"
+                          items={ENGAGEMENT_FILTERS}
+                          itemToString={(item) => (item ? item.label : '')}
+                          selectedItem={
+                            ENGAGEMENT_FILTERS.find((e) => e.id === engagementFilter) ?? ENGAGEMENT_FILTERS[0]
+                          }
+                          onChange={({ selectedItem }) => {
+                            setEngagementFilter(selectedItem?.id ?? 'all');
                             setPage(1);
                           }}
                         />

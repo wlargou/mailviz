@@ -29,6 +29,7 @@ import { getSharedThreadIds, canAccessThread } from '../utils/accessControl.js';
 import { auditService } from './auditService.js';
 import { notificationService } from './notificationService.js';
 import { snoozeService } from './snoozeService.js';
+import { mergeEngagement } from '../utils/contactEngagement.js';
 
 /**
  * The single definition of how Gmail's labels map onto our boolean columns.
@@ -61,6 +62,24 @@ const MAX_TRACKED_FAILURES = 500;
  * without the user changing their address.
  */
 const ownDomainCache = new Map<string, string | null>();
+
+/**
+ * The account's own address, lowercased.
+ *
+ * Distinct from `ownEmailDomain`: engagement asks whether *this account* wrote to
+ * someone, and a colleague on the same domain writing to them is not the same
+ * fact. Cached for the same reason.
+ */
+const ownAddressCache = new Map<string, string | null>();
+
+async function ownEmailAddress(userId: string): Promise<string | null> {
+  const cached = ownAddressCache.get(userId);
+  if (cached !== undefined) return cached;
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+  const address = user?.email?.trim().toLowerCase() ?? null;
+  ownAddressCache.set(userId, address);
+  return address;
+}
 
 async function ownEmailDomain(userId: string): Promise<string | null> {
   const cached = ownDomainCache.get(userId);
@@ -550,6 +569,14 @@ export const emailService = {
      * `self` flag; this is the mail side of the same rule.
      */
     const ownDomain = await ownEmailDomain(userId);
+    const ownAddress = await ownEmailAddress(userId);
+    /**
+     * Outbound means *this account* sent it, so its recipients are people the
+     * account has written to. On an inbound message the sender is someone who has
+     * written to the account, and the other recipients are bystanders — which is
+     * exactly the distinction the engagement filter exists to make.
+     */
+    const isOutbound = Boolean(ownAddress) && fromEmail.trim().toLowerCase() === ownAddress;
 
     /**
      * Mail that arrived via a mailing list creates no companies or contacts.
@@ -581,8 +608,22 @@ export const emailService = {
         // Try to find display name for this email
         let displayName: string | null = null;
         if (email === fromEmail) displayName = fromName;
-        const { created: contactCreated } = await customerService.findOrCreateContact(userId, email, displayName, customer.id);
+        const { contact, created: contactCreated } = await customerService.findOrCreateContact(userId, email, displayName, customer.id);
         if (contactCreated) contactsCreated++;
+
+        // Only the two roles that carry information: the sender of an inbound
+        // message, and the recipients of one this account sent.
+        const observed = isOutbound
+          ? email !== fromEmail ? ('receiver' as const) : null
+          : email === fromEmail ? ('sender' as const) : null;
+        if (observed) {
+          const next = mergeEngagement(contact.engagement, observed);
+          // Written only when it widens — most messages tell us nothing new, and
+          // this runs per address per message.
+          if (next !== contact.engagement) {
+            await prisma.contact.update({ where: { id: contact.id }, data: { engagement: next } });
+          }
+        }
       } catch (err: any) {
         console.warn('[EmailSync] Customer/contact creation failed:', err?.message || err);
       }

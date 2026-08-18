@@ -5,12 +5,15 @@ import { AppError } from '../middleware/errorHandler.js';
 import { parsePagination, paginationMeta } from '../utils/pagination.js';
 import { cleanEmptyStrings } from '../utils/shared.js';
 import { auditService } from './auditService.js';
+import { CONTACT_ENGAGEMENTS } from '../utils/contactEngagement.js';
 
 interface ContactQueryParams {
   search?: string;
   customerId?: string;
   /** person | role | automated, or `people` for "anything a human answers". */
   kind?: string;
+  /** none | sender | receiver | both, or `any` for "has exchanged mail at all". */
+  engagement?: string;
   page?: string;
   limit?: string;
   sortBy?: string;
@@ -52,6 +55,13 @@ export const contactService = {
     } else if (query.kind && CONTACT_KINDS.includes(query.kind)) {
       where.kind = query.kind;
     }
+    // `any` is the useful shorthand: mail has flowed in some direction, as
+    // opposed to the 5,918 addresses that only ever sat in someone else's cc list.
+    if (query.engagement === 'any') {
+      where.engagement = { in: ['sender', 'receiver', 'both'] };
+    } else if (query.engagement && CONTACT_ENGAGEMENTS.includes(query.engagement as never)) {
+      where.engagement = query.engagement;
+    }
     if (query.search) {
       where.OR = [
         { firstName: { contains: query.search, mode: 'insensitive' } },
@@ -78,6 +88,11 @@ export const contactService = {
         conditions.push(Prisma.sql`c.kind IN ('person', 'role')`);
       } else if (query.kind && CONTACT_KINDS.includes(query.kind)) {
         conditions.push(Prisma.sql`c.kind = ${query.kind}`);
+      }
+      if (query.engagement === 'any') {
+        conditions.push(Prisma.sql`c.engagement IN ('sender', 'receiver', 'both')`);
+      } else if (query.engagement && CONTACT_ENGAGEMENTS.includes(query.engagement as never)) {
+        conditions.push(Prisma.sql`c.engagement = ${query.engagement}`);
       }
       if (query.search) {
         const pattern = `%${query.search}%`;

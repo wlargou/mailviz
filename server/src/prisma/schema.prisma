@@ -118,6 +118,10 @@ model Contact {
   /// vocabulary is a heuristic that will be tuned.
   kind       String   @default("person") @db.VarChar(20)
 
+  /// "none" | "sender" | "receiver" | "both" — which way mail has ever flowed,
+  /// named from the contact's side. See utils/contactEngagement.ts.
+  engagement String   @default("none") @db.VarChar(20)
+
   customerId String   @map("customer_id")
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
@@ -129,6 +133,7 @@ model Contact {
   @@index([email])
   /// The contact list filters on this, so it is indexed alongside the owner.
   @@index([customerId, kind])
+  @@index([customerId, engagement])
   @@map("contacts")
 }
 
