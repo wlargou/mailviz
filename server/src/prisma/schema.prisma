@@ -112,6 +112,12 @@ model Contact {
   phone      String?  @db.VarChar(50)
   role       String?  @db.VarChar(100)
   isVip      Boolean  @default(false) @map("is_vip")
+
+  /// "person" | "role" | "automated" — see utils/contactKind.ts. A string rather
+  /// than an enum to match how task status is modelled here, and because the
+  /// vocabulary is a heuristic that will be tuned.
+  kind       String   @default("person") @db.VarChar(20)
+
   customerId String   @map("customer_id")
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
@@ -121,6 +127,8 @@ model Contact {
 
   @@index([customerId])
   @@index([email])
+  /// The contact list filters on this, so it is indexed alongside the owner.
+  @@index([customerId, kind])
   @@map("contacts")
 }
 

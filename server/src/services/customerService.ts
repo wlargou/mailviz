@@ -6,6 +6,7 @@ import { AppError } from '../middleware/errorHandler.js';
 import { cleanEmptyStrings } from '../utils/shared.js';
 import { domainToCompanyName, getLogoUrl, parseName } from '../utils/domainResolver.js';
 import { auditService } from './auditService.js';
+import { classifyContactKind } from '../utils/contactKind.js';
 
 interface CustomerQueryParams {
   search?: string;
@@ -155,8 +156,21 @@ export const customerService = {
     if (existing) return { contact: existing, created: false };
 
     const { firstName, lastName } = parseName(displayName, email);
+    // Classified once, at creation. The inputs (address and display name) do not
+    // change afterwards, so re-deriving it on every read would be work for the
+    // same answer — and storing it is what lets the list filter and index on it.
+    const customer = await prisma.customer.findUnique({
+      where: { id: customerId },
+      select: { name: true },
+    });
+    const kind = classifyContactKind({
+      email,
+      firstName,
+      lastName,
+      companyName: customer?.name ?? null,
+    });
     const contact = await prisma.contact.create({
-      data: { firstName, lastName, email, customerId },
+      data: { firstName, lastName, email, customerId, kind },
     });
     return { contact, created: true };
   },

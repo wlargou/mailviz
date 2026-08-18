@@ -9,6 +9,8 @@ import { auditService } from './auditService.js';
 interface ContactQueryParams {
   search?: string;
   customerId?: string;
+  /** person | role | automated, or `people` for "anything a human answers". */
+  kind?: string;
   page?: string;
   limit?: string;
   sortBy?: string;
@@ -17,6 +19,9 @@ interface ContactQueryParams {
 
 // Whitelist of sortable Contact columns. `sortBy` comes straight off the query
 // string and is used as a Prisma orderBy key, so it must never be trusted raw.
+/** Accepted `kind` filter values; anything else is ignored rather than trusted. */
+const CONTACT_KINDS = ['person', 'role', 'automated'] as const as readonly string[];
+
 const CONTACT_SORT_FIELDS = ['firstName', 'lastName', 'email', 'role', 'isVip', 'createdAt', 'updatedAt'] as const;
 
 /**
@@ -40,6 +45,13 @@ export const contactService = {
     if (query.customerId) {
       where.customerId = query.customerId;
     }
+    // `people` is the useful default for a human reading the list: a person or a
+    // shared mailbox someone answers, but not a machine.
+    if (query.kind === 'people') {
+      where.kind = { in: ['person', 'role'] };
+    } else if (query.kind && CONTACT_KINDS.includes(query.kind)) {
+      where.kind = query.kind;
+    }
     if (query.search) {
       where.OR = [
         { firstName: { contains: query.search, mode: 'insensitive' } },
@@ -61,6 +73,11 @@ export const contactService = {
       const conditions: Prisma.Sql[] = [Prisma.sql`cu.user_id = ${userId}`];
       if (query.customerId) {
         conditions.push(Prisma.sql`c.customer_id = ${query.customerId}`);
+      }
+      if (query.kind === 'people') {
+        conditions.push(Prisma.sql`c.kind IN ('person', 'role')`);
+      } else if (query.kind && CONTACT_KINDS.includes(query.kind)) {
+        conditions.push(Prisma.sql`c.kind = ${query.kind}`);
       }
       if (query.search) {
         const pattern = `%${query.search}%`;

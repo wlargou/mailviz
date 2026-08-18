@@ -1,20 +1,21 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
+  Button,
   DataTable,
+  DataTableSkeleton,
+  Dropdown,
+  Pagination,
   Table,
-  TableHead,
-  TableRow,
-  TableHeader,
   TableBody,
   TableCell,
   TableContainer,
+  TableHead,
+  TableHeader,
+  TableRow,
   TableToolbar,
   TableToolbarContent,
   TableToolbarSearch,
-  Pagination,
-  DataTableSkeleton,
   Tag,
-  Button,
 } from '@carbon/react';
 import { Copy, Merge } from '@carbon/icons-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -35,6 +36,19 @@ import { useTableSort } from '../../hooks/useTableSort';
  * Company is a relation and Emails is a computed count — neither is orderable by
  * the endpoint, so neither gets an affordance.
  */
+/**
+ * `people` is person + role: someone answers a shared mailbox, nobody answers a
+ * `noreply@`. Splitting those two into separate options is what lets you find
+ * `support@` without wading through delivery notifications.
+ */
+const KIND_FILTERS = [
+  { id: 'people', label: 'People and shared mailboxes' },
+  { id: 'person', label: 'People only' },
+  { id: 'role', label: 'Shared mailboxes' },
+  { id: 'automated', label: 'Automated senders' },
+  { id: 'all', label: 'All contacts' },
+];
+
 const headers = [
   { key: 'name', header: 'Name', sortField: 'lastName' },
   { key: 'email', header: 'Email', sortField: 'email' },
@@ -54,6 +68,14 @@ export function ContactsPage() {
   const [search, setSearch] = useState(initialSearch);
   const [debouncedSearch, setDebouncedSearch] = useState(initialSearch);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  /**
+   * Defaults to `people` — a person or a shared mailbox someone answers.
+   *
+   * Of 11,694 contacts about 1,350 are machines or brand addresses, and they are
+   * not who you look up a contact to find. "All" is one click away for when the
+   * question is "who has ever emailed me from that domain".
+   */
+  const [kindFilter, setKindFilter] = useState<string>('people');
   const searchRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const addNotification = useUIStore((s) => s.addNotification);
@@ -74,6 +96,7 @@ export function ContactsPage() {
       };
       if (debouncedSearch) params.search = debouncedSearch;
       if (selectedCustomerId) params.customerId = selectedCustomerId;
+      if (kindFilter !== 'all') params.kind = kindFilter;
       const { data: response } = await contactsApi.getAll(params);
       setContacts(response.data);
       setMeta(response.meta || null);
@@ -93,7 +116,7 @@ export function ContactsPage() {
         });
       }
     }
-  }, [page, pageSize, debouncedSearch, selectedCustomerId, addNotification, sortParams.sortBy, sortParams.sortOrder]);
+  }, [page, pageSize, debouncedSearch, selectedCustomerId, kindFilter, addNotification, sortParams.sortBy, sortParams.sortOrder]);
 
   useEffect(() => {
     fetchContacts();
@@ -140,9 +163,24 @@ export function ContactsPage() {
                         persistent
                       />
                       <TableFilterFlyout
-                        activeFilterCount={selectedCustomerId ? 1 : 0}
-                        onReset={() => { setSelectedCustomerId(null); setPage(1); }}
+                        activeFilterCount={(selectedCustomerId ? 1 : 0) + (kindFilter !== 'people' ? 1 : 0)}
+                        onReset={() => { setSelectedCustomerId(null); setKindFilter('people'); setPage(1); }}
                       >
+                        <Dropdown
+                          id="kind-filter"
+                          titleText="Type"
+                          // Carbon requires `label` as the empty-state text even
+                          // when a selection is always present.
+                          label="Select a type"
+                          size="sm"
+                          items={KIND_FILTERS}
+                          itemToString={(item) => (item ? item.label : '')}
+                          selectedItem={KIND_FILTERS.find((k) => k.id === kindFilter) ?? KIND_FILTERS[0]}
+                          onChange={({ selectedItem }) => {
+                            setKindFilter(selectedItem?.id ?? 'people');
+                            setPage(1);
+                          }}
+                        />
                         <CompanyComboBox
                           id="company-filter"
                           titleText="Company"
