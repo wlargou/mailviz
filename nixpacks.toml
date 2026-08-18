@@ -2,7 +2,19 @@
 nixPkgs = ["nodejs_22", "npm-10_x", "openssl"]
 
 [phases.install]
-cmds = ["npm ci"]
+# `--include=dev` is required, not a convenience.
+#
+# Railway sets NODE_ENV=production, and under that npm omits devDependencies —
+# 194 packages here. Three of them are needed:
+#   * vite     — builds the client (this is what failed: "sh: 1: vite: not found")
+#   * esbuild  — builds the server, so it would have failed on the next line
+#   * prisma   — the CLI, used by `prisma generate` at build time AND by
+#                `prisma migrate deploy` in the start command
+#
+# @prisma/client is a real dependency and installs either way; it is the CLI that
+# does not. Without this the start command would reach for a prisma binary that
+# is not in the image.
+cmds = ["npm ci --include=dev"]
 
 [phases.build]
 cmds = [
