@@ -90,7 +90,9 @@ export const contactService = {
             GROUP BY a.contact_id
           ) ec ON ec.contact_id = c.id
           WHERE ${whereClause}
-          ORDER BY email_count DESC
+          -- c.id for the same reason as the Prisma branch: without it, ties on
+          -- email_count (most contacts have none) reshuffle between page queries.
+          ORDER BY email_count DESC, c.id ASC
           LIMIT ${pagination.limit} OFFSET ${pagination.skip}
         `),
         prisma.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
@@ -130,7 +132,7 @@ export const contactService = {
     const [contacts, total] = await Promise.all([
       prisma.contact.findMany({
         where,
-        orderBy: { [sortBy]: sortOrder },
+        orderBy: [{ [sortBy]: sortOrder }, { id: 'asc' }],
         skip: pagination.skip,
         take: pagination.limit,
         include: {
