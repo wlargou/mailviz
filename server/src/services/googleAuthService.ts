@@ -4,7 +4,12 @@ import { env } from '../config/env.js';
 import { encrypt, decrypt } from '../utils/encryption.js';
 import { prisma } from '../lib/prisma.js';
 
-const SCOPES = [
+/**
+ * Exported so tests can assert against the same list the check uses. Hardcoding
+ * the scopes in a test instead means the "fully scoped" case drifts out of date
+ * the moment a scope is added, and starts passing for the wrong reason.
+ */
+export const SCOPES = [
   'https://www.googleapis.com/auth/calendar',
   'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/userinfo.profile',
@@ -201,9 +206,13 @@ export const googleAuthService = {
     }
   },
 
-  async getStatus(userId?: string) {
-    const where = userId ? { userId } : {};
-    const auth = await prisma.googleAuth.findFirst({ where });
+  async getStatus(userId: string) {
+    // Required, not optional. The `userId ? { userId } : {}` shape this replaces
+    // meant a caller that forgot the argument silently read *whichever*
+    // connection happened to be first in the table — the same shape that let a
+    // cross-tenant `disconnect` regression pass its test. Both call sites
+    // already pass a user, so the optional case only ever existed as a trap.
+    const auth = await prisma.googleAuth.findFirst({ where: { userId } });
     if (!auth) {
       return { connected: false };
     }
@@ -221,9 +230,8 @@ export const googleAuthService = {
     };
   },
 
-  async disconnect(userId?: string) {
-    const where = userId ? { userId } : {};
-    const auth = await prisma.googleAuth.findFirst({ where });
+  async disconnect(userId: string) {
+    const auth = await prisma.googleAuth.findFirst({ where: { userId } });
     if (!auth) return;
 
     // Revoke Google OAuth token (best effort)
@@ -236,24 +244,39 @@ export const googleAuthService = {
       // Token may already be invalid
     }
 
-    // Delete all synced data in a transaction to ensure atomicity
+    /**
+     * Delete the synced data in a transaction, so a failure part-way cannot
+     * leave emails pointing at deleted companies.
+     *
+     * Every statement is scoped to the account being disconnected, taken from
+     * the row that was just looked up. These used to be unscoped
+     * (`deleteMany({})`), which meant one user pressing "Disconnect
+     * Google" emptied every other user's mailbox, calendar, contacts and
+     * companies, and unlinked their tasks. The tables without their own
+     * `user_id` are reached through the relation that has one.
+     */
+    const ownerId = auth.userId;
     await prisma.$transaction([
-      // 1. Unlink tasks from companies (keep tasks, remove company association)
-      prisma.task.updateMany({ where: { customerId: { not: null } }, data: { customerId: null } }),
+      // 1. Unlink this user's tasks from companies (keep the tasks — they are
+      //    the user's own work, not synced data)
+      prisma.task.updateMany({
+        where: { userId: ownerId, customerId: { not: null } },
+        data: { customerId: null },
+      }),
       // 2. Delete MailToTask links (before deleting emails)
-      prisma.mailToTask.deleteMany({}),
+      prisma.mailToTask.deleteMany({ where: { email: { userId: ownerId } } }),
       // 3. Delete email attachments
-      prisma.emailAttachment.deleteMany({}),
-      // 4. Delete ALL emails
-      prisma.email.deleteMany({}),
+      prisma.emailAttachment.deleteMany({ where: { email: { userId: ownerId } } }),
+      // 4. Delete this user's emails
+      prisma.email.deleteMany({ where: { userId: ownerId } }),
       // 5. Delete calendar event-company links
-      prisma.calendarEventCustomer.deleteMany({}),
-      // 6. Delete ALL calendar events
-      prisma.calendarEvent.deleteMany({}),
-      // 7. Delete all contacts
-      prisma.contact.deleteMany({}),
-      // 8. Delete all companies
-      prisma.customer.deleteMany({}),
+      prisma.calendarEventCustomer.deleteMany({ where: { calendarEvent: { userId: ownerId } } }),
+      // 6. Delete this user's calendar events
+      prisma.calendarEvent.deleteMany({ where: { userId: ownerId } }),
+      // 7. Delete this user's contacts
+      prisma.contact.deleteMany({ where: { customer: { userId: ownerId } } }),
+      // 8. Delete this user's companies
+      prisma.customer.deleteMany({ where: { userId: ownerId } }),
       // 9. Delete the GoogleAuth record
       prisma.googleAuth.delete({ where: { id: auth.id } }),
     ]);

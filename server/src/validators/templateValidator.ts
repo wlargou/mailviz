@@ -17,9 +17,16 @@ const baseTemplateSchema = z.object({
 
 export const createTemplateSchema = baseTemplateSchema;
 
-// `.partial()` on the base would drop the `kind` default, which is what we want
-// for a PATCH — an absent field means "leave it alone", not "reset to default".
-export const updateTemplateSchema = baseTemplateSchema.partial();
+// For a PATCH an absent field means "leave it alone", not "reset to default".
+// `.partial()` alone does not achieve that: Zod keeps the `.default('template')`
+// inside the optional wrapper, so an absent `kind` still parsed as 'template'
+// and `templateService.update` (`data.kind ?? template.kind`) could not tell it
+// from a deliberate choice — renaming a snippet turned it into a template and
+// dropped it out of the snippet list in compose. Re-declaring the field without
+// its default is what actually makes the field optional.
+export const updateTemplateSchema = baseTemplateSchema.partial().extend({
+  kind: templateKindSchema.optional(),
+});
 
 /**
  * The context compose can supply for variable substitution.

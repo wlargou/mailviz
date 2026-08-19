@@ -3,7 +3,7 @@ import { z } from 'zod';
 export const createTaskSchema = z.object({
   title: z.string().min(1).max(255),
   description: z.string().optional(),
-  status: z.string().min(1).max(100).optional(),
+  status: z.string().trim().min(1).max(100).optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
   dueDate: z.string().datetime().nullable().optional(),
   labelIds: z.array(z.string().uuid()).optional(),
@@ -18,7 +18,7 @@ export const reorderSchema = z.object({
   items: z.array(
     z.object({
       id: z.string().uuid(),
-      status: z.string().min(1).max(100),
+      status: z.string().trim().min(1).max(100),
       position: z.number().int().min(0),
     })
   ),

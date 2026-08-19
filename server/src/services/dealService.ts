@@ -29,6 +29,42 @@ const dealIncludes = {
   customer: { select: { id: true, name: true, logoUrl: true } },
 };
 
+/**
+ * A deal may only ever point at rows owned by the same account.
+ *
+ * `partnerId` and `customerId` arrive in the request body and are plain foreign
+ * keys into user-scoped tables, so the database will happily accept another
+ * account's id. It is not only a bad row: `dealIncludes` reads the partner and
+ * the company back out, so the create/update response hands the caller the name
+ * and logo of a company they have no access to.
+ *
+ * `ownerId` is the owner of the deal being written, not the caller — a user a
+ * deal was shared with must not be able to repoint it at their own partner.
+ */
+async function assertReferencesOwnedBy(
+  ownerId: string,
+  data: { partnerId?: string | null; customerId?: string | null }
+) {
+  if (data.partnerId) {
+    const partner = await prisma.dealPartner.findFirst({
+      where: { id: data.partnerId, userId: ownerId },
+      select: { id: true },
+    });
+    if (!partner) {
+      throw new AppError(404, 'DEAL_PARTNER_NOT_FOUND', 'Deal partner not found');
+    }
+  }
+  if (data.customerId) {
+    const customer = await prisma.customer.findFirst({
+      where: { id: data.customerId, userId: ownerId },
+      select: { id: true },
+    });
+    if (!customer) {
+      throw new AppError(404, 'CUSTOMER_NOT_FOUND', 'Customer not found');
+    }
+  }
+}
+
 export const dealService = {
   async findAll(userId: string, query: DealQueryParams) {
     const pagination = parsePagination(query);
@@ -119,6 +155,7 @@ export const dealService = {
   },
 
   async create(userId: string, data: CreateDealInput) {
+    await assertReferencesOwnedBy(userId, data);
     const cleaned = cleanEmptyStrings(data);
     if (cleaned.expiryDate) {
       cleaned.expiryDate = new Date(cleaned.expiryDate as string);
@@ -136,6 +173,11 @@ export const dealService = {
     if (!hasAccess) {
       throw new AppError(404, 'DEAL_NOT_FOUND', 'Deal not found');
     }
+    const existing = await prisma.deal.findUnique({ where: { id }, select: { userId: true } });
+    if (!existing) {
+      throw new AppError(404, 'DEAL_NOT_FOUND', 'Deal not found');
+    }
+    await assertReferencesOwnedBy(existing.userId, data);
     const cleaned = cleanEmptyStrings(data);
     if (cleaned.expiryDate) {
       cleaned.expiryDate = new Date(cleaned.expiryDate as string);

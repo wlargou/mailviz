@@ -73,6 +73,14 @@ export const scheduleEmailSchema = z.object({
   attachments: attachmentsField,
   forwardExistingAttachments: z.array(z.string().uuid()).optional().default([]),
 }).refine(
+  // Scheduling is send-later, not send-lesser: the same bytes leave the
+  // building, so the same policy applies. Without this, POST /emails/schedule
+  // was a complete bypass of the blocked-extension list and the 25MB cap —
+  // and the failure would land in the background scheduler, hours later, where
+  // nobody is watching.
+  (data) => validateAttachments(data.attachments),
+  { message: 'Attachments exceed 25MB limit or contain blocked file types', path: ['attachments'] }
+).refine(
   (data) => new Date(data.sendAt) > new Date(),
   { message: 'Send time must be in the future', path: ['sendAt'] }
 ).refine(

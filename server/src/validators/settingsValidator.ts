@@ -6,12 +6,15 @@ import { z } from 'zod';
  */
 
 export const createSettingsItemSchema = z.object({
-  label: z.string().min(1, 'Label is required').max(100, 'Label too long').transform((s) => s.trim()),
+  // `.trim()` before the length checks, not a trailing `.transform`: trimming
+  // last means '   ' satisfies min(1) and is then stored as an empty label — a
+  // Kanban column with no visible name.
+  label: z.string().trim().min(1, 'Label is required').max(100, 'Label too long'),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Invalid hex color').optional().default('#4589ff'),
 });
 
 export const updateSettingsItemSchema = z.object({
-  label: z.string().min(1, 'Label is required').max(100, 'Label too long').transform((s) => s.trim()).optional(),
+  label: z.string().trim().min(1, 'Label is required').max(100, 'Label too long').optional(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Invalid hex color').optional(),
 });
 

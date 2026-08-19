@@ -30,6 +30,41 @@ interface TaskQueryParams {
 // `position` is here because the Kanban board sorts by it.
 const TASK_SORT_FIELDS = ['title', 'status', 'priority', 'dueDate', 'position', 'createdAt', 'updatedAt'] as const;
 
+/**
+ * A task may only ever point at rows owned by the same account.
+ *
+ * `customerId` and `labelIds` arrive in the request body and are plain foreign
+ * keys into user-scoped tables, so the database accepts another account's id
+ * without complaint. The cost is not just a malformed row: `create`/`update`
+ * include `customer` and `labels` in what they return, so the response echoes
+ * another account's company record — notes and all — back to the caller.
+ *
+ * `ownerId` is the owner of the task being written, not the caller: a user a
+ * task was shared with or assigned must not be able to attach their own
+ * company to someone else's task either.
+ */
+async function assertReferencesOwnedBy(
+  ownerId: string,
+  data: { customerId?: string | null; labelIds?: string[] }
+) {
+  if (data.customerId) {
+    const customer = await prisma.customer.findFirst({
+      where: { id: data.customerId, userId: ownerId },
+      select: { id: true },
+    });
+    if (!customer) {
+      throw new AppError(404, 'CUSTOMER_NOT_FOUND', 'Customer not found');
+    }
+  }
+  if (data.labelIds && data.labelIds.length > 0) {
+    const ids = [...new Set(data.labelIds)];
+    const owned = await prisma.label.count({ where: { id: { in: ids }, userId: ownerId } });
+    if (owned !== ids.length) {
+      throw new AppError(404, 'LABEL_NOT_FOUND', 'Label not found');
+    }
+  }
+}
+
 export const taskService = {
   async findAll(userId: string, query: TaskQueryParams) {
     const pagination = parsePagination(query);
@@ -185,6 +220,7 @@ export const taskService = {
   },
 
   async create(userId: string, data: CreateTaskInput) {
+    await assertReferencesOwnedBy(userId, data);
     const { labelIds, customerId, assignedToId, ...taskData } = data;
 
     // Get max position for the status column
@@ -224,6 +260,7 @@ export const taskService = {
     if (!existing) {
       throw new AppError(404, 'TASK_NOT_FOUND', 'Task not found');
     }
+    await assertReferencesOwnedBy(existing.userId, data);
 
     const { labelIds, customerId, ...taskData } = data;
 
@@ -261,6 +298,17 @@ export const taskService = {
   },
 
   async reorder(userId: string, data: ReorderInput) {
+    // Checked up front so an id the caller does not own — a stale board, or
+    // another account's task — is a 404. The per-row `update` below still
+    // carries `userId`, but on its own it raises an unhandled P2025 that the
+    // error handler can only turn into a 500.
+    const ids = [...new Set(data.items.map((item) => item.id))];
+    if (ids.length > 0) {
+      const owned = await prisma.task.count({ where: { id: { in: ids }, userId } });
+      if (owned !== ids.length) {
+        throw new AppError(404, 'TASK_NOT_FOUND', 'Task not found');
+      }
+    }
     const operations = data.items.map((item) =>
       prisma.task.update({
         where: { id: item.id, userId },

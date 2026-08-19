@@ -21,10 +21,57 @@ export function parseEmailAddress(raw: string): { email: string; name: string | 
   return { name: null, email: raw.trim().toLowerCase() };
 }
 
+/**
+ * Split an address-list header on the commas that actually separate addresses.
+ *
+ * A plain `split(',')` is wrong for the single most common corporate header
+ * shape there is: `"Doe, John" <john@example.com>`. Outlook writes display
+ * names surname-first, and the comma inside the quoted string is part of the
+ * name, not a separator. Splitting on it produced a phantom recipient `"doe`
+ * on every such message — junk in `Email.to`, and, because `draftService` reads
+ * a Gmail draft's recipients through here and hands them straight back to
+ * `buildMimeMessage`, a re-saved draft addressed to a real person.
+ *
+ * Commas inside `<…>` are honoured for the same reason: a quoted local part
+ * (`<"a,b"@example.com>`) is legal and would otherwise be torn in half.
+ */
+function splitAddressList(raw: string): string[] {
+  const parts: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  let inAngle = false;
+
+  for (let i = 0; i < raw.length; i++) {
+    const char = raw[i];
+
+    if (inQuotes && char === '\\' && i + 1 < raw.length) {
+      // Escaped character inside a quoted string — including an escaped quote,
+      // which must not be read as the end of the string.
+      current += char + raw[i + 1];
+      i++;
+      continue;
+    }
+    if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (!inQuotes && char === '<') {
+      inAngle = true;
+    } else if (!inQuotes && char === '>') {
+      inAngle = false;
+    } else if (char === ',' && !inQuotes && !inAngle) {
+      parts.push(current);
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+  parts.push(current);
+  return parts;
+}
+
 /** Parse comma-separated email addresses */
 export function parseEmailList(raw: string | undefined): string[] {
   if (!raw) return [];
-  return raw.split(',').map((s) => {
+  return splitAddressList(raw).map((s) => {
     const { email } = parseEmailAddress(s.trim());
     return email;
   }).filter(Boolean);

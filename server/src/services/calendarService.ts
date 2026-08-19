@@ -194,7 +194,12 @@ export const calendarService = {
     // is a single instance of a series (its `recurrence` is a copy of the parent's),
     // so we never rewrite the rule from there — Google would reject it anyway.
     const existing = await prisma.calendarEvent.findUnique({ where: { id, userId } });
-    const canEditRecurrence = !existing?.recurringEventId;
+    // `findById`, `delete` and `respond` all raise a 404 here; `update` did not,
+    // and instead let the `prisma.update` below fail on the same `where`. That
+    // throws a raw P2025, so editing another account's event answered 500 where
+    // every sibling operation on the same row answers 404.
+    if (!existing) throw Object.assign(new Error('Event not found'), { status: 404 });
+    const canEditRecurrence = !existing.recurringEventId;
     const recurrence = canEditRecurrence ? data.recurrence : undefined;
     if (recurrence !== undefined) updateData.recurrence = recurrence;
 

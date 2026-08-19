@@ -77,9 +77,22 @@ function htmlToPlainText(html: string): string {
 }
 
 export async function buildMimeMessage(options: MimeOptions): Promise<string> {
-  const sanitized = sanitize(options.htmlBody);
-  const inlined = inlineCss(sanitized);
-  const plainText = htmlToPlainText(sanitized);
+  /**
+   * Inline the CSS *before* sanitising, not after.
+   *
+   * `style` is not in SAFE_TAGS and sanitize-html drops the contents of a
+   * `<style>` block along with the tag, so running juice second handed it HTML
+   * whose stylesheet had already been deleted — every rule silently lost, and
+   * `inlineCss` was dead code. Reversed, juice rewrites the rules into `style`
+   * attributes (which SAFE_ATTRIBUTES does allow on any element) and sanitise
+   * then removes the `<style>` tag itself along with anything else unsafe.
+   *
+   * Sanitising still has the last word, which is the property that matters:
+   * juice only ever moves declarations into attributes, so nothing it emits can
+   * reintroduce a tag or attribute the allowlist would reject.
+   */
+  const inlined = sanitize(inlineCss(options.htmlBody));
+  const plainText = htmlToPlainText(inlined);
 
   const mailOptions: any = {
     from: options.from,
@@ -111,7 +124,22 @@ export async function buildMimeMessage(options: MimeOptions): Promise<string> {
   }
 
   const mail = new MailComposer(mailOptions);
-  const message = await mail.compile().build();
+  const compiled = mail.compile();
+
+  /**
+   * Keep the Bcc header in the built message.
+   *
+   * Nodemailer drops it by default, and for an SMTP transport that is right:
+   * the blind recipients travel in the SMTP envelope, so leaving the header in
+   * would expose them to everybody else. Gmail's `users.messages.send` has no
+   * envelope — it reads To/Cc/Bcc off the raw message to decide who to deliver
+   * to, and strips Bcc itself before relaying. Without this, every Bcc'd
+   * address was silently dropped: the send returned 200 and the recipient
+   * never got the mail.
+   */
+  compiled.keepBcc = true;
+
+  const message = await compiled.build();
 
   // Convert to base64url for Gmail API
   return message.toString('base64url');

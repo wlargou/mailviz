@@ -45,12 +45,18 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
 
   markRead: async (id) => {
     await notificationsApi.markRead(id);
-    set((s) => ({
-      notifications: s.notifications.map((n) =>
-        n.id === id ? { ...n, isRead: true } : n
-      ),
-      unreadCount: Math.max(0, s.unreadCount - 1),
-    }));
+    set((s) => {
+      // Only an unread notification moves the badge. The bell calls markRead on
+      // every click, including on rows that are already read, so decrementing
+      // unconditionally walks the count below the number of unread rows.
+      const wasUnread = s.notifications.some((n) => n.id === id && !n.isRead);
+      return {
+        notifications: s.notifications.map((n) =>
+          n.id === id ? { ...n, isRead: true } : n
+        ),
+        unreadCount: wasUnread ? Math.max(0, s.unreadCount - 1) : s.unreadCount,
+      };
+    });
   },
 
   markAllRead: async () => {
@@ -65,8 +71,11 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     await notificationsApi.dismiss(id);
     set((s) => ({
       notifications: s.notifications.filter((n) => n.id !== id),
-      unreadCount: s.notifications.find((n) => n.id === id && !n.isRead)
-        ? s.unreadCount - 1
+      // Clamped like markRead: fetchUnreadCount swallows its failures, so the
+      // count can sit at 0 while unread rows are still listed, and a negative
+      // count hides the badge entirely (it renders only when > 0).
+      unreadCount: s.notifications.some((n) => n.id === id && !n.isRead)
+        ? Math.max(0, s.unreadCount - 1)
         : s.unreadCount,
     }));
   },
