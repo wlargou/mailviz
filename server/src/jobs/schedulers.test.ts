@@ -105,8 +105,12 @@ vi.mock('../services/notificationService.js', () => ({
 
 const { startEmailSyncScheduler, stopEmailSyncScheduler, syncAccountNow, isSyncInProgressFor } =
   await import('./emailSyncScheduler.js');
-const { startCalendarSyncScheduler, stopCalendarSyncScheduler, syncCalendarNow } =
-  await import('./calendarSyncScheduler.js');
+const {
+  startCalendarSyncScheduler,
+  stopCalendarSyncScheduler,
+  syncCalendarNow,
+  isCalendarSyncInProgress,
+} = await import('./calendarSyncScheduler.js');
 const { startScheduledSendScheduler, stopScheduledSendScheduler } =
   await import('./scheduledSendScheduler.js');
 const { startSnoozeScheduler, stopSnoozeScheduler } = await import('./snoozeScheduler.js');
@@ -301,12 +305,16 @@ describe('emailSyncScheduler — one bad account', () => {
     // failed sync leaves that user's indicator spinning until they reload —
     // and, because the status never flips, looking permanently stuck.
     const user = await createConnectedUser();
-    mocks.syncFromGmail.mockResolvedValue(okMailSync);
-    // Thrown from the emit itself, which is OUTSIDE the two inner try/catch
-    // blocks — a rejected syncFromGmail or syncDrafts is swallowed before it
-    // can reach the outer try, so neither one exercises the `finally` at all.
-    mocks.wsEmitToUser.mockImplementation((_id: string, event: string) => {
-      if (event === 'emails:synced') throw new Error('websocket died mid-broadcast');
+    // The failure has to escape BOTH inner try/catch blocks, and the only thing
+    // in syncAccount that can is an inner catch handler itself. A rejected
+    // syncFromGmail or syncDrafts is swallowed where it is raised, so neither
+    // one ever reaches the outer try — with those, replacing the `finally` with
+    // a rethrowing catch left this test green.
+    mocks.syncFromGmail.mockRejectedValue(new Error('boom'));
+    vi.spyOn(console, 'error').mockImplementation((msg: unknown) => {
+      // Matched narrowly: the runner logs its own line for the same failure, and
+      // throwing on that one would escape the runner instead of syncAccount.
+      if (String(msg) === '[EmailSync] Sync failed:') throw new Error('logger died');
     });
 
     await captureTick(startEmailSyncScheduler)();
@@ -430,6 +438,32 @@ describe('calendarSyncScheduler — one bad account', () => {
     await syncCalendarNow(target.id);
 
     expect(mocks.syncCalendar.mock.calls.map(([, id]) => id)).toEqual([target.id]);
+  });
+
+  it('reports in-flight state for the syncing account only', async () => {
+    // The route test for GET /calendar/sync-status has to stub this probe —
+    // real in-flight state is unreachable from a request — so this is the only
+    // place the delegation to `runner.isInFlight(userId)` is actually
+    // exercised. Collapsed to a global flag, or ignoring the argument
+    // altogether, nothing else in the suite would notice.
+    const syncing = await createConnectedUser();
+    const idle = await createConnectedUser();
+
+    let release!: () => void;
+    mocks.syncCalendar.mockImplementation(
+      () => new Promise((resolve) => { release = () => resolve(okCalendarSync); })
+    );
+
+    const inFlight = syncCalendarNow(syncing.id);
+    await Promise.resolve(); // let syncCalendarNow reach the pending sync
+
+    expect(isCalendarSyncInProgress(syncing.id)).toBe(true);
+    expect(isCalendarSyncInProgress(idle.id)).toBe(false);
+
+    release();
+    await inFlight;
+
+    expect(isCalendarSyncInProgress(syncing.id)).toBe(false);
   });
 });
 

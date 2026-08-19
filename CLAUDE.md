@@ -46,6 +46,9 @@ npm run build --workspace=server  # esbuild → server/dist/
 - **Vitest in both workspaces.** `npm test` runs server then client.
 - **The server suite runs against a real Postgres**, creating and dropping its own `mailviz_test_<random>` database per run. Read `server/src/test/README.md` before writing or debugging server tests — it covers the per-run database, the single-fork requirement, `TEST_DATABASE_URL` / `TEST_DATABASE_BASE_URL`, and the two-user factory convention.
 - **CI** (`.github/workflows/ci.yml`): prisma generate → `migrate deploy` against an empty DB → typecheck both → test both → build both → `npm audit` (non-blocking).
+- **Run server tests from `server/`**, e.g. `cd server && npx vitest run src/services/foo.test.ts`. The harness shells out to `prisma migrate deploy --schema=src/prisma/schema.prisma`, a path relative to the working directory, so `vitest --root server` from the repo root fails before any test runs.
+- **The server suite takes ~12 minutes.** It is a single fork against a real Postgres and truncates every table between tests; the three route-smoke files are roughly half of it. Prefer running the files you touched while iterating.
+- **Tests are audited by mutation, not just written.** A test that passes is not evidence until you have broken the code it covers and watched it go red — 39 of the first 1018 tests here survived exactly that check and had to be repaired. Vacuous shapes to avoid: `every()` on a possibly-empty array, asserting an echoed `meta.limit` instead of the row count, seeding a fixture in the state the endpoint writes, and a bare `rejects.toThrow()` where the point is *which* error.
 
 ## Architecture
 
@@ -109,6 +112,12 @@ npm run build --workspace=server  # esbuild → server/dist/
 - **SCSS partials use `@use`, not `@import`** (`@import` is removed in Dart Sass 3.0). New component styles go in their own `_componentname.scss` and get `@use`d in `index.scss`. `@use` scopes each file, so a partial needing `type.type-style()`, `$spacing-*` or `colors.*` declares its own `@use` header — it does not inherit them.
 - **SidePanel z-index**: Carbon SidePanel is z-index 8000. Dropdowns/modals that must float above it need z-index 8001+.
 - **Rate limits**: Email send (10/min), bulk ops (20/min), sync (5/min) — defined in `routes/emails.ts`. Login (20/15min) is in `app.ts`.
+- **Zod `.partial()` does NOT drop a `.default()`.** It moves the field into an optional wrapper with the default still inside, so an absent field on a PATCH still parses as the default value. `updateDealSchema` silently reset every edited deal to `TO_CHALLENGE` this way. Re-declare the field without its default: `base.partial().extend({ status: statusSchema.optional() })`.
+- **Zod `.trim()` belongs before `.min()`, not after.** A trailing `.transform(s => s.trim())` runs *after* the length check, so `'   '` satisfies `min(1)` and is then stored as `''`. Four schemas had this.
+- **`z.string().url()` does not restrict the scheme.** `javascript:` and `data:text/html` are well-formed URLs and parse clean. Any URL that ends up in an `href` or `window.open` needs an explicit `.refine(u => /^https?:\/\//i.test(u))` — see `dealPartnerValidator.ts`.
+- **sanitize-html deletes `<style>` blocks and their contents**, so CSS inlining (juice) must run *before* sanitising, not after. Reversed, juice receives HTML whose stylesheet is already gone and is a no-op. Sanitising still runs last, which is what keeps it safe.
+- **Nodemailer strips Bcc from a built message unless `compiled.keepBcc = true`.** Correct for SMTP (the envelope carries them) but wrong for Gmail's `users.messages.send`, which has no envelope and reads recipients off the raw message — Bcc'd addresses were silently dropped from every send.
+- **Prisma's P2025 has no `.status`.** An `update`/`delete` whose `where` carries the ownership filter raises it when the row is not the caller's, so it used to fall through `errorHandler` to a 500. It is now mapped to 404 centrally; a service that wants a specific message should still pre-check and throw its own `AppError`.
 
 ## Environment Variables
 

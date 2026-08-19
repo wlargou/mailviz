@@ -2,7 +2,16 @@ import { z } from 'zod';
 
 const emailString = z.string().email().max(255);
 
-const BLOCKED_EXTENSIONS = /\.(exe|bat|cmd|com|msi|scr|pif|vbs|js|wsf|cpl)$/i;
+/**
+ * Executable extensions, matched on ANY dotted component of the filename.
+ *
+ * Anchoring this to the end of the string ($) was a real bypass:
+ * `report.exe.txt` passed, and Windows hides known extensions by default, so
+ * the file the recipient sees is `report.exe`. Checking every component costs
+ * nothing and closes it. A legitimate `notes.js.txt` is the same shape as the
+ * attack and is not worth distinguishing.
+ */
+const BLOCKED_EXTENSIONS = /\.(exe|bat|cmd|com|msi|scr|pif|vbs|js|wsf|cpl)(\.|$)/i;
 const MAX_TOTAL_SIZE = 25 * 1024 * 1024; // 25MB
 
 const attachmentSchema = z.object({

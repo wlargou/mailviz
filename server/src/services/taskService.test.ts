@@ -790,7 +790,10 @@ describe('taskService.reorder', () => {
           { id: bobTask.id, status: 'DOING', position: 6000 },
         ],
       })
-    ).rejects.toThrow();
+      // Same discrimination as its sibling above: without the ownership guard
+      // this rejects with a statusCode-less P2025, which a bare toThrow() would
+      // accept while the route answered 500.
+    ).rejects.toMatchObject({ statusCode: 404 });
 
     const after = await prisma.task.findUniqueOrThrow({ where: { id: aliceTask.id } });
     expect(after.status).toBe('TODO');

@@ -411,12 +411,29 @@ describe('googleAuthService.disconnect', () => {
     await connectGoogle(user.id);
     const data = await seedSyncedData(user.id);
 
+    // Both relations cascade from `emails`, so their rows disappear whether or
+    // not the transaction deletes them explicitly — which is why removing both
+    // statements was invisible to every assertion below. Watching the calls is
+    // the only way to observe them, and it pins the part that actually went
+    // wrong once: the `userId` scoping.
+    const deleteLinks = vi.spyOn(prisma.mailToTask, 'deleteMany');
+    const deleteAttachments = vi.spyOn(prisma.emailAttachment, 'deleteMany');
+
     await googleAuthService.disconnect(user.id);
 
+    expect(deleteLinks).toHaveBeenCalledWith({ where: { email: { userId: user.id } } });
+    expect(deleteAttachments).toHaveBeenCalledWith({ where: { email: { userId: user.id } } });
+
     expect(await prisma.email.findUnique({ where: { id: data.email.id } })).toBeNull();
+    expect(await prisma.calendarEvent.findUnique({ where: { id: data.event.id } })).toBeNull();
+
+    // Rows that hang off an email or a company are gone too — but note these
+    // pass via ON DELETE CASCADE, so they cannot tell whether the transaction's
+    // explicit deletes ran. That is what the spies above are for; these pin the
+    // cascade itself, which is what would break if a migration ever changed one
+    // of those FKs to Restrict.
     expect(await prisma.emailAttachment.findUnique({ where: { id: data.attachment.id } })).toBeNull();
     expect(await prisma.mailToTask.findUnique({ where: { id: data.mailToTask.id } })).toBeNull();
-    expect(await prisma.calendarEvent.findUnique({ where: { id: data.event.id } })).toBeNull();
     expect(await prisma.customer.findUnique({ where: { id: data.customer.id } })).toBeNull();
     expect(await prisma.contact.findUnique({ where: { id: data.contact.id } })).toBeNull();
     // Tasks are the user's own work, not synced data — they survive, unlinked.

@@ -124,19 +124,27 @@ describe('sendEmailSchema', () => {
       .attachments).toHaveLength(1);
   });
 
-  it.fails('KNOWN GAP: a double extension slips past the blocklist', () => {
-    // `report.exe.txt` is a real attack when Windows hides known extensions,
-    // and BLOCKED_EXTENSIONS is anchored to the end of the filename, so it is
-    // accepted today.
-    //
-    // Written as `it.fails` on purpose. As a passing assertion that the file is
-    // ACCEPTED, this cemented the bypass: tightening the regex turned the test
-    // red, and a red test invites reverting the fix. Inverted, hardening the
-    // policy makes this go green and the todo below is the reminder to delete
-    // the wrapper when it does.
+  it('blocks a double extension, not just a trailing one', () => {
+    // `report.exe.txt` is the classic bypass: Windows hides known extensions by
+    // default, so what the recipient sees is `report.exe`. The rule used to be
+    // anchored to the end of the filename and let this straight through.
     expect(() =>
       sendEmailSchema.parse({ ...minimal, attachments: [attachment({ filename: 'report.exe.txt' })] })
     ).toThrow();
+    expect(() =>
+      sendEmailSchema.parse({ ...minimal, attachments: [attachment({ filename: 'archive.js.zip' })] })
+    ).toThrow();
+  });
+
+  it('does not match a blocked extension inside a longer word', () => {
+    // The leading dot is what keeps `executive.summary.docx` and `exercise.pdf`
+    // out of the 'exe' rule — a substring match here would reject ordinary mail.
+    for (const filename of ['executive.summary.docx', 'exercise.pdf', 'index.jsx']) {
+      expect(
+        sendEmailSchema.parse({ ...minimal, attachments: [attachment({ filename })] }).attachments,
+        filename
+      ).toHaveLength(1);
+    }
   });
 
   it('rejects attachments totalling more than 25MB', () => {
