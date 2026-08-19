@@ -370,6 +370,11 @@ describe('dashboardService.getStats — calendar', () => {
       isAllDay: true,
     });
     await seedEvent(alice.id, { title: 'Later this week', startTime: dayOffset(2, 14), endTime: dayOffset(2, 15) });
+    // Far outside the window in both directions. Without these the query had no
+    // bounds to get wrong: dropping the date filter altogether changed none of
+    // the counters, because every fixture was already inside the week.
+    await seedEvent(alice.id, { title: 'Last month', startTime: dayOffset(-30, 10), endTime: dayOffset(-30, 11) });
+    await seedEvent(alice.id, { title: 'Next month', startTime: dayOffset(30, 10), endTime: dayOffset(30, 11) });
 
     const { calendar } = await dashboardService.getStats(alice.id);
 

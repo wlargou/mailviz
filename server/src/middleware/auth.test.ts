@@ -122,10 +122,13 @@ describe('requireAuth — accepting a valid access token', () => {
       .get('/protected')
       .set('Cookie', cookies({ access_token: signAccessToken(bob.id) }));
 
+    // One `toBe` each is the whole assertion: with two distinct users, a
+    // matching `not.toBe(theOther)` is entailed by it and can never fail on its
+    // own. What gives this test teeth is that both directions are checked
+    // against a shared app instance — skipping the database lookup, or calling
+    // next(err), kills it.
     expect((asAlice.body as ProtectedBody).id).toBe(alice.id);
-    expect((asAlice.body as ProtectedBody).id).not.toBe(bob.id);
     expect((asBob.body as ProtectedBody).id).toBe(bob.id);
-    expect((asBob.body as ProtectedBody).id).not.toBe(alice.id);
   });
 
   it('does not reissue cookies when the access token is already good', async () => {
@@ -177,8 +180,9 @@ describe('requireAuth — rejecting', () => {
       .get('/protected')
       .set('Cookie', cookies({ access_token: forged }));
 
+    // A 401 body is `{ error: { … } }`, so `id` is undefined by construction —
+    // asserting it adds nothing the status has not already established.
     expect(res.status).toBe(401);
-    expect((res.body as ProtectedBody).id).toBeUndefined();
   });
 
   it('rejects a token whose payload was swapped for another user id', async () => {
@@ -370,7 +374,6 @@ describe('requireAuth — refresh-token fallback', () => {
 
     expect(res.status).toBe(200);
     expect((res.body as ProtectedBody).id).toBe(alice.id);
-    expect((res.body as ProtectedBody).id).not.toBe(bob.id);
   });
 
   it('rejects a forged refresh token', async () => {

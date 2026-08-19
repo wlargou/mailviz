@@ -213,6 +213,24 @@ describe('feature flags', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it('queues the boot-time first run when the flag is on', () => {
+    // The negative above cannot see this: zero timers is also what a scheduler
+    // that forgot its delayed first run produces. Everyone relies on a new
+    // deployment syncing without waiting a full interval, and deleting the
+    // setTimeout was invisible to the whole file.
+    mockEnv.EMAIL_SYNC_ENABLED = true;
+    vi.useFakeTimers();
+    try {
+      startEmailSyncScheduler();
+
+      expect(mocks.cronSchedule).toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(1);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
   it('registers nothing at all when CALENDAR_SYNC_ENABLED is false', () => {
     mockEnv.CALENDAR_SYNC_ENABLED = false;
     vi.useFakeTimers();
@@ -283,8 +301,13 @@ describe('emailSyncScheduler — one bad account', () => {
     // failed sync leaves that user's indicator spinning until they reload —
     // and, because the status never flips, looking permanently stuck.
     const user = await createConnectedUser();
-    mocks.syncFromGmail.mockRejectedValue(new Error('boom'));
-    mocks.syncDrafts.mockRejectedValue(new Error('boom too'));
+    mocks.syncFromGmail.mockResolvedValue(okMailSync);
+    // Thrown from the emit itself, which is OUTSIDE the two inner try/catch
+    // blocks — a rejected syncFromGmail or syncDrafts is swallowed before it
+    // can reach the outer try, so neither one exercises the `finally` at all.
+    mocks.wsEmitToUser.mockImplementation((_id: string, event: string) => {
+      if (event === 'emails:synced') throw new Error('websocket died mid-broadcast');
+    });
 
     await captureTick(startEmailSyncScheduler)();
 

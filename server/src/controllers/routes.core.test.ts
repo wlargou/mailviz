@@ -18,6 +18,7 @@ import {
   shareThreadWith,
 } from '../test/factories.js';
 import { createGmailMock, type GmailMock } from '../test/gmailMock.js';
+import { isSyncInProgressFor } from '../jobs/emailSyncScheduler.js';
 
 /**
  * Route-level smoke tests for the mail domain: `/api/v1/auth` and
@@ -50,6 +51,14 @@ import { createGmailMock, type GmailMock } from '../test/gmailMock.js';
  */
 
 vi.mock('../lib/gmail.js', () => ({ getGmailClient: vi.fn() }));
+
+// Only the status probe is stubbed; the scheduler itself is covered in
+// jobs/schedulers.test.ts. Real in-flight sync state is unreachable from a
+// route test, and without a stub the route can only ever answer `false`.
+vi.mock('../jobs/emailSyncScheduler.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../jobs/emailSyncScheduler.js')>()),
+  isSyncInProgressFor: vi.fn(() => false),
+}));
 
 // ── HTTP harness ─────────────────────────────────────────────────────────────
 
@@ -542,12 +551,21 @@ describe('/api/v1/emails reads', () => {
     expect(res.body.data).toEqual({ count: 1 });
   });
 
-  it('GET /sync-status reports a boolean', async () => {
-    const { alice } = await createTwoUsers();
-    const res = await call('GET', '/api/v1/emails/sync-status', { as: alice.id });
+  it('GET /sync-status reports this caller sync state, not anyone else\'s', async () => {
+    const { alice, bob } = await createTwoUsers();
+    // Stubbed per user: `false` is what a brand-new account always returns, so
+    // without this the route passed with `isSyncInProgressFor` hardcoded and
+    // the caller's id ignored altogether.
+    vi.mocked(isSyncInProgressFor).mockImplementation((userId) => userId === alice.id);
 
-    expect(res.status).toBe(200);
-    expect(res.body.data).toEqual({ syncing: false });
+    const busy = await call('GET', '/api/v1/emails/sync-status', { as: alice.id });
+    expect(busy.status).toBe(200);
+    expect(busy.body.data).toEqual({ syncing: true });
+
+    const idle = await call('GET', '/api/v1/emails/sync-status', { as: bob.id });
+    expect(idle.body.data).toEqual({ syncing: false });
+
+    vi.mocked(isSyncInProgressFor).mockReturnValue(false);
   });
 
   it('GET /review-summary requires both dates and scopes totals to the caller', async () => {
@@ -666,17 +684,27 @@ describe('/api/v1/emails reads', () => {
 // ── 4. /api/v1/emails — per-message mutations ────────────────────────────────
 
 describe('/api/v1/emails mutations', () => {
-  const MUTATIONS: Array<[label: string, path: (id: string) => string]> = [
-    ['read', (id) => `/api/v1/emails/${id}/read`],
-    ['unread', (id) => `/api/v1/emails/${id}/unread`],
-    ['star', (id) => `/api/v1/emails/${id}/star`],
-    ['archive', (id) => `/api/v1/emails/${id}/archive`],
-    ['unarchive', (id) => `/api/v1/emails/${id}/unarchive`],
-    ['trash', (id) => `/api/v1/emails/${id}/trash`],
-    ['untrash', (id) => `/api/v1/emails/${id}/untrash`],
+  /**
+   * Each case carries the victim's starting state, and it is deliberately the
+   * OPPOSITE of what the endpoint writes.
+   *
+   * Seeded uniformly at `false`, three of these tested nothing: /unread writes
+   * isRead=false, /unarchive writes isArchived=false, /untrash writes
+   * isTrashed=false, so a genuine cross-tenant write was a no-op and the
+   * assertion below could not see it. Performing the leaked write and *still*
+   * returning 404 passed.
+   */
+  const MUTATIONS: Array<[label: string, path: (id: string) => string, seed: Record<string, boolean>]> = [
+    ['read', (id) => `/api/v1/emails/${id}/read`, { isRead: false }],
+    ['unread', (id) => `/api/v1/emails/${id}/unread`, { isRead: true }],
+    ['star', (id) => `/api/v1/emails/${id}/star`, { isStarred: false }],
+    ['archive', (id) => `/api/v1/emails/${id}/archive`, { isArchived: false }],
+    ['unarchive', (id) => `/api/v1/emails/${id}/unarchive`, { isArchived: true }],
+    ['trash', (id) => `/api/v1/emails/${id}/trash`, { isTrashed: false }],
+    ['untrash', (id) => `/api/v1/emails/${id}/untrash`, { isTrashed: true }],
   ];
 
-  it.each(MUTATIONS)('PATCH /:id/%s leaves another tenant message untouched', async (_label, path) => {
+  it.each(MUTATIONS)('PATCH /:id/%s leaves another tenant message untouched', async (_label, path, seed) => {
     // Every one of these ends in `prisma.email.update({ where: { id } })` —
     // unscoped, because the ownership check happened a few lines earlier. If
     // that check is ever weakened, the write still lands on the row.
@@ -686,6 +714,7 @@ describe('/api/v1/emails mutations', () => {
       isStarred: false,
       isArchived: false,
       isTrashed: false,
+      ...seed,
     });
 
     const res = await call('PATCH', path(bobEmail.id), { as: alice.id });
@@ -697,10 +726,14 @@ describe('/api/v1/emails mutations', () => {
       isStarred: false,
       isArchived: false,
       isTrashed: false,
+      ...seed,
     });
     // A leak that reached Gmail would already have leaked the message id.
+    // messagesUntrash belongs here too — /untrash is the one case that does not
+    // go through modify or trash, so omitting it left that route unwatched.
     expect(gmail.messagesModify).not.toHaveBeenCalled();
     expect(gmail.messagesTrash).not.toHaveBeenCalled();
+    expect(gmail.messagesUntrash).not.toHaveBeenCalled();
   });
 
   it('PATCH /:id/read marks the caller own mail and answers { success }', async () => {
@@ -1180,12 +1213,43 @@ describe('/api/v1/emails/drafts', () => {
   });
 
   it('POST /drafts/sync reconciles the caller mirror', async () => {
-    const { alice } = await createTwoUsers();
+    const { alice, bob } = await createTwoUsers();
     await createGoogleAuth(alice.id, { email: 'alice@gmail.test' });
+    // Bob has a mirror row and is NOT syncing. syncDrafts ends with a
+    // deleteMany that removes local drafts Gmail no longer lists; if that loses
+    // its userId, Bob's row goes with Alice's reconciliation.
+    const bobDraft = await createDraft(bob.id, { gmailDraftId: 'gd-bob' });
+
+    gmail.draftsList.mockResolvedValue({ data: { drafts: [{ id: 'gd-remote', message: { id: 'msg-remote' } }] } });
+    gmail.draftsGet.mockResolvedValue({
+      data: {
+        id: 'gd-remote',
+        message: {
+          id: 'msg-remote',
+          threadId: 'gt-remote',
+          payload: {
+            mimeType: 'multipart/mixed',
+            headers: [
+              { name: 'Subject', value: 'From Gmail' },
+              { name: 'To', value: 'someone@example.com' },
+            ],
+            parts: [{ mimeType: 'text/html', body: { data: Buffer.from('<p>hi</p>').toString('base64url') } }],
+          },
+        },
+      },
+    });
 
     const res = await call('POST', '/api/v1/emails/drafts/sync', { as: alice.id });
     expect(res.status).toBe(200);
-    expect(res.body.data).toMatchObject({ synced: expect.any(Number) });
+    expect(res.body.data).toMatchObject({ synced: 1 });
+
+    // The mirror row actually landed, for the caller...
+    const mine = await prisma.emailDraft.findFirst({
+      where: { userId: alice.id, gmailDraftId: 'gd-remote' },
+    });
+    expect(mine).not.toBeNull();
+    // ...and Bob's survived.
+    expect(await prisma.emailDraft.findUnique({ where: { id: bobDraft.id } })).not.toBeNull();
   });
 });
 
