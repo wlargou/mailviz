@@ -54,7 +54,13 @@ export async function createContact(customerId: string, overrides: Partial<{ fir
 
 export async function createTask(
   userId: string,
-  overrides: Partial<{ title: string; status: string; assignedToId: string; priority: TaskPriority }> = {}
+  overrides: Partial<{
+    title: string;
+    status: string;
+    assignedToId: string;
+    priority: TaskPriority;
+    dueDate: Date;
+  }> = {}
 ) {
   return prisma.task.create({
     data: {
@@ -63,6 +69,7 @@ export async function createTask(
       status: overrides.status ?? 'TODO',
       ...(overrides.priority ? { priority: overrides.priority } : {}),
       ...(overrides.assignedToId ? { assignedToId: overrides.assignedToId } : {}),
+      ...(overrides.dueDate ? { dueDate: overrides.dueDate } : {}),
     },
   });
 }
