@@ -92,13 +92,27 @@ interface AuditLogInput {
   status?: 'success' | 'failure';
 }
 
+/**
+ * Writes started by `log()` that have not settled yet.
+ *
+ * `log()` is deliberately fire-and-forget, which means its INSERT can still be
+ * running after the request that started it has been answered. That is fine in
+ * production right up until something else wants the database to hold still:
+ * on shutdown the process can exit with audit rows unwritten, and in tests the
+ * per-test TRUNCATE deadlocks against the in-flight INSERT's foreign-key lock.
+ *
+ * Keeping the handles costs one Set entry per write and makes both cases
+ * addressable via `flush()`.
+ */
+const pendingWrites = new Set<Promise<unknown>>();
+
 export const auditService = {
   /**
    * Log an action to the audit trail.
    * Non-blocking — fires and forgets to avoid slowing down the main operation.
    */
   log(input: AuditLogInput): void {
-    prisma.auditLog.create({
+    const write = prisma.auditLog.create({
       data: {
         userId: input.userId,
         action: input.action,
@@ -111,6 +125,41 @@ export const auditService = {
     }).catch((err) => {
       console.warn('[AuditLog] Failed to write audit log:', err?.message || err);
     });
+
+    pendingWrites.add(write);
+    void write.finally(() => pendingWrites.delete(write));
+  },
+
+  /**
+   * Wait for every fire-and-forget write to settle.
+   *
+   * Never rejects — `log()` already swallows its own failures, so this only
+   * reports that nothing is still in flight, not that everything succeeded.
+   *
+   * Bounded, and it drops the handles either way. A write whose connection is
+   * torn down mid-flight (`prisma.$disconnect()` while an INSERT is running)
+   * leaves a promise that never settles, and an unbounded wait on one of those
+   * would wedge every later flush — which is exactly what happened: the test
+   * file *after* a route-heavy one timed out in every single `beforeEach`.
+   * These writes are fire-and-forget by construction; their caller returned
+   * long ago, so abandoning one costs nothing beyond the row.
+   */
+  async flush(timeoutMs = 2000): Promise<void> {
+    if (pendingWrites.size === 0) return;
+
+    const draining = [...pendingWrites];
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        Promise.allSettled(draining),
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, timeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+      draining.forEach((write) => pendingWrites.delete(write));
+    }
   },
 
   /**
