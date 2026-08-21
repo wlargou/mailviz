@@ -1,7 +1,9 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import type { Server } from 'http';
 import type { IncomingMessage } from 'http';
-import cookie from 'cookie';
+// Named import, not default: cookie 2.x removed the default export and renamed
+// `parse` to `parseCookie`.
+import { parseCookie } from 'cookie';
 import { verifyAccessToken, verifyRefreshToken } from './utils/jwt.js';
 
 let wss: WebSocketServer | null = null;
@@ -10,7 +12,7 @@ const userClients = new Map<string, Set<WebSocket>>();
 
 function authenticateWs(req: IncomingMessage): string | null {
   try {
-    const cookies = cookie.parse(req.headers.cookie || '');
+    const cookies = parseCookie(req.headers.cookie || '');
     const accessToken = cookies.access_token;
     if (accessToken) {
       try {
@@ -29,6 +31,25 @@ function authenticateWs(req: IncomingMessage): string | null {
     return null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Drop a socket from both registries.
+ *
+ * Shared by the close and error handlers because it used to be written out
+ * twice, identically. Pruning the empty Set out of `userClients` is the part
+ * that is easy to omit and impossible to notice: a stale entry changes no
+ * behaviour — the dead socket fails the `readyState === OPEN` guard, so nothing
+ * is ever delivered to it — while the map grows for the life of the process,
+ * holding a dead WebSocket for every user who has ever connected.
+ */
+function forget(ws: WebSocket, userId: string) {
+  clients.delete(ws);
+  const userSet = userClients.get(userId);
+  if (userSet) {
+    userSet.delete(ws);
+    if (userSet.size === 0) userClients.delete(userId);
   }
 }
 
@@ -54,23 +75,13 @@ export function initWebSocket(server: Server) {
     console.log(`[WS] Client connected for user ${userId} (${clients.size} total)`);
 
     ws.on('close', () => {
-      clients.delete(ws);
-      const userSet = userClients.get(userId);
-      if (userSet) {
-        userSet.delete(ws);
-        if (userSet.size === 0) userClients.delete(userId);
-      }
+      forget(ws, userId);
       console.log(`[WS] Client disconnected (${clients.size} total)`);
     });
 
     ws.on('error', (err) => {
       console.warn('[WS] Client error:', err.message);
-      clients.delete(ws);
-      const userSet = userClients.get(userId);
-      if (userSet) {
-        userSet.delete(ws);
-        if (userSet.size === 0) userClients.delete(userId);
-      }
+      forget(ws, userId);
     });
 
     // Send a welcome message so client knows connection is alive
@@ -124,6 +135,20 @@ export function wsEmitToUsers(userIds: string[], event: string, data: unknown) {
 /** Get the number of connected clients */
 export function wsClientCount(): number {
   return clients.size;
+}
+
+/**
+ * How many distinct accounts currently have a socket open.
+ *
+ * The counterpart to `wsClientCount`, and the only way to observe that
+ * `userClients` is actually pruned on disconnect. Without it a leak there is
+ * invisible: a closed socket left in the map still fails the
+ * `readyState === OPEN` guard, so nothing is delivered to it and no behaviour
+ * changes — the map just grows for the life of the process, holding a dead
+ * WebSocket per user who ever connected.
+ */
+export function wsUserCount(): number {
+  return userClients.size;
 }
 
 /** Gracefully close all WebSocket connections */

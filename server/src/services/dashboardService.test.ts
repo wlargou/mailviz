@@ -213,11 +213,24 @@ describe('dashboardService.getStats — tasks', () => {
 
   it('returns the five newest tasks, newest first', async () => {
     const { alice, bob } = await createTwoUsers();
+    // Timestamps are pinned a minute apart rather than left to the default.
+    // Prisma maps DateTime to timestamp(3), so seven rows written in a tight
+    // loop can share a millisecond — and tied rows come back in whatever order
+    // the tiebreaker gives, which is uuid order and therefore unrelated to
+    // creation order. Without this the case failed about half the time.
     for (let i = 1; i <= 7; i++) {
-      await createTask(alice.id, { title: `task-${i}` });
+      const task = await createTask(alice.id, { title: `task-${i}` });
+      await prisma.task.update({
+        where: { id: task.id },
+        data: { createdAt: new Date(Date.UTC(2026, 0, 1, 12, i)) },
+      });
     }
-    // Created last, so it would head the list if ownership were dropped.
-    await createTask(bob.id, { title: 'Bob task' });
+    // Newest of all, so it would head the list if ownership were dropped.
+    const bobTask = await createTask(bob.id, { title: 'Bob task' });
+    await prisma.task.update({
+      where: { id: bobTask.id },
+      data: { createdAt: new Date(Date.UTC(2026, 0, 1, 13, 0)) },
+    });
 
     const { tasks } = await dashboardService.getStats(alice.id);
 

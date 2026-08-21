@@ -74,7 +74,11 @@ export const dashboardService = {
       prisma.task.findMany({
         where: { userId },
         take: 5,
-        orderBy: { createdAt: 'desc' },
+        // `id` breaks the tie. Prisma maps DateTime to timestamp(3), so two
+        // rows created in the same millisecond compare equal and Postgres is
+        // free to return them in any order — which makes the list reshuffle
+        // between refreshes, and made this test fail roughly one run in ten.
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         include: {
           labels: { include: { label: true } },
           customer: { select: { id: true, name: true, company: true } },
@@ -99,7 +103,7 @@ export const dashboardService = {
       prisma.email.findMany({
         where: { userId },
         distinct: ['threadId'],
-        orderBy: { receivedAt: 'desc' },
+        orderBy: [{ receivedAt: 'desc' }, { id: 'desc' }],
         take: 8,
         select: {
           threadId: true,
@@ -116,7 +120,7 @@ export const dashboardService = {
       // We fetch all events from startOfToday to endOfWeek, then filter in JS
       prisma.calendarEvent.findMany({
         where: { userId, startTime: { gte: startOfWeek, lt: endOfWeek } },
-        orderBy: { startTime: 'asc' },
+        orderBy: [{ startTime: 'asc' }, { id: 'asc' }],
         select: {
           id: true,
           title: true,
@@ -276,7 +280,7 @@ export const dashboardService = {
           expiryDate: { gte: now, lte: fifteenDaysFromNow },
           status: { not: 'DECLINED' },
         },
-        orderBy: { expiryDate: 'asc' },
+        orderBy: [{ expiryDate: 'asc' }, { id: 'asc' }],
         take: 10,
         include: {
           partner: { select: { name: true } },
