@@ -138,6 +138,27 @@ Copy `.env.example` to **both** `.env` and `server/.env` — only `server/.env` 
 
 Configured via `nixpacks.toml` + `railway.json`. Node 22 via nixPkgs. Build: `npm ci` → client vite build → server `prisma generate` + esbuild. Start: `cd server && npx prisma migrate deploy && node dist/index.js`. Healthcheck: `/api/health`.
 
+### Running a script against production
+
+**`railway run` does not do what it sounds like.** It runs the command *on your
+machine* with the production environment injected, and `DATABASE_URL` is
+`postgres.railway.internal:5432` — a hostname that only resolves inside
+Railway's network. `railway run npm run backfill …` therefore fails with
+"Can't reach database server", every time.
+
+Run it inside the container instead. `esbuild.config.js` globs every `.ts` under
+`src/`, so the scripts ship compiled in `dist/` and need no `tsx`:
+
+```bash
+railway ssh node /app/server/dist/scripts/backfillAll.js           # dry run
+railway ssh node /app/server/dist/scripts/backfillAll.js --apply
+```
+
+Quoting is mangled through `railway ssh`, so pass a plain argv — `sh -c "cd … && …"`
+silently loses the `cd`. For ad-hoc queries from your own machine, use the
+Postgres service's public proxy instead of the internal host:
+`DATABASE_URL=$(railway variables --service Postgres --json | jq -r .DATABASE_PUBLIC_URL)`.
+
 
 ## Database Schema
 

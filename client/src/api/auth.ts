@@ -8,6 +8,24 @@ interface User {
   avatarUrl: string | null;
 }
 
+export interface AccountDeletionSummary {
+  email: string;
+  emails: number;
+  calendarEvents: number;
+  companies: number;
+  contacts: number;
+  tasks: number;
+  deals: number;
+  drafts: number;
+  scheduledEmails: number;
+  templates: number;
+  labels: number;
+  /** Tasks owned by other people, assigned to this account. Unassigned, not deleted. */
+  assignedByOthers: number;
+  sharesGiven: number;
+  googleConnected: boolean;
+}
+
 export const authApi = {
   // Login flow
   getLoginUrl: () =>
@@ -28,6 +46,13 @@ export const authApi = {
 
   disconnectGoogle: () =>
     api.post<{ data: { success: boolean } }>('/auth/google/disconnect'),
+
+  // Account deletion
+  getAccountDeletionSummary: () =>
+    api.get<{ data: AccountDeletionSummary }>('/auth/account/summary'),
+
+  deleteAccount: (confirmEmail: string) =>
+    api.delete<{ data: { success: boolean } }>('/auth/account', { data: { confirmEmail } }),
 
   // Users list (for sharing)
   getUsers: () =>

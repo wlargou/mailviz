@@ -230,11 +230,18 @@ export const googleAuthService = {
     };
   },
 
-  async disconnect(userId: string) {
+  /**
+   * Tell Google to drop the grant for this account.
+   *
+   * Best effort by design, and separated out because account deletion needs it
+   * too: leaving a live grant behind after the local rows are gone means the
+   * app still appears in the user's Google account page with no way for us to
+   * remove it. Throws nothing the caller must handle — an already-expired token
+   * is the normal case, not an error.
+   */
+  async revokeTokens(userId: string): Promise<void> {
     const auth = await prisma.googleAuth.findFirst({ where: { userId } });
     if (!auth) return;
-
-    // Revoke Google OAuth token (best effort)
     try {
       const oauth2Client = createOAuth2Client();
       const accessToken = decrypt(auth.accessToken);
@@ -243,6 +250,13 @@ export const googleAuthService = {
     } catch {
       // Token may already be invalid
     }
+  },
+
+  async disconnect(userId: string) {
+    const auth = await prisma.googleAuth.findFirst({ where: { userId } });
+    if (!auth) return;
+
+    await this.revokeTokens(userId);
 
     /**
      * Delete the synced data in a transaction, so a failure part-way cannot

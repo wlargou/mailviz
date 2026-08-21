@@ -3,6 +3,7 @@ import type { Req } from "../types/http.js";
 import { syncAccountNow } from '../jobs/emailSyncScheduler.js';
 import { syncCalendarNow } from '../jobs/calendarSyncScheduler.js';
 import { googleAuthService } from '../services/googleAuthService.js';
+import { accountService } from '../services/accountService.js';
 import { env } from '../config/env.js';
 import { signAccessToken, signRefreshToken } from '../utils/jwt.js';
 import { setAuthCookies, clearAuthCookies } from '../utils/cookies.js';
@@ -43,6 +44,39 @@ export const authController = {
     try {
       clearAuthCookies(res);
       res.json({ data: { success: true } });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  // ── Account deletion ──
+
+  /**
+   * What deleting this account would remove. Read-only, and deliberately a
+   * separate call: the confirmation dialog shows real counts, so the user is
+   * agreeing to a number rather than to the phrase "all your data".
+   */
+  async getAccountDeletionSummary(req: Req, res: Response, next: NextFunction) {
+    try {
+      res.json({ data: await accountService.getDeletionSummary(req.user!.id) });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  /**
+   * Delete the caller's own account. There is no userId in the request — the
+   * only account this endpoint can ever delete is the one the cookie belongs
+   * to, which is what keeps it from becoming an admin backdoor.
+   */
+  async deleteAccount(req: Req, res: Response, next: NextFunction) {
+    try {
+      const summary = await accountService.deleteAccount(req.user!.id, req.body.confirmEmail);
+      // The session outlives the row otherwise: the JWT stays signature-valid
+      // until it expires, and every request would 401 from `requireAuth`'s user
+      // lookup rather than logging the browser out cleanly.
+      clearAuthCookies(res);
+      res.json({ data: { success: true, deleted: summary } });
     } catch (err) {
       next(err);
     }

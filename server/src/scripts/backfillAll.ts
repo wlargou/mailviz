@@ -4,6 +4,13 @@
  *     npm run backfill --workspace=server           # dry run, writes nothing
  *     npm run backfill --workspace=server -- --apply
  *
+ * On Railway, run it *inside* the container — not with `railway run`, which
+ * executes locally against an internal hostname that does not resolve from
+ * outside the network:
+ *
+ *     railway ssh node /app/server/dist/scripts/backfillAll.js
+ *     railway ssh node /app/server/dist/scripts/backfillAll.js --apply
+ *
  * These exist as scripts rather than migrations on purpose: each encodes a
  * heuristic that will be tuned (a public-suffix list, a role vocabulary), and
  * re-running one after a change should be a deliberate act rather than a side

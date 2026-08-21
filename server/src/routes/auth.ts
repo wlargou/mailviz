@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { authController } from '../controllers/authController.js';
 import { requireAuth } from '../middleware/auth.js';
+import { validate } from '../middleware/validate.js';
+import { deleteAccountSchema } from '../validators/accountValidator.js';
 
 const router = Router();
 
@@ -18,6 +20,12 @@ router.post('/logout', requireAuth, authController.logout);
 router.get('/google/url', requireAuth, authController.getGoogleUrl);
 router.get('/google/status', requireAuth, authController.getGoogleStatus);
 router.post('/google/disconnect', requireAuth, authController.disconnectGoogle);
+
+// Account deletion. Neither route takes a user id — the only account they can
+// touch is the one the cookie belongs to, which is what stops the DELETE from
+// being an admin backdoor.
+router.get('/account/summary', requireAuth, authController.getAccountDeletionSummary);
+router.delete('/account', requireAuth, validate(deleteAccountSchema), authController.deleteAccount);
 
 // Users list (for sharing features)
 router.get('/users', requireAuth, authController.listUsers);

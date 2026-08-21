@@ -13,6 +13,7 @@ import {
   createTwoUsers,
   createEmail,
   createDraft,
+  createTask,
   createGoogleAuth,
   createCustomer,
   shareThreadWith,
@@ -350,6 +351,97 @@ describe('authentication gate', () => {
 });
 
 // ── 2. /api/v1/auth ──────────────────────────────────────────────────────────
+
+describe('/api/v1/auth — account deletion', () => {
+  it('GET /account/summary reports the caller counts and nobody else\'s', async () => {
+    const { alice, bob } = await createTwoUsers();
+    await createEmail(alice.id);
+    await createEmail(alice.id);
+    await createEmail(bob.id);
+    await createTask(bob.id);
+
+    const res = await call('GET', '/api/v1/auth/account/summary', { as: alice.id });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toMatchObject({ email: alice.email, emails: 2, tasks: 0 });
+  });
+
+  it('DELETE /account refuses a confirmation that does not match', async () => {
+    const { alice } = await createTwoUsers();
+    await createEmail(alice.id);
+
+    const res = await call('DELETE', '/api/v1/auth/account', {
+      as: alice.id,
+      body: { confirmEmail: 'not-my@address.test' },
+    });
+
+    expect(res.status).toBe(400);
+    // The account and its mail are still there — a refusal must not be a
+    // partial deletion.
+    expect(await prisma.user.findUnique({ where: { id: alice.id } })).not.toBeNull();
+    expect(await prisma.email.count({ where: { userId: alice.id } })).toBe(1);
+  });
+
+  it('DELETE /account rejects a body with no confirmation at all', async () => {
+    const { alice } = await createTwoUsers();
+
+    const res = await call('DELETE', '/api/v1/auth/account', { as: alice.id, body: {} });
+
+    expect(res.status).toBe(400);
+    expect((res.body as { error: { code: string } }).error.code).toBe('VALIDATION_ERROR');
+    expect(await prisma.user.findUnique({ where: { id: alice.id } })).not.toBeNull();
+  });
+
+  it('DELETE /account deletes the caller, clears the session, and spares everyone else', async () => {
+    const { alice, bob } = await createTwoUsers();
+    await createEmail(alice.id);
+    const bobEmail = await createEmail(bob.id);
+
+    const res = await call('DELETE', '/api/v1/auth/account', {
+      as: alice.id,
+      body: { confirmEmail: alice.email },
+    });
+
+    expect(res.status).toBe(200);
+    expect(await prisma.user.findUnique({ where: { id: alice.id } })).toBeNull();
+    expect(await prisma.email.count({ where: { userId: alice.id } })).toBe(0);
+
+    // The cookies must be cleared in the same response: the JWT stays
+    // signature-valid until it expires, so without this the browser keeps
+    // presenting a credential for an account that no longer exists.
+    const cleared = res.headers.getSetCookie?.() ?? [];
+    expect(cleared.join(';')).toMatch(/access_token=/);
+    expect(cleared.join(';')).toMatch(/refresh_token=/);
+
+    // Bob is untouched and can still use the app.
+    expect(await prisma.user.findUnique({ where: { id: bob.id } })).not.toBeNull();
+    expect(await prisma.email.findUnique({ where: { id: bobEmail.id } })).not.toBeNull();
+  });
+
+  it('the deleted account cannot keep using its cookie', async () => {
+    const { alice } = await createTwoUsers();
+    const cookie = `access_token=${signAccessToken(alice.id)}`;
+
+    await call('DELETE', '/api/v1/auth/account', {
+      as: alice.id,
+      body: { confirmEmail: alice.email },
+    });
+
+    // requireAuth loads the user row, so a signature-valid token for a deleted
+    // account is refused rather than trusted.
+    const after = await call('GET', '/api/v1/emails/unread-count', { cookie });
+    expect(after.status).toBe(401);
+  });
+
+  it.each([
+    // A GET cannot carry a body, so the payload is per-case rather than shared.
+    ['GET', '/api/v1/auth/account/summary', undefined],
+    ['DELETE', '/api/v1/auth/account', { confirmEmail: 'x@y.test' }],
+  ])('%s %s requires authentication', async (method, path, body) => {
+    const res = await call(method, path, { body });
+    expect(res.status).toBe(401);
+  });
+});
 
 describe('/api/v1/auth', () => {
   it('GET /me answers with the caller, not with whoever was found first', async () => {

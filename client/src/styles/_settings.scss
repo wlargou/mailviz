@@ -43,6 +43,19 @@
     margin: $spacing-01 0 0;
   }
 
+  // The one destructive tile on the page. Carbon has no "danger tile", so the
+  // border is what separates it from the settings above it — colour alone is
+  // not a signal a colour-blind user reliably receives, and the heading plus
+  // the confirmation dialog carry the actual meaning.
+  &.settings-tile--danger {
+    border: 1px solid var(--cds-support-error);
+
+    .settings-tile__icon--danger {
+      background: var(--cds-support-error);
+      color: var(--cds-text-on-color);
+    }
+  }
+
   .settings-tile__actions {
     padding: 0 $spacing-06 1.25rem;
   }

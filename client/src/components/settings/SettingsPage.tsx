@@ -44,7 +44,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useSearchParams } from 'react-router-dom';
-import { authApi } from '../../api/auth';
+import { authApi, type AccountDeletionSummary } from '../../api/auth';
 import { TiptapEditor } from '../mail/TiptapEditor';
 import { TemplateSettings } from './TemplateSettings';
 import { OnboardingSettings } from './OnboardingSettings';
@@ -60,6 +60,7 @@ import type { GoogleStatus } from '../../types/calendar';
 import { format } from 'date-fns';
 import { SettingsListEditor } from './SettingsListEditor';
 import { SettingsSection } from './SettingsSection';
+import { DeleteAccountModal } from './DeleteAccountModal';
 
 const STATUS_COLORS = [
   { hex: '#4589ff', label: 'Blue' },
@@ -162,6 +163,10 @@ export function SettingsPage() {
   const [syncingMail, setSyncingMail] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [disconnectConfirmOpen, setDisconnectConfirmOpen] = useState(false);
+  const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
+  const [deleteSummary, setDeleteSummary] = useState<AccountDeletionSummary | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deletingAccount, setDeletingAccount] = useState(false);
   const [emailProgress, setEmailProgress] = useState<{ synced: number; total: number; phase: string } | null>(null);
   const [calendarProgress, setCalendarProgress] = useState<{ synced: number; total: number; phase: string } | null>(null);
   const addNotification = useUIStore((s) => s.addNotification);
@@ -381,6 +386,41 @@ export function SettingsPage() {
       addNotification({ kind: 'error', title: 'Failed to disconnect' });
     } finally {
       setDisconnecting(false);
+    }
+  };
+
+  /**
+   * Open the confirmation and fetch the real row counts.
+   *
+   * The counts are loaded on open rather than with the page: they are only ever
+   * read here, and a user agreeing to "delete everything" deserves to see that
+   * it is 25,000 emails rather than a generic warning.
+   */
+  const openDeleteAccount = async () => {
+    setDeleteConfirmText('');
+    setDeleteSummary(null);
+    setDeleteAccountOpen(true);
+    try {
+      const { data } = await authApi.getAccountDeletionSummary();
+      setDeleteSummary(data.data);
+    } catch {
+      addNotification({ kind: 'error', title: 'Could not load account details' });
+      setDeleteAccountOpen(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!deleteSummary) return;
+    setDeletingAccount(true);
+    try {
+      await authApi.deleteAccount(deleteConfirmText.trim());
+      // The account is gone, so there is nothing to return to and no state
+      // worth preserving. A hard navigation drops every store and cached
+      // response rather than leaving a client rendering a deleted user.
+      window.location.href = '/login';
+    } catch {
+      addNotification({ kind: 'error', title: 'Failed to delete account' });
+      setDeletingAccount(false);
     }
   };
 
@@ -749,6 +789,32 @@ export function SettingsPage() {
               )}
             </Stack>
           </Tile>
+
+          <Tile className="settings-tile settings-tile--danger">
+            <Stack gap={5}>
+              <div className="settings-tile__header">
+                <div className="settings-tile__icon settings-tile__icon--danger">
+                  <TrashCan size={20} />
+                </div>
+                <div>
+                  <h3 className="settings-tile__title">Delete account</h3>
+                  <p className="settings-tile__desc">
+                    Permanently remove this account and everything in it.
+                  </p>
+                </div>
+              </div>
+              <p className="settings-tile__desc">
+                This removes your synced mail and calendar, your companies and contacts, and
+                everything you have created here — tasks, deals, labels, templates and settings.
+                It cannot be undone, and there is no export.
+              </p>
+              <div>
+                <Button kind="danger--tertiary" size="md" onClick={openDeleteAccount}>
+                  Delete account
+                </Button>
+              </div>
+            </Stack>
+          </Tile>
             </Stack>
           </TabPanel>
           <TabPanel>
@@ -960,6 +1026,16 @@ export function SettingsPage() {
           <p>This label isn&apos;t attached to any tasks. This action cannot be undone.</p>
         )}
       </Modal>
+
+      <DeleteAccountModal
+        open={deleteAccountOpen}
+        summary={deleteSummary}
+        confirmText={deleteConfirmText}
+        onConfirmTextChange={setDeleteConfirmText}
+        deleting={deletingAccount}
+        onClose={() => setDeleteAccountOpen(false)}
+        onConfirm={handleDeleteAccount}
+      />
 
       <Modal
         open={disconnectConfirmOpen}
