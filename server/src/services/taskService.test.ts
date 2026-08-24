@@ -832,6 +832,47 @@ describe('taskService.assignTask', () => {
     const after = await prisma.task.findUniqueOrThrow({ where: { id: bobTask.id } });
     expect(after.assignedToId).toBeNull();
   });
+
+  it('refuses to let a share recipient assign the task onward — PRIVILEGE ESCALATION', async () => {
+    // The escalation this closes: assignment used to gate on `canAccessTask`,
+    // which a share satisfies. So Bob, given read access to Alice's task, could
+    // assign it to Carol — handing a third account standing access through
+    // `assignedToId` that Alice never granted, and that revoking Bob's share
+    // does not take away. Every other privileged task operation (share, delete,
+    // reorder) already required ownership; assignment was the outlier.
+    const { alice, bob } = await createTwoUsers();
+    const carol = await createUser({ name: 'Carol' });
+    const aliceTask = await createTask(alice.id, { title: 'Alice owns this' });
+    await shareTaskWith(aliceTask.id, alice.id, bob.id);
+
+    // Bob can genuinely see it — the share works, which is the point.
+    await expect(taskService.findById(bob.id, aliceTask.id)).resolves.toMatchObject({
+      id: aliceTask.id,
+    });
+
+    await expect(taskService.assignTask(bob.id, aliceTask.id, carol.id)).rejects.toMatchObject({
+      status: 404,
+    });
+
+    expect(
+      (await prisma.task.findUniqueOrThrow({ where: { id: aliceTask.id } })).assignedToId
+    ).toBeNull();
+  });
+
+  it('lets the owner assign, and refuses an assignee who does not exist', async () => {
+    const { alice, bob } = await createTwoUsers();
+    const task = await createTask(alice.id);
+
+    await taskService.assignTask(alice.id, task.id, bob.id);
+    expect(
+      (await prisma.task.findUniqueOrThrow({ where: { id: task.id } })).assignedToId
+    ).toBe(bob.id);
+
+    // Without this check the column is a sink for any uuid the caller invents.
+    await expect(
+      taskService.assignTask(alice.id, task.id, '9c858901-8a57-4791-81fe-4c455b099bc9')
+    ).rejects.toMatchObject({ status: 404 });
+  });
 });
 
 describe('taskService.getSummary', () => {

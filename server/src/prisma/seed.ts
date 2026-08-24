@@ -14,10 +14,20 @@ async function main() {
   }
   const userId = user.id;
 
-  // Clear existing data
-  await prisma.taskLabel.deleteMany();
-  await prisma.task.deleteMany();
-  await prisma.label.deleteMany();
+  /**
+   * Clear this account's tasks and labels — and only this account's.
+   *
+   * These three calls had no `where` at all, so seeding wiped every tenant's
+   * tasks and labels while creating fixtures for whichever user `findFirst`
+   * happened to return. Not attacker-reachable, but `npm run db:seed` is listed
+   * under Development Commands in CLAUDE.md and the development database holds
+   * real synced data, so a stray run was a genuinely destructive accident.
+   *
+   * taskLabel has no user column and is reached through the task that does.
+   */
+  await prisma.taskLabel.deleteMany({ where: { task: { userId } } });
+  await prisma.task.deleteMany({ where: { userId } });
+  await prisma.label.deleteMany({ where: { userId } });
 
   // Create labels (S1: now scoped to userId)
   const labels = await Promise.all([

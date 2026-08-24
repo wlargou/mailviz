@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { prisma } from '../lib/prisma.js';
 import { customerService } from './customerService.js';
 import { createTwoUsers, createCustomer, createContact, createEmail } from '../test/factories.js';
 
@@ -225,5 +226,56 @@ describe('customerService.findAttachments / findLinkedEvents — tenant isolatio
 
     expect(await customerService.findAttachments(alice.id, bobCustomer.id)).toEqual([]);
     expect(await customerService.findLinkedEvents(alice.id, bobCustomer.id)).toEqual([]);
+  });
+});
+
+
+describe('customerService — cross-tenant foreign keys', () => {
+  it('refuses another account category on create — and does not echo it back', async () => {
+    // `categoryId` is a plain uuid in the request body and a foreign key into a
+    // user-scoped table, so the database accepts a stranger's id. Both create
+    // and update `include: { category: true }`, so the response would hand the
+    // caller the name and colour of a category they cannot otherwise see. The
+    // same check already guards the equivalent FKs on deals and tasks.
+    const { alice, bob } = await createTwoUsers();
+    const bobCategory = await prisma.companyCategory.create({
+      data: { userId: bob.id, name: 'SECRET', label: 'Bob secret category' },
+    });
+
+    await expect(
+      customerService.create(alice.id, { name: 'Probe', categoryId: bobCategory.id } as never)
+    ).rejects.toMatchObject({ statusCode: 404 });
+
+    expect(await prisma.customer.count({ where: { userId: alice.id } })).toBe(0);
+  });
+
+  it('refuses another account category on update', async () => {
+    const { alice, bob } = await createTwoUsers();
+    const mine = await createCustomer(alice.id);
+    const bobCategory = await prisma.companyCategory.create({
+      data: { userId: bob.id, name: 'SECRET', label: 'Bob secret category' },
+    });
+
+    await expect(
+      customerService.update(alice.id, mine.id, { categoryId: bobCategory.id } as never)
+    ).rejects.toMatchObject({ statusCode: 404 });
+
+    expect(
+      (await prisma.customer.findUniqueOrThrow({ where: { id: mine.id } })).categoryId
+    ).toBeNull();
+  });
+
+  it('still accepts the caller own category', async () => {
+    const { alice } = await createTwoUsers();
+    const mine = await prisma.companyCategory.create({
+      data: { userId: alice.id, name: 'PARTNER', label: 'Partner' },
+    });
+
+    const created = await customerService.create(alice.id, {
+      name: 'Acme',
+      categoryId: mine.id,
+    } as never);
+
+    expect(created.categoryId).toBe(mine.id);
   });
 });

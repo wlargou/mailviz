@@ -94,7 +94,32 @@ export const customerService = {
     return customer;
   },
 
+  /**
+   * A company may only point at a category owned by the same account.
+   *
+   * `categoryId` arrives in the request body as a plain uuid and is a foreign
+   * key into a user-scoped table, so the database accepts another account's id
+   * without complaint. The cost is not only a malformed row: both `create` and
+   * `update` `include: { category: true }` in what they return, so the response
+   * hands the caller the name and colour of a category they have no access to.
+   *
+   * The same check already guards the equivalent foreign keys on deals
+   * (`partnerId`, `customerId`) and tasks (`customerId`, `labelIds`); companies
+   * were simply missed.
+   */
+  async assertCategoryOwnedBy(userId: string, categoryId?: string | null) {
+    if (!categoryId) return;
+    const category = await prisma.companyCategory.findFirst({
+      where: { id: categoryId, userId },
+      select: { id: true },
+    });
+    if (!category) {
+      throw new AppError(404, 'CATEGORY_NOT_FOUND', 'Category not found');
+    }
+  },
+
   async create(userId: string, data: CreateCustomerInput) {
+    await this.assertCategoryOwnedBy(userId, data.categoryId);
     const cleaned = cleanEmptyStrings(data);
     const customer = await prisma.customer.create({
       data: { ...cleaned, userId } as any,
@@ -109,9 +134,10 @@ export const customerService = {
     if (!existing) {
       throw new AppError(404, 'CUSTOMER_NOT_FOUND', 'Customer not found');
     }
+    await this.assertCategoryOwnedBy(userId, data.categoryId);
     const cleaned = cleanEmptyStrings(data);
     const customer = await prisma.customer.update({
-      where: { id },
+      where: { id, userId },
       data: cleaned,
       include: { category: true, _count: { select: { contacts: true, tasks: true, emails: true } } },
     });

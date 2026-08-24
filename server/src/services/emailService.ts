@@ -866,8 +866,31 @@ export const emailService = {
       throw Object.assign(new Error('Thread not found'), { status: 404 });
     }
 
+    /**
+     * Rows the caller may see: their own, plus those belonging to someone who
+     * has shared this thread with them.
+     *
+     * The filter used to be `{ threadId }` alone, on the reasoning that
+     * `canAccessThread` had already authorised the thread. But that helper
+     * answers "does the caller own ANY row under this thread id" — a question
+     * about the thread, not about each row — so the query returned every
+     * tenant's copy of it.
+     *
+     * Nothing could reach that today: Gmail thread ids are per-mailbox, so two
+     * accounts only collide by connecting the same mailbox, and then both
+     * legitimately hold the mail. But `GoogleAuth.email` is not unique, so that
+     * collision IS possible, and this was the one threadId read in the service
+     * not paired with an owner — every other one (findById, the batch
+     * operations, findAllThreads, snoozeService.ownedThread) already is.
+     */
     const emails = await prisma.email.findMany({
-      where: { threadId },
+      where: {
+        threadId,
+        OR: [
+          { userId },
+          { user: { emailSharesSent: { some: { threadId, sharedWithUserId: userId } } } },
+        ],
+      },
       orderBy: { receivedAt: 'asc' },
       include: {
         attachments: true,
@@ -894,10 +917,16 @@ export const emailService = {
       },
     });
 
-    // If not owned, check shared access via thread
+    // If not owned, check shared access via thread. The candidate lookup is
+    // constrained to rows whose owner shared this thread with the caller, so a
+    // row that merely happens to sit under a thread id the caller also holds
+    // cannot be pulled in.
     if (!email) {
       const candidate = await prisma.email.findFirst({
-        where: { id },
+        where: {
+          id,
+          user: { emailSharesSent: { some: { sharedWithUserId: userId } } },
+        },
         include: {
           attachments: true,
           customer: { select: { id: true, name: true, domain: true, logoUrl: true, isVip: true, isInternal: true } },
@@ -922,7 +951,7 @@ export const emailService = {
         });
         const body = extractBody(msgRes.data.payload || {});
         if (body) {
-          await prisma.email.update({ where: { id }, data: { body } });
+          await prisma.email.updateMany({ where: { id, userId }, data: { body } });
           return { ...email, body };
         }
       } catch (err: any) {
@@ -969,7 +998,7 @@ export const emailService = {
     }
     if (!email) throw Object.assign(new Error('Email not found'), { status: 404 });
 
-    await prisma.email.update({ where: { id }, data: { isRead: true } });
+    await prisma.email.updateMany({ where: { id, userId }, data: { isRead: true } });
     wsEmitToUser(userId, 'email:updated', { id, isRead: true });
 
     // Sync to Gmail (best effort) — only if user owns the email
@@ -996,7 +1025,7 @@ export const emailService = {
     }
     if (!email) throw Object.assign(new Error('Email not found'), { status: 404 });
 
-    await prisma.email.update({ where: { id }, data: { isRead: false } });
+    await prisma.email.updateMany({ where: { id, userId }, data: { isRead: false } });
     wsEmitToUser(userId, 'email:updated', { id, isRead: false });
 
     if (email.gmailMessageId && email.userId === userId) {
@@ -1023,7 +1052,7 @@ export const emailService = {
     if (!email) throw Object.assign(new Error('Email not found'), { status: 404 });
 
     const newStarred = !email.isStarred;
-    await prisma.email.update({ where: { id }, data: { isStarred: newStarred } });
+    await prisma.email.updateMany({ where: { id, userId }, data: { isStarred: newStarred } });
     wsEmitToUser(userId, 'email:updated', { id, isStarred: newStarred });
 
     if (email.gmailMessageId && email.userId === userId) {
@@ -1063,8 +1092,8 @@ export const emailService = {
       } catch (err: any) { console.warn('[EmailSync] Gmail API call failed:', err?.message || err); }
     }
 
-    await prisma.email.update({
-      where: { id },
+    await prisma.email.updateMany({
+      where: { id, userId },
       data: { isArchived: true, labelIds: email.labelIds.filter((l) => l !== 'INBOX') },
     });
     wsEmitToUser(userId, 'email:updated', { id, isArchived: true });
@@ -1092,8 +1121,8 @@ export const emailService = {
       } catch (err: any) { console.warn('[EmailSync] Gmail API call failed:', err?.message || err); }
     }
 
-    await prisma.email.update({
-      where: { id },
+    await prisma.email.updateMany({
+      where: { id, userId },
       data: { isArchived: false, labelIds: [...email.labelIds, 'INBOX'] },
     });
     wsEmitToUser(userId, 'email:updated', { id, isArchived: false });
@@ -1120,8 +1149,8 @@ export const emailService = {
       } catch (err: any) { console.warn('[EmailSync] Gmail API call failed:', err?.message || err); }
     }
 
-    await prisma.email.update({
-      where: { id },
+    await prisma.email.updateMany({
+      where: { id, userId },
       data: { isTrashed: true, labelIds: [...new Set([...email.labelIds.filter((l) => l !== 'INBOX'), 'TRASH'])] },
     });
     wsEmitToUser(userId, 'email:updated', { id, isTrashed: true });
@@ -1146,8 +1175,8 @@ export const emailService = {
       } catch (err: any) { console.warn('[EmailSync] Gmail API call failed:', err?.message || err); }
     }
 
-    await prisma.email.update({
-      where: { id },
+    await prisma.email.updateMany({
+      where: { id, userId },
       data: { isTrashed: false, labelIds: email.labelIds.filter((l) => l !== 'TRASH') },
     });
     wsEmitToUser(userId, 'email:updated', { id, isTrashed: false });

@@ -392,12 +392,35 @@ export const taskService = {
     return shares;
   },
 
+  /**
+   * Assignment is an owner-only power, not an access-level one.
+   *
+   * This used to gate on `canAccessTask`, which is satisfied by a share or by
+   * being the current assignee — so anyone the owner shared a task with could
+   * assign it onward to a third account. That grants standing access (the
+   * assignee sees the task through `assignedToId` forever) to somebody the
+   * owner never chose, and revoking the original share does not take it back.
+   *
+   * Every other privileged operation on a task already gates on ownership —
+   * `shareTask`, `delete`, `reorder` — so this is the outlier being brought
+   * into line, not a new restriction.
+   */
   async assignTask(userId: string, taskId: string, assignedToId: string | null) {
-    const hasAccess = await canAccessTask(taskId, userId);
-    if (!hasAccess) throw Object.assign(new Error('Task not found'), { status: 404 });
+    const isOwner = await isTaskOwner(taskId, userId);
+    if (!isOwner) throw Object.assign(new Error('Task not found'), { status: 404 });
+
+    // The assignee must be a real account. Without this the column becomes a
+    // sink for any uuid the caller invents.
+    if (assignedToId) {
+      const assignee = await prisma.user.findUnique({
+        where: { id: assignedToId },
+        select: { id: true },
+      });
+      if (!assignee) throw Object.assign(new Error('User not found'), { status: 404 });
+    }
 
     const task = await prisma.task.update({
-      where: { id: taskId },
+      where: { id: taskId, userId },
       data: { assignedToId },
       include: { labels: { include: { label: true } }, customer: true },
     });

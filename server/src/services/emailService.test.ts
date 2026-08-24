@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { prisma } from '../lib/prisma.js';
 import { emailService } from './emailService.js';
 import { createTwoUsers, createUser, createEmail, createCustomer, shareThreadWith } from '../test/factories.js';
 
@@ -445,5 +446,88 @@ describe('emailService.getUnreadCount — tenant isolation', () => {
     const count = await emailService.getUnreadCount(alice.id);
 
     expect(count).toBe(1);
+  });
+});
+
+
+/**
+ * Two accounts holding rows under ONE thread id.
+ *
+ * Gmail thread ids are per-mailbox, so this normally cannot happen — but
+ * `GoogleAuth.email` is not unique (only `GoogleAuth.userId` is), so two
+ * mailviz accounts can connect the same mailbox and sync identical ids. The
+ * schema anticipates it: `@@unique([userId, gmailMessageId])` is composite
+ * precisely because one message id can appear under two users.
+ *
+ * Every thread-scoped read and write in emailService pairs `threadId` with
+ * `userId` — except, until now, `findThread` and the seven single-message
+ * mutators. The existing tenant tests for those give each user a DISTINCT
+ * thread id, so they never construct the one configuration that matters.
+ */
+describe('emailService — two accounts under one thread id', () => {
+  const SHARED_THREAD = 'thread-both-hold';
+
+  it('findThread returns only the caller rows, not every tenant copy', async () => {
+    const { alice, bob } = await createTwoUsers();
+    await createEmail(alice.id, { threadId: SHARED_THREAD, subject: 'Alice copy' });
+    await createEmail(bob.id, { threadId: SHARED_THREAD, subject: 'Bob copy' });
+
+    const forAlice = await emailService.findThread(SHARED_THREAD, alice.id);
+
+    expect(forAlice.map((e) => e.subject)).toEqual(['Alice copy']);
+  });
+
+  it('still returns the owner rows when the thread was genuinely shared', async () => {
+    // The share feature must keep working — this is the case the missing filter
+    // was protecting, and the reason it could not simply be `{ threadId, userId }`.
+    const { alice, bob } = await createTwoUsers();
+    await createEmail(bob.id, { threadId: 'thread-bob-shares', subject: 'Bob original' });
+    await shareThreadWith('thread-bob-shares', bob.id, alice.id);
+
+    const forAlice = await emailService.findThread('thread-bob-shares', alice.id);
+
+    expect(forAlice.map((e) => e.subject)).toEqual(['Bob original']);
+  });
+
+  it('marking read touches the caller row and leaves the other tenant copy alone', async () => {
+    const { alice, bob } = await createTwoUsers();
+    const aliceCopy = await createEmail(alice.id, { threadId: SHARED_THREAD, isRead: false });
+    const bobCopy = await createEmail(bob.id, { threadId: SHARED_THREAD, isRead: false });
+
+    await emailService.markAsRead(aliceCopy.id, alice.id);
+
+    expect((await prisma.email.findUniqueOrThrow({ where: { id: aliceCopy.id } })).isRead).toBe(true);
+    expect((await prisma.email.findUniqueOrThrow({ where: { id: bobCopy.id } })).isRead).toBe(false);
+  });
+
+  it('a share recipient cannot flip the owner read state — CROSS-TENANT WRITE', async () => {
+    // Reachable today with no exotic precondition: Bob shares a thread with
+    // Alice, Alice opens it, and the write used to land on BOB's row because
+    // the update was by primary key. Read state is per-mailbox; a share grants
+    // visibility, not control over someone else's mailbox. Note the Gmail call
+    // was already guarded by `email.userId === userId` — the database write
+    // simply was not.
+    const { alice, bob } = await createTwoUsers();
+    const bobEmail = await createEmail(bob.id, { threadId: 'thread-shared-rw', isRead: false });
+    await shareThreadWith('thread-shared-rw', bob.id, alice.id);
+
+    await emailService.markAsRead(bobEmail.id, alice.id);
+
+    expect((await prisma.email.findUniqueOrThrow({ where: { id: bobEmail.id } })).isRead).toBe(false);
+  });
+
+  it.each([
+    ['toggleStar', (id: string, uid: string) => emailService.toggleStar(id, uid), 'isStarred'],
+    ['archive', (id: string, uid: string) => emailService.archive(id, uid), 'isArchived'],
+    ['trash', (id: string, uid: string) => emailService.trash(id, uid), 'isTrashed'],
+  ])('%s does not write through to the owner row either', async (_label, call, column) => {
+    const { alice, bob } = await createTwoUsers();
+    const bobEmail = await createEmail(bob.id, { threadId: 'thread-shared-rw' });
+    await shareThreadWith('thread-shared-rw', bob.id, alice.id);
+
+    await call(bobEmail.id, alice.id);
+
+    const after = await prisma.email.findUniqueOrThrow({ where: { id: bobEmail.id } });
+    expect((after as unknown as Record<string, boolean>)[column]).toBe(false);
   });
 });
