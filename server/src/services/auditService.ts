@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../lib/prismaClient.js';
 import { prisma } from '../lib/prisma.js';
 
 export type AuditAction =

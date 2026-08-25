@@ -1,5 +1,5 @@
 import { google } from 'googleapis';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../lib/prismaClient.js';
 import { prisma } from '../lib/prisma.js';
 import { getGmailClient } from '../lib/gmail.js';
 import { isGmailRateLimitError } from '../lib/gmailLimiter.js';

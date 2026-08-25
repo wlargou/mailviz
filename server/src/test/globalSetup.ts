@@ -1,5 +1,6 @@
 import { execSync } from 'node:child_process';
-import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '../lib/prismaClient.js';
 import {
   TEST_DATABASE_URL,
   TEST_DATABASE_NAME,
@@ -20,7 +21,10 @@ import {
  */
 
 async function withAdminConnection<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T> {
-  const db = new PrismaClient({ datasourceUrl: ADMIN_DATABASE_URL });
+  // Prisma 7 removed `datasourceUrl`; a driver adapter carries the connection
+  // instead. This one deliberately points at the ADMIN database rather than the
+  // per-run test database, because it is what creates and drops that database.
+  const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: ADMIN_DATABASE_URL }) });
   try {
     return await fn(db);
   } finally {

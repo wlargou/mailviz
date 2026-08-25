@@ -1,4 +1,4 @@
-import type { Email } from '@prisma/client';
+import type { Email } from '../lib/prismaClient.js';
 import { prisma } from '../lib/prisma.js';
 import { getGmailClient } from '../lib/gmail.js';
 import { AppError } from '../middleware/errorHandler.js';

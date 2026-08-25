@@ -1,10 +1,22 @@
 generator client {
   provider = "prisma-client-js"
+
+  // Prisma 7 requires an explicit output, and WHERE it goes matters here.
+  //
+  // `esbuild.config.js` globs every .ts under src/ as an entry point and
+  // tsconfig includes src/**/*, so generating anywhere under src/ would pull
+  // thousands of generated files into both the build and the typecheck. This
+  // path resolves to server/generated/prisma — one level under the workspace
+  // root, which is deliberate: src/lib/*.ts and dist/lib/*.js are both two
+  // levels deep, so the same relative import works before and after the build.
+  output   = "../../generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  // The connection URL moved to prisma.config.ts in Prisma 7 — the schema is no
+  // longer allowed to carry it. The runtime client gets its connection from a
+  // driver adapter instead (see lib/prisma.ts).
 }
 
 // ─── PHASE 1 MODELS ────────────────────────────────

@@ -1,4 +1,4 @@
-import type { TaskPriority } from '@prisma/client';
+import type { TaskPriority } from '../lib/prismaClient.js';
 import { prisma } from '../lib/prisma.js';
 
 let seq = 0;

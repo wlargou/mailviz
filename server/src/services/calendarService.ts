@@ -7,7 +7,7 @@ import { customerService } from './customerService.js';
 import { extractDomain, isPersonalDomain, normalizeDomain } from '../utils/domainResolver.js';
 import { wsEmit, wsEmitToUser } from '../websocket.js';
 import { env } from '../config/env.js';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../lib/prismaClient.js';
 import { auditService } from './auditService.js';
 import type { EventReminders, EventVisibility } from '../validators/calendarValidator.js';
 

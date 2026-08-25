@@ -1,5 +1,5 @@
 import type { gmail_v1 } from 'googleapis';
-import type { EmailDraft } from '@prisma/client';
+import type { EmailDraft } from '../lib/prismaClient.js';
 import { prisma } from '../lib/prisma.js';
 import { getGmailClient } from '../lib/gmail.js';
 import { buildMimeMessage } from '../utils/mimeBuilder.js';
