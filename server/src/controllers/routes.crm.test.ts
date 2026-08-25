@@ -751,6 +751,11 @@ describe('/api/v1/customers', () => {
     expect((own.body as ListBody<AttachmentRow>).data.map((a) => a.filename)).toEqual(['alice-quote.pdf']);
 
     const foreign = await request(app).get(`/api/v1/customers/${bobCo.id}/attachments`).set('Cookie', cookie);
+    // Assert the status before the body. Without it any non-200 shows up only
+    // as `data: undefined`, which reports a server error as though the shape
+    // were wrong — this test failed exactly once that way and said nothing
+    // about why.
+    expect(foreign.status).toBe(200);
     expect((foreign.body as ListBody<AttachmentRow>).data).toEqual([]);
     expect(JSON.stringify(foreign.body)).not.toContain('bobs-secret-contract.pdf');
   });
