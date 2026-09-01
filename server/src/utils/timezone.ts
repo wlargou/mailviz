@@ -124,3 +124,22 @@ export function resolveTimeZone(value: string | null | undefined): string {
     return 'UTC';
   }
 }
+
+/**
+ * The calendar date of an all-day event.
+ *
+ * All-day events have no timezone — "the 10th" is the 10th wherever you read
+ * it — and Google represents them that way, as a bare `date`. The convention
+ * throughout this app is to store that floating date as UTC midnight, which is
+ * what `calendarService` already writes when syncing one IN from Google.
+ *
+ * So this deliberately formats in UTC and takes no zone. Formatting an all-day
+ * instant in the *user's* zone looks right and is wrong: at a negative offset,
+ * UTC midnight on the 10th is the 9th locally, and the event moves a day every
+ * time it is pushed back. The bug that motivated the timezone work was the
+ * mirror image of that — app-created events stored local midnight and were
+ * read in UTC — and the fix is one convention, not a zone at each end.
+ */
+export function formatAllDayDate(at: Date): string {
+  return formatDateInZone(at, 'UTC');
+}

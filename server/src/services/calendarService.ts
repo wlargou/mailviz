@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import { google } from 'googleapis';
 import { prisma } from '../lib/prisma.js';
-import { resolveTimeZone, formatDateInZone } from '../utils/timezone.js';
+import { formatAllDayDate } from '../utils/timezone.js';
 import { getCalendarClient } from '../lib/calendar.js';
 import { googleAuthService } from './googleAuthService.js';
 import { customerService } from './customerService.js';
@@ -656,21 +656,20 @@ export const calendarService = {
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
     /**
-     * An all-day event is a calendar DATE, and which date depends on whose
-     * calendar you are reading.
+     * All-day dates are read in UTC, deliberately, and need no user timezone.
      *
-     * These dates were derived with `toISOString().split('T')[0]`, i.e. the UTC
-     * date. The client sends all-day bounds as local midnight, so for anyone
-     * EAST of UTC that instant is the previous day in UTC: midnight on 15
-     * September in Paris is 14 September 22:00Z, and Google was told the 14th.
-     * The event then showed a day early — in Google Calendar, on every device
-     * synced to it, and in every invitation sent from it.
+     * An all-day event has no timezone: "the 10th" is the 10th wherever it is
+     * read. This app stores that floating date as UTC midnight — which is what
+     * the inbound sync above already writes from Google's bare `date` — so the
+     * date is recovered by formatting in UTC and by nothing else.
      *
-     * Unlike the dashboard, this one wrote wrong data into somebody else's
-     * system, where it outlived any fix here until the event was edited again.
+     * An earlier version of this formatted in the *user's* zone. That is right
+     * for an event whose bounds were written as local midnight and wrong for
+     * one synced from Google, which is stored as UTC midnight: at a negative
+     * offset it reports the previous day and the event walks backwards a day
+     * per edit. Two storage conventions cannot both be read by one rule, so the
+     * conventions were unified instead — see `formatAllDayDate`.
      */
-    const owner = await prisma.user.findUnique({ where: { id: userId }, select: { timezone: true } });
-    const tz = resolveTimeZone(owner?.timezone);
 
     try {
       if (action === 'create') {
@@ -682,10 +681,13 @@ export const calendarService = {
           description: event.description || undefined,
           location: event.location || undefined,
           start: event.isAllDay
-            ? { date: formatDateInZone(event.startTime, tz) }
+            ? { date: formatAllDayDate(event.startTime) }
             : { dateTime: event.startTime.toISOString() },
+          // Google's all-day `end.date` is EXCLUSIVE, and the stored endTime is
+          // already the midnight after the last day — the same shape the
+          // inbound sync writes — so this passes straight through.
           end: event.isAllDay
-            ? { date: formatDateInZone(event.endTime, tz) }
+            ? { date: formatAllDayDate(event.endTime) }
             : { dateTime: event.endTime.toISOString() },
         };
 
@@ -768,10 +770,13 @@ export const calendarService = {
           description: event.description || undefined,
           location: event.location || undefined,
           start: event.isAllDay
-            ? { date: formatDateInZone(event.startTime, tz) }
+            ? { date: formatAllDayDate(event.startTime) }
             : { dateTime: event.startTime.toISOString() },
+          // Google's all-day `end.date` is EXCLUSIVE, and the stored endTime is
+          // already the midnight after the last day — the same shape the
+          // inbound sync writes — so this passes straight through.
           end: event.isAllDay
-            ? { date: formatDateInZone(event.endTime, tz) }
+            ? { date: formatAllDayDate(event.endTime) }
             : { dateTime: event.endTime.toISOString() },
         };
 

@@ -62,6 +62,7 @@ import type { GoogleStatus } from '../../types/calendar';
 import { format } from 'date-fns';
 import { SettingsListEditor } from './SettingsListEditor';
 import { SettingsSection } from './SettingsSection';
+import { TimezoneSetting } from './TimezoneSetting';
 import { DeleteAccountModal } from './DeleteAccountModal';
 
 const STATUS_COLORS = [
@@ -870,6 +871,16 @@ export function SettingsPage() {
           </TabPanel>
           <TabPanel>
             <div className="settings-panel-grid">
+          <Tile className="settings-tile">
+            <SettingsSection
+              icon={<Calendar size={20} />}
+              title="Timezone"
+              description="Which zone your days, weeks and overdue dates are calculated in."
+            >
+              <TimezoneSetting />
+            </SettingsSection>
+          </Tile>
+
           <Tile className="settings-tile">
             <SettingsSection
               icon={<TaskComplete size={20} />}
