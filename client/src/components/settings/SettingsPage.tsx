@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { isAxiosError } from 'axios';
 import {
   Button,
   Column,
@@ -369,8 +370,13 @@ export function SettingsPage() {
       if (res.data.contactsCreated) parts.push(`${res.data.contactsCreated} new contacts`);
       addNotification({ kind: 'success', title: 'Gmail synced', subtitle: parts.join(' · ') });
       fetchStatus();
-    } catch {
-      addNotification({ kind: 'error', title: 'Email sync failed' });
+    } catch (err) {
+      // 409: the scheduler already has a sync running for this account.
+      if (isAxiosError(err) && err.response?.status === 409) {
+        addNotification({ kind: 'info', title: 'A sync is already running' });
+      } else {
+        addNotification({ kind: 'error', title: 'Email sync failed' });
+      }
     } finally {
       setSyncingMail(false);
     }

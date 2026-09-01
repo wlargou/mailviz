@@ -110,6 +110,24 @@ export function syncAccountNow(userId: string): Promise<void> {
   return runner.runOne(userId);
 }
 
+/**
+ * Run a manual sync for one account under the same guard the scheduler uses,
+ * and hand back its result.
+ *
+ * `POST /emails/sync` used to call `emailService.syncFromGmail` directly, which
+ * meant the "Sync now" button was invisible to the in-flight guard in both
+ * directions: it could start while a scheduled sync was running, and a
+ * scheduled tick could start while it was. Two syncs for one account race on
+ * the same Gmail history cursor — the exact failure `perUserRunner` documents
+ * itself as existing to prevent.
+ *
+ * Returns `{ ran: false }` when a sync is already going, so the caller can say
+ * so rather than starting a second one.
+ */
+export function runManualSync<T>(userId: string, job: () => Promise<T>) {
+  return runner.runExclusive(userId, job);
+}
+
 /** Whether any account is mid-sync. */
 export function isSyncInProgress(): boolean {
   return runner.inFlightCount() > 0;

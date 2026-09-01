@@ -175,11 +175,52 @@ export const customerService = {
     return { customer, created: true };
   },
 
+  /**
+   * The contact for a sender address, created if this is the first time it has
+   * been seen.
+   *
+   * Matching has to consider merge aliases, not just the primary address.
+   * `contactMergeService.merge` moves every address a discarded row answered to
+   * into `contact_email_aliases` and deletes that row — so a lookup on `email`
+   * alone finds nothing the next time that address writes, and helpfully
+   * recreates the duplicate the user just merged away. The merge survived
+   * exactly until the next sync tick, silently.
+   *
+   * Two queries rather than one OR, because this runs per address per message
+   * — three or four times for every mail in a 131k-message mailbox. The exact
+   * match is an index hit and answers almost every call; only a miss pays for
+   * the alias lookup (also indexed) and the case-insensitive comparison, which
+   * cannot use the btree on `email` and would otherwise scan the whole table on
+   * every address of every message.
+   *
+   * Scoped by `userId` and not by `customerId`: a merged contact may now live
+   * under a different company than the one this address's domain resolves to,
+   * and finding it there is the point. Ownership is what must never be dropped.
+   */
   async findOrCreateContact(userId: string, email: string, displayName: string | null, customerId: string) {
-    const existing = await prisma.contact.findFirst({
+    const exact = await prisma.contact.findFirst({
       where: { email, customer: { userId } },
     });
-    if (existing) return { contact: existing, created: false };
+    if (exact) return { contact: exact, created: false };
+
+    // Aliases are stored trimmed and lowercased by the merge.
+    const normalized = email.trim().toLowerCase();
+    const merged = await prisma.contact.findFirst({
+      where: {
+        AND: [
+          { customer: { userId } },
+          {
+            OR: [
+              { emailAliases: { some: { email: normalized } } },
+              // Also catches the plain case variant, which would otherwise be
+              // a second row for the same person.
+              { email: { equals: normalized, mode: 'insensitive' } },
+            ],
+          },
+        ],
+      },
+    });
+    if (merged) return { contact: merged, created: false };
 
     const { firstName, lastName } = parseName(displayName, email);
     // Classified once, at creation. The inputs (address and display name) do not

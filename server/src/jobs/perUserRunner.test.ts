@@ -82,6 +82,95 @@ describe('createPerUserRunner', () => {
     await first;
   });
 
+  /**
+   * `runExclusive` is what the manual "Sync now" button goes through.
+   *
+   * Before it existed the route called `emailService.syncFromGmail` directly,
+   * so a manual sync was invisible to the guard in BOTH directions: it could
+   * start while a scheduled sync was running, and a scheduled tick could start
+   * on top of it. Both halves are asserted below, because covering only one
+   * leaves the race live in the other direction.
+   */
+  it('refuses a manual run while a scheduled sync holds the account', async () => {
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+
+    const block = deferred();
+    const runner = createPerUserRunner({
+      label: 'Test',
+      concurrency: 3,
+      run: async () => { await block.promise; },
+    });
+
+    const scheduled = runner.runAll();
+    await new Promise((r) => setTimeout(r, 10));
+
+    let manualRan = false;
+    const outcome = await runner.runExclusive(user.id, async () => {
+      manualRan = true;
+      return 'result';
+    });
+
+    expect(outcome.ran).toBe(false);
+    expect(manualRan).toBe(false);
+
+    block.resolve();
+    await scheduled;
+  });
+
+  it('refuses a scheduled sync while a manual run holds the account', async () => {
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+
+    const block = deferred();
+    let scheduledStarts = 0;
+    const runner = createPerUserRunner({
+      label: 'Test',
+      concurrency: 3,
+      run: async () => { scheduledStarts++; },
+    });
+
+    const manual = runner.runExclusive(user.id, async () => {
+      await block.promise;
+      return 'result';
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    await runner.runAll();
+    expect(scheduledStarts).toBe(0);
+
+    block.resolve();
+    await manual;
+  });
+
+  it('hands back the job result and releases the account afterwards', async () => {
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+    const runner = createPerUserRunner({ label: 'Test', concurrency: 3, run: async () => {} });
+
+    const outcome = await runner.runExclusive(user.id, async () => ({ synced: 7 }));
+
+    expect(outcome).toEqual({ ran: true, result: { synced: 7 } });
+    // Releasing matters as much as holding: a guard that leaks would wedge the
+    // account permanently and every later sync would be skipped in silence.
+    expect(runner.isInFlight(user.id)).toBe(false);
+  });
+
+  it('releases the account when the job throws, and lets the error out', async () => {
+    // `runOne` swallows failures because a scheduler tick has nowhere to report
+    // them. A request handler does, so this must reject rather than resolve —
+    // otherwise "Sync now" answers 200 on a sync that failed.
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+    const runner = createPerUserRunner({ label: 'Test', concurrency: 3, run: async () => {} });
+
+    await expect(
+      runner.runExclusive(user.id, async () => { throw new Error('gmail exploded'); })
+    ).rejects.toThrow('gmail exploded');
+
+    expect(runner.isInFlight(user.id)).toBe(false);
+  });
+
   it('bounds how many accounts run at once', async () => {
     for (let i = 0; i < 5; i++) {
       const user = await createUser();

@@ -19,7 +19,7 @@ import {
   shareThreadWith,
 } from '../test/factories.js';
 import { createGmailMock, type GmailMock } from '../test/gmailMock.js';
-import { isSyncInProgressFor } from '../jobs/emailSyncScheduler.js';
+import { isSyncInProgressFor, runManualSync } from '../jobs/emailSyncScheduler.js';
 
 /**
  * Route-level smoke tests for the mail domain: `/api/v1/auth` and
@@ -54,8 +54,10 @@ import { isSyncInProgressFor } from '../jobs/emailSyncScheduler.js';
 vi.mock('../lib/gmail.js', () => ({ getGmailClient: vi.fn() }));
 
 // Only the status probe is stubbed; the scheduler itself is covered in
-// jobs/schedulers.test.ts. Real in-flight sync state is unreachable from a
-// route test, and without a stub the route can only ever answer `false`.
+// jobs/schedulers.test.ts. Only the *status probe* is stubbed — without it the
+// route can only ever answer `false`. The guard itself is real and reachable:
+// the mock spreads the original module, so `runManualSync` below is the same
+// function, holding the same per-account set, that the sync route goes through.
 vi.mock('../jobs/emailSyncScheduler.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../jobs/emailSyncScheduler.js')>()),
   isSyncInProgressFor: vi.fn(() => false),
@@ -1488,6 +1490,41 @@ describe('/api/v1/emails send and sync', () => {
     expect(mime.split(/\r?\n/).find((l) => l.startsWith('To:')) ?? '').toContain(
       'original-sender@example.com'
     );
+  });
+
+  /**
+   * "Sync now" has to lose to a sync that is already running.
+   *
+   * The route used to call `emailService.syncFromGmail` directly, outside the
+   * per-account guard entirely — so it could start a second sync for an account
+   * already syncing, and the two would race on the same Gmail history cursor.
+   * `runManualSync` here is the real function the route uses, so holding the
+   * account through it reproduces exactly the state a scheduled tick creates.
+   */
+  it('POST /sync answers 409 while that account is already syncing', async () => {
+    const { alice, bob } = await createTwoUsers();
+
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => { release = resolve; });
+    const held = runManualSync(alice.id, () => blocked);
+    // Let runExclusive register the account before the request goes out.
+    await new Promise((r) => setTimeout(r, 10));
+
+    const res = await call('POST', '/api/v1/emails/sync', { as: alice.id });
+    expect(res.status).toBe(409);
+    expect(res.body.error?.code).toBe('SYNC_IN_PROGRESS');
+
+    // The guard is per account: Bob's sync must not be blocked by Alice's.
+    // Without this the test would also pass against a global flag, which is the
+    // bug this codebase already fixed once.
+    vi.mocked(getGmailClient).mockRejectedValue(
+      Object.assign(new Error('Google not connected'), { status: 400 })
+    );
+    const other = await call('POST', '/api/v1/emails/sync', { as: bob.id });
+    expect(other.status).toBe(400);
+
+    release();
+    await held;
   });
 
   it('POST /sync refuses when Google is not connected', async () => {

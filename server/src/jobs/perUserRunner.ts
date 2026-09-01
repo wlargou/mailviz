@@ -24,6 +24,20 @@ export interface PerUserRunner {
   runAll(): Promise<void>;
   /** Sync one account now. Resolves immediately if it is already in flight. */
   runOne(userId: string): Promise<void>;
+  /**
+   * Run an arbitrary job under this account's guard, and say whether it ran.
+   *
+   * For work that must not overlap a scheduled sync but needs its result back —
+   * the manual "Sync now" button, which was calling the service directly and so
+   * sat entirely outside the guard: it could start a second sync for an account
+   * already syncing, and a scheduled tick could start on top of it, which is
+   * precisely the history-cursor race the guard exists to prevent.
+   *
+   * Unlike `runOne` this does not swallow the job's failure. The caller is a
+   * request handler with a user waiting on an answer, so an error has somewhere
+   * to go — where a scheduler tick's does not.
+   */
+  runExclusive<T>(userId: string, job: () => Promise<T>): Promise<{ ran: true; result: T } | { ran: false }>;
   isInFlight(userId: string): boolean;
   inFlightCount(): number;
 }
@@ -72,6 +86,19 @@ export function createPerUserRunner(options: {
 
     async runOne(userId: string) {
       await guarded(userId);
+    },
+
+    async runExclusive<T>(userId: string, job: () => Promise<T>) {
+      if (inFlight.has(userId)) {
+        console.log(`[${label}] Refusing ${userId} — already syncing`);
+        return { ran: false as const };
+      }
+      inFlight.add(userId);
+      try {
+        return { ran: true as const, result: await job() };
+      } finally {
+        inFlight.delete(userId);
+      }
     },
 
     isInFlight(userId: string) {

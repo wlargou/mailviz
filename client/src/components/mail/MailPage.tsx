@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { isAxiosError } from 'axios';
 import {
   Pagination,
   Button,
@@ -409,8 +410,15 @@ export function MailPage() {
           : undefined,
       });
       fetchThreads();
-    } catch {
-      addNotification({ kind: 'error', title: 'Email sync failed' });
+    } catch (err) {
+      // A 409 means the scheduler is already syncing this account, so the
+      // result this click wanted is on its way. Reporting that as a failure
+      // would tell the user their mail did not sync when it is syncing now.
+      if (isAxiosError(err) && err.response?.status === 409) {
+        addNotification({ kind: 'info', title: 'A sync is already running' });
+      } else {
+        addNotification({ kind: 'error', title: 'Email sync failed' });
+      }
     } finally {
       setSyncing(false);
     }
