@@ -49,6 +49,16 @@ export const sendEmailSchema = z.object({
 
 export const replyEmailSchema = z.object({
   htmlBody: z.string().min(1).max(500000),
+  /**
+   * Optional override for the recipient.
+   *
+   * Compose presents the To field on a reply as an editable chip input, so a
+   * user can remove the pre-filled address and type a different one. Until this
+   * existed the server ignored all of that and sent to the original sender
+   * regardless — the message went somewhere the user had explicitly changed,
+   * with no warning. Absent or empty still means "reply to whoever wrote it".
+   */
+  to: z.array(emailString).optional(),
   replyAll: z.boolean().optional().default(false),
   cc: z.array(emailString).optional().default([]),
   bcc: z.array(emailString).optional().default([]),

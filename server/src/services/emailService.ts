@@ -1376,7 +1376,7 @@ export const emailService = {
     return { messageId: sendRes.data.id, threadId: sendRes.data.threadId };
   },
 
-  async replyToEmail(emailId: string, data: { htmlBody: string; replyAll?: boolean; cc?: string[]; bcc?: string[]; attachments?: Array<{ filename: string; content: string; contentType: string; size: number }> }, userId: string) {
+  async replyToEmail(emailId: string, data: { htmlBody: string; to?: string[]; replyAll?: boolean; cc?: string[]; bcc?: string[]; attachments?: Array<{ filename: string; content: string; contentType: string; size: number }> }, userId: string) {
     const gmail = await getGmailClient(userId);
     const auth = await prisma.googleAuth.findFirst({ where: { userId } });
     if (!auth?.email) throw Object.assign(new Error('Google not connected'), { status: 400 });
@@ -1390,13 +1390,18 @@ export const emailService = {
     let to: string[];
     let cc: string[] = [];
 
+    // An explicit `to` wins. Compose lets the user edit the recipient on a
+    // reply, and this is what makes that edit mean something — without it the
+    // message went to `original.from` no matter what the field said.
+    const overrideTo = data.to?.filter((address) => address.trim().length > 0) ?? [];
+
     if (data.replyAll) {
-      to = [original.from];
+      to = overrideTo.length > 0 ? overrideTo : [original.from];
       // Combine original to + cc, exclude user's own email
       const allCc = [...original.to, ...original.cc, ...(data.cc || [])];
       cc = [...new Set(allCc.map((e) => e.toLowerCase().trim()))].filter((e) => e !== userEmail && e !== original.from.toLowerCase());
     } else {
-      to = [original.from];
+      to = overrideTo.length > 0 ? overrideTo : [original.from];
       cc = data.cc || [];
     }
 

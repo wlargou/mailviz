@@ -195,15 +195,31 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, dr
         return;
       }
 
+      /**
+       * Set the body on EVERY open, even when there is no signature.
+       *
+       * This used to call `setContent` only if a signature came back, so an
+       * account with no signature configured never cleared the editor: close
+       * compose without sending, reopen, and the previous message's text was
+       * still there — now attached to a different recipient and subject, which
+       * To/Cc/Subject had correctly reset. Worse from the draft path, where the
+       * body of a draft you had merely looked at followed you into a new
+       * message.
+       *
+       * The signature request is allowed to fail; an empty body is the right
+       * fallback, not last time's.
+       */
+      let body = '';
       try {
         const { data } = await authApi.getSignature();
-        if (data.signature && editorInstance && !editorInstance.isDestroyed) {
-          const sigHtml = `<p></p><p>--</p>${data.signature}`;
-          editorInstance.commands.setContent(sigHtml);
-          // Move cursor to the beginning (before the signature)
-          editorInstance.commands.focus('start');
-        }
-      } catch { /* ignore - no signature set */ }
+        if (data.signature) body = `<p></p><p>--</p>${data.signature}`;
+      } catch { /* no signature set, or the request failed — start empty */ }
+
+      if (!editorInstance.isDestroyed) {
+        editorInstance.commands.setContent(body);
+        // Cursor before the signature, so typing starts where the message goes.
+        editorInstance.commands.focus('start');
+      }
     }, 100);
 
     return () => clearTimeout(timer);
@@ -514,8 +530,18 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, dr
           attachments: attachmentPayload.length > 0 ? attachmentPayload : undefined,
         });
       } else if ((mode === 'reply' || mode === 'replyAll') && replyToEmail) {
+        if (to.length === 0) {
+          addNotification({ kind: 'warning', title: 'Add at least one recipient' });
+          setSending(false);
+          return;
+        }
         await emailsApi.replyToEmail(replyToEmail.id, {
           htmlBody,
+          // The To field is editable on a reply, so send what it holds. This
+          // used to be omitted entirely and the server fell back to the original
+          // sender — so clearing the chip and typing a different address sent
+          // the message to the person the user had just removed.
+          to,
           replyAll: mode === 'replyAll',
           cc: cc.length > 0 ? cc : undefined,
           bcc: bcc.length > 0 ? bcc : undefined,
