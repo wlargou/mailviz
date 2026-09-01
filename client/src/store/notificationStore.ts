@@ -82,7 +82,21 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
 
   dismissAll: async () => {
     await notificationsApi.dismissAll();
-    set({ notifications: [], unreadCount: 0 });
+    /**
+     * The server dismisses only READ notifications — deliberately, because
+     * dismissing an unread one throws away something the user has never seen.
+     * This used to clear the whole list and zero the badge anyway, so unread
+     * rows survived server-side while vanishing from the panel, and the next
+     * 60-second poll brought the badge back over an empty list with nothing
+     * the user could click to clear it.
+     *
+     * Mirroring the server keeps the two in step: read rows go, unread rows
+     * stay, and the count is untouched because it only ever counted unread.
+     */
+    set((s) => ({
+      notifications: s.notifications.filter((n) => !n.isRead),
+      unreadCount: s.unreadCount,
+    }));
   },
 
   addRealtime: (notification) => {

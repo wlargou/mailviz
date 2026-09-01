@@ -134,7 +134,10 @@ export function NotificationBell() {
                   className="notification-panel__link notification-panel__link--danger"
                   onClick={() => dismissAll()}
                 >
-                  Clear all
+                  {/* "Clear read": the action dismisses read notifications
+                      only, and calling it "Clear all" promised something it
+                      never did. */}
+                  Clear read
                 </button>
               )}
             </div>

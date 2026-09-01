@@ -22,24 +22,36 @@ export type SortOrder = 'asc' | 'desc';
  * sortable.
  */
 export function useTableSort(defaultSortBy: string, defaultSortOrder: SortOrder = 'desc') {
-  const [sortBy, setSortBy] = useState(defaultSortBy);
-  const [sortOrder, setSortOrder] = useState<SortOrder>(defaultSortOrder);
+  /**
+   * One piece of state, not two.
+   *
+   * `toggle` needs to know whether the clicked column is the current one, and
+   * the previous version got that by calling `setSortOrder` from inside the
+   * `setSortBy` updater. React requires updater functions to be pure: under
+   * StrictMode it invokes them twice, so the direction flipped twice and landed
+   * back where it started. Clicking the same header in `npm run dev` did
+   * nothing — the arrow and `aria-sort` stayed put and the query never changed —
+   * while production, which does not double-invoke, behaved correctly. A bug
+   * that only appears in development is one nobody trusts their eyes about.
+   *
+   * Holding both fields together makes the update a single pure function of the
+   * previous state, so invoking it twice yields the same result as once.
+   */
+  const [sort, setSort] = useState<{ by: string; order: SortOrder }>({
+    by: defaultSortBy,
+    order: defaultSortOrder,
+  });
+  const { by: sortBy, order: sortOrder } = sort;
 
-  const toggle = useCallback(
-    (key: string) => {
-      setSortBy((currentKey) => {
-        if (currentKey === key) {
-          setSortOrder((order) => (order === 'asc' ? 'desc' : 'asc'));
-          return currentKey;
-        }
+  const toggle = useCallback((key: string) => {
+    setSort((current) =>
+      current.by === key
+        ? { by: current.by, order: current.order === 'asc' ? 'desc' : 'asc' }
         // A new column starts ascending: clicking "Name" and getting Z–A reads
         // as a bug.
-        setSortOrder('asc');
-        return key;
-      });
-    },
-    []
-  );
+        : { by: key, order: 'asc' }
+    );
+  }, []);
 
   const headerProps = useCallback(
     (key: string): {

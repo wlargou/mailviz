@@ -112,10 +112,16 @@ export const notificationService = {
     });
   },
 
+  /**
+   * "Clear read" — dismissing an unread notification would throw away
+   * something the user has never seen. The client mirrors this by removing
+   * only read rows and leaving the badge alone.
+   */
   async dismissAll(userId: string) {
     return prisma.notification.updateMany({
       where: { userId, isRead: true, isDismissed: false },
       data: { isDismissed: true },
     });
   },
+
 };

@@ -527,6 +527,24 @@ export function MailPage() {
     setSelectMode(false);
   }, []);
 
+  /**
+   * Drop the selection whenever the visible rows change underneath it.
+   *
+   * Selection is a set of email ids with no memory of which folder or page they
+   * came from, while the header checkbox and the "N selected" label compare
+   * against `threads.length` for the CURRENT page. So selecting 20 rows in the
+   * Inbox and switching to Trash left the header rendered as fully checked and
+   * the bar reading "20 selected" with not one visible row highlighted — and a
+   * bulk Archive then acted on twenty messages the user could no longer see.
+   *
+   * Clearing on folder or page change is the honest behaviour: the selection
+   * described rows that are no longer on screen.
+   */
+  useEffect(() => {
+    setSelectedIds(new Set());
+    setSelectMode(false);
+  }, [filters.folder, page]);
+
   const handleBulkAction = useCallback(async (action: 'read' | 'unread' | 'archive' | 'trash') => {
     if (selectedIds.size === 0) return;
     setBulkLoading(true);
