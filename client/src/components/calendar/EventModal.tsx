@@ -243,6 +243,40 @@ export function shiftedEndDate(previousStartStr: string, previousEndStr: string,
   return next;
 }
 
+/**
+ * The stored bounds of an all-day event spanning `startDateStr`..`endDateStr`
+ * inclusive, as the floating-date convention: UTC midnight, exclusive end.
+ *
+ * Exported for tests, because the off-by-one at the end is exactly the sort of
+ * thing that looks right in the UI for a one-day event and is wrong for every
+ * other length.
+ */
+export function allDayBounds(startDateStr: string, endDateStr: string): { startTime: string; endTime: string } {
+  const [sm, sd, sy] = startDateStr.split('/').map(Number);
+  const [em, ed, ey] = endDateStr.split('/').map(Number);
+  return {
+    startTime: new Date(Date.UTC(sy, sm - 1, sd)).toISOString(),
+    // +1 day: Google treats an all-day end as exclusive, so a single-day event
+    // on the 10th runs [10th, 11th).
+    endTime: new Date(Date.UTC(ey, em - 1, ed + 1)).toISOString(),
+  };
+}
+
+/**
+ * The inclusive date range to SHOW for a stored all-day event.
+ *
+ * The inverse of `allDayBounds`: read in UTC, and take a day off the end
+ * because the stored end is exclusive. A one-day event on the 10th is stored as
+ * [10th, 11th) and must be shown as 10th–10th.
+ */
+export function allDayDisplayDates(start: Date, end: Date): { startDateStr: string; endDateStr: string } {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const asUtc = (d: Date) => `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())}/${d.getUTCFullYear()}`;
+  const lastDay = new Date(end.getTime());
+  lastDay.setUTCDate(lastDay.getUTCDate() - 1);
+  return { startDateStr: asUtc(start), endDateStr: asUtc(lastDay) };
+}
+
 /** Calculate duration in minutes between start and end */
 function calcDuration(startDateStr: string, startTime24: string, endDateStr: string, endTime24: string): number {
   const start = parseDateTime(startDateStr, startTime24);
@@ -337,11 +371,21 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
       setLocation(event.location || '');
       const start = new Date(event.startTime);
       const end = new Date(event.endTime);
-      setStartDateStr(format(start, 'MM/dd/yyyy'));
+      if (event.isAllDay) {
+        // Read back with the same convention it was written with: floating
+        // dates in UTC, and an end that is exclusive. Formatting these in local
+        // time shows the day before at a negative offset, and showing the
+        // stored end unchanged puts a one-day event's last day on the 11th.
+        const { startDateStr: sd, endDateStr: ed } = allDayDisplayDates(start, end);
+        setStartDateStr(sd);
+        setEndDateStr(ed);
+      } else {
+        setStartDateStr(format(start, 'MM/dd/yyyy'));
+        setEndDateStr(format(end, 'MM/dd/yyyy'));
+      }
       const s12 = to12h(format(start, 'HH:mm'));
       setStartTime12(s12.time);
       setStartAmPm(s12.ampm);
-      setEndDateStr(format(end, 'MM/dd/yyyy'));
       const e12 = to12h(format(end, 'HH:mm'));
       setEndTime12(e12.time);
       setEndAmPm(e12.ampm);
@@ -576,8 +620,24 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
         title: title.trim(),
         description: description || undefined,
         location: location || undefined,
-        startTime: buildDateTime(startDateStr, isAllDay ? '00:00' : startTime24),
-        endTime: buildDateTime(endDateStr, isAllDay ? '23:59' : endTime24),
+        /**
+         * All-day bounds are floating dates, not local times.
+         *
+         * These were local midnight and local 23:59, which made an all-day
+         * event mean something different depending on where it was created —
+         * and disagreed with what the Gmail sync writes for the same kind of
+         * event, which is UTC midnight with an EXCLUSIVE end (the midnight
+         * after the last day, Google's own convention).
+         *
+         * Two conventions in one column cannot both be read correctly, so the
+         * compose path now writes the sync's. `allDayBounds` returns both.
+         */
+        ...(isAllDay
+          ? allDayBounds(startDateStr, endDateStr)
+          : {
+              startTime: buildDateTime(startDateStr, startTime24),
+              endTime: buildDateTime(endDateStr, endTime24),
+            }),
         isAllDay,
         // An empty list has to mean "remove everyone", and it is sent as one.
         // `length > 0 ? … : undefined` produced `undefined` instead, which the

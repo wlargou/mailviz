@@ -15,6 +15,7 @@ import {
   createEmail,
   shareDealWith,
   shareTaskWith,
+  seedTaskStatuses,
 } from '../test/factories.js';
 
 /**
@@ -1130,6 +1131,9 @@ describe('/api/v1/tasks', () => {
 
   it('GET /summary counts only what the caller can reach', async () => {
     const { alice, bob } = await createTwoUsers();
+    // "Completed" is the isTerminal flag on a status row, not the name DONE,
+    // so the account needs its statuses — as every real account has them.
+    await seedTaskStatuses(alice.id);
     const day = 24 * 60 * 60 * 1000;
     // One genuinely overdue, one due later, one already DONE but past due —
     // "overdue" that counts finished work is just "past due date". Without a

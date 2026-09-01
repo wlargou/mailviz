@@ -6,6 +6,7 @@ import {
   addDaysInZone,
   startOfWeekInZone,
 } from '../utils/timezone.js';
+import { terminalStatusNames } from '../utils/taskStatus.js';
 
 function formatDate(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -37,6 +38,21 @@ export const dashboardService = {
      */
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { timezone: true } });
     const tz = resolveTimeZone(user?.timezone);
+
+    /**
+     * Whatever this account calls finished.
+     *
+     * `status = 'DONE'` was hard-coded here while statuses are user-defined
+     * rows — so renaming that status made every completed task count as
+     * overdue, permanently, and a second finished state like "Cancelled" never
+     * counted as complete at all.
+     *
+     * Passed as an array parameter to `= ANY(...)` rather than interpolated:
+     * these are user-supplied names and this is raw SQL. An empty array is
+     * correct on both counts — nothing is completed, and nothing is excluded
+     * from overdue.
+     */
+    const terminalNames = await terminalStatusNames(userId);
 
     const startOfToday = startOfDayInZone(now, tz);
     const endOfToday = addDaysInZone(startOfToday, 1, tz);
@@ -86,8 +102,8 @@ export const dashboardService = {
       }>>`
         SELECT
           COUNT(*) as total,
-          COUNT(*) FILTER (WHERE status = 'DONE') as completed,
-          COUNT(*) FILTER (WHERE status != 'DONE' AND due_date < ${now}) as overdue,
+          COUNT(*) FILTER (WHERE status = ANY(${terminalNames})) as completed,
+          COUNT(*) FILTER (WHERE NOT (status = ANY(${terminalNames})) AND due_date < ${now}) as overdue,
           COUNT(*) FILTER (WHERE priority = 'LOW') as low,
           COUNT(*) FILTER (WHERE priority = 'MEDIUM') as medium,
           COUNT(*) FILTER (WHERE priority = 'HIGH') as high,

@@ -62,6 +62,7 @@ import type { GoogleStatus } from '../../types/calendar';
 import { format } from 'date-fns';
 import { SettingsListEditor } from './SettingsListEditor';
 import { SettingsSection } from './SettingsSection';
+import { TimezoneSetting } from './TimezoneSetting';
 import { DeleteAccountModal } from './DeleteAccountModal';
 
 const STATUS_COLORS = [
@@ -872,14 +873,28 @@ export function SettingsPage() {
             <div className="settings-panel-grid">
           <Tile className="settings-tile">
             <SettingsSection
+              icon={<Calendar size={20} />}
+              title="Timezone"
+              description="Which zone your days, weeks and overdue dates are calculated in."
+            >
+              <TimezoneSetting />
+            </SettingsSection>
+          </Tile>
+
+          <Tile className="settings-tile">
+            <SettingsSection
               icon={<TaskComplete size={20} />}
               title="Task statuses"
               description="The columns on your Kanban board. Drag to reorder."
             >
               <SettingsListEditor
-                items={taskStatuses.map((s) => ({ id: s.id, label: s.label, color: s.color, badge: s.name }))}
+                items={taskStatuses.map((s) => ({
+                  id: s.id, label: s.label, color: s.color, badge: s.name, toggle: s.isTerminal,
+                }))}
                 labelHeading="Label"
                 badgeHeading="Key"
+                toggleHeading="Finished"
+                toggleDescription="Tasks in a finished status are not counted as overdue and stop raising reminders."
                 addPlaceholder="e.g. Blocked, In review"
                 addLabel="Add status"
                 emptyMessage="No statuses yet — your board has no columns."
@@ -892,6 +907,17 @@ export function SettingsPage() {
                   setTaskStatuses((prev) => prev.map((t) => (t.id === id ? { ...t, color } : t)));
                   try {
                     await taskStatusesApi.update(id, { color });
+                  } catch {
+                    fetchTaskStatuses();
+                  }
+                }}
+                onToggle={async (id, isTerminal) => {
+                  // Optimistic, like the recolour above: the checkbox should
+                  // move under the cursor, and a refetch corrects it if the
+                  // request fails.
+                  setTaskStatuses((prev) => prev.map((t) => (t.id === id ? { ...t, isTerminal } : t)));
+                  try {
+                    await taskStatusesApi.update(id, { isTerminal });
                   } catch {
                     fetchTaskStatuses();
                   }

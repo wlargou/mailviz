@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { EventModal, shiftedEndDate } from './EventModal';
+import { EventModal, shiftedEndDate, allDayBounds, allDayDisplayDates } from './EventModal';
 import { calendarApi } from '../../api/calendar';
 import type { CalendarEvent } from '../../types/calendar';
 
@@ -157,5 +157,82 @@ describe('shiftedEndDate', () => {
     const next = shiftedEndDate('', '', new Date(2026, 8, 20));
 
     expect(at(next)).toBe('9/20/2026');
+  });
+});
+
+/**
+ * All-day events are floating dates, and the two ends disagree about it.
+ *
+ * Google represents an all-day event as a bare date with an EXCLUSIVE end, and
+ * the Gmail sync stores exactly that — UTC midnight, end = the midnight after
+ * the last day. The compose path wrote something else: local midnight and local
+ * 23:59. Two conventions in one column cannot both be read by one rule, which
+ * is how "the date pushed to Google" ended up depending on where the user was.
+ *
+ * These pin the convention from both directions, because a round-trip that is
+ * wrong in the same way twice looks perfect.
+ *
+ * One limitation, stated because it is invisible otherwise: the UTC-vs-local
+ * reading can only diverge when the machine is NOT on UTC. CI runs in UTC,
+ * where local time IS UTC, so a regression from `getUTCDate` to `getDate`
+ * cannot fail there. It was verified by mutation under
+ * `TZ=America/Los_Angeles`, where three of these turn red. Run them that way
+ * if you touch the formatting.
+ */
+describe('all-day event bounds', () => {
+  it('stores a single-day event as an exclusive one-day span', () => {
+    const { startTime, endTime } = allDayBounds('09/10/2026', '09/10/2026');
+
+    expect(startTime).toBe('2026-09-10T00:00:00.000Z');
+    // The 11th, not the 10th: Google's end is exclusive, and start === end
+    // would be a zero-length event.
+    expect(endTime).toBe('2026-09-11T00:00:00.000Z');
+  });
+
+  it('stores a multi-day span with the day after the last day', () => {
+    const { startTime, endTime } = allDayBounds('09/10/2026', '09/12/2026');
+
+    expect(startTime).toBe('2026-09-10T00:00:00.000Z');
+    expect(endTime).toBe('2026-09-13T00:00:00.000Z');
+  });
+
+  it('does not shift with the machine timezone', () => {
+    // The bug in one assertion: local midnight east of UTC is the previous day
+    // in UTC, so a local-time build produced 09-09 for a 10 September event.
+    expect(allDayBounds('09/10/2026', '09/10/2026').startTime).toContain('2026-09-10');
+  });
+
+  it('rolls the exclusive end over a month boundary', () => {
+    expect(allDayBounds('09/28/2026', '09/30/2026').endTime).toBe('2026-10-01T00:00:00.000Z');
+  });
+
+  it('shows the inclusive last day, not the stored exclusive one', () => {
+    // What the modal displays for an event synced from Google. Showing the
+    // stored end unchanged puts a one-day event's last day on the 11th.
+    const shown = allDayDisplayDates(
+      new Date('2026-09-10T00:00:00Z'),
+      new Date('2026-09-11T00:00:00Z')
+    );
+
+    expect(shown).toEqual({ startDateStr: '09/10/2026', endDateStr: '09/10/2026' });
+  });
+
+  it('round-trips a multi-day event through store and display', () => {
+    // The property that matters: what the user typed is what they see again.
+    const stored = allDayBounds('09/10/2026', '09/12/2026');
+    const shown = allDayDisplayDates(new Date(stored.startTime), new Date(stored.endTime));
+
+    expect(shown).toEqual({ startDateStr: '09/10/2026', endDateStr: '09/12/2026' });
+  });
+
+  it('displays a Google-synced event in UTC rather than local time', () => {
+    // Google-origin rows are UTC midnight. Formatting them locally shows the
+    // previous day at any negative offset.
+    const shown = allDayDisplayDates(
+      new Date('2026-02-10T00:00:00Z'),
+      new Date('2026-02-11T00:00:00Z')
+    );
+
+    expect(shown.startDateStr).toBe('02/10/2026');
   });
 });

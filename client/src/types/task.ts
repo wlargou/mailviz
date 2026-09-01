@@ -8,6 +8,8 @@ export interface TaskStatusConfig {
   color: string;
   position: number;
   createdAt: string;
+  /** Tasks in this status are finished: not overdue, and no reminders. */
+  isTerminal: boolean;
 }
 
 export interface Label {

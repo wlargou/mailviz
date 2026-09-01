@@ -58,6 +58,9 @@ model TaskStatus {
   label     String   @db.VarChar(100)
   color     String   @default("#4589ff") @db.VarChar(7)
   position  Int      @default(0)
+  /// Whether this status means the task is finished. Several may be terminal —
+  /// Done, Cancelled, Shipped — which is why it is a flag and not a name.
+  isTerminal Boolean @default(false) @map("is_terminal")
   userId    String   @map("user_id")
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -620,12 +623,17 @@ model Notification {
   entityId    String?  @map("entity_id")
   isRead      Boolean  @default(false) @map("is_read")
   isDismissed Boolean  @default(false) @map("is_dismissed")
+  /// When it was dismissed. Null means "before this column existed", which is
+  /// treated as outside the cooldown — see notificationService.
+  dismissedAt DateTime? @map("dismissed_at")
   createdAt   DateTime @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, isRead, isDismissed])
   @@index([userId, createdAt])
+  /// Serves the re-raise cooldown lookup.
+  @@index([userId, entityId, type, dismissedAt])
   @@map("notifications")
 }
 

@@ -9,7 +9,7 @@ export const taskStatusService = {
     });
   },
 
-  async create(userId: string, data: { name: string; label: string; color?: string }) {
+  async create(userId: string, data: { name: string; label: string; color?: string; isTerminal?: boolean }) {
     // Auto-set position to max + 1
     const maxPos = await prisma.taskStatus.aggregate({ where: { userId }, _max: { position: true } });
     const position = (maxPos._max.position ?? -1) + 1;
@@ -21,11 +21,12 @@ export const taskStatusService = {
         label: data.label,
         color: data.color || '#4589ff',
         position,
+        isTerminal: data.isTerminal ?? false,
       },
     });
   },
 
-  async update(userId: string, id: string, data: { label?: string; color?: string }) {
+  async update(userId: string, id: string, data: { label?: string; color?: string; isTerminal?: boolean }) {
     return prisma.taskStatus.update({
       where: { id, userId },
       data,
