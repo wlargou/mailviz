@@ -15,9 +15,9 @@ export const taskStatusController = {
   async create(req: Req, res: Response, next: NextFunction) {
     try {
       // Body already validated by Zod middleware (A3)
-      const { label, color } = req.body;
+      const { label, color, isTerminal } = req.body;
       const name = label.toUpperCase().replace(/\s+/g, '_');
-      const status = await taskStatusService.create(req.user!.id, { name, label, color });
+      const status = await taskStatusService.create(req.user!.id, { name, label, color, isTerminal });
       res.status(201).json({ data: status });
     } catch (err: any) {
       if (err?.code === 'P2002') {
@@ -31,8 +31,10 @@ export const taskStatusController = {
   async update(req: Req, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const { label, color } = req.body;
-      const status = await taskStatusService.update(req.user!.id, id as string, { label, color });
+      // `isTerminal` absent means "leave it alone" — Prisma ignores undefined —
+      // which is why the update schema deliberately gives it no default.
+      const { label, color, isTerminal } = req.body;
+      const status = await taskStatusService.update(req.user!.id, id as string, { label, color, isTerminal });
       res.json({ data: status });
     } catch (err) {
       next(err);

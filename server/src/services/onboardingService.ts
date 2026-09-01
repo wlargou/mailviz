@@ -29,7 +29,8 @@ import { auditService } from './auditService.js';
 export const DEFAULT_TASK_STATUSES = [
   { name: 'TODO', label: 'To do', color: '#4589ff', position: 0 },
   { name: 'IN_PROGRESS', label: 'In progress', color: '#f1c21b', position: 1 },
-  { name: 'DONE', label: 'Done', color: '#24a148', position: 2 },
+  // The only default that means "finished" — see utils/taskStatus.ts.
+  { name: 'DONE', label: 'Done', color: '#24a148', position: 2, isTerminal: true },
 ] as const;
 
 export interface OnboardingStatus {

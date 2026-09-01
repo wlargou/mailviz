@@ -7,6 +7,7 @@ import {
   createTask,
   createCustomer,
   shareTaskWith,
+  seedTaskStatuses,
 } from '../test/factories.js';
 
 /**
@@ -878,6 +879,8 @@ describe('taskService.assignTask', () => {
 describe('taskService.getSummary', () => {
   it('splits the caller’s tasks into done, outstanding, overdue and priority', async () => {
     const { alice } = await createTwoUsers();
+    // Finished-vs-outstanding now depends on a status marked terminal.
+    await seedTaskStatuses(alice.id);
     const done = await createTask(alice.id, { title: 'Done', status: 'DONE', priority: 'LOW' });
     const overdue = await createTask(alice.id, { title: 'Overdue', status: 'TODO', priority: 'URGENT' });
     const later = await createTask(alice.id, { title: 'Later', status: 'TODO', priority: 'URGENT' });
@@ -966,6 +969,8 @@ describe('taskService.findGroupedByCompany', () => {
 
   it('counts only unfinished work as overdue', async () => {
     const { alice } = await createTwoUsers();
+    // Finished-vs-outstanding now depends on a status marked terminal.
+    await seedTaskStatuses(alice.id);
     const acme = await createCustomer(alice.id, { name: 'Acme' });
     const day = 24 * 60 * 60 * 1000;
     const late = await createTask(alice.id, { title: 'late', dueDate: new Date(Date.now() - day) });
@@ -1098,6 +1103,8 @@ describe('taskService.findAll — search reach', () => {
 describe('taskService.findGroupedByCompany — filters', () => {
   it('hides completed tasks by default so the counts mean outstanding work', async () => {
     const { alice } = await createTwoUsers();
+    // Finished-vs-outstanding now depends on a status marked terminal.
+    await seedTaskStatuses(alice.id);
     const co = await createCustomer(alice.id, { name: 'Acme' });
     for (const status of ['TODO', 'DONE', 'DONE']) {
       const t = await createTask(alice.id, { status });
@@ -1260,5 +1267,85 @@ describe('taskService.update — assignment is owner-only', () => {
     } as never);
 
     expect((await prisma.task.findUniqueOrThrow({ where: { id: task.id } })).title).toBe('edited');
+  });
+});
+
+/**
+ * "Finished" is whatever the account says it is.
+ *
+ * Task statuses are user-defined rows, but eight places asked
+ * `status = 'DONE'`. Rename that status and every completed task became
+ * permanently overdue; add a second finished state and it never counted as
+ * complete at all. These use a status that is NOT called DONE, because a test
+ * that marks a status named DONE as terminal passes just as well against the
+ * hard-coded version and proves nothing.
+ */
+describe('taskService — terminal statuses are per account', () => {
+  async function withStatuses(userId: string, statuses: Array<{ name: string; isTerminal: boolean }>) {
+    await prisma.taskStatus.createMany({
+      data: statuses.map((s, i) => ({ userId, name: s.name, label: s.name, position: i, isTerminal: s.isTerminal })),
+    });
+  }
+
+  it('treats a renamed finished status as finished', async () => {
+    const { alice } = await createTwoUsers();
+    await withStatuses(alice.id, [
+      { name: 'OPEN', isTerminal: false },
+      { name: 'SHIPPED', isTerminal: true },
+    ]);
+    const past = new Date(Date.now() - 7 * 24 * 3600 * 1000);
+    await createTask(alice.id, { status: 'SHIPPED', dueDate: past });
+    await createTask(alice.id, { status: 'OPEN', dueDate: past });
+
+    const summary = await taskService.getSummary(alice.id);
+
+    expect(summary.completed).toBe(1);
+    // The bug: under the hard-coded name, SHIPPED was not DONE, so a finished
+    // task sat in the overdue count for ever.
+    expect(summary.overdue).toBe(1);
+  });
+
+  it('supports more than one finished status', async () => {
+    // The reason this is a flag and not a reserved name.
+    const { alice } = await createTwoUsers();
+    await withStatuses(alice.id, [
+      { name: 'OPEN', isTerminal: false },
+      { name: 'DONE', isTerminal: true },
+      { name: 'CANCELLED', isTerminal: true },
+    ]);
+    await createTask(alice.id, { status: 'DONE' });
+    await createTask(alice.id, { status: 'CANCELLED' });
+    await createTask(alice.id, { status: 'OPEN' });
+
+    const summary = await taskService.getSummary(alice.id);
+
+    expect(summary.completed).toBe(2);
+  });
+
+  it('counts nothing as finished when no status is marked terminal', async () => {
+    // Deliberate, and the honest consequence of the flag: an account that
+    // marks nothing terminal has no finished work. Asserted so the behaviour
+    // is a decision on record rather than something discovered later.
+    const { alice } = await createTwoUsers();
+    await withStatuses(alice.id, [
+      { name: 'OPEN', isTerminal: false },
+      { name: 'DONE', isTerminal: false },
+    ]);
+    await createTask(alice.id, { status: 'DONE' });
+
+    const summary = await taskService.getSummary(alice.id);
+
+    expect(summary.completed).toBe(0);
+  });
+
+  it('does not read another account’s terminal statuses', async () => {
+    const { alice, bob } = await createTwoUsers();
+    await withStatuses(alice.id, [{ name: 'SHIPPED', isTerminal: true }]);
+    await withStatuses(bob.id, [{ name: 'SHIPPED', isTerminal: false }]);
+    await createTask(alice.id, { status: 'SHIPPED' });
+    await createTask(bob.id, { status: 'SHIPPED' });
+
+    expect((await taskService.getSummary(alice.id)).completed).toBe(1);
+    expect((await taskService.getSummary(bob.id)).completed).toBe(0);
   });
 });

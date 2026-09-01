@@ -9,6 +9,7 @@ import {
   createContact,
   createDealPartner,
   createGoogleAuth,
+  seedTaskStatuses,
 } from '../test/factories.js';
 
 /**
@@ -192,6 +193,8 @@ describe('dashboardService.getStats — a user sees only their own numbers', () 
 describe('dashboardService.getStats — tasks', () => {
   it('counts total, completed, overdue and in-progress for the caller only', async () => {
     const { alice, bob } = await createTwoUsers();
+    // Finished-vs-outstanding now depends on a status marked terminal.
+    await seedTaskStatuses(alice.id);
     await seedBusyUser(bob.id);
 
     await seedTask(alice.id, { title: 'Shipped', status: 'DONE', priority: 'HIGH' });
@@ -211,6 +214,8 @@ describe('dashboardService.getStats — tasks', () => {
   /** Nagging a user about work they already finished is the visible symptom. */
   it('does not call a completed task overdue, however old its due date', async () => {
     const { alice } = await createTwoUsers();
+    // Finished-vs-outstanding now depends on a status marked terminal.
+    await seedTaskStatuses(alice.id);
     await seedTask(alice.id, { title: 'Done but late', status: 'DONE', dueDate: dayOffset(-30, 9) });
 
     const { tasks } = await dashboardService.getStats(await inMachineZone(alice.id));

@@ -42,6 +42,8 @@ export interface SettingsListItem {
   badge?: string | null;
   /** A second editable text column, e.g. a partner's registration URL. */
   secondary?: string | null;
+  /** State of the optional checkbox column, e.g. "does this status mean done". */
+  toggle?: boolean;
 }
 
 export interface SettingsListEditorProps {
@@ -50,6 +52,10 @@ export interface SettingsListEditorProps {
   labelHeading: string;
   badgeHeading?: string;
   secondaryHeading?: string;
+  /** Heading for an optional checkbox column. Omit to hide the column. */
+  toggleHeading?: string;
+  /** Tooltip explaining what ticking the box means. */
+  toggleDescription?: string;
   addPlaceholder: string;
   addLabel?: string;
   emptyMessage: string;
@@ -62,6 +68,7 @@ export interface SettingsListEditorProps {
   onRename: (id: string, label: string) => void | Promise<void>;
   onRecolor?: (id: string, color: string) => void | Promise<void>;
   onEditSecondary?: (id: string, value: string) => void | Promise<void>;
+  onToggle?: (id: string, next: boolean) => void | Promise<void>;
   onDelete: (item: SettingsListItem) => void;
   /** Disables Add while a request is in flight. */
   busy?: boolean;
@@ -122,6 +129,8 @@ export function SettingsListEditor({
   labelHeading,
   badgeHeading,
   secondaryHeading,
+  toggleHeading,
+  toggleDescription,
   addPlaceholder,
   addLabel = 'Add',
   emptyMessage,
@@ -132,6 +141,7 @@ export function SettingsListEditor({
   onRename,
   onRecolor,
   onEditSecondary,
+  onToggle,
   onDelete,
   busy = false,
 }: SettingsListEditorProps) {
@@ -236,6 +246,22 @@ export function SettingsListEditor({
         </StructuredListCell>
       )}
 
+      {toggleHeading && (
+        <StructuredListCell>
+          {/*
+            A native input rather than Carbon's Checkbox: Carbon's captures the
+            click through an internal <label>, which inside this row's drag
+            handler swallows it. The codebase documents that workaround.
+          */}
+          <input
+            type="checkbox"
+            aria-label={`${toggleHeading}: ${item.label}`}
+            checked={item.toggle ?? false}
+            onChange={(e) => void onToggle?.(item.id, e.target.checked)}
+          />
+        </StructuredListCell>
+      )}
+
       <StructuredListCell className="settings-row-actions">
         <Button
           kind="ghost"
@@ -266,6 +292,9 @@ export function SettingsListEditor({
           <StructuredListCell head>{labelHeading}</StructuredListCell>
           {badgeHeading && <StructuredListCell head>{badgeHeading}</StructuredListCell>}
           {secondaryHeading && <StructuredListCell head>{secondaryHeading}</StructuredListCell>}
+              {toggleHeading && (
+                <StructuredListCell head title={toggleDescription}>{toggleHeading}</StructuredListCell>
+              )}
           <StructuredListCell head>{''}</StructuredListCell>
         </StructuredListRow>
       </StructuredListHead>

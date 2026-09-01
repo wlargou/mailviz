@@ -216,3 +216,27 @@ export async function shareThreadWith(threadId: string, sharedById: string, shar
     data: { threadId, sharedByUserId: sharedById, sharedWithUserId: sharedWithId },
   });
 }
+
+/**
+ * Give a user the default task statuses, as onboarding does.
+ *
+ * Needed by anything asserting on finished-vs-outstanding work, because
+ * "finished" is now the `isTerminal` flag on a status row rather than the
+ * literal name DONE. A user with no status rows has nothing terminal, so a
+ * task with `status: 'DONE'` counts as outstanding — correct, and surprising
+ * until you know why.
+ *
+ * Not folded into `createUser`: several tests assert exact task-status counts
+ * (onboarding's blocking steps among them) and would start failing on a user
+ * that silently arrived with three.
+ */
+export async function seedTaskStatuses(userId: string) {
+  await prisma.taskStatus.createMany({
+    data: [
+      { userId, name: 'TODO', label: 'To do', position: 0 },
+      { userId, name: 'IN_PROGRESS', label: 'In progress', position: 1 },
+      { userId, name: 'DONE', label: 'Done', position: 2, isTerminal: true },
+    ],
+  });
+  return userId;
+}

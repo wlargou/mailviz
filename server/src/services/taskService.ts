@@ -1,5 +1,6 @@
 import { Prisma } from '../lib/prismaClient.js';
 import { prisma } from '../lib/prisma.js';
+import { terminalStatusNames, notTerminal, isTerminalStatus } from '../utils/taskStatus.js';
 import { CreateTaskInput, UpdateTaskInput, ReorderInput } from '../validators/taskValidator.js';
 import { parsePagination, paginationMeta } from '../utils/pagination.js';
 import { AppError } from '../middleware/errorHandler.js';
@@ -233,6 +234,9 @@ export const taskService = {
    */
   async findGroupedByCompany(userId: string, query: TaskGroupQueryParams = {}) {
     const sharedTaskIds = await getSharedTaskIds(userId);
+    // Read once: both the "hide completed" filter and the per-group overdue
+    // count need it, and it is the same answer for the whole request.
+    const terminal = await terminalStatusNames(userId);
 
     // Same shape as findAll: ownership under AND so no filter branch can
     // overwrite it, and every OR added below goes inside that array.
@@ -271,7 +275,8 @@ export const taskService = {
      * and getting nothing would be absurd.
      */
     if (!query.status && !query.includeCompleted) {
-      andFilters.push({ status: { not: 'DONE' } });
+      // Whatever THIS account calls finished, not the literal name DONE.
+      andFilters.push(notTerminal(terminal));
     }
 
     const tasks = await prisma.task.findMany({
@@ -309,7 +314,7 @@ export const taskService = {
       group.tasks.push(task);
       // "Overdue" excludes finished work — a completed task that happens to sit
       // past its due date is not something anyone needs chasing.
-      if (task.dueDate && task.dueDate < now && task.status !== 'DONE') {
+      if (task.dueDate && task.dueDate < now && !isTerminalStatus(task.status, terminal)) {
         group.overdueCount += 1;
       }
     }
@@ -346,13 +351,14 @@ export const taskService = {
       ],
     };
 
+    const terminalNames = await terminalStatusNames(userId);
     const [total, completed, overdue, byPriority] = await Promise.all([
       prisma.task.count({ where: summaryWhere }),
-      prisma.task.count({ where: { ...summaryWhere, status: 'DONE' } }),
+      prisma.task.count({ where: { ...summaryWhere, status: { in: terminalNames } } }),
       prisma.task.count({
         where: {
           ...summaryWhere,
-          status: { not: 'DONE' },
+          ...notTerminal(terminalNames),
           dueDate: { lt: now },
         },
       }),

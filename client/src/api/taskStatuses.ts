@@ -6,11 +6,11 @@ export const taskStatusesApi = {
     return api.get<{ data: TaskStatusConfig[] }>('/task-statuses');
   },
 
-  create(data: { label: string; color?: string }) {
+  create(data: { label: string; color?: string; isTerminal?: boolean }) {
     return api.post<{ data: TaskStatusConfig }>('/task-statuses', data);
   },
 
-  update(id: string, data: { label?: string; color?: string }) {
+  update(id: string, data: { label?: string; color?: string; isTerminal?: boolean }) {
     return api.patch<{ data: TaskStatusConfig }>(`/task-statuses/${id}`, data);
   },
 

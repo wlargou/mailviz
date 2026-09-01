@@ -3,6 +3,7 @@ import type { Req } from "../types/http.js";
 import { dashboardService } from '../services/dashboardService.js';
 import { prisma } from '../lib/prisma.js';
 import { resolveTimeZone, startOfDayInZone, addDaysInZone } from '../utils/timezone.js';
+import { terminalStatusNames, notTerminal } from '../utils/taskStatus.js';
 
 export const dashboardController = {
   async getStats(req: Req, res: Response, next: NextFunction) {
@@ -30,7 +31,9 @@ export const dashboardController = {
 
       const [unreadEmails, overdueTasks, expiringDeals, eventsToday] = await Promise.all([
         prisma.email.count({ where: { userId, isRead: false } }),
-        prisma.task.count({ where: { userId, status: { not: 'DONE' }, dueDate: { lt: now } } }),
+        prisma.task.count({
+          where: { userId, ...notTerminal(await terminalStatusNames(userId)), dueDate: { lt: now } },
+        }),
         prisma.deal.count({
           where: {
             userId,

@@ -877,9 +877,13 @@ export function SettingsPage() {
               description="The columns on your Kanban board. Drag to reorder."
             >
               <SettingsListEditor
-                items={taskStatuses.map((s) => ({ id: s.id, label: s.label, color: s.color, badge: s.name }))}
+                items={taskStatuses.map((s) => ({
+                  id: s.id, label: s.label, color: s.color, badge: s.name, toggle: s.isTerminal,
+                }))}
                 labelHeading="Label"
                 badgeHeading="Key"
+                toggleHeading="Finished"
+                toggleDescription="Tasks in a finished status are not counted as overdue and stop raising reminders."
                 addPlaceholder="e.g. Blocked, In review"
                 addLabel="Add status"
                 emptyMessage="No statuses yet — your board has no columns."
@@ -892,6 +896,17 @@ export function SettingsPage() {
                   setTaskStatuses((prev) => prev.map((t) => (t.id === id ? { ...t, color } : t)));
                   try {
                     await taskStatusesApi.update(id, { color });
+                  } catch {
+                    fetchTaskStatuses();
+                  }
+                }}
+                onToggle={async (id, isTerminal) => {
+                  // Optimistic, like the recolour above: the checkbox should
+                  // move under the cursor, and a refetch corrects it if the
+                  // request fails.
+                  setTaskStatuses((prev) => prev.map((t) => (t.id === id ? { ...t, isTerminal } : t)));
+                  try {
+                    await taskStatusesApi.update(id, { isTerminal });
                   } catch {
                     fetchTaskStatuses();
                   }

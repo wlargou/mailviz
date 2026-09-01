@@ -1,4 +1,5 @@
 import * as cron from 'node-cron';
+import { terminalStatusNames, notTerminal } from '../utils/taskStatus.js';
 import { prisma } from '../lib/prisma.js';
 import { notificationService } from '../services/notificationService.js';
 
@@ -21,12 +22,17 @@ async function runNotificationCheck() {
 
     for (const { userId } of authRecords) {
       try {
+        // Whatever this account calls finished. Hard-coding 'DONE' meant a
+        // renamed status turned every completed task into a permanent overdue
+        // notification, re-raised on every tick.
+        const terminal = await terminalStatusNames(userId);
+
         // a. Overdue tasks
         const overdueTasks = await prisma.task.findMany({
           where: {
             userId,
             dueDate: { lt: now },
-            status: { not: 'DONE' },
+            ...notTerminal(terminal),
           },
           select: { id: true, title: true },
         });
@@ -44,7 +50,7 @@ async function runNotificationCheck() {
           where: {
             userId,
             dueDate: { gte: now, lte: in24h },
-            status: { not: 'DONE' },
+            ...notTerminal(terminal),
           },
           select: { id: true, title: true },
         });
