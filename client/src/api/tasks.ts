@@ -2,9 +2,37 @@ import { api } from './client';
 import type { Task, TaskSummary, CreateTaskInput, UpdateTaskInput, ReorderItem } from '../types/task';
 import type { ApiResponse } from '../types/api';
 
+/** One company's slice of the by-company view. `customer` is null for the trailing unassigned bucket. */
+export interface TaskCompanyGroup {
+  customer: { id: string; name: string; domain: string | null; logoUrl: string | null } | null;
+  taskCount: number;
+  overdueCount: number;
+  tasks: Task[];
+}
+
 export const tasksApi = {
   getAll(params?: Record<string, string>) {
     return api.get<ApiResponse<Task[]>>('/tasks', { params });
+  },
+
+  getGroupedByCompany(params?: {
+    search?: string;
+    status?: string;
+    priority?: string;
+    labelId?: string;
+    includeCompleted?: boolean;
+  }) {
+    return api.get<{
+      data: TaskCompanyGroup[];
+      meta: { totalTasks: number; companies: number; truncated: boolean };
+    }>('/tasks/by-company', {
+      params: {
+        ...params,
+        // Axios drops undefined, and the server only treats the literal 'true'
+        // as opting in — so send nothing rather than 'false'.
+        includeCompleted: params?.includeCompleted ? 'true' : undefined,
+      },
+    });
   },
 
   getById(id: string) {

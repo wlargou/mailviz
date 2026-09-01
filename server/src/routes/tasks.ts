@@ -6,6 +6,8 @@ import { createTaskSchema, updateTaskSchema, reorderSchema } from '../validators
 const router = Router();
 
 router.get('/summary', taskController.getSummary);
+// Before '/:id', or Express matches 'by-company' as an id.
+router.get('/by-company', taskController.findGroupedByCompany);
 router.get('/', taskController.findAll);
 router.get('/:id', taskController.findById);
 router.post('/', validate(createTaskSchema), taskController.create);

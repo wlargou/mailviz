@@ -21,6 +21,25 @@ export const taskController = {
     }
   },
 
+  async findGroupedByCompany(req: Req, res: Response, next: NextFunction) {
+    try {
+      const { search, status, priority, labelId, includeCompleted } = req.query as Record<string, string>;
+      res.json(
+        await taskService.findGroupedByCompany(req.user!.id, {
+          search,
+          status,
+          priority,
+          labelId,
+          // Query strings carry no booleans; anything other than the literal
+          // 'true' means the default (hide completed).
+          includeCompleted: includeCompleted === 'true',
+        })
+      );
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async getSummary(req: Req, res: Response, next: NextFunction) {
     try {
       const summary = await taskService.getSummary(req.user!.id);

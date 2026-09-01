@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Tabs, TabList, Tab, TabPanels, TabPanel } from '@carbon/react';
 import { useSearchParams } from 'react-router-dom';
 import { TaskListView } from './TaskListView';
+import { TaskByCompanyView } from './TaskByCompanyView';
 import { TaskKanbanView } from './TaskKanbanView';
 import { TaskCreateModal } from './TaskCreateModal';
 import { TaskDetailModal } from './TaskDetailModal';
@@ -84,6 +85,7 @@ export function TasksPage() {
             <TabList aria-label="Task views">
               <Tab>List View</Tab>
               <Tab>Kanban Board</Tab>
+              <Tab>By Company</Tab>
             </TabList>
             <TabPanels>
               <TabPanel>
@@ -98,6 +100,9 @@ export function TasksPage() {
               </TabPanel>
               <TabPanel>
                 <TaskKanbanView onCardClick={setEditTask} />
+              </TabPanel>
+              <TabPanel>
+                <TaskByCompanyView onEdit={setEditTask} />
               </TabPanel>
             </TabPanels>
           </Tabs>
