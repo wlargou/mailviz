@@ -2,7 +2,7 @@ import { Response, NextFunction } from 'express';
 import type { Req } from "../types/http.js";
 import { emailService } from '../services/emailService.js';
 import { draftService } from '../services/draftService.js';
-import { isSyncInProgressFor } from '../jobs/emailSyncScheduler.js';
+import { isSyncInProgressFor, runManualSync } from '../jobs/emailSyncScheduler.js';
 
 export const emailController = {
   async findAllThreads(req: Req, res: Response, next: NextFunction) {
@@ -51,18 +51,41 @@ export const emailController = {
     }
   },
 
+  /**
+   * "Sync now".
+   *
+   * Runs under the scheduler's per-account guard rather than beside it. Calling
+   * the service directly — as this did — left the manual sync invisible to that
+   * guard in both directions, so it could overlap a scheduled sync for the same
+   * account and race it on the Gmail history cursor.
+   *
+   * An overlap answers 409 rather than queueing: a sync is already producing
+   * exactly the result this request wanted, and the client is already watching
+   * `sync:status` and `sync:progress` over the WebSocket.
+   */
   async sync(req: Req, res: Response, next: NextFunction) {
     try {
-      const result = await emailService.syncFromGmail(req.user!.id);
-      // Drafts ride along with a manual sync, but must not be able to fail it:
-      // the mail sync has already committed by this point.
-      let draftsSynced = 0;
-      try {
-        draftsSynced = (await draftService.syncDrafts(req.user!.id)).synced;
-      } catch (err: unknown) {
-        console.warn('[DraftSync] Draft sync failed:', err instanceof Error ? err.message : err);
+      const outcome = await runManualSync(req.user!.id, async () => {
+        const result = await emailService.syncFromGmail(req.user!.id);
+        // Drafts ride along with a manual sync, but must not be able to fail it:
+        // the mail sync has already committed by this point.
+        let draftsSynced = 0;
+        try {
+          draftsSynced = (await draftService.syncDrafts(req.user!.id)).synced;
+        } catch (err: unknown) {
+          console.warn('[DraftSync] Draft sync failed:', err instanceof Error ? err.message : err);
+        }
+        return { ...result, draftsSynced };
+      });
+
+      if (!outcome.ran) {
+        res.status(409).json({
+          error: { code: 'SYNC_IN_PROGRESS', message: 'A sync is already running for this account' },
+        });
+        return;
       }
-      res.json({ data: { ...result, draftsSynced } });
+
+      res.json({ data: outcome.result });
     } catch (err) {
       next(err);
     }

@@ -167,13 +167,27 @@ export function ThreadDetail({ threadId, onEmailAction }: ThreadDetailProps) {
     }
   };
 
-  const handleMarkUnread = async (msg: EmailMessage) => {
+  /**
+   * Toggle, in whichever direction the button is offering.
+   *
+   * The button's label and icon already switched on `msg.isRead` — "Mark as
+   * read" on an unread message, "Mark as unread" on a read one — but the click
+   * always called `markAsUnread`. So the read direction was inert: a message
+   * showing "Mark as read" stayed unread and stayed highlighted, and clicking
+   * again changed nothing, because it was already in the state being requested.
+   * The affordance was the only half that worked.
+   */
+  const handleToggleRead = async (msg: EmailMessage) => {
+    const nextRead = !msg.isRead;
     try {
-      await emailsApi.markAsUnread(msg.id);
-      setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, isRead: false } : m)));
+      await (nextRead ? emailsApi.markAsRead(msg.id) : emailsApi.markAsUnread(msg.id));
+      setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, isRead: nextRead } : m)));
       onEmailAction?.();
     } catch {
-      addNotification({ kind: 'error', title: 'Failed to mark as unread' });
+      addNotification({
+        kind: 'error',
+        title: nextRead ? 'Failed to mark as read' : 'Failed to mark as unread',
+      });
     }
   };
 
@@ -292,10 +306,10 @@ export function ThreadDetail({ threadId, onEmailAction }: ThreadDetailProps) {
                         if (res.data.data) {
                           navigate(`/contacts/${res.data.data.id}`);
                         } else if (msg.customerId) {
-                          navigate(`/companies/${msg.customerId}`);
+                          navigate(`/customers/${msg.customerId}`);
                         }
                       } catch {
-                        if (msg.customerId) navigate(`/companies/${msg.customerId}`);
+                        if (msg.customerId) navigate(`/customers/${msg.customerId}`);
                       }
                     }}
                   >
@@ -343,7 +357,7 @@ export function ThreadDetail({ threadId, onEmailAction }: ThreadDetailProps) {
                     hasIconOnly
                     iconDescription={msg.isRead ? 'Mark as unread' : 'Mark as read'}
                     renderIcon={msg.isRead ? EmailNew : EmailIcon}
-                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleMarkUnread(msg); }}
+                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleToggleRead(msg); }}
                   />
                   <Button
                     kind="ghost"

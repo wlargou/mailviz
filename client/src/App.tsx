@@ -14,6 +14,7 @@ import { CalendarPage } from './components/calendar/CalendarPage';
 import { MailPage } from './components/mail/MailPage';
 import { ReviewPage } from './components/mail/review/ReviewPage';
 import { SettingsPage } from './components/settings/SettingsPage';
+import { NotFoundPage } from './components/shared/NotFoundPage';
 import { DealsPage } from './components/deals/DealsPage';
 import { ActivityLogPage } from './components/audit/ActivityLogPage';
 
@@ -82,6 +83,19 @@ export function App() {
             <Route path="/mail/review" element={<ReviewPage />} />
             <Route path="/activity" element={<ActivityLogPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            {/*
+              Catch-all, INSIDE the shell so a wrong URL keeps the header and
+              side nav and the user can navigate away.
+
+              Without it an unmatched path rendered nothing at all: the sender
+              avatar in the thread reader linked to `/companies/:id` — a route
+              that has never existed, the real one being `/customers/:id` — and
+              clicking it replaced the entire page with a blank white screen,
+              with no way back except the browser's Back button. Fixing the two
+              links removes today's dead end; this stops the next typo becoming
+              one.
+            */}
+            <Route path="*" element={<NotFoundPage />} />
           </Route>
         </Route>
       </Routes>

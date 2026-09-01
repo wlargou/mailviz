@@ -391,6 +391,123 @@ describe('draftService.save', () => {
   });
 });
 
+/**
+ * RFC 5322 threading headers on a reply draft.
+ *
+ * These are separate from `threadId` and it matters which one you check.
+ * `threadId` is Gmail's own grouping and only Gmail reads it — assert on that
+ * alone and a reply looks correctly threaded in this app while arriving at an
+ * Outlook or Apple Mail recipient as a brand-new conversation. In-Reply-To and
+ * References are the half that travels, so they are what these assert, by
+ * decoding the MIME actually handed to Gmail rather than trusting the
+ * resolveThreading return value.
+ */
+describe('draftService — reply threading headers', () => {
+  /** The MIME message from the Nth drafts.create/update/send call. */
+  function rawFrom(call: unknown): string {
+    const body = call as { requestBody?: { raw?: string; message?: { raw?: string } } };
+    const raw = body?.requestBody?.message?.raw ?? body?.requestBody?.raw;
+    return Buffer.from(raw ?? '', 'base64url').toString('utf-8');
+  }
+
+  async function replyTarget(userId: string) {
+    return createEmail(userId, {
+      threadId: 'thread-abc',
+      messageId: '<original@mail.example.com>',
+      references: '<older@mail.example.com>',
+    });
+  }
+
+  it('sets In-Reply-To and References on the first save', async () => {
+    const user = await createUser();
+    await createGoogleAuth(user.id, { email: 'me@example.com' });
+    const original = await replyTarget(user.id);
+
+    await draftService.save(user.id, composeInput({ replyToEmailId: original.id }));
+
+    const mime = rawFrom(gmail.draftsCreate.mock.calls[0]?.[0]);
+    expect(mime).toContain('In-Reply-To: <original@mail.example.com>');
+    expect(mime).toContain('References: <older@mail.example.com> <original@mail.example.com>');
+  });
+
+  /**
+   * The regression. Autosave calls save() again with the draft id, and the old
+   * code returned early on `existing.threadId` with both headers undefined — so
+   * every keystroke after the first save stripped the threading back out.
+   */
+  it('keeps the headers on a second save, once the draft has a thread', async () => {
+    const user = await createUser();
+    await createGoogleAuth(user.id, { email: 'me@example.com' });
+    const original = await replyTarget(user.id);
+
+    const first = await draftService.save(user.id, composeInput({ replyToEmailId: original.id }));
+    await draftService.save(
+      user.id,
+      composeInput({ replyToEmailId: original.id, subject: 'Still replying' }),
+      first.id
+    );
+
+    const mime = rawFrom(gmail.draftsUpdate.mock.calls[0]?.[0]);
+    expect(mime).toContain('In-Reply-To: <original@mail.example.com>');
+    expect(mime).toContain('References:');
+  });
+
+  /**
+   * Reopening a draft sends no replyToEmailId — the compose modal only holds it
+   * while it is open — so the stored column is the only thing that can rethread
+   * it. Without the column a reply left overnight is sent unthreaded.
+   */
+  it('recovers the headers from the stored id when the client sends none', async () => {
+    const user = await createUser();
+    await createGoogleAuth(user.id, { email: 'me@example.com' });
+    const original = await replyTarget(user.id);
+
+    const first = await draftService.save(user.id, composeInput({ replyToEmailId: original.id }));
+    // No replyToEmailId, exactly as a draft reopened from the Drafts folder.
+    await draftService.save(user.id, composeInput({ subject: 'Reopened' }), first.id);
+
+    const stored = await prisma.emailDraft.findUniqueOrThrow({ where: { id: first.id } });
+    expect(stored.replyToEmailId).toBe(original.id);
+    expect(rawFrom(gmail.draftsUpdate.mock.calls[0]?.[0])).toContain(
+      'In-Reply-To: <original@mail.example.com>'
+    );
+  });
+
+  it('carries the headers into the sent message', async () => {
+    const user = await createUser();
+    await createGoogleAuth(user.id, { email: 'me@example.com' });
+    const original = await replyTarget(user.id);
+
+    const first = await draftService.save(user.id, composeInput({ replyToEmailId: original.id }));
+    await draftService.send(user.id, first.id, composeInput({ replyToEmailId: original.id }));
+
+    // drafts.send pushes the newest content through drafts.update first, so the
+    // last update is the message that actually goes out.
+    const calls = gmail.draftsUpdate.mock.calls;
+    expect(rawFrom(calls[calls.length - 1]?.[0])).toContain(
+      'In-Reply-To: <original@mail.example.com>'
+    );
+  });
+
+  it('does not thread onto another tenant\'s message', async () => {
+    // resolveThreading looks the original up by { id, userId }. If that filter
+    // were dropped, Bob's draft would quote Alice's Message-ID back to her
+    // recipients — a leak with no route of its own to guard.
+    const { alice, bob } = await createTwoUsers();
+    await createGoogleAuth(bob.id, { email: 'bob@example.com' });
+    const hers = await replyTarget(alice.id);
+
+    await draftService.save(bob.id, composeInput({ replyToEmailId: hers.id }));
+
+    const mime = rawFrom(gmail.draftsCreate.mock.calls[0]?.[0]);
+    expect(mime).not.toContain('original@mail.example.com');
+    const request = gmail.draftsCreate.mock.calls[0]?.[0] as {
+      requestBody?: { message?: { threadId?: string } };
+    };
+    expect(request?.requestBody?.message?.threadId).toBeUndefined();
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 4. Send
 // ─────────────────────────────────────────────────────────────────────────────

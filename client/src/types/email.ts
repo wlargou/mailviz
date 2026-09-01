@@ -119,6 +119,8 @@ export interface DraftDetail {
   id: string;
   gmailDraftId: string;
   threadId: string | null;
+  /** Set when the draft is a reply — sent back on save so threading survives. */
+  replyToEmailId: string | null;
   to: string[];
   cc: string[];
   bcc: string[];

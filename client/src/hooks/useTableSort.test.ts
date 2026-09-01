@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { StrictMode } from 'react';
 import { act, renderHook } from '@testing-library/react';
 import { useTableSort } from './useTableSort';
 
@@ -58,5 +59,56 @@ describe('useTableSort', () => {
     act(() => result.current.headerProps('name').onClick!());
 
     expect(result.current.headerProps('name').sortDirection).toBe('DESC');
+  });
+
+  /**
+   * The same behaviour, under StrictMode.
+   *
+   * Every test above renders without it, which is why they all passed while
+   * clicking a header twice in `npm run dev` did nothing. StrictMode invokes
+   * state updaters twice to surface impure ones — and the hook used to call
+   * `setSortOrder` from inside the `setSortBy` updater, so the direction
+   * flipped twice and landed back where it started. The app behaved correctly
+   * in production and visibly wrongly in development, which is the worst way
+   * round: nobody trusts a bug they cannot reproduce after deploying.
+   */
+  describe('under StrictMode', () => {
+    const renderStrict = (by: string, order: 'asc' | 'desc') =>
+      renderHook(() => useTableSort(by, order), { wrapper: StrictMode });
+
+    it('still flips direction on a repeat click — REGRESSION', () => {
+      const { result } = renderStrict('name', 'asc');
+
+      act(() => result.current.headerProps('name').onClick!());
+
+      expect(result.current.params).toEqual({ sortBy: 'name', sortOrder: 'desc' });
+    });
+
+    it('flips back on a third click rather than sticking', () => {
+      const { result } = renderStrict('name', 'asc');
+
+      act(() => result.current.headerProps('name').onClick!());
+      act(() => result.current.headerProps('name').onClick!());
+
+      expect(result.current.params).toEqual({ sortBy: 'name', sortOrder: 'asc' });
+    });
+
+    it('still starts a newly chosen column ascending', () => {
+      const { result } = renderStrict('name', 'desc');
+
+      act(() => result.current.headerProps('createdAt').onClick!());
+
+      expect(result.current.params).toEqual({ sortBy: 'createdAt', sortOrder: 'asc' });
+    });
+
+    it('reports the direction to the header affordance too', () => {
+      // aria-sort and the arrow read from here; a stuck value is what the user
+      // actually sees.
+      const { result } = renderStrict('name', 'asc');
+
+      act(() => result.current.headerProps('name').onClick!());
+
+      expect(result.current.headerProps('name').sortDirection).toBe('DESC');
+    });
   });
 });

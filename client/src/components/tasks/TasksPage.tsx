@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Tabs, TabList, Tab, TabPanels, TabPanel } from '@carbon/react';
 import { useSearchParams } from 'react-router-dom';
 import { TaskListView } from './TaskListView';
+import { TaskByCompanyView } from './TaskByCompanyView';
 import { TaskKanbanView } from './TaskKanbanView';
 import { TaskCreateModal } from './TaskCreateModal';
 import { TaskDetailModal } from './TaskDetailModal';
@@ -48,11 +49,23 @@ export function TasksPage() {
     fetchLabels();
   }, [fetchTasks, fetchLabels]);
 
-  // Re-fetch when filters change
-  const { filters, currentPage } = useTaskStore();
+  /**
+   * Re-fetch when anything the request depends on changes.
+   *
+   * `pageSize` belongs in this list and was missing. `setPageSize` also resets
+   * `currentPage` to 1, so changing "Items per page" while already on page 1
+   * altered no dependency and fired no request: the pagination label updated to
+   * "1–40 of 40" while the table went on rendering the 20 rows it already had.
+   *
+   * Subscribed field by field rather than destructuring the store, which
+   * subscribes to every write — including the ones fetchTasks itself makes.
+   */
+  const filters = useTaskStore((s) => s.filters);
+  const currentPage = useTaskStore((s) => s.currentPage);
+  const pageSize = useTaskStore((s) => s.pageSize);
   useEffect(() => {
     fetchTasks();
-  }, [filters, currentPage, fetchTasks]);
+  }, [filters, currentPage, pageSize, fetchTasks]);
 
   const handleDelete = async () => {
     if (!deleteTask) return;
@@ -84,6 +97,7 @@ export function TasksPage() {
             <TabList aria-label="Task views">
               <Tab>List View</Tab>
               <Tab>Kanban Board</Tab>
+              <Tab>By Company</Tab>
             </TabList>
             <TabPanels>
               <TabPanel>
@@ -98,6 +112,9 @@ export function TasksPage() {
               </TabPanel>
               <TabPanel>
                 <TaskKanbanView onCardClick={setEditTask} />
+              </TabPanel>
+              <TabPanel>
+                <TaskByCompanyView onEdit={setEditTask} />
               </TabPanel>
             </TabPanels>
           </Tabs>

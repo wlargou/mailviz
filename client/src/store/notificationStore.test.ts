@@ -228,15 +228,26 @@ describe('notificationStore', () => {
     expect(useNotificationStore.getState().unreadCount).toBe(1);
   });
 
-  it('dismissAll empties the panel and the badge', async () => {
+  it('dismissAll removes read rows and leaves unread ones — REGRESSION', async () => {
+    // The server dismisses only READ notifications, deliberately: dismissing an
+    // unread one throws away something the user has never seen. The client used
+    // to empty the list and zero the badge regardless, so unread rows survived
+    // server-side while vanishing from the panel — and the 60-second poll
+    // brought the badge back over an empty list, with nothing to click.
     useNotificationStore.setState({
-      notifications: [makeNotification({ id: 'a' }), makeNotification({ id: 'b' })],
-      unreadCount: 2,
+      notifications: [
+        makeNotification({ id: 'read-one', isRead: true }),
+        makeNotification({ id: 'still-unread', isRead: false }),
+      ],
+      unreadCount: 1,
     });
 
     await useNotificationStore.getState().dismissAll();
 
-    expect(useNotificationStore.getState()).toMatchObject({ notifications: [], unreadCount: 0 });
+    const state = useNotificationStore.getState();
+    expect(state.notifications.map((n) => n.id)).toEqual(['still-unread']);
+    // The badge counts unread, and no unread row was dismissed.
+    expect(state.unreadCount).toBe(1);
   });
 
   it('puts a realtime notification at the top and counts it', () => {

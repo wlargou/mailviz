@@ -33,7 +33,10 @@ interface ForwardedAttachment {
 }
 
 const MAX_TOTAL_SIZE = 25 * 1024 * 1024;
-const BLOCKED_EXTENSIONS = /\.(exe|bat|cmd|com|msi|scr|pif|vbs|js|wsf|cpl)$/i;
+// Matched on ANY dotted component, mirroring the server's rule. Anchoring to
+// the end let `report.exe.txt` through here and be refused on send — the client
+// should fail early with the same verdict, not disagree with the server.
+const BLOCKED_EXTENSIONS = /\.(exe|bat|cmd|com|msi|scr|pif|vbs|js|wsf|cpl)(\.|$)/i;
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -97,6 +100,16 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, dr
   const [showSchedulePicker, setShowSchedulePicker] = useState(false);
   const [scheduledAt, setScheduledAt] = useState<Date | null>(null);
   const [scheduleTime, setScheduleTime] = useState('09:00');
+  /**
+   * The date the picker is showing, which is NOT yet a schedule.
+   *
+   * The DatePicker used to write straight into `scheduledAt`, so choosing a
+   * date armed a scheduled send at midnight without Confirm ever being pressed:
+   * a chip appeared reading "Sep 3, 12:00 AM" and Send then scheduled instead
+   * of sending. Only `confirmSchedule` promotes this, and only after applying
+   * the time.
+   */
+  const [pendingScheduleDate, setPendingScheduleDate] = useState<Date | null>(null);
   /**
    * The draft this window is bound to, if any. Set when opened from the Drafts
    * folder, and set again by the first "Save draft" of a fresh compose — which
@@ -195,15 +208,31 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, dr
         return;
       }
 
+      /**
+       * Set the body on EVERY open, even when there is no signature.
+       *
+       * This used to call `setContent` only if a signature came back, so an
+       * account with no signature configured never cleared the editor: close
+       * compose without sending, reopen, and the previous message's text was
+       * still there — now attached to a different recipient and subject, which
+       * To/Cc/Subject had correctly reset. Worse from the draft path, where the
+       * body of a draft you had merely looked at followed you into a new
+       * message.
+       *
+       * The signature request is allowed to fail; an empty body is the right
+       * fallback, not last time's.
+       */
+      let body = '';
       try {
         const { data } = await authApi.getSignature();
-        if (data.signature && editorInstance && !editorInstance.isDestroyed) {
-          const sigHtml = `<p></p><p>--</p>${data.signature}`;
-          editorInstance.commands.setContent(sigHtml);
-          // Move cursor to the beginning (before the signature)
-          editorInstance.commands.focus('start');
-        }
-      } catch { /* ignore - no signature set */ }
+        if (data.signature) body = `<p></p><p>--</p>${data.signature}`;
+      } catch { /* no signature set, or the request failed — start empty */ }
+
+      if (!editorInstance.isDestroyed) {
+        editorInstance.commands.setContent(body);
+        // Cursor before the signature, so typing starts where the message goes.
+        editorInstance.commands.focus('start');
+      }
     }, 100);
 
     return () => clearTimeout(timer);
@@ -310,7 +339,16 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, dr
 
   const handleFilesSelected = useCallback((files: FileList | File[]) => {
     const fileArray = Array.from(files);
-    const currentSize = attachments.reduce((sum, a) => sum + a.size, 0)
+    /**
+     * Accumulated as files are accepted, not measured once up front.
+     *
+     * This was computed before the loop and never updated, so every file in a
+     * multi-file selection was checked against the ORIGINAL total: five 10MB
+     * files each passed `0 + 10MB < 25MB` and all five were attached. The
+     * header then openly displayed "50.0 MB" while the send failed server-side,
+     * after the whole payload had been read and uploaded.
+     */
+    let runningSize = attachments.reduce((sum, a) => sum + a.size, 0)
       + forwardedAttachments.reduce((sum, a) => sum + a.size, 0);
 
     for (const file of fileArray) {
@@ -322,10 +360,11 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, dr
         addNotification({ kind: 'error', title: `"${file.name}" exceeds 25MB limit` });
         continue;
       }
-      if (currentSize + file.size > MAX_TOTAL_SIZE) {
+      if (runningSize + file.size > MAX_TOTAL_SIZE) {
         addNotification({ kind: 'error', title: 'Total attachments exceed 25MB' });
         break;
       }
+      runningSize += file.size;
 
       const id = crypto.randomUUID();
       setAttachments((prev) => [
@@ -427,7 +466,14 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, dr
     attachments: attachments
       .filter((a) => a.status === 'ready')
       .map((a) => ({ filename: a.filename, content: a.content, contentType: a.contentType, size: a.size })),
-    ...(mode === 'reply' || mode === 'replyAll' ? { replyToEmailId: replyToEmail?.id } : {}),
+    // Reopened drafts fall back to the id the server stored: in 'draft' mode
+    // there is no `replyToEmail` in memory, and without this every reply draft
+    // reopened from the Drafts folder would be saved as a standalone message.
+    ...(mode === 'draft'
+      ? (draft?.replyToEmailId ? { replyToEmailId: draft.replyToEmailId } : {})
+      : mode === 'reply' || mode === 'replyAll'
+        ? { replyToEmailId: replyToEmail?.id }
+        : {}),
   });
 
   const handleSaveDraft = async () => {
@@ -514,8 +560,18 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, dr
           attachments: attachmentPayload.length > 0 ? attachmentPayload : undefined,
         });
       } else if ((mode === 'reply' || mode === 'replyAll') && replyToEmail) {
+        if (to.length === 0) {
+          addNotification({ kind: 'warning', title: 'Add at least one recipient' });
+          setSending(false);
+          return;
+        }
         await emailsApi.replyToEmail(replyToEmail.id, {
           htmlBody,
+          // The To field is editable on a reply, so send what it holds. This
+          // used to be omitted entirely and the server fell back to the original
+          // sender — so clearing the chip and typing a different address sent
+          // the message to the person the user had just removed.
+          to,
           replyAll: mode === 'replyAll',
           cc: cc.length > 0 ? cc : undefined,
           bcc: bcc.length > 0 ? bcc : undefined,
@@ -604,15 +660,38 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, dr
   };
 
   const confirmSchedule = () => {
-    if (!scheduledAt) return;
-    const [hours, minutes] = scheduleTime.split(':').map(Number);
-    const dt = new Date(scheduledAt);
+    if (!pendingScheduleDate) return;
+
+    /**
+     * Parse the time strictly.
+     *
+     * `scheduleTime.split(':').map(Number)` on an empty field yields
+     * hours = 0 and minutes = undefined, and `setHours(0, undefined)` produces
+     * an Invalid Date. That passed the future check — every comparison with NaN
+     * is false — and was stored, and the chip below then called
+     * `format(invalidDate)`, which throws. The entire application unmounted to
+     * a white screen, losing the message being written.
+     */
+    const parsed = /^(\d{1,2}):(\d{2})$/.exec(scheduleTime.trim());
+    const hours = parsed ? Number(parsed[1]) : NaN;
+    const minutes = parsed ? Number(parsed[2]) : NaN;
+    if (!parsed || hours > 23 || minutes > 59) {
+      addNotification({ kind: 'warning', title: 'Enter a time as HH:MM' });
+      return;
+    }
+
+    const dt = new Date(pendingScheduleDate);
     dt.setHours(hours, minutes, 0, 0);
+    if (Number.isNaN(dt.getTime())) {
+      addNotification({ kind: 'warning', title: 'That is not a valid date and time' });
+      return;
+    }
     if (dt <= new Date()) {
       addNotification({ kind: 'warning', title: 'Schedule time must be in the future' });
       return;
     }
     setScheduledAt(dt);
+    setPendingScheduleDate(null);
     setShowSchedulePicker(false);
   };
 
@@ -825,12 +904,15 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, dr
         {/* Schedule picker */}
         {showSchedulePicker && (
           <div className="compose-schedule-picker">
-            <DatePicker datePickerType="single" onChange={(dates: Date[]) => setScheduledAt(dates[0] || null)}>
+            <DatePicker
+              datePickerType="single"
+              onChange={(dates: Date[]) => setPendingScheduleDate(dates[0] || null)}
+            >
               <DatePickerInput id="schedule-date" labelText="Date" placeholder="mm/dd/yyyy" size="sm" />
             </DatePicker>
             <TimePicker id="schedule-time" labelText="Time" value={scheduleTime} size="sm"
               onChange={(e: any) => setScheduleTime(e.target.value)} />
-            <Button kind="primary" size="sm" onClick={confirmSchedule} disabled={!scheduledAt}>
+            <Button kind="primary" size="sm" onClick={confirmSchedule} disabled={!pendingScheduleDate}>
               Confirm
             </Button>
           </div>

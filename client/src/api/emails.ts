@@ -92,7 +92,7 @@ export const emailsApi = {
     return api.post<ApiResponse<{ messageId: string; threadId: string }>>('/emails/send', data);
   },
 
-  replyToEmail(id: string, data: { htmlBody: string; replyAll?: boolean; cc?: string[]; bcc?: string[]; attachments?: Array<{ filename: string; content: string; contentType: string; size: number }> }) {
+  replyToEmail(id: string, data: { htmlBody: string; to?: string[]; replyAll?: boolean; cc?: string[]; bcc?: string[]; attachments?: Array<{ filename: string; content: string; contentType: string; size: number }> }) {
     return api.post<ApiResponse<{ messageId: string; threadId: string }>>(`/emails/${id}/reply`, data);
   },
 

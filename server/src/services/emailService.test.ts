@@ -531,3 +531,76 @@ describe('emailService — two accounts under one thread id', () => {
     expect((after as unknown as Record<string, boolean>)[column]).toBe(false);
   });
 });
+
+
+/**
+ * Folder state after a mutation, and the counts shown beside it.
+ *
+ * These three share a shape: the write looks right in isolation and is wrong
+ * relative to what the rest of the UI believes. None of them throws.
+ */
+describe('emailService — folder membership and unread counts', () => {
+  it('puts a restored message back in the inbox — REGRESSION', async () => {
+    // `trash` strips INBOX and adds TRASH. Removing TRASH alone left the
+    // message in no folder at all: not in Trash, not in Inbox, not in Archived.
+    const { alice } = await createTwoUsers();
+    const email = await createEmail(alice.id, { labelIds: ['INBOX'] });
+    await emailService.trash(email.id, alice.id);
+
+    await emailService.untrash(email.id, alice.id);
+
+    const after = await prisma.email.findUniqueOrThrow({ where: { id: email.id } });
+    expect(after.isTrashed).toBe(false);
+    expect(after.labelIds).toContain('INBOX');
+    expect(after.labelIds).not.toContain('TRASH');
+  });
+
+  it('returns an archived message to the archive, not the inbox', async () => {
+    // isArchived survives trashing, so the pre-trash location is still known.
+    const { alice } = await createTwoUsers();
+    const email = await createEmail(alice.id, { labelIds: [], isArchived: true });
+    await emailService.trash(email.id, alice.id);
+
+    await emailService.untrash(email.id, alice.id);
+
+    const after = await prisma.email.findUniqueOrThrow({ where: { id: email.id } });
+    expect(after.labelIds).not.toContain('INBOX');
+    expect(after.isArchived).toBe(true);
+  });
+
+  it('does not accumulate duplicate INBOX labels on unarchive', async () => {
+    const { alice } = await createTwoUsers();
+    const email = await createEmail(alice.id, { labelIds: ['INBOX'], isArchived: true });
+
+    await emailService.unarchive(email.id, alice.id);
+
+    const after = await prisma.email.findUniqueOrThrow({ where: { id: email.id } });
+    expect(after.labelIds.filter((l) => l === 'INBOX')).toHaveLength(1);
+  });
+
+  it('counts unread only within the folder being listed — REGRESSION', async () => {
+    // The unread groupBy ignored the folder filter, so a thread listed in Sent
+    // reported unread messages that live in the Inbox — bold rows in a folder
+    // where nothing unread is visible, and unreadCount above messageCount.
+    const { alice } = await createTwoUsers();
+    await createEmail(alice.id, {
+      threadId: 't1',
+      labelIds: ['SENT'],
+      isRead: true,
+      receivedAt: new Date('2026-08-02T10:00:00.000Z'),
+    });
+    await createEmail(alice.id, {
+      threadId: 't1',
+      labelIds: ['INBOX'],
+      isRead: false,
+      receivedAt: new Date('2026-08-01T10:00:00.000Z'),
+    });
+
+    const sent = await emailService.findAllThreads({ folder: 'sent' }, alice.id);
+
+    expect(sent.data).toHaveLength(1);
+    // One message in this folder, and it is read.
+    expect(sent.data[0].unreadCount).toBe(0);
+    expect(sent.data[0].unreadCount).toBeLessThanOrEqual(sent.data[0].messageCount);
+  });
+});

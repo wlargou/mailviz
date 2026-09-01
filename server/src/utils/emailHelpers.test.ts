@@ -316,4 +316,36 @@ describe('plainTextToHtml', () => {
     expect(plainTextToHtml('nothing special here')).toBe('nothing special here');
     expect(plainTextToHtml('')).toBe('');
   });
+
+  it('does not nest a mailto inside a url that contains an address', () => {
+    // The shape that broke: linkify URLs, then run the address pass over the
+    // HTML that produced — and the address in the path gets its own anchor
+    // written INSIDE the href, destroying the link. Unsubscribe footers carry
+    // the recipient's own address, so this is ordinary mail, not a corner case.
+    const html = plainTextToHtml('Stop: https://mail.example.com/u/bob@corp.com/stop');
+
+    expect(html).toBe(
+      'Stop: <a href="https://mail.example.com/u/bob@corp.com/stop" ' +
+        'target="_blank" rel="noopener noreferrer">https://mail.example.com/u/bob@corp.com/stop</a>'
+    );
+    // The specific corruption: an anchor opening while an href is still open.
+    expect(html).not.toContain('href="https://mail.example.com/u/<a');
+    expect(html).not.toContain('mailto:');
+  });
+
+  it('keeps a query-string address inside the link', () => {
+    const html = plainTextToHtml('https://example.com/verify?email=bob@corp.com&token=1');
+
+    expect(html).toContain('href="https://example.com/verify?email=bob@corp.com&amp;token=1"');
+    expect(html).not.toContain('mailto:');
+  });
+
+  it('still linkifies an address that follows a url', () => {
+    // The single pass must not make the address branch unreachable — a URL
+    // earlier in the line is exactly when that regression would hide.
+    const html = plainTextToHtml('docs at https://example.com or ask bob@corp.com');
+
+    expect(html).toContain('<a href="https://example.com"');
+    expect(html).toContain('<a href="mailto:bob@corp.com">bob@corp.com</a>');
+  });
 });

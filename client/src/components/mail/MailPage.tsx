@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { isAxiosError } from 'axios';
 import {
   Pagination,
   Button,
@@ -409,8 +410,15 @@ export function MailPage() {
           : undefined,
       });
       fetchThreads();
-    } catch {
-      addNotification({ kind: 'error', title: 'Email sync failed' });
+    } catch (err) {
+      // A 409 means the scheduler is already syncing this account, so the
+      // result this click wanted is on its way. Reporting that as a failure
+      // would tell the user their mail did not sync when it is syncing now.
+      if (isAxiosError(err) && err.response?.status === 409) {
+        addNotification({ kind: 'info', title: 'A sync is already running' });
+      } else {
+        addNotification({ kind: 'error', title: 'Email sync failed' });
+      }
     } finally {
       setSyncing(false);
     }
@@ -496,7 +504,21 @@ export function MailPage() {
                 ? { ...t, unreadCount: 0, latestEmail: { ...t.latestEmail, isRead: true } }
                 : t
             ));
-            await emailsApi.markAsRead(emailId);
+            /**
+             * The whole thread, not just its newest message.
+             *
+             * The row shows one unread indicator for the thread and the
+             * optimistic update above sets `unreadCount: 0`, but this used to
+             * call `markAsRead` on the latest email alone. On a thread with
+             * more than one unread message the refetch restored the true count
+             * and the row snapped straight back to bold — and clicking again
+             * did the same thing, so the button could never clear it.
+             *
+             * `batchMarkAsRead` resolves thread ids from the email ids it is
+             * given and marks every message in them, which is exactly what the
+             * single indicator claims.
+             */
+            await emailsApi.batchMarkAsRead([emailId]);
           } else {
             setThreads((prev) => prev.map((t) =>
               t.threadId === thread.threadId
@@ -526,6 +548,24 @@ export function MailPage() {
     setSelectedIds(new Set());
     setSelectMode(false);
   }, []);
+
+  /**
+   * Drop the selection whenever the visible rows change underneath it.
+   *
+   * Selection is a set of email ids with no memory of which folder or page they
+   * came from, while the header checkbox and the "N selected" label compare
+   * against `threads.length` for the CURRENT page. So selecting 20 rows in the
+   * Inbox and switching to Trash left the header rendered as fully checked and
+   * the bar reading "20 selected" with not one visible row highlighted — and a
+   * bulk Archive then acted on twenty messages the user could no longer see.
+   *
+   * Clearing on folder or page change is the honest behaviour: the selection
+   * described rows that are no longer on screen.
+   */
+  useEffect(() => {
+    setSelectedIds(new Set());
+    setSelectMode(false);
+  }, [filters.folder, page]);
 
   const handleBulkAction = useCallback(async (action: 'read' | 'unread' | 'archive' | 'trash') => {
     if (selectedIds.size === 0) return;

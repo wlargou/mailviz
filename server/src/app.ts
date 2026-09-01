@@ -33,9 +33,35 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
-app.use(helmet({
-  contentSecurityPolicy: env.NODE_ENV === 'production' ? undefined : false,
-}));
+/**
+ * Helmet, with one deliberate relaxation to `img-src`.
+ *
+ * Helmet's default CSP is `img-src 'self' data:`, and in production this server
+ * also serves the SPA — so that policy governs the mail viewer, which renders
+ * message bodies inline (`dangerouslySetInnerHTML`, sanitised by DOMPurify).
+ * The result was that every remote image in every email was blocked: logos in
+ * signatures, newsletter artwork, anything not inlined as a data: URI. Only in
+ * production, because CSP is off in development — so the mail looked fine on
+ * the machine where it was being worked on and broken on the deployed app.
+ *
+ * `https:` and not `*`: an http image on an https page is mixed content and
+ * would be blocked anyway. Scripts, frames and objects keep the default policy,
+ * which is what actually contains a hostile message — an image cannot execute.
+ *
+ * The cost is real and worth naming: permitting remote images permits tracking
+ * pixels, which is why Gmail and Outlook proxy images through their own servers
+ * rather than fetching them from the sender. Doing that here is a feature, not
+ * a header change; until then, opening a message tells its sender you opened it.
+ */
+export function cspOptions(nodeEnv: string) {
+  if (nodeEnv !== 'production') return false as const;
+  return {
+    useDefaults: true,
+    directives: { 'img-src': ["'self'", 'data:', 'https:'] },
+  };
+}
+
+app.use(helmet({ contentSecurityPolicy: cspOptions(env.NODE_ENV) }));
 app.use(cors({
   origin: env.CLIENT_URL,
   credentials: true,
@@ -51,7 +77,20 @@ app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
-// Rate limiting on auth login routes
+/**
+ * Rate limiting on the routes that actually authenticate.
+ *
+ * The mount points are the point. `/api/v1/auth/login` covers exactly one
+ * route by prefix — `GET /auth/login/google/url` — which builds a redirect URL
+ * and touches nothing: no credential, no database write, no outbound call. It
+ * was the only thing limited.
+ *
+ * `GET /auth/google/callback` is the route that matters and it had no limit at
+ * all. It exchanges an OAuth code with Google (an outbound request per call),
+ * looks the account up, creates or updates the user, and mints the session
+ * cookies. It is also where the ALLOWED_EMAILS check runs, so an unlimited
+ * callback is an unlimited oracle for which addresses are on the whitelist.
+ */
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
@@ -65,6 +104,7 @@ app.get('/api/health', (_req, res) => {
 
 // Auth routes (has its own public/protected split internally)
 app.use('/api/v1/auth/login', authLimiter);
+app.use('/api/v1/auth/google/callback', authLimiter);
 app.use('/api/v1/auth', authRoutes);
 
 // Protected routes — require authentication

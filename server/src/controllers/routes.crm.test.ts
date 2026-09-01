@@ -1338,6 +1338,41 @@ describe('/api/v1/tasks', () => {
     expect(await prisma.taskShare.count({ where: { taskId: task.id } })).toBe(0);
   });
 
+  it('PATCH /:id cannot be used to reassign a shared task — REGRESSION', async () => {
+    // Both doors to the same escalation. /assign was tightened first; this is
+    // the ordinary edit route, which also accepts assignedToId and was still
+    // gating on canAccessTask. Exercised over HTTP because that is the surface
+    // an attacker actually has.
+    const { alice, bob } = await createTwoUsers();
+    const carol = await createUser();
+    const task = await createTask(alice.id);
+    await shareTaskWith(task.id, alice.id, bob.id);
+
+    const res = await request(app)
+      .patch(`/api/v1/tasks/${task.id}`)
+      .set('Cookie', authFor(bob.id))
+      .send({ assignedToId: carol.id });
+
+    expect(res.status).toBe(404);
+    expect(
+      (await prisma.task.findUniqueOrThrow({ where: { id: task.id } })).assignedToId
+    ).toBeNull();
+  });
+
+  it('PATCH /:id still lets a share recipient edit the task', async () => {
+    const { alice, bob } = await createTwoUsers();
+    const task = await createTask(alice.id, { title: 'before' });
+    await shareTaskWith(task.id, alice.id, bob.id);
+
+    const res = await request(app)
+      .patch(`/api/v1/tasks/${task.id}`)
+      .set('Cookie', authFor(bob.id))
+      .send({ title: 'after' });
+
+    expect(res.status).toBe(200);
+    expect((await prisma.task.findUniqueOrThrow({ where: { id: task.id } })).title).toBe('after');
+  });
+
   it('PATCH /:id/assign works on reachable tasks and 404s on a stranger\'s', async () => {
     const { alice, bob } = await createTwoUsers();
     const carol = await createUser();

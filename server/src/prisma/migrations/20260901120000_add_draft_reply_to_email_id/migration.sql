@@ -1,0 +1,13 @@
+-- The email a draft is a reply to, so the RFC 5322 threading headers survive.
+--
+-- Without it the id lived only in the compose modal's memory: the first save
+-- carried In-Reply-To/References, every autosave afterwards dropped them, and
+-- a draft reopened from the Drafts folder never had them at all. Gmail's own
+-- UI still grouped the sent message (it threads on the API's threadId), so the
+-- break was invisible here and visible to every recipient on a client that
+-- threads the standard way.
+--
+-- Deliberately a plain nullable column and not a foreign key: a draft must
+-- outlive the message it answers. If that email is deleted or re-synced under
+-- a new id, the draft should lose its threading, not cascade away.
+ALTER TABLE "email_drafts" ADD COLUMN "reply_to_email_id" TEXT;

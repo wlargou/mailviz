@@ -40,6 +40,30 @@ export function CalendarPage() {
   useEffect(() => {
     fetchEvents();
     fetchGoogleStatus();
+
+    /**
+     * Ask the server whether a sync is running, rather than inferring it from
+     * events this page may not have been mounted to receive.
+     *
+     * `syncing` is written here from the `calendar:sync:status` socket event.
+     * Navigate away mid-sync and the matching `{ syncing: false }` never
+     * arrives, so the flag stays true in a store that outlives the page — and
+     * the Sync button is disabled for ever, recoverable only by reloading.
+     *
+     * Reconciling on mount closes that, and the unmount reset below stops a
+     * stale true surviving in the first place. Both are cheap; neither alone is
+     * sufficient, because a sync can also finish while the page is unmounted.
+     */
+    calendarApi
+      .getSyncStatus()
+      .then(({ data }) => useCalendarStore.setState({ syncing: data.data.syncing }))
+      .catch(() => useCalendarStore.setState({ syncing: false }));
+
+    return () => {
+      // Not mounted means not receiving status. Holding the last value we
+      // happened to see is worse than admitting we no longer know.
+      useCalendarStore.setState({ syncing: false });
+    };
   }, [fetchEvents, fetchGoogleStatus]);
 
   const handleDayClick = (date: Date) => {

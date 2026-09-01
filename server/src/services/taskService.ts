@@ -28,6 +28,22 @@ interface TaskQueryParams {
 // Whitelist of sortable Task columns. `sortBy` comes straight off the query
 // string and is used as a Prisma orderBy key, so it must never be trusted raw.
 // `position` is here because the Kanban board sorts by it.
+/**
+ * Upper bound on the grouped view. It is not pagination — the view is a
+ * distribution and a truncated group misleads — but an unbounded findMany over
+ * a table that could grow is worse. The response flags when it bites.
+ */
+interface TaskGroupQueryParams {
+  search?: string;
+  status?: string;
+  priority?: string;
+  labelId?: string;
+  /** Completed tasks are excluded by default; this brings them back. */
+  includeCompleted?: boolean;
+}
+
+const TASKS_BY_COMPANY_CAP = 1000;
+
 const TASK_SORT_FIELDS = ['title', 'status', 'priority', 'dueDate', 'position', 'createdAt', 'updatedAt'] as const;
 
 /**
@@ -81,7 +97,8 @@ export const taskService = {
     // Ownership lives under `AND`, not at the top level, so that a filter
     // branch below can never overwrite it by assigning `where.OR`. That is
     // exactly how the cross-tenant leak in dealService.findAll happened.
-    const where: Prisma.TaskWhereInput = { AND: [ownershipFilter] };
+    const andFilters: Prisma.TaskWhereInput[] = [ownershipFilter];
+    const where: Prisma.TaskWhereInput = { AND: andFilters };
 
     if (query.status) {
       where.status = query.status;
@@ -93,7 +110,27 @@ export const taskService = {
       where.priority = query.priority as Prisma.EnumTaskPriorityFilter;
     }
     if (query.search) {
-      where.title = { contains: query.search, mode: 'insensitive' };
+      /**
+       * Search title, description and company name.
+       *
+       * Title alone meant searching a company you deal with returned nothing,
+       * even though every task carries a company — which is the most obvious
+       * thing to type.
+       *
+       * Pushed onto `andFilters` rather than assigned to `where.OR`. Both are
+       * correct today, because ownership already lives under `AND` — but a
+       * top-level `where.OR` is one careless edit away from being the thing
+       * that overwrites it, which is exactly how the cross-tenant leak in
+       * dealService.findAll happened. Keeping every OR inside the AND array
+       * removes the possibility rather than relying on the next person noticing.
+       */
+      andFilters.push({
+        OR: [
+          { title: { contains: query.search, mode: 'insensitive' } },
+          { description: { contains: query.search, mode: 'insensitive' } },
+          { customer: { name: { contains: query.search, mode: 'insensitive' } } },
+        ],
+      });
     }
     if (query.labelId) {
       where.labels = { some: { labelId: query.labelId } };
@@ -173,6 +210,127 @@ export const taskService = {
       throw new AppError(404, 'TASK_NOT_FOUND', 'Task not found');
     }
     return formatTask(task);
+  },
+
+  /**
+   * Every task the caller can reach, grouped by the company it belongs to.
+   *
+   * Tasks acquire a company automatically: `emailService.convertToTask` copies
+   * `email.customerId` across, and emails are filed against a company by sender
+   * domain. So this grouping reflects work that already exists rather than
+   * asking anyone to categorise anything — in production all 40 tasks are
+   * linked, across 22 companies.
+   *
+   * Two things this deliberately does NOT do:
+   *
+   *  - It does not paginate. A grouped overview whose groups are cut off at an
+   *    arbitrary row is worse than no overview, and the whole point is seeing
+   *    the distribution. It is bounded instead by TASKS_BY_COMPANY_CAP, and the
+   *    response says whether it hit that so the UI can say so too.
+   *  - It does not drop company-less tasks. They come back in a trailing group
+   *    with a null customer, because a "by company" view that silently hides
+   *    work is a worse bug than one that shows an awkward bucket.
+   */
+  async findGroupedByCompany(userId: string, query: TaskGroupQueryParams = {}) {
+    const sharedTaskIds = await getSharedTaskIds(userId);
+
+    // Same shape as findAll: ownership under AND so no filter branch can
+    // overwrite it, and every OR added below goes inside that array.
+    const andFilters: Prisma.TaskWhereInput[] = [
+      {
+        OR: [
+          { userId },
+          ...(sharedTaskIds.length > 0 ? [{ id: { in: sharedTaskIds } }] : []),
+          { assignedToId: userId },
+        ],
+      },
+    ];
+
+    if (query.status) andFilters.push({ status: query.status });
+    if (query.priority) {
+      andFilters.push({ priority: query.priority as Prisma.EnumTaskPriorityFilter });
+    }
+    if (query.labelId) andFilters.push({ labels: { some: { labelId: query.labelId } } });
+    if (query.search) {
+      andFilters.push({
+        OR: [
+          { title: { contains: query.search, mode: 'insensitive' } },
+          { description: { contains: query.search, mode: 'insensitive' } },
+          { customer: { name: { contains: query.search, mode: 'insensitive' } } },
+        ],
+      });
+    }
+
+    /**
+     * Completed work is hidden unless asked for.
+     *
+     * The counts in this view read as workload — "Powerm: 7 tasks" is a
+     * statement about what is outstanding. Counting finished tasks in that
+     * total turns it into history and makes the number useless for deciding
+     * where to look. An explicit status filter wins, because asking for DONE
+     * and getting nothing would be absurd.
+     */
+    if (!query.status && !query.includeCompleted) {
+      andFilters.push({ status: { not: 'DONE' } });
+    }
+
+    const tasks = await prisma.task.findMany({
+      where: { AND: andFilters },
+      include: {
+        customer: { select: { id: true, name: true, domain: true, logoUrl: true } },
+        labels: { include: { label: true } },
+        assignedTo: { select: { id: true, name: true, email: true, avatarUrl: true } },
+      },
+      // Deterministic within a group: soonest due first, undated last, then a
+      // stable id tiebreaker so the order does not shuffle between loads.
+      orderBy: [{ dueDate: { sort: 'asc', nulls: 'last' } }, { id: 'asc' }],
+      take: TASKS_BY_COMPANY_CAP + 1,
+    });
+
+    const truncated = tasks.length > TASKS_BY_COMPANY_CAP;
+    const visible = truncated ? tasks.slice(0, TASKS_BY_COMPANY_CAP) : tasks;
+
+    const now = new Date();
+    const groups = new Map<string, {
+      customer: { id: string; name: string; domain: string | null; logoUrl: string | null } | null;
+      tasks: typeof visible;
+      overdueCount: number;
+    }>();
+
+    for (const task of visible) {
+      // '' is the bucket for tasks with no company — a real key, so the group
+      // survives into the output rather than being dropped by a falsy check.
+      const key = task.customerId ?? '';
+      let group = groups.get(key);
+      if (!group) {
+        group = { customer: task.customer ?? null, tasks: [], overdueCount: 0 };
+        groups.set(key, group);
+      }
+      group.tasks.push(task);
+      // "Overdue" excludes finished work — a completed task that happens to sit
+      // past its due date is not something anyone needs chasing.
+      if (task.dueDate && task.dueDate < now && task.status !== 'DONE') {
+        group.overdueCount += 1;
+      }
+    }
+
+    const ordered = [...groups.values()].sort((a, b) => {
+      // The unassigned bucket always trails, however big it is.
+      if (a.customer === null) return 1;
+      if (b.customer === null) return -1;
+      if (b.tasks.length !== a.tasks.length) return b.tasks.length - a.tasks.length;
+      return a.customer.name.localeCompare(b.customer.name);
+    });
+
+    return {
+      data: ordered.map((g) => ({
+        customer: g.customer,
+        taskCount: g.tasks.length,
+        overdueCount: g.overdueCount,
+        tasks: g.tasks,
+      })),
+      meta: { totalTasks: visible.length, companies: ordered.filter((g) => g.customer).length, truncated },
+    };
   },
 
   async getSummary(userId: string) {
@@ -261,6 +419,37 @@ export const taskService = {
       throw new AppError(404, 'TASK_NOT_FOUND', 'Task not found');
     }
     await assertReferencesOwnedBy(existing.userId, data);
+
+    /**
+     * Reassigning through a PATCH needs ownership, exactly as `assignTask` does.
+     *
+     * This route is the other half of the same escalation. `assignTask` was
+     * tightened to `isTaskOwner`, but `updateTaskSchema` also carries
+     * `assignedToId` and `update` gates on `canAccessTask` — which a share or an
+     * existing assignment satisfies. So the door closed on
+     * `PATCH /tasks/:id/assign` was still open on `PATCH /tasks/:id`, and a
+     * share recipient could still hand a third account standing access the
+     * owner never granted.
+     *
+     * Editing a shared task's title or status stays allowed — that is what
+     * sharing is for. Only the field that grants other people access is
+     * restricted to the owner.
+     */
+    if (data.assignedToId !== undefined && data.assignedToId !== existing.assignedToId) {
+      const owner = await isTaskOwner(id, userId);
+      if (!owner) {
+        throw new AppError(404, 'TASK_NOT_FOUND', 'Task not found');
+      }
+      if (data.assignedToId) {
+        const assignee = await prisma.user.findUnique({
+          where: { id: data.assignedToId },
+          select: { id: true },
+        });
+        if (!assignee) {
+          throw new AppError(404, 'USER_NOT_FOUND', 'User not found');
+        }
+      }
+    }
 
     const { labelIds, customerId, ...taskData } = data;
 

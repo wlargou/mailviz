@@ -15,6 +15,7 @@ import {
 import { useCalendarStore } from '../../store/calendarStore';
 import type { CalendarEvent } from '../../types/calendar';
 import { getEventColor } from '../../utils/eventColors';
+import { WEEK_STARTS_ON } from '../../utils/week';
 
 /** Pixels per hour — taller rows so 30-min events are readable */
 const PX_PER_HOUR = 72;
@@ -115,8 +116,8 @@ export function CalendarWeekView({ onEventClick, onSlotClick }: CalendarWeekView
   const { currentDate, events } = useCalendarStore();
   const bodyRef = useRef<HTMLDivElement>(null);
 
-  const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
-  const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
+  const weekStart = startOfWeek(currentDate, { weekStartsOn: WEEK_STARTS_ON });
+  const weekEnd = endOfWeek(currentDate, { weekStartsOn: WEEK_STARTS_ON });
   const days = eachDayOfInterval({ start: weekStart, end: weekEnd });
   const hours = eachHourOfInterval({ start: startOfDay(weekStart), end: endOfDay(weekStart) });
 

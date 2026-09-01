@@ -176,9 +176,33 @@ export const emailService = {
         historyId = profile.data.historyId || null;
       }
 
-      // Retry anything an earlier run could not fetch. Kept inside the try so a
-      // revoked grant here is translated below like any other Gmail failure.
-      const retry = await this.retryFailedMessages(gmail, userId, auth.syncFailedMessageIds);
+      /**
+       * Retry anything that could not be fetched — INCLUDING failures recorded
+       * moments ago by this very run.
+       *
+       * `auth` was read before the sync started, so its `syncFailedMessageIds`
+       * is a pre-sync snapshot. The sync then records new failures through
+       * `addFailedMessageIds`, and `retryFailedMessages` ends by *replacing*
+       * the column with the survivors of whatever list it was handed. Passing
+       * the stale snapshot therefore erased every failure this run had just
+       * recorded — and because the history cursor advances at the end of the
+       * same run, nothing would ever fetch those messages again. A message
+       * Gmail could not serve was silently lost, with no error and no retry.
+       *
+       * Re-reading picks up both the old backlog and the new failures.
+       *
+       * Kept inside the try so a revoked grant here is translated below like
+       * any other Gmail failure.
+       */
+      const latest = await prisma.googleAuth.findFirst({
+        where: { userId },
+        select: { syncFailedMessageIds: true },
+      });
+      const retry = await this.retryFailedMessages(
+        gmail,
+        userId,
+        latest?.syncFailedMessageIds ?? auth.syncFailedMessageIds
+      );
       synced += retry.synced;
       customersCreated += retry.customersCreated;
       contactsCreated += retry.contactsCreated;
@@ -819,7 +843,12 @@ export const emailService = {
       }),
       prisma.email.groupBy({
         by: ['threadId'],
-        where: { threadId: { in: threadIdList }, isRead: false, userId },
+        // The SAME `where` the list uses, not just ownership. Counting unread
+        // across the whole mailbox while listing one folder makes a thread
+        // render bold in a folder where nothing unread is visible, and lets
+        // unreadCount exceed the messageCount shown beside it — in Sent, a
+        // thread you replied to reported 1 message and 3 unread.
+        where: { ...where, threadId: { in: threadIdList }, isRead: false },
         _count: { id: true },
       }),
     ]);
@@ -1123,7 +1152,10 @@ export const emailService = {
 
     await prisma.email.updateMany({
       where: { id, userId },
-      data: { isArchived: false, labelIds: [...email.labelIds, 'INBOX'] },
+      // Deduplicated like every sibling label write. Appending blindly produced
+      // ['INBOX','INBOX'], which disagrees with Gmail's own label set and with
+      // what flagsFromLabels is handed on the next sync.
+      data: { isArchived: false, labelIds: [...new Set([...email.labelIds, 'INBOX'])] },
     });
     wsEmitToUser(userId, 'email:updated', { id, isArchived: false });
 
@@ -1175,9 +1207,26 @@ export const emailService = {
       } catch (err: any) { console.warn('[EmailSync] Gmail API call failed:', err?.message || err); }
     }
 
+    /**
+     * Restoring from Trash has to put the message somewhere.
+     *
+     * `trash` strips INBOX and adds TRASH, so removing TRASH alone left the
+     * message in no folder at all: gone from Trash, absent from Inbox, absent
+     * from Archived. It existed and was reachable by search, and nowhere else.
+     *
+     * INBOX goes back unless the message was archived before it was trashed —
+     * `isArchived` survives trashing, so that state is still known and an
+     * archived message should return to the archive rather than the inbox.
+     */
+    const withoutTrash = email.labelIds.filter((l) => l !== 'TRASH');
+    const restoredLabels =
+      email.isArchived || withoutTrash.includes('INBOX')
+        ? withoutTrash
+        : [...withoutTrash, 'INBOX'];
+
     await prisma.email.updateMany({
       where: { id, userId },
-      data: { isTrashed: false, labelIds: email.labelIds.filter((l) => l !== 'TRASH') },
+      data: { isTrashed: false, labelIds: restoredLabels },
     });
     wsEmitToUser(userId, 'email:updated', { id, isTrashed: false });
 
@@ -1376,7 +1425,7 @@ export const emailService = {
     return { messageId: sendRes.data.id, threadId: sendRes.data.threadId };
   },
 
-  async replyToEmail(emailId: string, data: { htmlBody: string; replyAll?: boolean; cc?: string[]; bcc?: string[]; attachments?: Array<{ filename: string; content: string; contentType: string; size: number }> }, userId: string) {
+  async replyToEmail(emailId: string, data: { htmlBody: string; to?: string[]; replyAll?: boolean; cc?: string[]; bcc?: string[]; attachments?: Array<{ filename: string; content: string; contentType: string; size: number }> }, userId: string) {
     const gmail = await getGmailClient(userId);
     const auth = await prisma.googleAuth.findFirst({ where: { userId } });
     if (!auth?.email) throw Object.assign(new Error('Google not connected'), { status: 400 });
@@ -1390,13 +1439,18 @@ export const emailService = {
     let to: string[];
     let cc: string[] = [];
 
+    // An explicit `to` wins. Compose lets the user edit the recipient on a
+    // reply, and this is what makes that edit mean something — without it the
+    // message went to `original.from` no matter what the field said.
+    const overrideTo = data.to?.filter((address) => address.trim().length > 0) ?? [];
+
     if (data.replyAll) {
-      to = [original.from];
+      to = overrideTo.length > 0 ? overrideTo : [original.from];
       // Combine original to + cc, exclude user's own email
       const allCc = [...original.to, ...original.cc, ...(data.cc || [])];
       cc = [...new Set(allCc.map((e) => e.toLowerCase().trim()))].filter((e) => e !== userEmail && e !== original.from.toLowerCase());
     } else {
-      to = [original.from];
+      to = overrideTo.length > 0 ? overrideTo : [original.from];
       cc = data.cc || [];
     }
 

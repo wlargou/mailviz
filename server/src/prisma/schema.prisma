@@ -552,6 +552,10 @@ model EmailDraft {
   gmailMessageId String? @map("gmail_message_id")
   threadId       String? @map("thread_id")
 
+  /// The email this draft replies to. Not a relation — a draft must outlive
+  /// the message it answers, so this deliberately does not cascade.
+  replyToEmailId String? @map("reply_to_email_id")
+
   to       String[]
   cc       String[] @default([])
   bcc      String[] @default([])

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { prisma } from '../lib/prisma.js';
 import { customerService } from './customerService.js';
+import { contactMergeService } from './contactMergeService.js';
 import { createTwoUsers, createCustomer, createContact, createEmail } from '../test/factories.js';
 
 /**
@@ -277,5 +278,104 @@ describe('customerService — cross-tenant foreign keys', () => {
     } as never);
 
     expect(created.categoryId).toBe(mine.id);
+  });
+});
+
+/**
+ * A merge has to survive the next sync.
+ *
+ * `findOrCreateContact` runs for every address on every synced message and
+ * creates a contact when it does not recognise one. Merging moves the discarded
+ * row's addresses into `contact_email_aliases` and deletes the row — so if the
+ * lookup only considers the primary address, the very next email from a merged
+ * address recreates the duplicate. The user's merge is undone within a minute,
+ * with nothing to indicate it happened.
+ *
+ * These go through the real merge rather than inserting alias rows by hand, so
+ * they still hold if the merge changes how it stores them.
+ */
+describe('customerService.findOrCreateContact — merged addresses', () => {
+  async function mergedPair(userId: string) {
+    const customer = await createCustomer(userId, { domain: 'corp.test' });
+    const target = await createContact(customer.id, {
+      firstName: 'Bob',
+      lastName: 'Smith',
+      email: 'bob.smith@corp.test',
+    });
+    const source = await createContact(customer.id, {
+      firstName: 'Bob',
+      lastName: 'Smith',
+      email: 'b.smith@corp.test',
+    });
+    await contactMergeService.merge(userId, { targetId: target.id, sourceIds: [source.id] });
+    return { customer, target };
+  }
+
+  it('finds the survivor by an address the merge absorbed', async () => {
+    const { alice } = await createTwoUsers();
+    const { customer, target } = await mergedPair(alice.id);
+
+    const { contact, created } = await customerService.findOrCreateContact(
+      alice.id,
+      'b.smith@corp.test',
+      'Bob Smith',
+      customer.id
+    );
+
+    expect(created).toBe(false);
+    expect(contact.id).toBe(target.id);
+    // The real regression: a third row appearing where the user left one.
+    expect(await prisma.contact.count({ where: { customerId: customer.id } })).toBe(1);
+  });
+
+  it('still creates a contact for an address nobody has seen', async () => {
+    // Without this the alias lookup could match far too broadly and the sync
+    // would stop discovering people at all.
+    const { alice } = await createTwoUsers();
+    const { customer } = await mergedPair(alice.id);
+
+    const { created } = await customerService.findOrCreateContact(
+      alice.id,
+      'carol@corp.test',
+      'Carol',
+      customer.id
+    );
+
+    expect(created).toBe(true);
+    expect(await prisma.contact.count({ where: { customerId: customer.id } })).toBe(2);
+  });
+
+  it('does not match an alias belonging to another tenant', async () => {
+    // The alias lookup adds an OR, which is exactly the shape that has dropped
+    // the ownership filter twice in this codebase.
+    const { alice, bob } = await createTwoUsers();
+    await mergedPair(alice.id);
+    const bobCustomer = await createCustomer(bob.id, { domain: 'corp.test' });
+
+    const { contact, created } = await customerService.findOrCreateContact(
+      bob.id,
+      'b.smith@corp.test',
+      'Bob Smith',
+      bobCustomer.id
+    );
+
+    expect(created).toBe(true);
+    expect(contact.customerId).toBe(bobCustomer.id);
+  });
+
+  it('does not create a second row for a different-cased address', async () => {
+    const { alice } = await createTwoUsers();
+    const customer = await createCustomer(alice.id, { domain: 'corp.test' });
+    const existing = await createContact(customer.id, { email: 'dana@corp.test' });
+
+    const { contact, created } = await customerService.findOrCreateContact(
+      alice.id,
+      'Dana@Corp.test',
+      'Dana',
+      customer.id
+    );
+
+    expect(created).toBe(false);
+    expect(contact.id).toBe(existing.id);
   });
 });

@@ -951,6 +951,42 @@ describe('emailService.syncFromGmail — first sync does not lose mail', () => {
     expect(auth?.syncFailedMessageIds).toEqual(['boom']);
   });
 
+  it('keeps a failure recorded during the same run as a retry — REGRESSION', async () => {
+    // The erasure needed BOTH a pre-existing backlog and a new failure in one
+    // run, which is why the existing coverage missed it: with an empty list
+    // `retryFailedMessages` returns before it can overwrite anything.
+    //
+    // `auth` is read once before the sync, so its syncFailedMessageIds is a
+    // pre-sync snapshot. The run records 'fresh' through addFailedMessageIds,
+    // then the retry replaced the column with the survivors of the SNAPSHOT —
+    // dropping 'fresh'. The history cursor advances in the same run, so that
+    // message would never be fetched again.
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+    await prisma.googleAuth.updateMany({
+      where: { userId: user.id },
+      data: { syncFailedMessageIds: ['old-backlog'] },
+    });
+
+    stubMessagesListPages(gmail, [['ok1', 'fresh']]);
+    stubMessagesGet(
+      gmail,
+      [{ id: 'ok1', from: 'a@acme.com', subject: 'Fine' }],
+      {
+        // Fails during this run, and stays failing on the retry that follows.
+        fresh: gmailError(500, 'Backend error'),
+        'old-backlog': gmailError(500, 'Still down'),
+      }
+    );
+
+    await emailService.syncFromGmail(user.id);
+
+    const auth = await prisma.googleAuth.findFirst({ where: { userId: user.id } });
+    // Both survive: the backlog it was already tracking, and the one this run
+    // discovered. Losing either means a message nothing will ever fetch again.
+    expect([...(auth?.syncFailedMessageIds ?? [])].sort()).toEqual(['fresh', 'old-backlog']);
+  });
+
   it('retries a recorded failure on the next sync and clears it once it lands', async () => {
     const user = await createUser();
     await createGoogleAuth(user.id, { lastHistoryId: '500' });

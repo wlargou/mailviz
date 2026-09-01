@@ -913,3 +913,352 @@ describe('taskService.getSummary', () => {
     expect(summary.total).toBe(1);
   });
 });
+
+
+/**
+ * The by-company grouping behind the Tasks page's third view.
+ *
+ * The two behaviours worth pinning are both about NOT losing work: a task with
+ * no company still has to appear (in a trailing bucket rather than dropped),
+ * and a task reachable only through a share or an assignment has to be grouped
+ * like any other — the grouping must not quietly narrow the set of tasks the
+ * caller can see compared with findAll.
+ */
+describe('taskService.findGroupedByCompany', () => {
+  it('groups tasks under their company, biggest group first', async () => {
+    const { alice } = await createTwoUsers();
+    const acme = await createCustomer(alice.id, { name: 'Acme' });
+    const globex = await createCustomer(alice.id, { name: 'Globex' });
+    for (let i = 0; i < 3; i++) {
+      const t = await createTask(alice.id, { title: `acme-${i}` });
+      await prisma.task.update({ where: { id: t.id }, data: { customerId: acme.id } });
+    }
+    const g = await createTask(alice.id, { title: 'globex-0' });
+    await prisma.task.update({ where: { id: g.id }, data: { customerId: globex.id } });
+
+    const result = await taskService.findGroupedByCompany(alice.id);
+
+    expect(result.data.map((x) => [x.customer?.name, x.taskCount])).toEqual([
+      ['Acme', 3],
+      ['Globex', 1],
+    ]);
+    expect(result.meta).toMatchObject({ totalTasks: 4, companies: 2, truncated: false });
+  });
+
+  it('keeps company-less tasks in a trailing bucket rather than dropping them', async () => {
+    // A by-company view that silently hides work is worse than one with an
+    // awkward bucket — this is the case that would make the totals lie.
+    const { alice } = await createTwoUsers();
+    const acme = await createCustomer(alice.id, { name: 'Acme' });
+    const linked = await createTask(alice.id, { title: 'linked' });
+    await prisma.task.update({ where: { id: linked.id }, data: { customerId: acme.id } });
+    await createTask(alice.id, { title: 'orphan-a' });
+    await createTask(alice.id, { title: 'orphan-b' });
+
+    const result = await taskService.findGroupedByCompany(alice.id);
+
+    // Trailing even though it is the larger group.
+    expect(result.data.map((x) => x.customer?.name ?? null)).toEqual(['Acme', null]);
+    expect(result.data[1].taskCount).toBe(2);
+    expect(result.meta.totalTasks).toBe(3);
+    expect(result.meta.companies).toBe(1);
+  });
+
+  it('counts only unfinished work as overdue', async () => {
+    const { alice } = await createTwoUsers();
+    const acme = await createCustomer(alice.id, { name: 'Acme' });
+    const day = 24 * 60 * 60 * 1000;
+    const late = await createTask(alice.id, { title: 'late', dueDate: new Date(Date.now() - day) });
+    const done = await createTask(alice.id, { title: 'done', status: 'DONE', dueDate: new Date(Date.now() - day) });
+    const soon = await createTask(alice.id, { title: 'soon', dueDate: new Date(Date.now() + day) });
+    for (const t of [late, done, soon]) {
+      await prisma.task.update({ where: { id: t.id }, data: { customerId: acme.id } });
+    }
+
+    // includeCompleted, so the DONE task is present to be miscounted. Without
+    // it the default filter would remove the row and the assertion would pass
+    // for the wrong reason.
+    const result = await taskService.findGroupedByCompany(alice.id, { includeCompleted: true });
+
+    expect(result.data[0].taskCount).toBe(3);
+    // A finished task past its due date is not something to chase.
+    expect(result.data[0].overdueCount).toBe(1);
+  });
+
+  it('includes shared and assigned tasks, matching what findAll can reach', async () => {
+    const { alice, bob } = await createTwoUsers();
+    const bobCo = await createCustomer(bob.id, { name: 'Bob Co' });
+    const shared = await createTask(bob.id, { title: 'shared with alice' });
+    await prisma.task.update({ where: { id: shared.id }, data: { customerId: bobCo.id } });
+    await shareTaskWith(shared.id, bob.id, alice.id);
+    const assigned = await createTask(bob.id, { title: 'assigned to alice' });
+    await prisma.task.update({
+      where: { id: assigned.id },
+      data: { customerId: bobCo.id, assignedToId: alice.id },
+    });
+
+    const result = await taskService.findGroupedByCompany(alice.id);
+
+    expect(result.meta.totalTasks).toBe(2);
+    expect(result.data[0].tasks.map((t) => t.title).sort()).toEqual([
+      'assigned to alice',
+      'shared with alice',
+    ]);
+  });
+
+  it("never groups another account's unrelated tasks", async () => {
+    const { alice, bob } = await createTwoUsers();
+    const bobCo = await createCustomer(bob.id, { name: 'Bob Co' });
+    const t = await createTask(bob.id, { title: 'bob only' });
+    await prisma.task.update({ where: { id: t.id }, data: { customerId: bobCo.id } });
+
+    const result = await taskService.findGroupedByCompany(alice.id);
+
+    expect(result.data).toEqual([]);
+    expect(result.meta.totalTasks).toBe(0);
+  });
+
+  it('orders tasks inside a group by due date, undated last', async () => {
+    const { alice } = await createTwoUsers();
+    const acme = await createCustomer(alice.id, { name: 'Acme' });
+    const day = 24 * 60 * 60 * 1000;
+    const undated = await createTask(alice.id, { title: 'undated' });
+    const later = await createTask(alice.id, { title: 'later', dueDate: new Date(Date.now() + 5 * day) });
+    const sooner = await createTask(alice.id, { title: 'sooner', dueDate: new Date(Date.now() + day) });
+    for (const t of [undated, later, sooner]) {
+      await prisma.task.update({ where: { id: t.id }, data: { customerId: acme.id } });
+    }
+
+    const result = await taskService.findGroupedByCompany(alice.id);
+
+    expect(result.data[0].tasks.map((t) => t.title)).toEqual(['sooner', 'later', 'undated']);
+  });
+});
+
+
+describe('taskService.findAll — search reach', () => {
+  it('matches on the description, not only the title', async () => {
+    const { alice } = await createTwoUsers();
+    await createTask(alice.id, { title: 'Unrelated title' });
+    const target = await createTask(alice.id, { title: 'Another' });
+    await prisma.task.update({
+      where: { id: target.id },
+      data: { description: 'chase the renewal paperwork' },
+    });
+
+    const result = await taskService.findAll(alice.id, { search: 'renewal' });
+
+    expect(result.data.map((t) => t.id)).toEqual([target.id]);
+  });
+
+  it('matches on the company name — the most obvious thing to type', async () => {
+    // Title-only search meant searching a company you deal with returned
+    // nothing, even though every task carries one.
+    const { alice } = await createTwoUsers();
+    const powerm = await createCustomer(alice.id, { name: 'Powerm' });
+    await createTask(alice.id, { title: 'unrelated' });
+    const target = await createTask(alice.id, { title: 'quarterly review' });
+    await prisma.task.update({ where: { id: target.id }, data: { customerId: powerm.id } });
+
+    const result = await taskService.findAll(alice.id, { search: 'powerm' });
+
+    expect(result.data.map((t) => t.id)).toEqual([target.id]);
+  });
+
+  it('is case-insensitive across every field it searches', async () => {
+    const { alice } = await createTwoUsers();
+    const co = await createCustomer(alice.id, { name: 'Globex' });
+    const byTitle = await createTask(alice.id, { title: 'URGENT Widget' });
+    const byCompany = await createTask(alice.id, { title: 'x' });
+    await prisma.task.update({ where: { id: byCompany.id }, data: { customerId: co.id } });
+
+    expect((await taskService.findAll(alice.id, { search: 'widget' })).data.map((t) => t.id)).toEqual([
+      byTitle.id,
+    ]);
+    expect((await taskService.findAll(alice.id, { search: 'GLOBEX' })).data.map((t) => t.id)).toEqual([
+      byCompany.id,
+    ]);
+  });
+
+  it('cannot reach another account through the search OR — REGRESSION', async () => {
+    // The search adds an OR. Ownership lives under AND precisely so an OR can
+    // never widen what is visible; this is the test that says so.
+    const { alice, bob } = await createTwoUsers();
+    const bobCo = await createCustomer(bob.id, { name: 'Powerm' });
+    const bobTask = await createTask(bob.id, { title: 'Powerm secret plan' });
+    await prisma.task.update({ where: { id: bobTask.id }, data: { customerId: bobCo.id } });
+
+    const result = await taskService.findAll(alice.id, { search: 'powerm' });
+
+    expect(result.data).toEqual([]);
+    expect(result.meta.total).toBe(0);
+  });
+});
+
+describe('taskService.findGroupedByCompany — filters', () => {
+  it('hides completed tasks by default so the counts mean outstanding work', async () => {
+    const { alice } = await createTwoUsers();
+    const co = await createCustomer(alice.id, { name: 'Acme' });
+    for (const status of ['TODO', 'DONE', 'DONE']) {
+      const t = await createTask(alice.id, { status });
+      await prisma.task.update({ where: { id: t.id }, data: { customerId: co.id } });
+    }
+
+    const result = await taskService.findGroupedByCompany(alice.id);
+
+    // 3 tasks exist; only the open one is workload.
+    expect(result.data[0].taskCount).toBe(1);
+    expect(result.meta.totalTasks).toBe(1);
+  });
+
+  it('brings completed tasks back when asked', async () => {
+    const { alice } = await createTwoUsers();
+    const co = await createCustomer(alice.id, { name: 'Acme' });
+    for (const status of ['TODO', 'DONE']) {
+      const t = await createTask(alice.id, { status });
+      await prisma.task.update({ where: { id: t.id }, data: { customerId: co.id } });
+    }
+
+    const result = await taskService.findGroupedByCompany(alice.id, { includeCompleted: true });
+
+    expect(result.data[0].taskCount).toBe(2);
+  });
+
+  it('lets an explicit DONE filter win over the default', async () => {
+    // Asking for DONE and getting nothing would be absurd.
+    const { alice } = await createTwoUsers();
+    const co = await createCustomer(alice.id, { name: 'Acme' });
+    for (const status of ['TODO', 'DONE']) {
+      const t = await createTask(alice.id, { status });
+      await prisma.task.update({ where: { id: t.id }, data: { customerId: co.id } });
+    }
+
+    const result = await taskService.findGroupedByCompany(alice.id, { status: 'DONE' });
+
+    expect(result.data[0].taskCount).toBe(1);
+    expect(result.data[0].tasks[0].status).toBe('DONE');
+  });
+
+  it('applies the same search as the list view', async () => {
+    const { alice } = await createTwoUsers();
+    const acme = await createCustomer(alice.id, { name: 'Acme' });
+    const globex = await createCustomer(alice.id, { name: 'Globex' });
+    const a = await createTask(alice.id, { title: 'acme work' });
+    const g = await createTask(alice.id, { title: 'globex work' });
+    await prisma.task.update({ where: { id: a.id }, data: { customerId: acme.id } });
+    await prisma.task.update({ where: { id: g.id }, data: { customerId: globex.id } });
+
+    const result = await taskService.findGroupedByCompany(alice.id, { search: 'globex' });
+
+    expect(result.data.map((x) => x.customer?.name)).toEqual(['Globex']);
+  });
+
+  it('narrows by priority and label like the list view', async () => {
+    const { alice } = await createTwoUsers();
+    const co = await createCustomer(alice.id, { name: 'Acme' });
+    const high = await createTask(alice.id, { priority: 'HIGH' });
+    const low = await createTask(alice.id, { priority: 'LOW' });
+    for (const t of [high, low]) {
+      await prisma.task.update({ where: { id: t.id }, data: { customerId: co.id } });
+    }
+
+    const result = await taskService.findGroupedByCompany(alice.id, { priority: 'HIGH' });
+
+    expect(result.data[0].taskCount).toBe(1);
+    expect(result.data[0].tasks[0].id).toBe(high.id);
+  });
+
+  it('cannot reach another account through the grouped search either', async () => {
+    const { alice, bob } = await createTwoUsers();
+    const bobCo = await createCustomer(bob.id, { name: 'Powerm' });
+    const t = await createTask(bob.id, { title: 'Powerm plan' });
+    await prisma.task.update({ where: { id: t.id }, data: { customerId: bobCo.id } });
+
+    expect((await taskService.findGroupedByCompany(alice.id, { search: 'powerm' })).data).toEqual([]);
+  });
+});
+
+
+/**
+ * The other half of the assignment escalation.
+ *
+ * `assignTask` was tightened to require ownership, but `updateTaskSchema` also
+ * carries `assignedToId` and `update` gates on `canAccessTask`. So the same
+ * escalation remained reachable through the ordinary edit route — which is the
+ * shape of mistake worth a dedicated test: a fix applied to one entry point
+ * while a second one goes on doing the thing.
+ */
+describe('taskService.update — assignment is owner-only', () => {
+  it('refuses a share recipient reassigning through PATCH — REGRESSION', async () => {
+    const { alice, bob } = await createTwoUsers();
+    const carol = await createUser({ name: 'Carol' });
+    const task = await createTask(alice.id, { title: 'Alice owns this' });
+    await shareTaskWith(task.id, alice.id, bob.id);
+
+    await expect(
+      taskService.update(bob.id, task.id, { assignedToId: carol.id } as never)
+    ).rejects.toMatchObject({ statusCode: 404 });
+
+    expect((await prisma.task.findUniqueOrThrow({ where: { id: task.id } })).assignedToId).toBeNull();
+  });
+
+  it('refuses the current assignee reassigning it onward', async () => {
+    // Being the assignee also satisfies canAccessTask, so it is the second way
+    // in to the same escalation.
+    const { alice, bob } = await createTwoUsers();
+    const carol = await createUser({ name: 'Carol' });
+    const task = await createTask(alice.id);
+    await prisma.task.update({ where: { id: task.id }, data: { assignedToId: bob.id } });
+
+    await expect(
+      taskService.update(bob.id, task.id, { assignedToId: carol.id } as never)
+    ).rejects.toMatchObject({ statusCode: 404 });
+
+    expect((await prisma.task.findUniqueOrThrow({ where: { id: task.id } })).assignedToId).toBe(bob.id);
+  });
+
+  it('still lets a share recipient edit the task itself', async () => {
+    // The restriction is on the field that grants access, not on editing —
+    // otherwise sharing would be pointless.
+    const { alice, bob } = await createTwoUsers();
+    const task = await createTask(alice.id, { title: 'original' });
+    await shareTaskWith(task.id, alice.id, bob.id);
+
+    await taskService.update(bob.id, task.id, { title: 'edited by bob', status: 'DONE' } as never);
+
+    const after = await prisma.task.findUniqueOrThrow({ where: { id: task.id } });
+    expect(after.title).toBe('edited by bob');
+    expect(after.status).toBe('DONE');
+  });
+
+  it('lets the owner assign through PATCH, and rejects an unknown assignee', async () => {
+    const { alice, bob } = await createTwoUsers();
+    const task = await createTask(alice.id);
+
+    await taskService.update(alice.id, task.id, { assignedToId: bob.id } as never);
+    expect((await prisma.task.findUniqueOrThrow({ where: { id: task.id } })).assignedToId).toBe(bob.id);
+
+    await expect(
+      taskService.update(alice.id, task.id, {
+        assignedToId: '9c858901-8a57-4791-81fe-4c455b099bc9',
+      } as never)
+    ).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('lets a share recipient send an unchanged assignedToId without tripping the guard', async () => {
+    // Clients PATCH whole objects. Re-sending the value already stored is not
+    // an attempt to reassign, and treating it as one would break ordinary edits
+    // from any UI that posts the full form.
+    const { alice, bob } = await createTwoUsers();
+    const task = await createTask(alice.id);
+    await prisma.task.update({ where: { id: task.id }, data: { assignedToId: bob.id } });
+    await shareTaskWith(task.id, alice.id, bob.id);
+
+    await taskService.update(bob.id, task.id, {
+      title: 'edited',
+      assignedToId: bob.id,
+    } as never);
+
+    expect((await prisma.task.findUniqueOrThrow({ where: { id: task.id } })).title).toBe('edited');
+  });
+});

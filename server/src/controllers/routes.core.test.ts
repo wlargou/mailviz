@@ -19,7 +19,7 @@ import {
   shareThreadWith,
 } from '../test/factories.js';
 import { createGmailMock, type GmailMock } from '../test/gmailMock.js';
-import { isSyncInProgressFor } from '../jobs/emailSyncScheduler.js';
+import { isSyncInProgressFor, runManualSync } from '../jobs/emailSyncScheduler.js';
 
 /**
  * Route-level smoke tests for the mail domain: `/api/v1/auth` and
@@ -54,8 +54,10 @@ import { isSyncInProgressFor } from '../jobs/emailSyncScheduler.js';
 vi.mock('../lib/gmail.js', () => ({ getGmailClient: vi.fn() }));
 
 // Only the status probe is stubbed; the scheduler itself is covered in
-// jobs/schedulers.test.ts. Real in-flight sync state is unreachable from a
-// route test, and without a stub the route can only ever answer `false`.
+// jobs/schedulers.test.ts. Only the *status probe* is stubbed — without it the
+// route can only ever answer `false`. The guard itself is real and reachable:
+// the mock spreads the original module, so `runManualSync` below is the same
+// function, holding the same per-account set, that the sync route goes through.
 vi.mock('../jobs/emailSyncScheduler.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../jobs/emailSyncScheduler.js')>()),
   isSyncInProgressFor: vi.fn(() => false),
@@ -302,6 +304,33 @@ describe('authentication gate', () => {
 
     const callback = await call('GET', '/api/v1/auth/google/callback');
     expect(callback.status).toBe(302);
+  });
+
+  /**
+   * The rate limiter has to cover the route that authenticates, not the one
+   * that builds a URL.
+   *
+   * It was mounted only on `/api/v1/auth/login`, which by prefix reaches
+   * `GET /auth/login/google/url` — a handler that returns a redirect target and
+   * touches nothing. The callback, which exchanges an OAuth code with Google,
+   * writes the user row, mints the session cookies and applies the
+   * ALLOWED_EMAILS check, was unlimited.
+   *
+   * Asserted through the headers rather than by exhausting the bucket: 20
+   * requests would leak into every other test in this file that touches an
+   * auth route, and a limiter poisoned by its own test is worse than no test.
+   */
+  it('rate-limits the OAuth callback, not just the login URL', async () => {
+    const callback = await call('GET', '/api/v1/auth/google/callback');
+    expect(callback.headers.get('x-ratelimit-limit')).not.toBeNull();
+
+    const loginUrl = await call('GET', '/api/v1/auth/login/google/url');
+    expect(loginUrl.headers.get('x-ratelimit-limit')).not.toBeNull();
+
+    // The negative half: the header is evidence of a mount, so it has to be
+    // absent somewhere, or this asserts nothing about where the limiter is.
+    const unlimited = await call('GET', '/api/v1/auth/me');
+    expect(unlimited.headers.get('x-ratelimit-limit')).toBeNull();
   });
 
   it('rejects a token signed with the wrong secret', async () => {
@@ -1401,6 +1430,101 @@ describe('/api/v1/emails send and sync', () => {
     const mime = Buffer.from(raw, 'base64url').toString('utf-8');
     expect(mime).toContain('alice@gmail.test');
     expect(mime).not.toContain('bob@gmail.test');
+  });
+
+  it('POST /:id/reply sends to an edited recipient, not the original sender — REGRESSION', async () => {
+    // Compose renders the To field on a reply as an editable chip input, so a
+    // user can remove the pre-filled address and type someone else. The server
+    // used to ignore that entirely and hardcode `to = [original.from]`, so the
+    // message went to the person the user had just removed — silently, with a
+    // success toast. Asserting on the decoded MIME rather than the response
+    // body is the point: the response looks identical either way.
+    const { alice } = await createTwoUsers();
+    await createGoogleAuth(alice.id, { email: 'alice@gmail.test' });
+    const original = await createEmail(alice.id, { from: 'original-sender@example.com' });
+
+    const res = await call('POST', `/api/v1/emails/${original.id}/reply`, {
+      as: alice.id,
+      body: { htmlBody: '<p>redirected</p>', to: ['someone-else@example.com'] },
+    });
+    expect(res.status).toBe(201);
+
+    const raw = (messagesSend.mock.calls[0][0] as { requestBody: { raw: string } }).requestBody.raw;
+    const mime = Buffer.from(raw, 'base64url').toString('utf-8').replace(/=\r?\n/g, '');
+    const toHeader = mime.split(/\r?\n/).find((l) => l.startsWith('To:')) ?? '';
+    expect(toHeader).toContain('someone-else@example.com');
+    expect(toHeader).not.toContain('original-sender@example.com');
+  });
+
+  it('POST /:id/reply still defaults to the original sender when To is untouched', async () => {
+    // The override must not change the ordinary case — an absent or empty `to`
+    // still means "reply to whoever wrote it".
+    const { alice } = await createTwoUsers();
+    await createGoogleAuth(alice.id, { email: 'alice@gmail.test' });
+    const original = await createEmail(alice.id, { from: 'original-sender@example.com' });
+
+    await call('POST', `/api/v1/emails/${original.id}/reply`, {
+      as: alice.id,
+      body: { htmlBody: '<p>normal reply</p>' },
+    });
+
+    const raw = (messagesSend.mock.calls[0][0] as { requestBody: { raw: string } }).requestBody.raw;
+    const mime = Buffer.from(raw, 'base64url').toString('utf-8').replace(/=\r?\n/g, '');
+    expect(mime.split(/\r?\n/).find((l) => l.startsWith('To:')) ?? '').toContain(
+      'original-sender@example.com'
+    );
+  });
+
+  it('POST /:id/reply treats an empty To as untouched rather than sending nowhere', async () => {
+    const { alice } = await createTwoUsers();
+    await createGoogleAuth(alice.id, { email: 'alice@gmail.test' });
+    const original = await createEmail(alice.id, { from: 'original-sender@example.com' });
+
+    await call('POST', `/api/v1/emails/${original.id}/reply`, {
+      as: alice.id,
+      body: { htmlBody: '<p>hi</p>', to: [] },
+    });
+
+    const raw = (messagesSend.mock.calls[0][0] as { requestBody: { raw: string } }).requestBody.raw;
+    const mime = Buffer.from(raw, 'base64url').toString('utf-8').replace(/=\r?\n/g, '');
+    expect(mime.split(/\r?\n/).find((l) => l.startsWith('To:')) ?? '').toContain(
+      'original-sender@example.com'
+    );
+  });
+
+  /**
+   * "Sync now" has to lose to a sync that is already running.
+   *
+   * The route used to call `emailService.syncFromGmail` directly, outside the
+   * per-account guard entirely — so it could start a second sync for an account
+   * already syncing, and the two would race on the same Gmail history cursor.
+   * `runManualSync` here is the real function the route uses, so holding the
+   * account through it reproduces exactly the state a scheduled tick creates.
+   */
+  it('POST /sync answers 409 while that account is already syncing', async () => {
+    const { alice, bob } = await createTwoUsers();
+
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => { release = resolve; });
+    const held = runManualSync(alice.id, () => blocked);
+    // Let runExclusive register the account before the request goes out.
+    await new Promise((r) => setTimeout(r, 10));
+
+    const res = await call('POST', '/api/v1/emails/sync', { as: alice.id });
+    expect(res.status).toBe(409);
+    expect(res.body.error?.code).toBe('SYNC_IN_PROGRESS');
+
+    // The guard is per account: Bob's sync must not be blocked by Alice's.
+    // Without this the test would also pass against a global flag, which is the
+    // bug this codebase already fixed once.
+    vi.mocked(getGmailClient).mockRejectedValue(
+      Object.assign(new Error('Google not connected'), { status: 400 })
+    );
+    const other = await call('POST', '/api/v1/emails/sync', { as: bob.id });
+    expect(other.status).toBe(400);
+
+    release();
+    await held;
   });
 
   it('POST /sync refuses when Google is not connected', async () => {
