@@ -219,6 +219,30 @@ function parseDateTime(dateStr: string, time24: string): Date {
   return new Date(year, month - 1, day, hours || 0, minutes || 0);
 }
 
+/**
+ * The end date a multi-day event should keep when its start date moves.
+ *
+ * Exported because it is the whole of a bug that shipped: the caller used to
+ * set the end equal to the new start — an offset of zero — so moving a
+ * multi-day event collapsed it to a single day. Driving that through the
+ * flatpickr-backed date field in a test is far more machinery than the two
+ * lines of arithmetic deserve, so the arithmetic is a unit and is tested here.
+ *
+ * `setDate` rather than adding milliseconds: a span crossing a daylight-saving
+ * boundary is not a whole number of 24-hour days, and adding 3 * 86400000 to a
+ * date across one lands an hour off and can fall on the wrong day.
+ */
+export function shiftedEndDate(previousStartStr: string, previousEndStr: string, newStart: Date): Date {
+  const previousStart = parseDateTime(previousStartStr, '00:00');
+  const previousEnd = parseDateTime(previousEndStr, '00:00');
+  const offsetDays = Math.round(
+    (previousEnd.getTime() - previousStart.getTime()) / (24 * 60 * 60 * 1000)
+  );
+  const next = new Date(newStart);
+  next.setDate(next.getDate() + offsetDays);
+  return next;
+}
+
 /** Calculate duration in minutes between start and end */
 function calcDuration(startDateStr: string, startTime24: string, endDateStr: string, endTime24: string): number {
   const start = parseDateTime(startDateStr, startTime24);
@@ -458,8 +482,10 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
         updateEndFromDuration(newStartDateStr, startTime12, startAmPm, dur.minutes);
       }
     } else {
-      // Keep end date in sync (same offset)
-      setEndDateStr(newStartDateStr);
+      // Preserve the span, which is what "same offset" always meant. Setting
+      // the end equal to the new start collapsed every multi-day event to a
+      // single day the moment its start was moved.
+      setEndDateStr(format(shiftedEndDate(startDateStr, endDateStr, dates[0]), 'MM/dd/yyyy'));
     }
   };
 

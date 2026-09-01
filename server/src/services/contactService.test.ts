@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { contactService } from './contactService.js';
+import { contactMergeService } from './contactMergeService.js';
 import { createTwoUsers, createCustomer, createContact, createEmail } from '../test/factories.js';
 
 /**
@@ -173,5 +174,72 @@ describe('contactService.findById / findByEmail — tenant isolation', () => {
     await createContact(bobCustomer.id);
 
     expect(await contactService.findByCustomerId(alice.id, bobCustomer.id)).toEqual([]);
+  });
+});
+
+/**
+ * findByEmail has to answer for the addresses a merge absorbed.
+ *
+ * This is what the thread reader's sender avatar calls. Matching the primary
+ * address alone means merging two contacts silently breaks "jump to this
+ * person" for every address the merge folded in — the click falls through to
+ * the company, or does nothing, and nothing anywhere says why.
+ *
+ * Driven through the real merge rather than by inserting alias rows directly,
+ * so these still hold if the merge changes how it stores them.
+ */
+describe('contactService.findByEmail — merged addresses', () => {
+  async function merged(userId: string) {
+    const customer = await createCustomer(userId, { domain: 'corp.test' });
+    const target = await createContact(customer.id, {
+      firstName: 'Bob', lastName: 'Smith', email: 'bob.smith@corp.test',
+    });
+    const source = await createContact(customer.id, {
+      firstName: 'Bob', lastName: 'Smith', email: 'b.smith@corp.test',
+    });
+    await contactMergeService.merge(userId, { targetId: target.id, sourceIds: [source.id] });
+    return { customer, target };
+  }
+
+  it('finds the survivor by an absorbed address', async () => {
+    const { alice } = await createTwoUsers();
+    const { target } = await merged(alice.id);
+
+    const found = await contactService.findByEmail(alice.id, 'b.smith@corp.test');
+
+    expect(found?.id).toBe(target.id);
+  });
+
+  it('still finds by the primary address', async () => {
+    // The fast path has to keep working — it answers almost every call.
+    const { alice } = await createTwoUsers();
+    const { target } = await merged(alice.id);
+
+    expect((await contactService.findByEmail(alice.id, 'bob.smith@corp.test'))?.id).toBe(target.id);
+  });
+
+  it('matches regardless of case', async () => {
+    const { alice } = await createTwoUsers();
+    const { target } = await merged(alice.id);
+
+    expect((await contactService.findByEmail(alice.id, 'B.Smith@Corp.test'))?.id).toBe(target.id);
+  });
+
+  it('returns nothing for an address nobody holds', async () => {
+    // Guards the other direction: an alias lookup that matches too broadly
+    // would hand back the wrong person rather than none.
+    const { alice } = await createTwoUsers();
+    await merged(alice.id);
+
+    expect(await contactService.findByEmail(alice.id, 'stranger@corp.test')).toBeNull();
+  });
+
+  it('does not reach another tenant by their alias', async () => {
+    // The alias lookup adds an OR — the shape that has dropped ownership twice
+    // in this codebase.
+    const { alice, bob } = await createTwoUsers();
+    await merged(alice.id);
+
+    expect(await contactService.findByEmail(bob.id, 'b.smith@corp.test')).toBeNull();
   });
 });

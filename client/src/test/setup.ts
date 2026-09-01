@@ -30,3 +30,11 @@ if (!('ResizeObserver' in globalThis)) {
   }
   globalThis.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver;
 }
+
+// jsdom implements no scrolling at all, so `Element.prototype.scrollIntoView`
+// is simply absent — any component that scrolls a ref into view (ThreadDetail
+// jumping to the newest message) throws on mount rather than failing an
+// assertion, which makes the whole file look broken for an unrelated reason.
+if (typeof Element.prototype.scrollIntoView !== 'function') {
+  Element.prototype.scrollIntoView = function scrollIntoViewStub() {};
+}

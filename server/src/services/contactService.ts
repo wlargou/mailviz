@@ -213,12 +213,46 @@ export const contactService = {
     };
   },
 
+  /**
+   * The contact behind an address — the merge aliases included.
+   *
+   * Same defect as `customerService.findOrCreateContact` had, in a different
+   * place: matching the primary address alone means a merged contact stops
+   * answering to every address it absorbed. This is what the thread reader's
+   * sender avatar calls, so merging two contacts quietly broke "jump to this
+   * person" for every address the merge folded in — it fell through to the
+   * company, or nowhere.
+   *
+   * Exact match first because it is an index hit and answers nearly every call;
+   * the alias and case-insensitive comparison only run on a miss. Ownership
+   * sits under an explicit AND rather than beside the OR, which is the shape
+   * that has silently dropped the tenant filter before in this codebase.
+   */
   async findByEmail(userId: string, email: string) {
-    const contact = await prisma.contact.findFirst({
+    const SELECT = { id: true, firstName: true, lastName: true, email: true, customerId: true };
+
+    const exact = await prisma.contact.findFirst({
       where: { email, customer: { userId } },
-      select: { id: true, firstName: true, lastName: true, email: true, customerId: true },
+      select: SELECT,
     });
-    return contact;
+    if (exact) return exact;
+
+    // Aliases are stored trimmed and lowercased by contactMergeService.merge.
+    const normalized = email.trim().toLowerCase();
+    return prisma.contact.findFirst({
+      where: {
+        AND: [
+          { customer: { userId } },
+          {
+            OR: [
+              { emailAliases: { some: { email: normalized } } },
+              { email: { equals: normalized, mode: 'insensitive' } },
+            ],
+          },
+        ],
+      },
+      select: SELECT,
+    });
   },
 
   async findById(userId: string, id: string) {
