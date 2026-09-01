@@ -296,6 +296,64 @@ describe('the Snoozed folder', () => {
     expect((await prisma.emailReminder.findUniqueOrThrow({ where: { id: first.id } })).resolution)
       .toBe('replaced');
   });
+
+  /**
+   * Re-snoozing must not forget that the thread came from the inbox.
+   *
+   * The first snooze strips INBOX. So the second `create` reads the labels as
+   * they are NOW — already archived — and recording that would mean the thread
+   * fires its notification and then stays out of the inbox for good. The user
+   * pressed "remind me later" twice and the mail never came back.
+   */
+  it('remembers the thread was in the inbox when it is snoozed a second time', async () => {
+    const user = await createUser();
+    await createEmail(user.id, { threadId: 'thread-again', labelIds: ['INBOX'] });
+
+    await snoozeService.create(user.id, {
+      threadId: 'thread-again',
+      kind: 'snooze',
+      remindAt: inAnHour(),
+    });
+    // Precondition: the first snooze really did take INBOX away, which is what
+    // makes the naive recompute return false.
+    const afterFirst = await prisma.email.findFirstOrThrow({
+      where: { userId: user.id, threadId: 'thread-again' },
+    });
+    expect(afterFirst.labelIds).not.toContain('INBOX');
+
+    await snoozeService.create(user.id, {
+      threadId: 'thread-again',
+      kind: 'snooze',
+      remindAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
+    });
+
+    const armed = await prisma.emailReminder.findFirstOrThrow({
+      where: { userId: user.id, state: 'armed' },
+    });
+    expect(armed.wasInInbox).toBe(true);
+  });
+
+  /** The other direction still has to work: archived stays archived. */
+  it('does not invent an inbox for a thread that was archived both times', async () => {
+    const user = await createUser();
+    await createEmail(user.id, { threadId: 'thread-arch-twice', labelIds: [], isArchived: true });
+
+    await snoozeService.create(user.id, {
+      threadId: 'thread-arch-twice',
+      kind: 'snooze',
+      remindAt: inAnHour(),
+    });
+    await snoozeService.create(user.id, {
+      threadId: 'thread-arch-twice',
+      kind: 'snooze',
+      remindAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
+    });
+
+    const armed = await prisma.emailReminder.findFirstOrThrow({
+      where: { userId: user.id, state: 'armed' },
+    });
+    expect(armed.wasInInbox).toBe(false);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -51,7 +51,20 @@ app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
-// Rate limiting on auth login routes
+/**
+ * Rate limiting on the routes that actually authenticate.
+ *
+ * The mount points are the point. `/api/v1/auth/login` covers exactly one
+ * route by prefix — `GET /auth/login/google/url` — which builds a redirect URL
+ * and touches nothing: no credential, no database write, no outbound call. It
+ * was the only thing limited.
+ *
+ * `GET /auth/google/callback` is the route that matters and it had no limit at
+ * all. It exchanges an OAuth code with Google (an outbound request per call),
+ * looks the account up, creates or updates the user, and mints the session
+ * cookies. It is also where the ALLOWED_EMAILS check runs, so an unlimited
+ * callback is an unlimited oracle for which addresses are on the whitelist.
+ */
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
@@ -65,6 +78,7 @@ app.get('/api/health', (_req, res) => {
 
 // Auth routes (has its own public/protected split internally)
 app.use('/api/v1/auth/login', authLimiter);
+app.use('/api/v1/auth/google/callback', authLimiter);
 app.use('/api/v1/auth', authRoutes);
 
 // Protected routes — require authentication

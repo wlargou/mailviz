@@ -304,6 +304,33 @@ describe('authentication gate', () => {
     expect(callback.status).toBe(302);
   });
 
+  /**
+   * The rate limiter has to cover the route that authenticates, not the one
+   * that builds a URL.
+   *
+   * It was mounted only on `/api/v1/auth/login`, which by prefix reaches
+   * `GET /auth/login/google/url` — a handler that returns a redirect target and
+   * touches nothing. The callback, which exchanges an OAuth code with Google,
+   * writes the user row, mints the session cookies and applies the
+   * ALLOWED_EMAILS check, was unlimited.
+   *
+   * Asserted through the headers rather than by exhausting the bucket: 20
+   * requests would leak into every other test in this file that touches an
+   * auth route, and a limiter poisoned by its own test is worse than no test.
+   */
+  it('rate-limits the OAuth callback, not just the login URL', async () => {
+    const callback = await call('GET', '/api/v1/auth/google/callback');
+    expect(callback.headers.get('x-ratelimit-limit')).not.toBeNull();
+
+    const loginUrl = await call('GET', '/api/v1/auth/login/google/url');
+    expect(loginUrl.headers.get('x-ratelimit-limit')).not.toBeNull();
+
+    // The negative half: the header is evidence of a mount, so it has to be
+    // absent somewhere, or this asserts nothing about where the limiter is.
+    const unlimited = await call('GET', '/api/v1/auth/me');
+    expect(unlimited.headers.get('x-ratelimit-limit')).toBeNull();
+  });
+
   it('rejects a token signed with the wrong secret', async () => {
     // The access and refresh secrets are distinct on purpose: a refresh token
     // must not be usable as an access token. Verifying with the wrong key has

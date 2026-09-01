@@ -466,7 +466,14 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, dr
     attachments: attachments
       .filter((a) => a.status === 'ready')
       .map((a) => ({ filename: a.filename, content: a.content, contentType: a.contentType, size: a.size })),
-    ...(mode === 'reply' || mode === 'replyAll' ? { replyToEmailId: replyToEmail?.id } : {}),
+    // Reopened drafts fall back to the id the server stored: in 'draft' mode
+    // there is no `replyToEmail` in memory, and without this every reply draft
+    // reopened from the Drafts folder would be saved as a standalone message.
+    ...(mode === 'draft'
+      ? (draft?.replyToEmailId ? { replyToEmailId: draft.replyToEmailId } : {})
+      : mode === 'reply' || mode === 'replyAll'
+        ? { replyToEmailId: replyToEmail?.id }
+        : {}),
   });
 
   const handleSaveDraft = async () => {

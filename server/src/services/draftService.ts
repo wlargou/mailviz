@@ -64,6 +64,12 @@ export interface DraftDetail {
   id: string;
   gmailDraftId: string;
   threadId: string | null;
+  /**
+   * Echoed back so reopening a reply draft restores its threading. The compose
+   * modal only knows this while it is open; after a reload the row is the only
+   * place it exists.
+   */
+  replyToEmailId: string | null;
   to: string[];
   cc: string[];
   bcc: string[];
@@ -205,8 +211,21 @@ export const draftService = {
     return { synced, removed };
   },
 
-  /** Write one parsed Gmail draft into the mirror. Scoped by userId throughout. */
-  async upsertMirror(userId: string, gmailDraftId: string, parsed: ParsedDraft) {
+  /**
+   * Write one parsed Gmail draft into the mirror. Scoped by userId throughout.
+   *
+   * `replyToEmailId` is passed separately rather than living on ParsedDraft
+   * because it is ours, not Gmail's: nothing in a fetched draft message carries
+   * it back. Folding it into `data` would mean every re-sync — which parses
+   * what Gmail returned — overwrote a stored id with undefined, so the column
+   * is only written when a caller actually supplies one.
+   */
+  async upsertMirror(
+    userId: string,
+    gmailDraftId: string,
+    parsed: ParsedDraft,
+    replyToEmailId?: string
+  ) {
     const data = {
       gmailMessageId: parsed.gmailMessageId,
       threadId: parsed.threadId,
@@ -220,6 +239,7 @@ export const draftService = {
       attachments: parsed.attachments,
       lastEditedAt: parsed.lastEditedAt,
       syncedAt: new Date(),
+      ...(replyToEmailId ? { replyToEmailId } : {}),
     };
 
     return prisma.emailDraft.upsert({
@@ -265,6 +285,7 @@ export const draftService = {
       id: row.id,
       gmailDraftId: row.gmailDraftId,
       threadId: row.threadId,
+      replyToEmailId: row.replyToEmailId,
       to: row.to,
       cc: row.cc,
       bcc: row.bcc,
@@ -307,6 +328,7 @@ export const draftService = {
         id: refreshed.id,
         gmailDraftId: refreshed.gmailDraftId,
         threadId: refreshed.threadId,
+        replyToEmailId: refreshed.replyToEmailId,
         to: parsed.to,
         cc: parsed.cc,
         bcc: parsed.bcc,
@@ -391,7 +413,7 @@ export const draftService = {
       })),
       attachmentIds: [],
       lastEditedAt: new Date(),
-    });
+    }, threading.replyToEmailId);
 
     wsEmitToUser(userId, 'drafts:changed', { id: row.id });
     auditService.log({
@@ -524,26 +546,53 @@ export const draftService = {
    * The originating email is looked up `{ id, userId }` — a draft cannot be
    * threaded onto mail the caller does not own. An existing draft keeps the
    * thread it already has, so updating a reply draft never detaches it.
+   *
+   * What this used to do, and why it was wrong: an existing draft with a
+   * threadId returned early with no headers at all. Gmail's `threadId` alone
+   * kept the message grouped *here*, which is why nothing looked broken — but
+   * In-Reply-To and References are what every other mail client threads on, so
+   * a reply typed for more than one autosave arrived at the recipient as a
+   * brand-new conversation. The thread the draft already has still wins; the
+   * headers are simply resolved alongside it rather than instead of it.
+   *
+   * The stored id is the fallback because the client only knows the id while
+   * the compose modal is open. Reopening a draft from the Drafts folder sends
+   * no `replyToEmailId`, so without the column a reply saved yesterday could
+   * never be threaded again.
    */
   async resolveThreading(userId: string, replyToEmailId: string | undefined, existing: EmailDraft | null) {
-    if (existing?.threadId) {
-      return { threadId: existing.threadId, inReplyTo: undefined, references: undefined };
-    }
-    if (!replyToEmailId) {
-      return { threadId: undefined, inReplyTo: undefined, references: undefined };
+    const sourceId = replyToEmailId ?? existing?.replyToEmailId ?? undefined;
+
+    if (!sourceId) {
+      return {
+        threadId: existing?.threadId ?? undefined,
+        inReplyTo: undefined,
+        references: undefined,
+        replyToEmailId: undefined,
+      };
     }
 
-    const original = await prisma.email.findFirst({ where: { id: replyToEmailId, userId } });
-    if (!original) return { threadId: undefined, inReplyTo: undefined, references: undefined };
+    const original = await prisma.email.findFirst({ where: { id: sourceId, userId } });
+    if (!original) {
+      return {
+        threadId: existing?.threadId ?? undefined,
+        inReplyTo: undefined,
+        references: undefined,
+        replyToEmailId: undefined,
+      };
+    }
 
     const references = original.references
       ? `${original.references} ${original.messageId ?? ''}`.trim()
       : original.messageId ?? undefined;
 
     return {
-      threadId: original.threadId ?? undefined,
+      // The draft's own thread wins: Gmail assigned it, and overriding it with
+      // the original's would move an established draft to a different thread.
+      threadId: existing?.threadId ?? original.threadId ?? undefined,
       inReplyTo: original.messageId?.trim() || undefined,
       references: references?.trim() || undefined,
+      replyToEmailId: sourceId,
     };
   },
 };

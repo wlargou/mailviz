@@ -5,6 +5,7 @@ import type { Editor } from '@tiptap/react';
 import { MailComposeModal } from './MailComposeModal';
 import { templatesApi } from '../../api/templates';
 import { emailsApi } from '../../api/emails';
+import { draftsApi } from '../../api/drafts';
 import type { EmailMessage } from '../../types/email';
 
 /**
@@ -246,5 +247,66 @@ describe('MailComposeModal — template insertion', () => {
     await user.click(screen.getByRole('button', { name: 'Send' }));
 
     await waitFor(() => expect(emailsApi.replyToEmail).toHaveBeenCalled());
+  });
+});
+
+describe('MailComposeModal — reply drafts keep their threading', () => {
+  /**
+   * A reply draft reopened from the Drafts folder opens in mode 'draft', where
+   * `replyToEmail` is null — the modal has no memory of what it was answering.
+   * The server stores the id for exactly this, so the save has to send it back.
+   *
+   * Without it the server has nothing to resolve In-Reply-To/References from,
+   * and the message goes out as a new conversation for every recipient whose
+   * client threads on the standard headers rather than Gmail's threadId.
+   */
+  const DRAFT = {
+    id: 'draft-1',
+    gmailDraftId: 'gd-1',
+    threadId: 'thread-1',
+    replyToEmailId: 'email-1',
+    to: ['jane@acme.test'],
+    cc: [],
+    bcc: [],
+    subject: 'Re: Quote request',
+    htmlBody: '<p>Half written</p>',
+    lastEditedAt: '2026-08-10T10:00:00.000Z',
+    attachments: [],
+  };
+
+  it('sends the stored reply id when updating a reopened draft', async () => {
+    const user = userEvent.setup();
+    vi.mocked(draftsApi.update).mockResolvedValue({
+      data: { data: { id: 'draft-1' } },
+    } as Awaited<ReturnType<typeof draftsApi.update>>);
+
+    renderCompose({ mode: 'draft', draft: DRAFT });
+    await user.click(await screen.findByRole('button', { name: /update draft/i }));
+
+    await waitFor(() => expect(draftsApi.update).toHaveBeenCalled());
+    expect(draftsApi.update).toHaveBeenCalledWith(
+      'draft-1',
+      expect.objectContaining({ replyToEmailId: 'email-1' })
+    );
+  });
+
+  it('omits the field for a draft that was never a reply', async () => {
+    // Sending `replyToEmailId: undefined` would be harmless, but sending a
+    // stale or invented one would thread a standalone message into somebody
+    // else's conversation.
+    const user = userEvent.setup();
+    vi.mocked(draftsApi.update).mockResolvedValue({
+      data: { data: { id: 'draft-2' } },
+    } as Awaited<ReturnType<typeof draftsApi.update>>);
+
+    renderCompose({
+      mode: 'draft',
+      draft: { ...DRAFT, id: 'draft-2', replyToEmailId: null },
+    });
+    await user.click(await screen.findByRole('button', { name: /update draft/i }));
+
+    await waitFor(() => expect(draftsApi.update).toHaveBeenCalled());
+    const payload = vi.mocked(draftsApi.update).mock.calls[0][1];
+    expect(payload).not.toHaveProperty('replyToEmailId');
   });
 });

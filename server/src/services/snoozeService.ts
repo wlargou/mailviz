@@ -279,7 +279,26 @@ export const snoozeService = {
       throw new AppError(404, 'THREAD_NOT_FOUND', 'Thread not found');
     }
 
-    const wasInInbox = emails.some((e) => e.labelIds.includes('INBOX'));
+    /**
+     * Where the thread lived before ANY snooze touched it.
+     *
+     * Reading the current labels alone is wrong the second time round: the
+     * first snooze already pulled INBOX off, so re-snoozing an
+     * already-snoozed thread computed `false` and the thread was restored
+     * without INBOX — it fired its notification and then stayed archived,
+     * which for the user is mail that never came back.
+     *
+     * OR rather than "inherit" so a thread genuinely moved into the inbox
+     * between snoozes still counts. The asymmetry is deliberate: restoring
+     * something to the inbox that was already archived is a visible, one-click
+     * fix, while failing to restore is silent.
+     */
+    const priorArmed = await prisma.emailReminder.findFirst({
+      where: { userId, threadId: input.threadId, kind: input.kind, state: 'armed' },
+      select: { wasInInbox: true },
+    });
+    const wasInInbox =
+      (priorArmed?.wasInInbox ?? false) || emails.some((e) => e.labelIds.includes('INBOX'));
     // The newest message we currently know about is the reply threshold — see
     // threadHasReply.
     const armedAt = emails.reduce(

@@ -100,30 +100,40 @@ export function extractAttachments(payload: any): Array<{ filename: string; mime
   return attachments;
 }
 
+/**
+ * URLs and bare addresses, matched in ONE pass with the URL branch first.
+ *
+ * The order and the single pass are both load-bearing. Linkifying URLs and then
+ * addresses in two passes means the address pass runs over HTML the first pass
+ * just wrote — and an address inside a URL (`/unsubscribe/bob@corp.com`, a
+ * `?email=` parameter, a `user@host` prefix) then gets a second anchor injected
+ * *inside the href attribute*, which destroys the link:
+ *
+ *   href="https://mail.example.com/u/<a href="mailto:bob@corp.com">bob@…
+ *
+ * Unsubscribe footers carrying the recipient's own address are about as common
+ * as plain-text mail gets, so this was not a corner case.
+ */
+const LINKABLE = /(https?:\/\/[^\s<>"')\]]+)|([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
+
 /** Convert plain text to basic HTML: escape, linkify, preserve line breaks */
 export function plainTextToHtml(text: string): string {
-  let html = text
+  // Escaping first is what makes the rest safe: by the time anything is written
+  // into an href, every quote and angle bracket in the input is already an
+  // entity, so a crafted URL cannot close the attribute.
+  const escaped = text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 
-  // Convert URLs to clickable links
-  html = html.replace(
-    /(https?:\/\/[^\s<>"')\]]+)/g,
-    '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
+  const linked = escaped.replace(LINKABLE, (_match, url?: string, email?: string) =>
+    url
+      ? `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`
+      : `<a href="mailto:${email}">${email}</a>`
   );
 
-  // Convert email addresses to mailto links
-  html = html.replace(
-    /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g,
-    '<a href="mailto:$1">$1</a>'
-  );
-
-  // Convert newlines to <br> tags
-  html = html.replace(/\n/g, '<br>');
-
-  return html;
+  return linked.replace(/\n/g, '<br>');
 }
 
 /** Extract HTML or plain text body from Gmail message payload */
