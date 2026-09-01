@@ -420,6 +420,37 @@ export const taskService = {
     }
     await assertReferencesOwnedBy(existing.userId, data);
 
+    /**
+     * Reassigning through a PATCH needs ownership, exactly as `assignTask` does.
+     *
+     * This route is the other half of the same escalation. `assignTask` was
+     * tightened to `isTaskOwner`, but `updateTaskSchema` also carries
+     * `assignedToId` and `update` gates on `canAccessTask` — which a share or an
+     * existing assignment satisfies. So the door closed on
+     * `PATCH /tasks/:id/assign` was still open on `PATCH /tasks/:id`, and a
+     * share recipient could still hand a third account standing access the
+     * owner never granted.
+     *
+     * Editing a shared task's title or status stays allowed — that is what
+     * sharing is for. Only the field that grants other people access is
+     * restricted to the owner.
+     */
+    if (data.assignedToId !== undefined && data.assignedToId !== existing.assignedToId) {
+      const owner = await isTaskOwner(id, userId);
+      if (!owner) {
+        throw new AppError(404, 'TASK_NOT_FOUND', 'Task not found');
+      }
+      if (data.assignedToId) {
+        const assignee = await prisma.user.findUnique({
+          where: { id: data.assignedToId },
+          select: { id: true },
+        });
+        if (!assignee) {
+          throw new AppError(404, 'USER_NOT_FOUND', 'User not found');
+        }
+      }
+    }
+
     const { labelIds, customerId, ...taskData } = data;
 
     const updateData: any = {

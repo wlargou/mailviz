@@ -124,6 +124,84 @@ describe('calendarService.findAll', () => {
     expect(data.map((e) => e.id)).toEqual([inside.id]);
   });
 
+  it('returns events that cross the start of the range — REGRESSION', async () => {
+    // The filter was containment (`startTime >= start AND endTime <= end`), so
+    // an event beginning before the window and running into it failed the first
+    // test and an event running past the end failed the second. Neither was
+    // returned by the window it started in NOR the one it ended in: invisible on
+    // both sides, silently.
+    const user = await createUser();
+    const straddlesStart = await localEvent(user.id, {
+      title: 'Overnight into the window',
+      startTime: new Date('2026-07-31T22:00:00.000Z'),
+      endTime: new Date('2026-08-01T02:00:00.000Z'),
+    });
+
+    const { data } = await calendarService.findAll(
+      { start: '2026-08-01T00:00:00.000Z', end: '2026-08-31T23:59:59.000Z' },
+      user.id
+    );
+
+    expect(data.map((e) => e.id)).toContain(straddlesStart.id);
+  });
+
+  it('returns events that cross the end of the range — REGRESSION', async () => {
+    const user = await createUser();
+    const straddlesEnd = await localEvent(user.id, {
+      title: 'Runs past the window',
+      startTime: new Date('2026-08-31T22:00:00.000Z'),
+      endTime: new Date('2026-09-01T02:00:00.000Z'),
+    });
+
+    const { data } = await calendarService.findAll(
+      { start: '2026-08-01T00:00:00.000Z', end: '2026-08-31T23:59:59.000Z' },
+      user.id
+    );
+
+    expect(data.map((e) => e.id)).toContain(straddlesEnd.id);
+  });
+
+  it('returns a multi-day event that spans the whole window', async () => {
+    // Contained by nothing: it starts before and ends after. Containment
+    // excluded it from every window it actually covers.
+    const user = await createUser();
+    const spanning = await localEvent(user.id, {
+      title: 'Two-week conference',
+      startTime: new Date('2026-07-25T09:00:00.000Z'),
+      endTime: new Date('2026-09-05T17:00:00.000Z'),
+    });
+
+    const { data } = await calendarService.findAll(
+      { start: '2026-08-01T00:00:00.000Z', end: '2026-08-31T23:59:59.000Z' },
+      user.id
+    );
+
+    expect(data.map((e) => e.id)).toEqual([spanning.id]);
+  });
+
+  it('still excludes events that only touch the boundary or miss entirely', async () => {
+    // Overlap must not become "everything". An event ending exactly when the
+    // window opens does not overlap it.
+    const user = await createUser();
+    await localEvent(user.id, {
+      title: 'Ends exactly at the window start',
+      startTime: new Date('2026-07-31T20:00:00.000Z'),
+      endTime: new Date('2026-08-01T00:00:00.000Z'),
+    });
+    await localEvent(user.id, {
+      title: 'Entirely before',
+      startTime: new Date('2026-07-01T09:00:00.000Z'),
+      endTime: new Date('2026-07-01T10:00:00.000Z'),
+    });
+
+    const { data } = await calendarService.findAll(
+      { start: '2026-08-01T00:00:00.000Z', end: '2026-08-31T23:59:59.000Z' },
+      user.id
+    );
+
+    expect(data).toEqual([]);
+  });
+
   it('keeps the range filter scoped to the caller — REGRESSION', async () => {
     const { alice, bob } = await createTwoUsers();
     const mine = await localEvent(alice.id, {

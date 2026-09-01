@@ -16,6 +16,7 @@ import {
   addDays,
   subDays,
 } from 'date-fns';
+import { WEEK_STARTS_ON } from '../utils/week';
 
 interface CalendarState {
   events: CalendarEvent[];
@@ -38,8 +39,8 @@ function getDateRange(date: Date, mode: CalendarViewMode) {
     const monthStart = startOfMonth(date);
     const monthEnd = endOfMonth(date);
     return {
-      start: startOfWeek(monthStart, { weekStartsOn: 0 }).toISOString(),
-      end: endOfWeek(monthEnd, { weekStartsOn: 0 }).toISOString(),
+      start: startOfWeek(monthStart, { weekStartsOn: WEEK_STARTS_ON }).toISOString(),
+      end: endOfWeek(monthEnd, { weekStartsOn: WEEK_STARTS_ON }).toISOString(),
     };
   }
   if (mode === 'day') {
@@ -49,8 +50,8 @@ function getDateRange(date: Date, mode: CalendarViewMode) {
     };
   }
   return {
-    start: startOfWeek(date, { weekStartsOn: 0 }).toISOString(),
-    end: endOfWeek(date, { weekStartsOn: 0 }).toISOString(),
+    start: startOfWeek(date, { weekStartsOn: WEEK_STARTS_ON }).toISOString(),
+    end: endOfWeek(date, { weekStartsOn: WEEK_STARTS_ON }).toISOString(),
   };
 }
 

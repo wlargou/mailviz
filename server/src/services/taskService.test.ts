@@ -1177,3 +1177,88 @@ describe('taskService.findGroupedByCompany — filters', () => {
     expect((await taskService.findGroupedByCompany(alice.id, { search: 'powerm' })).data).toEqual([]);
   });
 });
+
+
+/**
+ * The other half of the assignment escalation.
+ *
+ * `assignTask` was tightened to require ownership, but `updateTaskSchema` also
+ * carries `assignedToId` and `update` gates on `canAccessTask`. So the same
+ * escalation remained reachable through the ordinary edit route — which is the
+ * shape of mistake worth a dedicated test: a fix applied to one entry point
+ * while a second one goes on doing the thing.
+ */
+describe('taskService.update — assignment is owner-only', () => {
+  it('refuses a share recipient reassigning through PATCH — REGRESSION', async () => {
+    const { alice, bob } = await createTwoUsers();
+    const carol = await createUser({ name: 'Carol' });
+    const task = await createTask(alice.id, { title: 'Alice owns this' });
+    await shareTaskWith(task.id, alice.id, bob.id);
+
+    await expect(
+      taskService.update(bob.id, task.id, { assignedToId: carol.id } as never)
+    ).rejects.toMatchObject({ statusCode: 404 });
+
+    expect((await prisma.task.findUniqueOrThrow({ where: { id: task.id } })).assignedToId).toBeNull();
+  });
+
+  it('refuses the current assignee reassigning it onward', async () => {
+    // Being the assignee also satisfies canAccessTask, so it is the second way
+    // in to the same escalation.
+    const { alice, bob } = await createTwoUsers();
+    const carol = await createUser({ name: 'Carol' });
+    const task = await createTask(alice.id);
+    await prisma.task.update({ where: { id: task.id }, data: { assignedToId: bob.id } });
+
+    await expect(
+      taskService.update(bob.id, task.id, { assignedToId: carol.id } as never)
+    ).rejects.toMatchObject({ statusCode: 404 });
+
+    expect((await prisma.task.findUniqueOrThrow({ where: { id: task.id } })).assignedToId).toBe(bob.id);
+  });
+
+  it('still lets a share recipient edit the task itself', async () => {
+    // The restriction is on the field that grants access, not on editing —
+    // otherwise sharing would be pointless.
+    const { alice, bob } = await createTwoUsers();
+    const task = await createTask(alice.id, { title: 'original' });
+    await shareTaskWith(task.id, alice.id, bob.id);
+
+    await taskService.update(bob.id, task.id, { title: 'edited by bob', status: 'DONE' } as never);
+
+    const after = await prisma.task.findUniqueOrThrow({ where: { id: task.id } });
+    expect(after.title).toBe('edited by bob');
+    expect(after.status).toBe('DONE');
+  });
+
+  it('lets the owner assign through PATCH, and rejects an unknown assignee', async () => {
+    const { alice, bob } = await createTwoUsers();
+    const task = await createTask(alice.id);
+
+    await taskService.update(alice.id, task.id, { assignedToId: bob.id } as never);
+    expect((await prisma.task.findUniqueOrThrow({ where: { id: task.id } })).assignedToId).toBe(bob.id);
+
+    await expect(
+      taskService.update(alice.id, task.id, {
+        assignedToId: '9c858901-8a57-4791-81fe-4c455b099bc9',
+      } as never)
+    ).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('lets a share recipient send an unchanged assignedToId without tripping the guard', async () => {
+    // Clients PATCH whole objects. Re-sending the value already stored is not
+    // an attempt to reassign, and treating it as one would break ordinary edits
+    // from any UI that posts the full form.
+    const { alice, bob } = await createTwoUsers();
+    const task = await createTask(alice.id);
+    await prisma.task.update({ where: { id: task.id }, data: { assignedToId: bob.id } });
+    await shareTaskWith(task.id, alice.id, bob.id);
+
+    await taskService.update(bob.id, task.id, {
+      title: 'edited',
+      assignedToId: bob.id,
+    } as never);
+
+    expect((await prisma.task.findUniqueOrThrow({ where: { id: task.id } })).title).toBe('edited');
+  });
+});

@@ -81,11 +81,26 @@ export const calendarService = {
   async findAll(query: { start?: string; end?: string }, userId: string) {
     const where: Prisma.CalendarEventWhereInput = { userId };
 
-    if (query.start) {
-      where.startTime = { gte: new Date(query.start) };
-    }
+    /**
+     * Overlap, not containment.
+     *
+     * This used to ask for `startTime >= start AND endTime <= end`, which
+     * returns only events wholly inside the window. An event that begins before
+     * the window and runs into it fails the first test; one that begins inside
+     * and runs past the end fails the second. So anything crossing a boundary
+     * was returned by neither the query for the week it started in nor the one
+     * for the week it ended in — invisible on both sides, with no error.
+     *
+     * An interval overlaps the half-open window [start, end) when it begins
+     * before the window ends and ends after the window begins. A multi-day
+     * event, an overnight flight, or a meeting spanning midnight is then
+     * returned by both adjacent views, which is what a calendar should do.
+     */
     if (query.end) {
-      where.endTime = { lte: new Date(query.end) };
+      where.startTime = { lt: new Date(query.end) };
+    }
+    if (query.start) {
+      where.endTime = { gt: new Date(query.start) };
     }
 
     const events = await prisma.calendarEvent.findMany({

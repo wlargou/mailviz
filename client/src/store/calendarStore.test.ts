@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { WEEK_STARTS_ON } from '../utils/week';
 import { AxiosHeaders, type AxiosResponse } from 'axios';
 import {
   addMonths,
@@ -9,6 +10,7 @@ import {
   startOfMonth,
   addWeeks,
   addDays,
+  startOfWeek,
   isSameDay,
 } from 'date-fns';
 import { calendarApi } from '../api/calendar';
@@ -118,12 +120,13 @@ describe('calendarStore', () => {
     await useCalendarStore.getState().fetchEvents();
 
     const { start, end } = lastRange();
-    // The grid starts on a Sunday and ends on a Saturday, covering the leading
-    // and trailing days of the neighbouring months that the month view still
-    // draws. Bounding the query by startOfMonth/endOfMonth leaves those cells
-    // empty even though the events exist.
-    expect(getDay(start)).toBe(0);
-    expect(getDay(end)).toBe(6);
+    // The grid covers the leading and trailing days of the neighbouring months
+    // that the month view still draws. Bounding the query by
+    // startOfMonth/endOfMonth leaves those cells empty even though the events
+    // exist — and bounding it on the WRONG week start leaves a whole column
+    // empty, which is what this used to assert.
+    expect(getDay(start)).toBe(WEEK_STARTS_ON);
+    expect(getDay(end)).toBe((WEEK_STARTS_ON + 6) % 7);
     expect(start.getTime()).toBeLessThanOrEqual(startOfMonth(anchor).getTime());
     expect(end.getTime()).toBeGreaterThanOrEqual(endOfMonth(anchor).getTime());
     expect(useCalendarStore.getState().events).toEqual([event]);
@@ -139,14 +142,27 @@ describe('calendarStore', () => {
     expect(end.getTime()).toBe(endOfDay(anchor).getTime());
   });
 
-  it('fetches Sunday to Saturday in week view', async () => {
+  it('fetches the same week the week view draws — REGRESSION', async () => {
+    // This test used to assert Sunday-to-Saturday, matching what the store did.
+    // The views render Monday-to-Sunday. So the assertion described the
+    // implementation rather than the requirement, passed, and the app shipped
+    // with the rendered Sunday column permanently empty — it sat outside the
+    // fetched window — while a fetched Sunday was never drawn.
+    //
+    // The requirement is that the window covers the grid, so that is what is
+    // asserted: every day the week view renders must fall inside the range.
     useCalendarStore.setState({ currentDate: anchor, viewMode: 'week' });
 
     await useCalendarStore.getState().fetchEvents();
 
     const { start, end } = lastRange();
-    expect(getDay(start)).toBe(0);
-    expect(getDay(end)).toBe(6);
+    const renderedStart = startOfWeek(anchor, { weekStartsOn: WEEK_STARTS_ON });
+
+    for (let i = 0; i < 7; i++) {
+      const day = addDays(renderedStart, i);
+      expect(day.getTime()).toBeGreaterThanOrEqual(start.getTime());
+      expect(day.getTime()).toBeLessThanOrEqual(end.getTime());
+    }
     // Seven days, not the surrounding month.
     expect(end.getTime() - start.getTime()).toBeLessThan(7 * 24 * 60 * 60 * 1000);
   });
