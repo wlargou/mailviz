@@ -1403,6 +1403,66 @@ describe('/api/v1/emails send and sync', () => {
     expect(mime).not.toContain('bob@gmail.test');
   });
 
+  it('POST /:id/reply sends to an edited recipient, not the original sender — REGRESSION', async () => {
+    // Compose renders the To field on a reply as an editable chip input, so a
+    // user can remove the pre-filled address and type someone else. The server
+    // used to ignore that entirely and hardcode `to = [original.from]`, so the
+    // message went to the person the user had just removed — silently, with a
+    // success toast. Asserting on the decoded MIME rather than the response
+    // body is the point: the response looks identical either way.
+    const { alice } = await createTwoUsers();
+    await createGoogleAuth(alice.id, { email: 'alice@gmail.test' });
+    const original = await createEmail(alice.id, { from: 'original-sender@example.com' });
+
+    const res = await call('POST', `/api/v1/emails/${original.id}/reply`, {
+      as: alice.id,
+      body: { htmlBody: '<p>redirected</p>', to: ['someone-else@example.com'] },
+    });
+    expect(res.status).toBe(201);
+
+    const raw = (messagesSend.mock.calls[0][0] as { requestBody: { raw: string } }).requestBody.raw;
+    const mime = Buffer.from(raw, 'base64url').toString('utf-8').replace(/=\r?\n/g, '');
+    const toHeader = mime.split(/\r?\n/).find((l) => l.startsWith('To:')) ?? '';
+    expect(toHeader).toContain('someone-else@example.com');
+    expect(toHeader).not.toContain('original-sender@example.com');
+  });
+
+  it('POST /:id/reply still defaults to the original sender when To is untouched', async () => {
+    // The override must not change the ordinary case — an absent or empty `to`
+    // still means "reply to whoever wrote it".
+    const { alice } = await createTwoUsers();
+    await createGoogleAuth(alice.id, { email: 'alice@gmail.test' });
+    const original = await createEmail(alice.id, { from: 'original-sender@example.com' });
+
+    await call('POST', `/api/v1/emails/${original.id}/reply`, {
+      as: alice.id,
+      body: { htmlBody: '<p>normal reply</p>' },
+    });
+
+    const raw = (messagesSend.mock.calls[0][0] as { requestBody: { raw: string } }).requestBody.raw;
+    const mime = Buffer.from(raw, 'base64url').toString('utf-8').replace(/=\r?\n/g, '');
+    expect(mime.split(/\r?\n/).find((l) => l.startsWith('To:')) ?? '').toContain(
+      'original-sender@example.com'
+    );
+  });
+
+  it('POST /:id/reply treats an empty To as untouched rather than sending nowhere', async () => {
+    const { alice } = await createTwoUsers();
+    await createGoogleAuth(alice.id, { email: 'alice@gmail.test' });
+    const original = await createEmail(alice.id, { from: 'original-sender@example.com' });
+
+    await call('POST', `/api/v1/emails/${original.id}/reply`, {
+      as: alice.id,
+      body: { htmlBody: '<p>hi</p>', to: [] },
+    });
+
+    const raw = (messagesSend.mock.calls[0][0] as { requestBody: { raw: string } }).requestBody.raw;
+    const mime = Buffer.from(raw, 'base64url').toString('utf-8').replace(/=\r?\n/g, '');
+    expect(mime.split(/\r?\n/).find((l) => l.startsWith('To:')) ?? '').toContain(
+      'original-sender@example.com'
+    );
+  });
+
   it('POST /sync refuses when Google is not connected', async () => {
     const { alice } = await createTwoUsers();
     vi.mocked(getGmailClient).mockRejectedValue(
