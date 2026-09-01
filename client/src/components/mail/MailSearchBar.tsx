@@ -108,7 +108,12 @@ export function MailSearchBar({ filters, onFiltersChange }: MailSearchBarProps) 
   };
 
   const handleClearAll = () => {
-    const cleared = { ...emptyFilters };
+    // The folder survives. It is not a search filter — it is where the user
+    // is. Resetting it here silently threw you back to the Inbox whenever you
+    // cleared a search while reading Archive, Sent or Snoozed, which is the
+    // moment you are least likely to be watching the folder list. The count
+    // beside this button already excludes the folder for the same reason.
+    const cleared = { ...emptyFilters, folder: draft.folder };
     setDraft(cleared);
     setSelectedFrom(null);
     setSelectedTo(null);

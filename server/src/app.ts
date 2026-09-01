@@ -33,9 +33,35 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
-app.use(helmet({
-  contentSecurityPolicy: env.NODE_ENV === 'production' ? undefined : false,
-}));
+/**
+ * Helmet, with one deliberate relaxation to `img-src`.
+ *
+ * Helmet's default CSP is `img-src 'self' data:`, and in production this server
+ * also serves the SPA — so that policy governs the mail viewer, which renders
+ * message bodies inline (`dangerouslySetInnerHTML`, sanitised by DOMPurify).
+ * The result was that every remote image in every email was blocked: logos in
+ * signatures, newsletter artwork, anything not inlined as a data: URI. Only in
+ * production, because CSP is off in development — so the mail looked fine on
+ * the machine where it was being worked on and broken on the deployed app.
+ *
+ * `https:` and not `*`: an http image on an https page is mixed content and
+ * would be blocked anyway. Scripts, frames and objects keep the default policy,
+ * which is what actually contains a hostile message — an image cannot execute.
+ *
+ * The cost is real and worth naming: permitting remote images permits tracking
+ * pixels, which is why Gmail and Outlook proxy images through their own servers
+ * rather than fetching them from the sender. Doing that here is a feature, not
+ * a header change; until then, opening a message tells its sender you opened it.
+ */
+export function cspOptions(nodeEnv: string) {
+  if (nodeEnv !== 'production') return false as const;
+  return {
+    useDefaults: true,
+    directives: { 'img-src': ["'self'", 'data:', 'https:'] },
+  };
+}
+
+app.use(helmet({ contentSecurityPolicy: cspOptions(env.NODE_ENV) }));
 app.use(cors({
   origin: env.CLIENT_URL,
   credentials: true,

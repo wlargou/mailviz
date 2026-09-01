@@ -553,8 +553,17 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
         startTime: buildDateTime(startDateStr, isAllDay ? '00:00' : startTime24),
         endTime: buildDateTime(endDateStr, isAllDay ? '23:59' : endTime24),
         isAllDay,
-        attendees: attendees.length > 0 ? attendees.map((a) => ({ email: a.email })) : undefined,
-        sendUpdates: attendees.length > 0 ? sendUpdates : undefined,
+        // An empty list has to mean "remove everyone", and it is sent as one.
+        // `length > 0 ? … : undefined` produced `undefined` instead, which the
+        // update path reads as "leave this field alone" — so removing every
+        // attendee and saving kept them all invited, in Google and locally,
+        // while the modal showed none. The one edit nobody could make was the
+        // one that matters most.
+        attendees: attendees.map((a) => ({ email: a.email })),
+        // Sent alongside rather than gated on a non-empty list: when the change
+        // IS the removal, the notification preference still applies — those
+        // people should be told they are no longer invited.
+        sendUpdates,
         addGoogleMeet: addGoogleMeet || undefined,
         colorId: colorId || undefined,
         // Omitted entirely when the existing rule is locked, so the server

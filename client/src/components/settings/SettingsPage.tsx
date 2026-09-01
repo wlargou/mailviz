@@ -1,5 +1,6 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { isAxiosError } from 'axios';
+import { useEmailWebSocket } from '../../hooks/useEmailWebSocket';
 import {
   Button,
   Column,
@@ -276,39 +277,36 @@ export function SettingsPage() {
     fetchSignature();
   }, []);
 
-  // WebSocket listener for sync progress
-  useEffect(() => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
-    let ws: WebSocket | null = null;
-
-    try {
-      ws = new WebSocket(wsUrl);
-      ws.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data);
-          if (msg.event === 'sync:progress') {
-            const { type, synced, total, phase } = msg.data;
-            if (type === 'email') {
-              if (phase === 'complete') {
-                setEmailProgress(null);
-              } else {
-                setEmailProgress({ synced, total, phase });
-              }
-            } else if (type === 'calendar') {
-              if (phase === 'complete') {
-                setCalendarProgress(null);
-              } else {
-                setCalendarProgress({ synced, total, phase });
-              }
-            }
-          }
-        } catch { /* ignore parse errors */ }
-      };
-    } catch { /* WS not available */ }
-
-    return () => { ws?.close(); };
-  }, []);
+  /**
+   * Sync progress, over the app's single shared socket.
+   *
+   * This page used to open a WebSocket of its own. Three things were wrong with
+   * that, and none of them were visible while it was working:
+   *
+   *  - **No reconnect.** The raw socket had an `onmessage` and nothing else, so
+   *    one drop — a server restart, a closed laptop lid — left the progress
+   *    bars frozen until a page reload, with no indication anything had
+   *    stopped. The shared connection retries with backoff.
+   *  - **A second connection.** Every broadcast for this user was delivered
+   *    twice and every reconnect cycle ran twice.
+   *  - **A different URL in development.** It used `window.location.host`
+   *    (Vite, 5174) while the shared socket goes straight to the API on 3002,
+   *    so the two connected by different routes.
+   */
+  useEmailWebSocket(
+    useMemo(
+      () => ({
+        'sync:progress': (data: { type: string; synced: number; total: number; phase: string }) => {
+          const next = data.phase === 'complete'
+            ? null
+            : { synced: data.synced, total: data.total, phase: data.phase };
+          if (data.type === 'email') setEmailProgress(next);
+          else if (data.type === 'calendar') setCalendarProgress(next);
+        },
+      }),
+      []
+    )
+  );
 
   useEffect(() => {
     if (searchParams.get('connected') === 'true') {
