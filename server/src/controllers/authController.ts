@@ -28,7 +28,9 @@ export const authController = {
       const userId = req.user!.id;
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { id: true, email: true, name: true, avatarUrl: true },
+        // `timezone` so the client can tell whether the zone it detects is
+        // already stored, and skip the write on every page load.
+        select: { id: true, email: true, name: true, avatarUrl: true, timezone: true },
       });
       if (!user) {
         res.status(401).json({ error: { code: 'UNAUTHORIZED' } });
@@ -249,6 +251,27 @@ export const authController = {
         data: { signature: signature || null },
       });
       res.json({ message: 'Signature updated' });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  /**
+   * Record the caller's timezone.
+   *
+   * The client detects it and sends it on load, because asking a user to pick
+   * their own timezone from a list of six hundred is a worse experience than
+   * reading it from their browser — and every account predating the column has
+   * a null, which silently means UTC.
+   *
+   * Writes only the caller's own row: the id comes from the session, never the
+   * body, so this cannot be pointed at another account.
+   */
+  async updateTimezone(req: Req, res: Response, next: NextFunction) {
+    try {
+      const { timezone } = req.body as { timezone: string };
+      await prisma.user.update({ where: { id: req.user!.id }, data: { timezone } });
+      res.json({ data: { timezone } });
     } catch (err) {
       next(err);
     }

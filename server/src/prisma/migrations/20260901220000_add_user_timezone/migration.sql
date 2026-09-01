@@ -1,0 +1,11 @@
+-- The user's IANA timezone, e.g. "Europe/Paris".
+--
+-- Nullable, and null means UTC — which is exactly the behaviour every account
+-- had before this column existed, so no backfill is needed and nothing changes
+-- for a user until they (or their browser) set one.
+--
+-- Free text rather than an enum: the IANA database gains and renames zones
+-- several times a year, and a Postgres enum cannot follow that without a
+-- migration each time. `resolveTimeZone` validates against the runtime's own
+-- tz data and falls back to UTC, which is the only check that stays current.
+ALTER TABLE "users" ADD COLUMN "timezone" VARCHAR(64);

@@ -220,6 +220,9 @@ model User {
   /// completed setup after a change to the flow.
   onboardingCompletedAt DateTime? @map("onboarding_completed_at")
 
+  /// IANA zone, e.g. "Europe/Paris". Null means UTC — see utils/timezone.ts.
+  timezone   String?  @db.VarChar(64)
+
   createdAt DateTime    @default(now()) @map("created_at")
   updatedAt DateTime    @updatedAt @map("updated_at")
 
@@ -362,6 +365,8 @@ model Email {
   @@unique([userId, gmailMessageId])
   @@index([receivedAt])
   @@index([threadId])
+  /// Serves the dashboard's DISTINCT ON (thread_id) ... ORDER BY received_at DESC.
+  @@index([userId, threadId, receivedAt(sort: Desc)])
   @@index([customerId])
   @@index([isRead])
   @@index([from])

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { authController } from '../controllers/authController.js';
 import { requireAuth } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
-import { deleteAccountSchema } from '../validators/accountValidator.js';
+import { deleteAccountSchema, updateTimezoneSchema } from '../validators/accountValidator.js';
 
 const router = Router();
 
@@ -29,6 +29,9 @@ router.delete('/account', requireAuth, validate(deleteAccountSchema), authContro
 
 // Users list (for sharing features)
 router.get('/users', requireAuth, authController.listUsers);
+
+// Timezone — detected by the client, used for every day and week boundary.
+router.put('/timezone', requireAuth, validate(updateTimezoneSchema), authController.updateTimezone);
 
 // Email signature
 router.get('/signature', requireAuth, authController.getSignature);
