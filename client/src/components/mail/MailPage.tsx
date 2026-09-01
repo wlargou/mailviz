@@ -496,7 +496,21 @@ export function MailPage() {
                 ? { ...t, unreadCount: 0, latestEmail: { ...t.latestEmail, isRead: true } }
                 : t
             ));
-            await emailsApi.markAsRead(emailId);
+            /**
+             * The whole thread, not just its newest message.
+             *
+             * The row shows one unread indicator for the thread and the
+             * optimistic update above sets `unreadCount: 0`, but this used to
+             * call `markAsRead` on the latest email alone. On a thread with
+             * more than one unread message the refetch restored the true count
+             * and the row snapped straight back to bold — and clicking again
+             * did the same thing, so the button could never clear it.
+             *
+             * `batchMarkAsRead` resolves thread ids from the email ids it is
+             * given and marks every message in them, which is exactly what the
+             * single indicator claims.
+             */
+            await emailsApi.batchMarkAsRead([emailId]);
           } else {
             setThreads((prev) => prev.map((t) =>
               t.threadId === thread.threadId

@@ -228,7 +228,12 @@ export const auditService = {
     const [logs, total] = await Promise.all([
       prisma.auditLog.findMany({
         where: where as any,
-        orderBy: { createdAt: 'desc' },
+        // `id` breaks the tie. Audit rows are written in bursts — a batch
+        // action logs several within the same millisecond — and timestamp(3)
+        // makes those compare equal, so an unstable sort under LIMIT/OFFSET can
+        // show one entry on two pages and never show another. The codebase
+        // already documents this rule; the activity log was simply missed.
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         skip,
         take: limit,
         select: {
