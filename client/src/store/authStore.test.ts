@@ -18,6 +18,7 @@ vi.mock('../api/auth', () => ({
   authApi: {
     getMe: vi.fn(),
     logout: vi.fn(),
+    updateTimezone: vi.fn().mockResolvedValue({}),
   },
 }));
 
@@ -162,5 +163,58 @@ describe('authStore', () => {
       isAuthenticated: false,
       isLoading: false,
     });
+  });
+});
+
+/**
+ * Reporting the browser's timezone.
+ *
+ * Every day and week boundary the server computes reads the stored zone, and a
+ * null means UTC — so a session that never reports one silently keeps the old,
+ * wrong behaviour. It is a refinement of an already-successful sign-in though,
+ * which is why the interesting cases are all about it NOT mattering: no write
+ * when nothing changed, and no effect on auth when it fails.
+ */
+describe('useAuthStore — timezone reporting', () => {
+  const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  it('reports the browser zone when the server has none', async () => {
+    vi.mocked(authApi.getMe).mockResolvedValue(axiosOk({ data: { ...alice, timezone: null } }));
+
+    await useAuthStore.getState().fetchUser();
+
+    expect(authApi.updateTimezone).toHaveBeenCalledWith(detected);
+  });
+
+  it('stays quiet when the server already has this zone', async () => {
+    // Otherwise every page load writes the same value back.
+    vi.mocked(authApi.getMe).mockResolvedValue(axiosOk({ data: { ...alice, timezone: detected } }));
+
+    await useAuthStore.getState().fetchUser();
+
+    expect(authApi.updateTimezone).not.toHaveBeenCalled();
+  });
+
+  it('signs the user in even when reporting the zone rejects', async () => {
+    vi.mocked(authApi.getMe).mockResolvedValue(axiosOk({ data: { ...alice, timezone: null } }));
+    vi.mocked(authApi.updateTimezone).mockRejectedValue(new Error('offline'));
+
+    await useAuthStore.getState().fetchUser();
+
+    expect(useAuthStore.getState().isAuthenticated).toBe(true);
+  });
+
+  it('signs the user in even when reporting the zone throws synchronously', async () => {
+    // The bug this guards, which the existing tests caught during development:
+    // the report sat inside fetchUser's try, so a synchronous throw — a
+    // runtime without Intl zone data, a missing method — was indistinguishable
+    // from a failed authentication and logged the user out.
+    vi.mocked(authApi.getMe).mockResolvedValue(axiosOk({ data: { ...alice, timezone: null } }));
+    vi.mocked(authApi.updateTimezone).mockImplementation(() => { throw new Error('boom'); });
+
+    await useAuthStore.getState().fetchUser();
+
+    expect(useAuthStore.getState().isAuthenticated).toBe(true);
+    expect(useAuthStore.getState().user).toMatchObject({ id: alice.id });
   });
 });

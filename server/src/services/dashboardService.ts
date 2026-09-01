@@ -1,5 +1,11 @@
 import { Prisma } from '../lib/prismaClient.js';
 import { prisma } from '../lib/prisma.js';
+import {
+  resolveTimeZone,
+  startOfDayInZone,
+  addDaysInZone,
+  startOfWeekInZone,
+} from '../utils/timezone.js';
 
 function formatDate(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -20,20 +26,40 @@ export const dashboardService = {
    */
   async getStats(userId: string) {
     const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const endOfToday = new Date(startOfToday);
-    endOfToday.setDate(endOfToday.getDate() + 1);
 
-    const endOfWeek = new Date(startOfToday);
-    endOfWeek.setDate(endOfWeek.getDate() + 7);
+    /**
+     * Every boundary below is a calendar boundary in the USER's zone.
+     *
+     * These were `new Date(y, m, d)`, which uses the server's zone. Railway
+     * runs UTC, so "today" began at UTC midnight: 2am for a user in Paris, and
+     * still yesterday for one in California. Null timezone means UTC, which is
+     * precisely the behaviour this had before the column existed.
+     */
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { timezone: true } });
+    const tz = resolveTimeZone(user?.timezone);
 
-    const fourteenDaysAgo = new Date(startOfToday);
-    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+    const startOfToday = startOfDayInZone(now, tz);
+    const endOfToday = addDaysInZone(startOfToday, 1, tz);
+    const fourteenDaysAgo = addDaysInZone(startOfToday, -14, tz);
 
-    // Monday of current week
-    const dayOfWeek = now.getDay();
-    const startOfWeek = new Date(startOfToday);
-    startOfWeek.setDate(startOfWeek.getDate() - ((dayOfWeek + 6) % 7));
+    const startOfWeek = startOfWeekInZone(now, tz);
+    /**
+     * The week ends seven days after it began, not seven days after today.
+     *
+     * `endOfWeek` used to be `startOfToday + 7` while `startOfWeek` was the
+     * Monday, so on a Sunday "this week" spanned thirteen days and
+     * `meetingHoursThisWeek` counted most of next week's meetings as this
+     * week's.
+     */
+    const endOfWeek = addDaysInZone(startOfWeek, 7, tz);
+
+    /**
+     * The upcoming-events list is a rolling seven days, so the calendar fetch
+     * has to cover whichever window is longer. Narrowing the fetch to the
+     * calendar week alone would empty that list every Friday.
+     */
+    const horizon = addDaysInZone(startOfToday, 7, tz);
+    const fetchEnd = endOfWeek > horizon ? endOfWeek : horizon;
 
     // Get user email for sent/received distinction
     const authRecord = await prisma.googleAuth.findFirst({ where: { userId }, select: { email: true } });
@@ -149,7 +175,7 @@ export const dashboardService = {
       // Single query for all calendar data this week (replaces 5 separate queries)
       // We fetch all events from startOfToday to endOfWeek, then filter in JS
       prisma.calendarEvent.findMany({
-        where: { userId, startTime: { gte: startOfWeek, lt: endOfWeek } },
+        where: { userId, startTime: { gte: startOfWeek, lt: fetchEnd } },
         orderBy: [{ startTime: 'asc' }, { id: 'asc' }],
         select: {
           id: true,
@@ -178,14 +204,18 @@ export const dashboardService = {
       (e) => e.startTime >= startOfToday && e.startTime < endOfToday
     );
     const eventsToday = todayEventsDetailed.length;
-    const thisWeekFromToday = calendarData.filter(
-      (e) => e.startTime >= startOfToday
-    );
-    const eventsThisWeek = thisWeekFromToday.length;
+    // Bounded by the week now that the fetch reaches past it — otherwise
+    // "this week" would silently include the rolling horizon's overflow.
+    const eventsThisWeek = calendarData.filter(
+      (e) => e.startTime >= startOfToday && e.startTime < endOfWeek
+    ).length;
+    // Upcoming is the rolling list and deliberately is NOT clipped to the week.
     const upcomingEvents = calendarData
       .filter((e) => e.startTime >= now)
       .slice(0, 5);
-    const weekMeetings = calendarData.filter((e) => !e.isAllDay);
+    const weekMeetings = calendarData.filter(
+      (e) => !e.isAllDay && e.startTime >= startOfWeek && e.startTime < endOfWeek
+    );
 
     // ── Derive task stats from single aggregate ──
     const ta = taskAggregates[0];

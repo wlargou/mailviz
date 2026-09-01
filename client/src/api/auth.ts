@@ -6,6 +6,13 @@ interface User {
   email: string;
   name: string | null;
   avatarUrl: string | null;
+  /**
+   * IANA zone stored server-side; null means UTC.
+   *
+   * Optional here because `/auth/users` returns the same shape for the sharing
+   * picker and has no business exposing other people's timezones.
+   */
+  timezone?: string | null;
 }
 
 export interface AccountDeletionSummary {
@@ -64,4 +71,8 @@ export const authApi = {
 
   updateSignature: (signature: string | null) =>
     api.put('/auth/signature', { signature }),
+
+  /** Report the browser's IANA timezone; every day boundary is computed from it. */
+  updateTimezone: (timezone: string) =>
+    api.put('/auth/timezone', { timezone }),
 };

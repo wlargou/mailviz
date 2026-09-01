@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { google } from 'googleapis';
 import { prisma } from '../lib/prisma.js';
+import { resolveTimeZone, formatDateInZone } from '../utils/timezone.js';
 import { getCalendarClient } from '../lib/calendar.js';
 import { googleAuthService } from './googleAuthService.js';
 import { customerService } from './customerService.js';
@@ -654,6 +655,23 @@ export const calendarService = {
 
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
+    /**
+     * An all-day event is a calendar DATE, and which date depends on whose
+     * calendar you are reading.
+     *
+     * These dates were derived with `toISOString().split('T')[0]`, i.e. the UTC
+     * date. The client sends all-day bounds as local midnight, so for anyone
+     * EAST of UTC that instant is the previous day in UTC: midnight on 15
+     * September in Paris is 14 September 22:00Z, and Google was told the 14th.
+     * The event then showed a day early — in Google Calendar, on every device
+     * synced to it, and in every invitation sent from it.
+     *
+     * Unlike the dashboard, this one wrote wrong data into somebody else's
+     * system, where it outlived any fix here until the event was edited again.
+     */
+    const owner = await prisma.user.findUnique({ where: { id: userId }, select: { timezone: true } });
+    const tz = resolveTimeZone(owner?.timezone);
+
     try {
       if (action === 'create') {
         const event = await prisma.calendarEvent.findUnique({ where: { id: eventId } });
@@ -664,10 +682,10 @@ export const calendarService = {
           description: event.description || undefined,
           location: event.location || undefined,
           start: event.isAllDay
-            ? { date: event.startTime.toISOString().split('T')[0] }
+            ? { date: formatDateInZone(event.startTime, tz) }
             : { dateTime: event.startTime.toISOString() },
           end: event.isAllDay
-            ? { date: event.endTime.toISOString().split('T')[0] }
+            ? { date: formatDateInZone(event.endTime, tz) }
             : { dateTime: event.endTime.toISOString() },
         };
 
@@ -750,10 +768,10 @@ export const calendarService = {
           description: event.description || undefined,
           location: event.location || undefined,
           start: event.isAllDay
-            ? { date: event.startTime.toISOString().split('T')[0] }
+            ? { date: formatDateInZone(event.startTime, tz) }
             : { dateTime: event.startTime.toISOString() },
           end: event.isAllDay
-            ? { date: event.endTime.toISOString().split('T')[0] }
+            ? { date: formatDateInZone(event.endTime, tz) }
             : { dateTime: event.endTime.toISOString() },
         };
 

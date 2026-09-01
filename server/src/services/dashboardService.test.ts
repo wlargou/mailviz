@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { dashboardService } from './dashboardService.js';
 import { prisma } from '../lib/prisma.js';
 import {
@@ -36,6 +36,27 @@ import {
 // ── local fixtures ────────────────────────────────────────────────────────────
 // Calendar events, deals with expiry dates and tasks with due dates are all
 // needed here and are not in the shared factories, so they are built directly.
+
+/**
+ * The zone this machine runs in.
+ *
+ * Every fixture below is built with `new Date(y, m, d, h)`, which is local
+ * wall-clock. The dashboard now computes its day and week boundaries in the
+ * USER's zone, so a user whose timezone is null (meaning UTC) would have those
+ * fixtures land on the wrong side of midnight anywhere but a UTC machine —
+ * the same class of bug the feature exists to fix, reproduced in the tests.
+ *
+ * Setting the fixture user's timezone to the machine's makes that assumption
+ * explicit and keeps these tests about what they were about. The timezone
+ * behaviour itself is asserted separately, with fixed instants and real zones.
+ */
+const MACHINE_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+/** Give a user the machine's zone so local-wall-clock fixtures line up. */
+async function inMachineZone(userId: string): Promise<string> {
+  await prisma.user.update({ where: { id: userId }, data: { timezone: MACHINE_TZ } });
+  return userId;
+}
 
 function startOfLocalToday(): Date {
   const now = new Date();
@@ -135,7 +156,7 @@ describe('dashboardService.getStats — a user sees only their own numbers', () 
     const { alice, bob } = await createTwoUsers();
     await seedBusyUser(bob.id);
 
-    const stats = await dashboardService.getStats(alice.id);
+    const stats = await dashboardService.getStats(await inMachineZone(alice.id));
 
     expect(stats.tasks.total).toBe(0);
     expect(stats.tasks.completed).toBe(0);
@@ -178,7 +199,7 @@ describe('dashboardService.getStats — tasks', () => {
     await seedTask(alice.id, { title: 'Open', status: 'IN_PROGRESS', priority: 'LOW' });
     await seedTask(alice.id, { title: 'Future', status: 'TODO', priority: 'MEDIUM', dueDate: dayOffset(3, 9) });
 
-    const { tasks } = await dashboardService.getStats(alice.id);
+    const { tasks } = await dashboardService.getStats(await inMachineZone(alice.id));
 
     expect(tasks.total).toBe(4);
     expect(tasks.completed).toBe(1);
@@ -192,7 +213,7 @@ describe('dashboardService.getStats — tasks', () => {
     const { alice } = await createTwoUsers();
     await seedTask(alice.id, { title: 'Done but late', status: 'DONE', dueDate: dayOffset(-30, 9) });
 
-    const { tasks } = await dashboardService.getStats(alice.id);
+    const { tasks } = await dashboardService.getStats(await inMachineZone(alice.id));
 
     expect(tasks.completed).toBe(1);
     expect(tasks.overdue).toBe(0);
@@ -206,7 +227,7 @@ describe('dashboardService.getStats — tasks', () => {
     await seedTask(alice.id, { title: 'b', status: 'IN_REVIEW' });
     await seedTask(alice.id, { title: 'c', status: 'DONE' });
 
-    const { charts } = await dashboardService.getStats(alice.id);
+    const { charts } = await dashboardService.getStats(await inMachineZone(alice.id));
 
     expect(charts.taskStatusCounts).toEqual({ IN_REVIEW: 2, DONE: 1 });
   });
@@ -232,7 +253,7 @@ describe('dashboardService.getStats — tasks', () => {
       data: { createdAt: new Date(Date.UTC(2026, 0, 1, 13, 0)) },
     });
 
-    const { tasks } = await dashboardService.getStats(alice.id);
+    const { tasks } = await dashboardService.getStats(await inMachineZone(alice.id));
 
     expect(tasks.recentTasks.map((t) => t.title)).toEqual([
       'task-7',
@@ -255,7 +276,7 @@ describe('dashboardService.getStats — tasks', () => {
     const task = await seedTask(alice.id, { title: 'Labelled', customerId: customer.id });
     await prisma.taskLabel.create({ data: { taskId: task.id, labelId: label.id } });
 
-    const { tasks } = await dashboardService.getStats(alice.id);
+    const { tasks } = await dashboardService.getStats(await inMachineZone(alice.id));
 
     expect(tasks.recentTasks[0].labels).toEqual([expect.objectContaining({ name: 'urgent', color: '#ff0000' })]);
     expect(tasks.recentTasks[0].customer).toEqual({ id: customer.id, name: 'Acme', company: null });
@@ -271,7 +292,7 @@ describe('dashboardService.getStats — emails', () => {
     await createEmail(alice.id, { isRead: false, receivedAt: dayOffset(-3, 10) });
     await createEmail(alice.id, { isRead: true, receivedAt: new Date() });
 
-    const { emails } = await dashboardService.getStats(alice.id);
+    const { emails } = await dashboardService.getStats(await inMachineZone(alice.id));
 
     expect(emails.totalSynced).toBe(3);
     expect(emails.unreadCount).toBe(2);
@@ -289,7 +310,7 @@ describe('dashboardService.getStats — emails', () => {
     await createEmail(alice.id, { threadId: 't-1', subject: 'Chatty reply', receivedAt: dayOffset(0, 9) });
     await createEmail(alice.id, { threadId: 't-2', subject: 'Other thread', receivedAt: dayOffset(-1, 9) });
 
-    const { emails } = await dashboardService.getStats(alice.id);
+    const { emails } = await dashboardService.getStats(await inMachineZone(alice.id));
 
     const threadIds = emails.recentEmails.map((e) => e.threadId);
     expect(new Set(threadIds).size).toBe(threadIds.length);
@@ -303,7 +324,7 @@ describe('dashboardService.getStats — emails', () => {
       await createEmail(alice.id, { threadId: `t-${i}`, receivedAt: new Date(Date.now() - i * 60_000) });
     }
 
-    const { emails } = await dashboardService.getStats(alice.id);
+    const { emails } = await dashboardService.getStats(await inMachineZone(alice.id));
 
     expect(emails.recentEmails).toHaveLength(8);
   });
@@ -313,7 +334,7 @@ describe('dashboardService.getStats — emails', () => {
     await createEmail(bob.id, { subject: 'Bob private' });
     await createEmail(alice.id, { subject: 'Alice mail' });
 
-    const { emails } = await dashboardService.getStats(alice.id);
+    const { emails } = await dashboardService.getStats(await inMachineZone(alice.id));
 
     expect(emails.recentEmails.map((e) => e.subject)).toEqual(['Alice mail']);
   });
@@ -327,7 +348,7 @@ describe('dashboardService.getStats — email volume chart', () => {
   it('emits fourteen consecutive days ending today', async () => {
     const { alice } = await createTwoUsers();
 
-    const { charts } = await dashboardService.getStats(alice.id);
+    const { charts } = await dashboardService.getStats(await inMachineZone(alice.id));
 
     expect(charts.emailVolume).toHaveLength(14);
     expect(charts.emailVolume.map((d) => d.date)).toEqual(
@@ -360,7 +381,7 @@ describe('dashboardService.getStats — email volume chart', () => {
       await createEmail(bob.id, { from: 'bob@corp.example', receivedAt: dayOffset(-1, 12) });
     }
 
-    const { charts } = await dashboardService.getStats(alice.id);
+    const { charts } = await dashboardService.getStats(await inMachineZone(alice.id));
 
     const sent = charts.emailVolume.reduce((n, d) => n + d.sent, 0);
     const received = charts.emailVolume.reduce((n, d) => n + d.received, 0);
@@ -389,7 +410,7 @@ describe('dashboardService.getStats — calendar', () => {
     await seedEvent(alice.id, { title: 'Last month', startTime: dayOffset(-30, 10), endTime: dayOffset(-30, 11) });
     await seedEvent(alice.id, { title: 'Next month', startTime: dayOffset(30, 10), endTime: dayOffset(30, 11) });
 
-    const { calendar } = await dashboardService.getStats(alice.id);
+    const { calendar } = await dashboardService.getStats(await inMachineZone(alice.id));
 
     expect(calendar.eventsToday).toBe(3);
     expect(calendar.eventsThisWeek).toBe(4);
@@ -411,7 +432,7 @@ describe('dashboardService.getStats — calendar', () => {
       });
     }
 
-    const { calendar } = await dashboardService.getStats(alice.id);
+    const { calendar } = await dashboardService.getStats(await inMachineZone(alice.id));
 
     expect(calendar.upcomingEvents.map((e) => e.title)).toEqual(['in 1h', 'in 2h', 'in 3h', 'in 4h', 'in 5h']);
   });
@@ -423,7 +444,7 @@ describe('dashboardService.getStats — calendar', () => {
     }
     await seedEvent(alice.id, { title: 'Alice only', startTime: dayOffset(0, 15), endTime: dayOffset(0, 16) });
 
-    const { calendar } = await dashboardService.getStats(alice.id);
+    const { calendar } = await dashboardService.getStats(await inMachineZone(alice.id));
 
     expect(calendar.eventsToday).toBe(1);
     expect(calendar.meetingHoursThisWeek).toBe(1);
@@ -448,7 +469,7 @@ describe('dashboardService.getStats — customers and contacts', () => {
     await createContact(aliceOne.id);
     await createContact(aliceTwo.id);
 
-    const { customers } = await dashboardService.getStats(alice.id);
+    const { customers } = await dashboardService.getStats(await inMachineZone(alice.id));
 
     expect(customers.totalCustomers).toBe(2);
     expect(customers.totalContacts).toBe(2);
@@ -470,7 +491,7 @@ describe('dashboardService.getStats — customers and contacts', () => {
     const bobCustomer = await createCustomer(bob.id, { name: 'Bob Loud' });
     for (let i = 0; i < 10; i++) await createEmail(bob.id, { customerId: bobCustomer.id });
 
-    const { customers } = await dashboardService.getStats(alice.id);
+    const { customers } = await dashboardService.getStats(await inMachineZone(alice.id));
 
     expect(customers.topCustomers.map((c) => c.name)).toEqual(['Busiest', 'Quieter']);
     expect(customers.topCustomers[0]).toMatchObject({ emailCount: 3, taskCount: 2 });
@@ -491,7 +512,7 @@ describe('dashboardService.getStats — expiring deals', () => {
     await seedDeal(alice.id, { title: 'Declined', expiryDate: dayOffset(3, 12), status: 'DECLINED' });
     await seedDeal(bob.id, { title: 'Bob deal', expiryDate: dayOffset(1, 12) });
 
-    const { expiringDeals } = await dashboardService.getStats(alice.id);
+    const { expiringDeals } = await dashboardService.getStats(await inMachineZone(alice.id));
 
     expect(expiringDeals.map((d) => d.title)).toEqual(['Due in 2 days', 'Due in 10 days']);
   });
@@ -510,7 +531,7 @@ describe('dashboardService.getStats — expiring deals', () => {
       },
     });
 
-    const { expiringDeals } = await dashboardService.getStats(alice.id);
+    const { expiringDeals } = await dashboardService.getStats(await inMachineZone(alice.id));
 
     expect(expiringDeals).toHaveLength(1);
     expect(expiringDeals[0].partner).toEqual({ name: 'Distributor Ltd' });
@@ -518,5 +539,142 @@ describe('dashboardService.getStats — expiring deals', () => {
     // Expiry is 5 days out at local noon, so the ceiling lands on 5 or 6.
     expect(expiringDeals[0].daysUntilExpiry).toBeGreaterThanOrEqual(5);
     expect(expiringDeals[0].daysUntilExpiry).toBeLessThanOrEqual(6);
+  });
+});
+
+/**
+ * "Today" and "this week" belong to the user, not to the server.
+ *
+ * Railway runs UTC. Before the timezone column, `new Date(y, m, d)` meant every
+ * boundary was UTC midnight — 2am for a user in Paris, and still yesterday for
+ * one in California. These fix the clock so the assertions describe a real
+ * moment rather than whenever the suite happens to run.
+ */
+describe('dashboardService.getStats — the user’s own day', () => {
+  const PARIS = 'Europe/Paris';
+  const LA = 'America/Los_Angeles';
+
+  afterEach(() => vi.useRealTimers());
+
+  /**
+   * 15 Jan 2026, 23:30 UTC. Paris is already on the 16th (00:30); LA is still
+   * on the 15th (15:30); the server, on UTC, says the 15th.
+   *
+   * So a midday-UTC event on the 15th is TODAY for the server and for LA, and
+   * YESTERDAY for Paris — which is the disagreement worth asserting. An event
+   * just after midnight Paris time would have been "today" for all three, and
+   * the first version of these tests used exactly that and proved nothing.
+   */
+  const ACROSS_MIDNIGHT = new Date('2026-01-15T23:30:00Z');
+  const MIDDAY_15TH = '2026-01-15T12:00:00Z';
+
+  async function seedAt(userId: string, iso: string, title: string) {
+    return seedEvent(userId, {
+      title,
+      startTime: new Date(iso),
+      endTime: new Date(new Date(iso).getTime() + 3600000),
+    });
+  }
+
+  it('counts an event by the user’s calendar day, not the server’s', async () => {
+    const { alice } = await createTwoUsers();
+    await prisma.user.update({ where: { id: alice.id }, data: { timezone: PARIS } });
+    // 13:00 on the 15th in Paris, where it is now the 16th — so: yesterday.
+    // The server's UTC clock still says the 15th and would count it as today.
+    await seedAt(alice.id, MIDDAY_15TH, 'Yesterday, in Paris');
+
+    vi.setSystemTime(ACROSS_MIDNIGHT);
+    const { calendar } = await dashboardService.getStats(alice.id);
+
+    expect(calendar.eventsToday).toBe(0);
+  });
+
+  it('gives two users in different zones different answers for the same instant', async () => {
+    // The clearest statement of the bug: one server clock, two correct answers.
+    const { alice, bob } = await createTwoUsers();
+    await prisma.user.update({ where: { id: alice.id }, data: { timezone: PARIS } });
+    await prisma.user.update({ where: { id: bob.id }, data: { timezone: LA } });
+    await seedAt(alice.id, MIDDAY_15TH, 'Midday UTC');
+    await seedAt(bob.id, MIDDAY_15TH, 'Midday UTC');
+
+    vi.setSystemTime(ACROSS_MIDNIGHT);
+    const paris = await dashboardService.getStats(alice.id);
+    const la = await dashboardService.getStats(bob.id);
+
+    // Same row, same instant, same server clock: 13:00 yesterday in Paris,
+    // 04:00 today in Los Angeles. Both answers are correct.
+    expect(paris.calendar.eventsToday).toBe(0);
+    expect(la.calendar.eventsToday).toBe(1);
+  });
+
+  it('falls back to UTC for an account that has never set a zone', async () => {
+    // Every account before this column shipped. The fallback has to be the old
+    // behaviour, not a new failure.
+    const { alice } = await createTwoUsers();
+    await seedAt(alice.id, MIDDAY_15TH, 'Midday UTC');
+
+    vi.setSystemTime(ACROSS_MIDNIGHT);
+    const { calendar } = await dashboardService.getStats(alice.id);
+
+    // UTC still says the 15th, so this counts — the pre-column behaviour.
+    expect(calendar.eventsToday).toBe(1);
+  });
+
+  it('does not let a malformed zone break the dashboard', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { alice } = await createTwoUsers();
+    await prisma.user.update({ where: { id: alice.id }, data: { timezone: 'Mars/Olympus' } });
+
+    vi.setSystemTime(ACROSS_MIDNIGHT);
+    await expect(dashboardService.getStats(alice.id)).resolves.toBeDefined();
+
+    warn.mockRestore();
+  });
+});
+
+/**
+ * "This week" has to be a week.
+ *
+ * `endOfWeek` was `startOfToday + 7` while `startOfWeek` was the Monday, so on
+ * a Sunday the window spanned thirteen days and meeting hours counted most of
+ * next week as this week's.
+ */
+describe('dashboardService.getStats — the week is seven days', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('excludes next week’s meetings when today is Sunday', async () => {
+    const { alice } = await createTwoUsers();
+    await prisma.user.update({ where: { id: alice.id }, data: { timezone: 'UTC' } });
+
+    // Sunday 18 January 2026. The week began Monday the 12th and ends at
+    // midnight on Monday the 19th.
+    await seedEvent(alice.id, {
+      title: 'This week', startTime: new Date('2026-01-14T10:00:00Z'), endTime: new Date('2026-01-14T12:00:00Z'),
+    });
+    // Tuesday the 20th — inside the old thirteen-day window, outside the week.
+    await seedEvent(alice.id, {
+      title: 'Next week', startTime: new Date('2026-01-20T10:00:00Z'), endTime: new Date('2026-01-20T14:00:00Z'),
+    });
+
+    vi.setSystemTime(new Date('2026-01-18T12:00:00Z'));
+    const { calendar } = await dashboardService.getStats(alice.id);
+
+    expect(calendar.meetingHoursThisWeek).toBe(2);
+    expect(calendar.meetingCountThisWeek).toBe(1);
+  });
+
+  it('still lists upcoming events beyond the end of the week', async () => {
+    // The fetch window has to outrun the week, or the upcoming list empties out
+    // every Friday. Narrowing both together would have been the easy mistake.
+    const { alice } = await createTwoUsers();
+    await prisma.user.update({ where: { id: alice.id }, data: { timezone: 'UTC' } });
+    await seedEvent(alice.id, {
+      title: 'Early next week', startTime: new Date('2026-01-20T10:00:00Z'), endTime: new Date('2026-01-20T11:00:00Z'),
+    });
+
+    vi.setSystemTime(new Date('2026-01-18T12:00:00Z'));
+    const { calendar } = await dashboardService.getStats(alice.id);
+
+    expect(calendar.upcomingEvents.map((e) => e.title)).toContain('Early next week');
   });
 });

@@ -240,6 +240,7 @@ const PROTECTED_ROUTES: Array<[method: string, path: string]> = [
   ['GET', '/api/v1/auth/users'],
   ['GET', '/api/v1/auth/signature'],
   ['PUT', '/api/v1/auth/signature'],
+  ['PUT', '/api/v1/auth/timezone'],
   // emails — reads
   ['GET', '/api/v1/emails'],
   ['GET', '/api/v1/emails/review-summary'],
@@ -481,11 +482,16 @@ describe('/api/v1/auth', () => {
 
     const asAlice = await call('GET', '/api/v1/auth/me', { as: alice.id });
     expect(asAlice.status).toBe(200);
+    // Exact shape, not toMatchObject: this response is the client's whole
+    // picture of the session, and a field silently appearing or vanishing is
+    // worth failing over. `timezone` is here because the client compares it
+    // against the browser's zone to decide whether to report a change.
     expect(asAlice.body.data).toEqual({
       id: alice.id,
       email: alice.email,
       name: alice.name,
       avatarUrl: null,
+      timezone: null,
     });
 
     const asBob = await call('GET', '/api/v1/auth/me', { as: bob.id });
@@ -1536,5 +1542,62 @@ describe('/api/v1/emails send and sync', () => {
     const res = await call('POST', '/api/v1/emails/sync', { as: alice.id });
     expect(res.status).toBe(400);
     expect(res.body.error?.message).toBe('Google not connected');
+  });
+});
+
+/**
+ * Recording the caller's timezone.
+ *
+ * Every day and week boundary in the app now reads this column, so the two
+ * things that matter are that a junk value cannot reach it and that one user
+ * cannot set another's. The id comes from the session and never from the body,
+ * which is what makes the second impossible rather than merely unlikely.
+ */
+describe('PUT /api/v1/auth/timezone', () => {
+  it('stores a valid IANA zone for the caller', async () => {
+    const { alice } = await createTwoUsers();
+
+    const res = await call('PUT', '/api/v1/auth/timezone', {
+      as: alice.id,
+      body: { timezone: 'Europe/Paris' },
+    });
+
+    expect(res.status).toBe(200);
+    const row = await prisma.user.findUniqueOrThrow({ where: { id: alice.id } });
+    expect(row.timezone).toBe('Europe/Paris');
+  });
+
+  it('rejects a zone the runtime does not recognise', async () => {
+    // A stored junk value would be read by every dashboard request. The
+    // service falls back to UTC rather than throwing, but it should never get
+    // the chance — validation is the place to stop this.
+    const { alice } = await createTwoUsers();
+
+    const res = await call('PUT', '/api/v1/auth/timezone', {
+      as: alice.id,
+      body: { timezone: 'Mars/Olympus' },
+    });
+
+    expect(res.status).toBe(400);
+    const row = await prisma.user.findUniqueOrThrow({ where: { id: alice.id } });
+    expect(row.timezone).toBeNull();
+  });
+
+  it('rejects an empty timezone rather than blanking the column', async () => {
+    const { alice } = await createTwoUsers();
+    await prisma.user.update({ where: { id: alice.id }, data: { timezone: 'Europe/Paris' } });
+
+    const res = await call('PUT', '/api/v1/auth/timezone', { as: alice.id, body: { timezone: '   ' } });
+
+    expect(res.status).toBe(400);
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: alice.id } })).timezone).toBe('Europe/Paris');
+  });
+
+  it('writes only the caller’s row', async () => {
+    const { alice, bob } = await createTwoUsers();
+
+    await call('PUT', '/api/v1/auth/timezone', { as: alice.id, body: { timezone: 'Europe/Paris' } });
+
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: bob.id } })).timezone).toBeNull();
   });
 });

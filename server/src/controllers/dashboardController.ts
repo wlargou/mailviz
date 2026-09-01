@@ -2,6 +2,7 @@ import { Response, NextFunction } from 'express';
 import type { Req } from "../types/http.js";
 import { dashboardService } from '../services/dashboardService.js';
 import { prisma } from '../lib/prisma.js';
+import { resolveTimeZone, startOfDayInZone, addDaysInZone } from '../utils/timezone.js';
 
 export const dashboardController = {
   async getStats(req: Req, res: Response, next: NextFunction) {
@@ -18,9 +19,12 @@ export const dashboardController = {
     try {
       const userId = req.user!.id;
       const now = new Date();
-      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const endOfToday = new Date(startOfToday);
-      endOfToday.setDate(endOfToday.getDate() + 1);
+      // The sidebar's "events today" badge is the user's today, not the
+      // server's — the same UTC-midnight assumption the dashboard had.
+      const owner = await prisma.user.findUnique({ where: { id: userId }, select: { timezone: true } });
+      const tz = resolveTimeZone(owner?.timezone);
+      const startOfToday = startOfDayInZone(now, tz);
+      const endOfToday = addDaysInZone(startOfToday, 1, tz);
       const fifteenDaysFromNow = new Date(now);
       fifteenDaysFromNow.setDate(fifteenDaysFromNow.getDate() + 15);
 
