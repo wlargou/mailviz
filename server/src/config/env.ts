@@ -52,3 +52,53 @@ export const env = {
   TOKEN_ENCRYPTION_KEY: process.env.TOKEN_ENCRYPTION_KEY || '',
   LOGO_DEV_TOKEN: process.env.LOGO_DEV_TOKEN || 'pk_fUKO-TNBQ3SBr89r_dj_6Q',
 };
+
+/**
+ * Refuse to start in production on a development fallback.
+ *
+ * The fallbacks above exist so a developer can clone and run without ceremony,
+ * and that is worth keeping. What is not acceptable is the same fallback
+ * silently taking effect in production: `devSecret('mailviz-jwt-dev')` is a
+ * sha256 of a string committed to this repository, so a deployment missing
+ * JWT_SECRET signs every token with a value anyone reading the source can
+ * derive — and can then mint a token for any account. Nothing about the running
+ * app looks wrong; it just has no authentication.
+ *
+ * TOKEN_ENCRYPTION_KEY is in the same list because its absence is documented as
+ * falling back to PLAINTEXT storage of Google refresh tokens. Failing at boot is
+ * the only signal that reliably reaches somebody.
+ *
+ * Deliberately a hard exit rather than a warning: a warning in a deploy log is
+ * a warning nobody reads.
+ */
+export function assertProductionSecrets(): void {
+  // process.env, not the captured `env.NODE_ENV`. The rest of this function
+  // reads process.env too, and for a good reason: checking the resolved `env`
+  // value would compare against the fallback rather than against what was
+  // actually configured, which is the exact failure being guarded.
+  if (process.env.NODE_ENV !== 'production') return;
+
+  const missing = [
+    !process.env.JWT_SECRET && 'JWT_SECRET',
+    !process.env.JWT_REFRESH_SECRET && 'JWT_REFRESH_SECRET',
+    !process.env.TOKEN_ENCRYPTION_KEY && 'TOKEN_ENCRYPTION_KEY',
+  ].filter(Boolean) as string[];
+
+  if (missing.length > 0) {
+    throw new Error(
+      `Refusing to start in production without: ${missing.join(', ')}. ` +
+        'These fall back to values derived from a string in the repository, ' +
+        'which would let anyone forge a session or read stored Google tokens.'
+    );
+  }
+
+  // Distinct secrets are what keep a 7-day refresh token from being accepted
+  // as a 15-minute access token. The `type` claim is the second line of
+  // defence, not the first.
+  if (process.env.JWT_SECRET === process.env.JWT_REFRESH_SECRET) {
+    throw new Error(
+      'JWT_SECRET and JWT_REFRESH_SECRET must differ: identical values make a ' +
+        'refresh token usable wherever an access token is.'
+    );
+  }
+}

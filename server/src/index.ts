@@ -1,5 +1,5 @@
 import { app } from './app.js';
-import { env } from './config/env.js';
+import { env, assertProductionSecrets } from './config/env.js';
 import { startEmailSyncScheduler, stopEmailSyncScheduler } from './jobs/emailSyncScheduler.js';
 import { startCalendarSyncScheduler, stopCalendarSyncScheduler } from './jobs/calendarSyncScheduler.js';
 import { startScheduledSendScheduler, stopScheduledSendScheduler } from './jobs/scheduledSendScheduler.js';
@@ -7,6 +7,10 @@ import { startNotificationScheduler, stopNotificationScheduler } from './jobs/no
 import { startSnoozeScheduler, stopSnoozeScheduler } from './jobs/snoozeScheduler.js';
 import { initWebSocket, shutdownWebSocket } from './websocket.js';
 import { prisma } from './lib/prisma.js';
+
+// Before the port opens, not after: a server that is already accepting requests
+// while signing tokens with a repository-derived secret has already failed.
+assertProductionSecrets();
 
 const server = app.listen(env.PORT, () => {
   console.log(`Server running on http://localhost:${env.PORT}`);
