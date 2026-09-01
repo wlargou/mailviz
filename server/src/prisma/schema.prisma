@@ -362,6 +362,8 @@ model Email {
   @@unique([userId, gmailMessageId])
   @@index([receivedAt])
   @@index([threadId])
+  /// Serves the dashboard's DISTINCT ON (thread_id) ... ORDER BY received_at DESC.
+  @@index([userId, threadId, receivedAt(sort: Desc)])
   @@index([customerId])
   @@index([isRead])
   @@index([from])
