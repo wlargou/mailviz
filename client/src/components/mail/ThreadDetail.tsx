@@ -119,6 +119,25 @@ export function ThreadDetail({ threadId, onEmailAction }: ThreadDetailProps) {
     }
   }, [loading, messages]);
 
+  /**
+   * Open the sender's contact page, falling back to their company.
+   *
+   * Lifted out of the avatar's onClick so the click and the key handler run the
+   * same code — two copies of a navigation this fiddly would drift.
+   */
+  const openSender = (msg: EmailMessage) => async () => {
+    try {
+      const res = await contactsApi.lookupByEmail(msg.from);
+      if (res.data.data) {
+        navigate(`/contacts/${res.data.data.id}`);
+      } else if (msg.customerId) {
+        navigate(`/customers/${msg.customerId}`);
+      }
+    } catch {
+      if (msg.customerId) navigate(`/customers/${msg.customerId}`);
+    }
+  };
+
   const toggleExpand = async (msg: EmailMessage) => {
     const newSet = new Set(expandedMessages);
     if (newSet.has(msg.id)) {
@@ -289,27 +308,43 @@ export function ThreadDetail({ threadId, onEmailAction }: ThreadDetailProps) {
               ref={(el) => { if (el) messageRefs.current.set(msg.id, el); }}
               className={`message-bubble${!msg.isRead ? ' message-bubble--unread' : ''}`}
             >
-              <div className="message-bubble__header" onClick={(e) => {
-                // Don't toggle expand if click was on the avatar link
-                if ((e.target as HTMLElement).closest('.message-bubble__avatar-link')) return;
-                toggleExpand(msg);
-              }}>
+              <div
+                className="message-bubble__header"
+                role="button"
+                tabIndex={0}
+                aria-expanded={isExpanded}
+                aria-label={`${isExpanded ? 'Collapse' : 'Expand'} message from ${msg.fromName || msg.from}`}
+                onClick={(e) => {
+                  // Don't toggle expand if click was on the avatar link
+                  if ((e.target as HTMLElement).closest('.message-bubble__avatar-link')) return;
+                  toggleExpand(msg);
+                }}
+                // Expanding a message was mouse-only: this was a bare
+                // `<div onClick>`, so a keyboard user could not read any
+                // message in a thread beyond the one already open.
+                onKeyDown={(e) => {
+                  if (e.target !== e.currentTarget) return;
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggleExpand(msg);
+                  }
+                }}
+              >
                 <div className="message-bubble__sender">
                   <div
                     role="button"
                     tabIndex={0}
                     className="message-bubble__avatar-link"
                     title="View contact"
-                    onClick={async () => {
-                      try {
-                        const res = await contactsApi.lookupByEmail(msg.from);
-                        if (res.data.data) {
-                          navigate(`/contacts/${res.data.data.id}`);
-                        } else if (msg.customerId) {
-                          navigate(`/customers/${msg.customerId}`);
-                        }
-                      } catch {
-                        if (msg.customerId) navigate(`/customers/${msg.customerId}`);
+                    aria-label={`View contact ${msg.fromName || msg.from}`}
+                    onClick={openSender(msg)}
+                    // It already had role="button" and tabIndex={0} and no key
+                    // handler at all — a focus stop that did nothing when
+                    // activated, which is worse than not being focusable.
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        void openSender(msg)();
                       }
                     }}
                   >
@@ -491,12 +526,13 @@ export function ThreadDetail({ threadId, onEmailAction }: ThreadDetailProps) {
       </div>
 
       {messages.length > 0 && (
-        <div
+        <button
+          type="button"
           className="inline-reply-trigger"
           onClick={() => setComposeState({ mode: 'reply', email: messages[messages.length - 1] })}
         >
           Click to reply...
-        </div>
+        </button>
       )}
 
       {convertEmail && (
