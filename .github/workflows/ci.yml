@@ -6,6 +6,62 @@ on:
   pull_request:
 
 jobs:
+  # Every deploy should be identifiable, and nothing derives the version at
+  # runtime — the container has no .git and Railway exposes no commit SHA, both
+  # checked. So VERSION is only ever accurate because it travelled with the
+  # code, and this is what makes sure it did.
+  #
+  # A separate job from `verify` on purpose: it needs no database, no install
+  # and no build, so it answers in seconds and says exactly one thing.
+  version-bump:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      # The comparison needs both branches, so the default shallow clone will
+      # not do.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require a VERSION bump when app code changes
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$BASE_REF"
+
+          # Three dots: what THIS branch changed since it diverged, not
+          # everything that has landed on the base since.
+          changed=$(git diff --name-only "origin/$BASE_REF...HEAD")
+
+          # Only shipped code counts. A PR that touches nothing but tests,
+          # docs or CI changes what is deployed in no observable way, and
+          # demanding a version bump for those trains people to bump without
+          # meaning it.
+          app_changed=$(echo "$changed" | grep -E '^(client|server)/' | grep -vE '\.(test|spec)\.[tj]sx?$|^server/src/test/' || true)
+
+          if [ -z "$app_changed" ]; then
+            echo "No shipped code changed — no VERSION bump needed."
+            exit 0
+          fi
+
+          if echo "$changed" | grep -qx 'VERSION'; then
+            echo "VERSION bumped to $(cat VERSION) alongside:"
+            echo "$app_changed" | sed 's/^/  /'
+            exit 0
+          fi
+
+          echo "::error::This PR changes shipped code but does not bump VERSION."
+          echo ""
+          echo "Files that ship:"
+          echo "$app_changed" | sed 's/^/  /'
+          echo ""
+          echo "VERSION is major.minor.patch.build and is currently $(cat VERSION)."
+          echo "Nothing derives it at runtime, so a deploy is only identifiable"
+          echo "if the bump travels in the same commit. Bump the last component"
+          echo "for a rebuild, or a higher one for a real change."
+          exit 1
+
   verify:
     runs-on: ubuntu-latest
 

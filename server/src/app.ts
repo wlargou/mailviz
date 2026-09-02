@@ -7,7 +7,7 @@ import rateLimit from 'express-rate-limit';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { env } from './config/env.js';
-import { APP_VERSION, STARTED_AT } from './config/version.js';
+import { APP_VERSION, RELEASED_AT } from './config/version.js';
 import { TRUSTED_PROXIES } from './config/trustedProxies.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requireAuth } from './middleware/auth.js';
@@ -120,18 +120,15 @@ app.get('/api/health', (_req, res) => {
  *
  * Public and unauthenticated on purpose: the question "which version is in
  * production" is usually asked while something is wrong, and needing a session
- * to answer it makes it useless at exactly that moment. It carries no secret —
- * a version string, when the process started, and which environment it thinks
- * it is.
+ * to answer it makes it useless at exactly that moment.
+ *
+ * Two fields, and no more. This is served to the internet, so the response
+ * shape IS the security boundary — the environment name and the process start
+ * time were dropped because neither is anyone's business from outside and
+ * neither is what a reader wants to know.
  */
 app.get('/api/version', (_req, res) => {
-  res.json({
-    data: {
-      version: APP_VERSION,
-      startedAt: STARTED_AT,
-      environment: env.NODE_ENV,
-    },
-  });
+  res.json({ data: { version: APP_VERSION, releasedAt: RELEASED_AT } });
 });
 
 // Auth routes (has its own public/protected split internally)

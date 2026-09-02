@@ -51,7 +51,21 @@ function readVersion(): string {
 export const APP_VERSION = readVersion();
 
 /**
- * When this process started — a proxy for when the image was deployed, which
- * is the question being asked when someone checks the version at all.
+ * Substituted by esbuild at build time — see `define` in esbuild.config.js.
+ * Absent under tsx in development, which is why every read is guarded.
  */
-export const STARTED_AT = new Date().toISOString();
+declare const __SERVER_BUILT_AT__: string | undefined;
+
+/**
+ * When this build was made, which is what "released" means to a reader.
+ *
+ * Deliberately NOT process start time. A container restart — a crash, a scale
+ * event, a platform migration — is not a release, and reporting the process's
+ * age would relabel one as the other and quietly reset the date of a build
+ * that has not changed in weeks.
+ *
+ * Development has no build step, so it falls back to process start: the only
+ * honest answer there, and never seen by a user.
+ */
+export const RELEASED_AT: string =
+  typeof __SERVER_BUILT_AT__ === 'string' ? __SERVER_BUILT_AT__ : new Date().toISOString();

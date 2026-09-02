@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import request from 'supertest';
 import { app } from '../app.js';
-import { APP_VERSION, STARTED_AT } from './version.js';
+import { APP_VERSION, RELEASED_AT } from './version.js';
 
 /**
  * The version endpoint.
@@ -25,24 +25,25 @@ describe('GET /api/version', () => {
     expect(APP_VERSION).toMatch(/^\d+\.\d+\.\d+\.\d+$/);
   });
 
-  it('says when the process started, so a deploy can be dated', async () => {
+  it('dates the release, so "when did this ship" has an answer', async () => {
     const res = await request(app).get('/api/version');
 
-    expect(res.body.data.startedAt).toBe(STARTED_AT);
-    expect(Number.isNaN(Date.parse(res.body.data.startedAt))).toBe(false);
+    expect(res.body.data.releasedAt).toBe(RELEASED_AT);
+    expect(Number.isNaN(Date.parse(res.body.data.releasedAt))).toBe(false);
   });
 
-  it('names the environment it believes it is', async () => {
+  it('carries exactly two fields and nothing else', async () => {
+    /**
+     * This is served to the internet, so the response shape IS the security
+     * boundary — anything added here is published. The environment name and
+     * the process start time used to be here and were removed: neither is
+     * anyone's business from outside, and neither is what a reader wants.
+     *
+     * An exact key set rather than a subset check, so a field cannot be added
+     * back without this failing.
+     */
     const res = await request(app).get('/api/version');
 
-    expect(res.body.data.environment).toBe('test');
-  });
-
-  it('carries nothing but version metadata', async () => {
-    // It is public, so the shape is the security boundary: anything added here
-    // is added to the internet.
-    const res = await request(app).get('/api/version');
-
-    expect(Object.keys(res.body.data).sort()).toEqual(['environment', 'startedAt', 'version']);
+    expect(Object.keys(res.body.data).sort()).toEqual(['releasedAt', 'version']);
   });
 });

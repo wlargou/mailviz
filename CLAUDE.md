@@ -166,9 +166,21 @@ describes. Nothing derives it at runtime.
   throwing. An app that will not boot because it cannot say what it is would be
   worse than one that admits it does not know.
 
+**CI enforces the bump.** A pull request that changes anything under `client/`
+or `server/` — excluding tests and `server/src/test/` — fails unless `VERSION`
+changed in the same branch. It is a separate job from `verify`: no database, no
+install, no build, so it answers in seconds and says exactly one thing.
+
 ```bash
 curl -s https://mailviz.rkube.io/api/version | jq .data
+# { "version": "1.0.1.0", "releasedAt": "..." }
 ```
+
+The endpoint carries **two fields and no more**. It is served to the internet,
+so its shape is the security boundary — the environment name and process start
+time were deliberately removed, and a test pins the exact key set so neither
+comes back by accident. `releasedAt` is the BUILD time, substituted by esbuild;
+process start would relabel every container restart as a release.
 
 ## Deployment (Railway)
 

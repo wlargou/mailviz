@@ -303,39 +303,44 @@ body {
 
 // ─── ABOUT DIALOG ────────────────────────────────────────────────────────────
 //
-// Read-only version details. Deliberately plain: the dialog answers a question
-// and closes, so anything decorative here is in the way.
+// Centred and sparse: it says what this is and when it shipped, then closes.
+// The earlier version was a details table, which is a diagnostic panel wearing
+// an About box's heading.
 .about-modal {
-  .about-modal__brand {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 1.5rem;
-  }
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.25rem;
+  padding: 1rem 0 0.5rem;
 
   .about-modal__name {
-    font-size: 1rem;
+    font-size: 1.25rem;
     font-weight: 600;
     color: var(--cds-text-primary);
-    margin: 0;
+    margin: 0.5rem 0 0;
   }
 
   .about-modal__tagline {
-    font-size: 0.75rem;
+    font-size: 0.875rem;
     color: var(--cds-text-secondary);
-    margin: 0;
+    margin: 0 0 1rem;
   }
 
-  // Versions are compared character by character when someone is checking
-  // what shipped, so they get a mono face rather than the UI font.
-  code {
-    font-family: var(--cds-code-01-font-family, 'IBM Plex Mono', monospace);
-    font-size: 0.8125rem;
+  .about-modal__version {
+    font-size: 0.875rem;
     color: var(--cds-text-primary);
+    margin: 0;
+
+    // Versions get compared character by character, so they get a mono face.
+    code {
+      font-family: var(--cds-code-01-font-family, 'IBM Plex Mono', monospace);
+    }
   }
 
-  .about-modal__unreachable {
-    color: var(--cds-text-error);
-    font-size: 0.8125rem;
+  .about-modal__released {
+    font-size: 0.875rem;
+    color: var(--cds-text-secondary);
+    margin: 0 0 0.5rem;
   }
 }
