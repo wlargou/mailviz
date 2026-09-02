@@ -114,7 +114,12 @@ export function TasksPage() {
                 <TaskKanbanView onCardClick={setEditTask} />
               </TabPanel>
               <TabPanel>
-                <TaskByCompanyView onEdit={setEditTask} />
+                <TaskByCompanyView
+                  labels={labels}
+                  onEdit={setEditTask}
+                  onDelete={setDeleteTask}
+                  onCreateNew={() => setCreateOpen(true)}
+                />
               </TabPanel>
             </TabPanels>
           </Tabs>
