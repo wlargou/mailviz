@@ -142,6 +142,34 @@ Copy `.env.example` to **both** `.env` and `server/.env` — only `server/.env` 
 - Gmail throttling: `GMAIL_MAX_CONCURRENT` (5), `GMAIL_MIN_TIME_MS` (50), `GMAIL_MAX_RETRIES` (5), `GMAIL_RETRY_BASE_MS` (1000), `GMAIL_RETRY_MAX_MS` (32000)
 - Tests: `TEST_DATABASE_URL` / `TEST_DATABASE_BASE_URL` — see `server/src/test/README.md`
 
+## Versioning
+
+The version lives in one place: the repo-root **`VERSION`** file, as
+`major.minor.patch.build` — four components, so a rebuild of unchanged code can
+be told apart from a change to it.
+
+**Bump it in the commit that ships the change.** The deployed container has
+neither `.git` nor any Railway variable carrying the commit (both checked), so
+the version is only accurate because it is committed alongside the code it
+describes. Nothing derives it at runtime.
+
+- The server reads `VERSION` at startup and serves it from **`GET /api/version`**
+  — public and outside `/api/v1` on purpose, because "what is deployed" is
+  usually asked while something is broken, and needing a session to answer it
+  makes it useless exactly then. It carries version, start time and environment,
+  and nothing else; the shape is the security boundary.
+- The client has it substituted at build time (`__APP_VERSION__`, via `define`
+  in `vite.config.ts`) and shows both its own and the server's in the About
+  dialog. They can legitimately differ — a tab holds the bundle it loaded — and
+  the dialog says "Reload to update" when they do.
+- A missing `VERSION` degrades to `"unknown"` with a warning rather than
+  throwing. An app that will not boot because it cannot say what it is would be
+  worse than one that admits it does not know.
+
+```bash
+curl -s https://mailviz.rkube.io/api/version | jq .data
+```
+
 ## Deployment (Railway)
 
 Configured via `nixpacks.toml` + `railway.json`. Node 22 via nixPkgs. Build: `npm ci` → client vite build → server `prisma generate` + esbuild. Start: `cd server && npx prisma migrate deploy && node dist/index.js`. Healthcheck: `/api/health`.

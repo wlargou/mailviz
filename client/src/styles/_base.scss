@@ -300,3 +300,42 @@ body {
   margin-inline-end: $spacing-03;
   white-space: nowrap;
 }
+
+// ─── ABOUT DIALOG ────────────────────────────────────────────────────────────
+//
+// Read-only version details. Deliberately plain: the dialog answers a question
+// and closes, so anything decorative here is in the way.
+.about-modal {
+  .about-modal__brand {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .about-modal__name {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--cds-text-primary);
+    margin: 0;
+  }
+
+  .about-modal__tagline {
+    font-size: 0.75rem;
+    color: var(--cds-text-secondary);
+    margin: 0;
+  }
+
+  // Versions are compared character by character when someone is checking
+  // what shipped, so they get a mono face rather than the UI font.
+  code {
+    font-family: var(--cds-code-01-font-family, 'IBM Plex Mono', monospace);
+    font-size: 0.8125rem;
+    color: var(--cds-text-primary);
+  }
+
+  .about-modal__unreachable {
+    color: var(--cds-text-error);
+    font-size: 0.8125rem;
+  }
+}

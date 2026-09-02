@@ -76,3 +76,22 @@ export const authApi = {
   updateTimezone: (timezone: string) =>
     api.put('/auth/timezone', { timezone }),
 };
+
+/** What the running server reports about itself. Public — no session needed. */
+export interface ServerVersion {
+  version: string;
+  startedAt: string;
+  environment: string;
+}
+
+/**
+ * Deliberately not on the shared `api` instance: that one prefixes `/api/v1`
+ * and redirects to /login on a 401, and this endpoint is public and sits
+ * outside the versioned namespace precisely so it can be reached when things
+ * are going wrong.
+ */
+export async function fetchServerVersion(): Promise<ServerVersion> {
+  const res = await fetch('/api/version', { credentials: 'omit' });
+  if (!res.ok) throw new Error(`version endpoint returned ${res.status}`);
+  return (await res.json()).data as ServerVersion;
+}
