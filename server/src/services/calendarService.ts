@@ -634,38 +634,75 @@ export const calendarService = {
 
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
-    // Get the current event from Google to find the self attendee
-    const gEvent = await calendar.events.get({
-      calendarId: 'primary',
-      eventId: event.googleEventId,
-    });
+    type LocalAttendee = {
+      email: string;
+      displayName: string | null;
+      responseStatus: string;
+      self: boolean;
+      organizer: boolean;
+    };
+    let localAttendees: LocalAttendee[] | null = null;
 
-    const attendees = gEvent.data.attendees || [];
-    // Find the current user's attendee entry and update their response
-    const updatedAttendees = attendees.map((a) => {
-      if (a.self) {
-        return { ...a, responseStatus: response };
-      }
-      return a;
-    });
+    try {
+      // Get the current event from Google to find the self attendee
+      const gEvent = await calendar.events.get({
+        calendarId: 'primary',
+        eventId: event.googleEventId,
+      });
 
-    // Patch the event with the updated attendee list
-    const updatedEvent = await calendar.events.patch({
-      calendarId: 'primary',
-      eventId: event.googleEventId,
-      requestBody: {
-        attendees: updatedAttendees,
-      },
-    });
+      const attendees = gEvent.data.attendees || [];
+      // Find the current user's attendee entry and update their response
+      const updatedAttendees = attendees.map((a) => {
+        if (a.self) {
+          return { ...a, responseStatus: response };
+        }
+        return a;
+      });
 
-    // Update local attendees data
-    const localAttendees = updatedEvent.data.attendees?.map((a) => ({
-      email: a.email || '',
-      displayName: a.displayName || null,
-      responseStatus: a.responseStatus || 'needsAction',
-      self: a.self || false,
-      organizer: a.organizer || false,
-    })) || null;
+      // Patch the event with the updated attendee list
+      const updatedEvent = await calendar.events.patch({
+        calendarId: 'primary',
+        eventId: event.googleEventId,
+        requestBody: {
+          attendees: updatedAttendees,
+        },
+      });
+
+      // Update local attendees data
+      localAttendees = updatedEvent.data.attendees?.map((a) => ({
+        email: a.email || '',
+        displayName: a.displayName || null,
+        responseStatus: a.responseStatus || 'needsAction',
+        self: a.self || false,
+        organizer: a.organizer || false,
+      })) || null;
+    } catch (err) {
+      /**
+       * Both Google calls run before the only local write, so — unlike create
+       * and update, which warn about a change already committed — there is
+       * nothing here to keep. This throws.
+       *
+       * 502, and never Google's own status. gaxios sets a numeric `.status` on
+       * the error and `errorHandler` passes any non-500 straight through, so a
+       * 401 from a lapsed Google grant reached the client's axios interceptor
+       * and logged the user out of Mailviz over a session that was perfectly
+       * valid. It also put Google's raw message in the response, which is what
+       * the sanitised text in `googleErrors` exists to avoid.
+       *
+       * Not 404 for "gone in Google" either: every 404 from this service means
+       * "the local row is absent or not yours", and the client acts on that by
+       * dropping the row — which still exists here. The distinction lives in
+       * the message instead.
+       */
+      console.error('Failed to send RSVP to Google Calendar:', err);
+      const detail = isAlreadyGone(err)
+        ? 'This event no longer exists in Google Calendar.'
+        : classifyGoogleError(err).message;
+      throw Object.assign(
+        new Error(`Could not send your response to Google Calendar. ${detail}`),
+        { status: 502 }
+      );
+    }
 
     const updated = await prisma.calendarEvent.update({
       where: { id },
