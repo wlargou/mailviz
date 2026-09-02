@@ -668,13 +668,26 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
         visibility,
       };
 
-      if (event) {
-        await calendarApi.update(event.id, payload);
-        addNotification({ kind: 'success', title: 'Event updated' });
-      } else {
-        await calendarApi.create(payload);
-        addNotification({ kind: 'success', title: 'Event created' });
-      }
+      const res = event
+        ? await calendarApi.update(event.id, payload)
+        : await calendarApi.create(payload);
+
+      // The save succeeded locally either way, so this still closes and still
+      // refreshes the grid. What changes is the claim: "Event updated" was a
+      // lie whenever the push to Google failed, and the only record of that was
+      // a console.error nobody sees.
+      const warning = res.data.warning;
+      addNotification(
+        warning
+          ? {
+              kind: 'warning',
+              title: 'Saved here, but not sent to Google',
+              subtitle: warning.retryable
+                ? `${warning.message} It will not appear in Google Calendar until you try again.`
+                : warning.message,
+            }
+          : { kind: 'success', title: event ? 'Event updated' : 'Event created' }
+      );
 
       onSaved();
     } catch {

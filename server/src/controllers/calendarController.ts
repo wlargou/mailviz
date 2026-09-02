@@ -24,8 +24,12 @@ export const calendarController = {
 
   async create(req: Req, res: Response, next: NextFunction) {
     try {
-      const event = await calendarService.create(req.body, req.user!.id);
-      res.status(201).json({ data: event });
+      const { event, push } = await calendarService.create(req.body, req.user!.id);
+      // `warning` is a sibling of `data`, the same shape `meta` already takes
+      // elsewhere — the event really was created here, and saying so while
+      // admitting it did not reach Google is the honest report. Only a genuine
+      // failure warns; a user with no Google connected sees nothing.
+      res.status(201).json({ data: event, ...(push.status === 'failed' ? { warning: push.failure } : {}) });
     } catch (err) {
       next(err);
     }
@@ -33,8 +37,8 @@ export const calendarController = {
 
   async update(req: Req, res: Response, next: NextFunction) {
     try {
-      const event = await calendarService.update(req.params.id, req.body, req.user!.id);
-      res.json({ data: event });
+      const { event, push } = await calendarService.update(req.params.id, req.body, req.user!.id);
+      res.json({ data: event, ...(push.status === 'failed' ? { warning: push.failure } : {}) });
     } catch (err) {
       next(err);
     }
