@@ -515,6 +515,30 @@ describe('emailService.initialSync', () => {
     expect(starred.isArchived).toBe(true);
   });
 
+  it('stores the Gmail subject and snippet verbatim, entities and all', async () => {
+    // The Email row is a mirror of a remote system of record, and that is the
+    // invariant that makes the upsert safely re-runnable. Decoding here would
+    // be irreversible — there is no raw column to recover from — and would put
+    // ~132k production rows on the wrong side of a split that no single date
+    // explains, because a history-id expiry silently re-syncs an arbitrary
+    // week of old mail.
+    //
+    // Decoding belongs one step later, where Gmail's text becomes one of our
+    // own rows: convertToTask, and the outgoing Subject header. This test is
+    // the guard on that boundary — every other subject fixture in this file is
+    // entity-free ASCII, so without it the suite stays green whether the rule
+    // holds or not.
+    const user = await createUser();
+    gmail.messagesList.mockResolvedValue(listPage(['m1']));
+    stubMessagesGet(gmail, [{ id: 'm1', subject: 'R&amp;D suivi', snippet: 'Merci d&#39;avance' }]);
+
+    await emailService.initialSync(gmail.client, user.id);
+
+    const row = await prisma.email.findFirstOrThrow({ where: { userId: user.id } });
+    expect(row.subject).toBe('R&amp;D suivi');
+    expect(row.snippet).toBe('Merci d&#39;avance');
+  });
+
   it('is idempotent — re-running does not duplicate rows', async () => {
     const user = await createUser();
     gmail.messagesList.mockResolvedValue(listPage(['m1']));

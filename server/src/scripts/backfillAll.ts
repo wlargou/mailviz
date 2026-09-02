@@ -31,6 +31,7 @@ import { prisma } from '../lib/prisma.js';
 import { repairJunkDomains } from './repairJunkDomains.js';
 import { refileOwnDomainEmails } from './refileOwnDomainEmails.js';
 import { classifyContactKinds } from './classifyContactKinds.js';
+import { decodeTaskEntities } from './decodeTaskEntities.js';
 import { backfillContactEngagement } from './backfillContactEngagement.js';
 
 const apply = process.argv.includes('--apply');
@@ -44,7 +45,7 @@ async function main() {
 
   // 1. Domains first: customers get merged and re-pointed here, and the contact
   //    classifier reads a contact's company name.
-  console.log('\n[1/4] Repairing customers created by the public-suffix bug');
+  console.log('\n[1/5] Repairing customers created by the public-suffix bug');
   const domains = await repairJunkDomains({ apply });
   console.log(
     `      ${domains.junkCustomers} junk customers, ${domains.emailsRelinked} emails and ` +
@@ -52,12 +53,12 @@ async function main() {
   );
 
   // 2. Then outbound mail, which changes which customer an email belongs to.
-  console.log('\n[2/4] Re-filing outbound mail onto the recipient company');
+  console.log('\n[2/5] Re-filing outbound mail onto the recipient company');
   const refiled = await refileOwnDomainEmails({ apply });
   console.log(`      ${refiled.refiled ?? 0} emails re-filed`);
 
   // 3. Contact kind, which reads the (now correct) company name.
-  console.log('\n[3/4] Classifying contacts as person / role / automated');
+  console.log('\n[3/5] Classifying contacts as person / role / automated');
   const kinds = await classifyContactKinds({ apply });
   console.log(
     `      ${kinds.counts.person} person, ${kinds.counts.role} role, ` +
@@ -65,12 +66,18 @@ async function main() {
   );
 
   // 4. Engagement, derived from the mail as it now stands.
-  console.log('\n[4/4] Computing which way mail has flowed');
+  console.log('\n[4/5] Computing which way mail has flowed');
   const engagement = await backfillContactEngagement({ apply });
   console.log(
     `      ${engagement.counts.both} both, ${engagement.counts.sender} sender, ` +
       `${engagement.counts.receiver} receiver, ${engagement.counts.none} none ` +
       `(${engagement.changed} rows to change)`
+  );
+
+  console.log('\n[5/5] Decoding HTML entities left in task titles and descriptions');
+  const decoded = await decodeTaskEntities({ apply });
+  console.log(
+    `      ${decoded.changed} of ${decoded.scanned} rows containing "&" need decoding`
   );
 
   if (!apply) console.log('\nNothing was written. Re-run with --apply.');

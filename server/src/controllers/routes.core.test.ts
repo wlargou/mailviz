@@ -921,6 +921,49 @@ describe('/api/v1/emails mutations', () => {
     expect(again.status).toBe(409);
   });
 
+  it('POST /:id/convert-to-task decodes the Gmail text into the task', async () => {
+    // Gmail returns subjects and snippets HTML-escaped, and a task is our row
+    // rather than a mirror of the message — so this is the boundary where the
+    // entities have to go. Without it the task is stored, and searched, as
+    // "Merci d&#39;avance": a user who reads the decoded text on screen and
+    // types it into task search gets nothing back, because the search is a
+    // literal Postgres `contains`.
+    const { alice } = await createTwoUsers();
+    const email = await createEmail(alice.id, {
+      subject: 'R&amp;D suivi',
+      snippet: 'Merci d&#39;avance pour votre &lt;retour&gt;',
+    });
+
+    // `title` omitted on purpose, so the `|| email.subject` fallback is what
+    // gets exercised.
+    const created = await call('POST', `/api/v1/emails/${email.id}/convert-to-task`, {
+      as: alice.id,
+      body: {},
+    });
+
+    expect(created.status).toBe(201);
+    expect(created.body.data).toMatchObject({
+      title: 'R&D suivi',
+      description: "Merci d'avance pour votre <retour>",
+    });
+  });
+
+  it('POST /:id/convert-to-task stores a caller-supplied title verbatim', async () => {
+    // The asymmetry is deliberate. The fallback is Gmail's text and must be
+    // decoded; an explicit title is the caller's own, and someone who typed
+    // "&amp;" meant it. Decoding both would silently rewrite user input.
+    const { alice } = await createTwoUsers();
+    const email = await createEmail(alice.id, { subject: 'ignored' });
+
+    const created = await call('POST', `/api/v1/emails/${email.id}/convert-to-task`, {
+      as: alice.id,
+      body: { title: 'Ben &amp; Co' },
+    });
+
+    expect(created.status).toBe(201);
+    expect(created.body.data).toMatchObject({ title: 'Ben &amp; Co' });
+  });
+
   it('POST /:id/reply and /forward validate the body before touching anything', async () => {
     const { alice } = await createTwoUsers();
     const email = await createEmail(alice.id);
