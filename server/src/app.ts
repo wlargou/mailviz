@@ -7,6 +7,7 @@ import rateLimit from 'express-rate-limit';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { env } from './config/env.js';
+import { TRUSTED_PROXIES } from './config/trustedProxies.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requireAuth } from './middleware/auth.js';
 import { taskRoutes } from './routes/tasks.js';
@@ -32,6 +33,17 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+
+/**
+ * Believe the infrastructure about who the client is, and nobody else.
+ *
+ * Until this, `req.ip` was Railway's internal proxy — one address shared by
+ * every request — so the login limiter's bucket was global. See
+ * `config/trustedProxies.ts` for why this is an allow-list of hops rather than
+ * `true`, and why it has to cover both the Cloudflare-fronted domain and the
+ * directly reachable Railway one.
+ */
+app.set('trust proxy', TRUSTED_PROXIES);
 
 /**
  * Helmet, with one deliberate relaxation to `img-src`.
