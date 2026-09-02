@@ -279,3 +279,90 @@ describe('onboardingService.seedDefaultLabels', () => {
     expect(await prisma.label.count({ where: { userId: bob.id } })).toBe(0);
   });
 });
+
+/**
+ * Defaults arrive on sign-in, not on finishing the tour.
+ *
+ * The wizard is skippable — "Explore on my own" completes onboarding without
+ * ever reaching the board step — and that account was left with no task
+ * statuses (an empty Kanban) and no labels (a picker that hides itself). A
+ * default that only arrives if you read the tour is not a default.
+ *
+ * This runs on a hot path, so the idempotence cases matter as much as the
+ * seeding one: it must be two COUNT queries and nothing else once an account
+ * is set up, and it must never disturb a set the user has curated since.
+ */
+describe('onboardingService.ensureAccountDefaults', () => {
+  it('gives a brand-new account both statuses and labels', async () => {
+    const user = await createUser();
+
+    const result = await onboardingService.ensureAccountDefaults(user.id);
+
+    expect(result.statuses.created).toBe(DEFAULT_TASK_STATUSES.length);
+    expect(result.labels.created).toBe(DEFAULT_TASK_LABELS.length);
+  });
+
+  it('leaves an account that skipped the wizard fully configured', async () => {
+    // The exact path that was broken: onboarding marked complete without the
+    // board step ever running.
+    const user = await createUser();
+    await onboardingService.complete(user.id, { skipped: true });
+
+    await onboardingService.ensureAccountDefaults(user.id);
+
+    expect(await prisma.taskStatus.count({ where: { userId: user.id } }))
+      .toBe(DEFAULT_TASK_STATUSES.length);
+    expect(await prisma.label.count({ where: { userId: user.id } }))
+      .toBe(DEFAULT_TASK_LABELS.length);
+    // And the account no longer reports a blocking gap it cannot fix itself.
+    expect((await onboardingService.getStatus(user.id)).blocking).not.toContain('taskStatuses');
+  });
+
+  it('creates nothing on a second sign-in', async () => {
+    // It runs on every login, so this is the case that happens thousands of
+    // times and the one that must stay cheap.
+    const user = await createUser();
+    await onboardingService.ensureAccountDefaults(user.id);
+
+    const again = await onboardingService.ensureAccountDefaults(user.id);
+
+    expect(again.statuses).toEqual({ created: 0, skipped: true });
+    expect(again.labels).toEqual({ created: 0, skipped: true });
+  });
+
+  it('does not restore what the user deliberately removed', async () => {
+    // Someone who deleted "Support" and renamed the rest should not find their
+    // decisions undone by logging in tomorrow.
+    const user = await createUser();
+    await prisma.label.create({ data: { userId: user.id, name: 'Run', color: '#007d79' } });
+    await prisma.taskStatus.create({ data: { userId: user.id, name: 'BACKLOG', label: 'Backlog' } });
+
+    await onboardingService.ensureAccountDefaults(user.id);
+
+    expect((await prisma.label.findMany({ where: { userId: user.id } })).map((l) => l.name))
+      .toEqual(['Run']);
+    expect((await prisma.taskStatus.findMany({ where: { userId: user.id } })).map((s) => s.name))
+      .toEqual(['BACKLOG']);
+  });
+
+  it('seeds only the account signing in', async () => {
+    const { alice, bob } = await createTwoUsers();
+
+    await onboardingService.ensureAccountDefaults(alice.id);
+
+    expect(await prisma.label.count({ where: { userId: bob.id } })).toBe(0);
+    expect(await prisma.taskStatus.count({ where: { userId: bob.id } })).toBe(0);
+  });
+
+  it('still seeds labels when statuses already exist', async () => {
+    // Every account that predates the label feature. Seeding the two together
+    // must not make one depend on the other.
+    const user = await createUser();
+    await onboardingService.seedDefaultTaskStatuses(user.id);
+
+    const result = await onboardingService.ensureAccountDefaults(user.id);
+
+    expect(result.statuses.created).toBe(0);
+    expect(result.labels.created).toBe(DEFAULT_TASK_LABELS.length);
+  });
+});
