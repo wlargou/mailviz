@@ -4,7 +4,7 @@ import { prisma } from '../lib/prisma.js';
 import { formatAllDayDate } from '../utils/timezone.js';
 import { getCalendarClient } from '../lib/calendar.js';
 import { googleAuthService } from './googleAuthService.js';
-import { classifyGoogleError, isAlreadyGone, type PushFailure } from '../lib/googleErrors.js';
+import { classifyGoogleError, googleErrorStatus, isAlreadyGone, type PushFailure } from '../lib/googleErrors.js';
 import { customerService } from './customerService.js';
 import { extractDomain, isPersonalDomain, normalizeDomain } from '../utils/domainResolver.js';
 import { wsEmit, wsEmitToUser } from '../websocket.js';
@@ -426,7 +426,7 @@ export const calendarService = {
       } while (pageToken);
     } catch (err: any) {
       // If syncToken is invalid/expired, fall back to full sync
-      if ((err?.code === 410 || err?.status === 410) && !retried) {
+      if (googleErrorStatus(err) === 410 && !retried) {
         console.warn('[CalendarSync] Sync token expired, resetting for full sync');
         await prisma.googleAuth.update({
           where: { id: auth.id },
