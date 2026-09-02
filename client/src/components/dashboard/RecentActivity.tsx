@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import type { DashboardStats } from '../../types/dashboard';
 import { EmptyState } from '../shared/EmptyState';
+import { decodeEntities } from '../../utils/text';
 
 interface RecentEmailsProps {
   stats: DashboardStats | null;
@@ -35,7 +36,7 @@ export function RecentEmails({ stats, loading, onEmailClick }: RecentEmailsProps
           key={email.threadId || idx}
           type="button"
           className={`dashboard-item dashboard-item--email${!email.isRead ? ' dashboard-item--unread' : ''}`}
-          aria-label={`${email.subject || '(No subject)'}, from ${email.fromName || email.from}${!email.isRead ? ', unread' : ''}`}
+          aria-label={`${decodeEntities(email.subject) || '(No subject)'}, from ${decodeEntities(email.fromName || email.from)}${!email.isRead ? ', unread' : ''}`}
           onClick={() => {
             if (onEmailClick && email.threadId) onEmailClick(email.threadId, email.subject || '(No subject)');
             else navigate('/mail');
@@ -45,8 +46,8 @@ export function RecentEmails({ stats, loading, onEmailClick }: RecentEmailsProps
             {formatDistanceToNow(new Date(email.receivedAt), { addSuffix: false })}
           </span>
           <span className="dashboard-item__info">
-            <span className="dashboard-item__title">{email.subject || '(No subject)'}</span>
-            <span className="dashboard-item__sub">{email.fromName || email.from}</span>
+            <span className="dashboard-item__title">{decodeEntities(email.subject) || '(No subject)'}</span>
+            <span className="dashboard-item__sub">{decodeEntities(email.fromName || email.from)}</span>
           </span>
         </button>
       ))}

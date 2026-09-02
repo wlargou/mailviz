@@ -13,6 +13,7 @@ import { taskStatusesApi } from '../../api/taskStatuses';
 import { CompanyComboBox } from '../shared/CompanyComboBox';
 import { useUIStore } from '../../store/uiStore';
 import type { Label, TaskPriority, TaskStatus, TaskStatusConfig } from '../../types/task';
+import { useTaskStore } from '../../store/taskStore';
 
 const priorityItems = [
   { id: 'LOW', text: 'Low' },
@@ -34,6 +35,7 @@ interface TaskCreateModalProps {
 }
 
 export function TaskCreateModal({ open, onClose, onCreated, labels }: TaskCreateModalProps) {
+  const taskChanged = useTaskStore((s) => s.taskChanged);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<TaskStatus>('TODO');
@@ -83,6 +85,7 @@ export function TaskCreateModal({ open, onClose, onCreated, labels }: TaskCreate
       });
       addNotification({ kind: 'success', title: 'Task created', subtitle: title.trim() });
       resetForm();
+      taskChanged();
       onCreated();
       onClose();
     } catch {

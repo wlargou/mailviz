@@ -57,6 +57,7 @@ import type { EmailThread, AttachmentWithEmail } from '../../types/email';
 import { ThreadItemList } from '../shared/ThreadItemList';
 import { toolbarSearchValue } from '../../utils/carbonSearch';
 import { CompanyLogo } from '../shared/CompanyLogo';
+import { decodeEntities } from '../../utils/text';
 
 const contactHeaders = [
   { key: 'name', header: 'Name' },
@@ -308,7 +309,7 @@ export function CustomerDetailPage() {
                   <EmptyState title="No contacts" description="Add contacts to this company" icon={<UserMultiple size={48} />} />
                 ) : (() => {
                   const q = contactSearch.toLowerCase();
-                  const filtered = q ? contacts.filter((c) => `${c.firstName} ${c.lastName}`.toLowerCase().includes(q) || (c.email || '').toLowerCase().includes(q) || (c.role || '').toLowerCase().includes(q)) : contacts;
+                  const filtered = q ? contacts.filter((c) => decodeEntities(`${c.firstName} ${c.lastName}`).toLowerCase().includes(q) || (c.email || '').toLowerCase().includes(q) || (c.role || '').toLowerCase().includes(q)) : contacts;
                   const paginated = filtered.slice((contactPage - 1) * contactPageSize, contactPage * contactPageSize);
                   const rows = paginated.map((c) => ({ id: c.id, name: `${c.firstName} ${c.lastName}`, email: c.email || '—', phone: c.phone || '—', role: c.role || '—' }));
                   return (<>
@@ -322,7 +323,7 @@ export function CustomerDetailPage() {
                               {paginated.map((contact, i) => {
                                 const row = tableRows[i]; if (!row) return null;
                                 return (<TableRow {...getRowProps({ row })} key={row.id}>
-                                  <TableCell><span style={{ cursor: 'pointer', fontWeight: 500, color: 'var(--cds-link-primary)' }} onClick={() => navigate(`/contacts/${contact.id}`)}>{contact.firstName} {contact.lastName}</span></TableCell>
+                                  <TableCell><span style={{ cursor: 'pointer', fontWeight: 500, color: 'var(--cds-link-primary)' }} onClick={() => navigate(`/contacts/${contact.id}`)}>{decodeEntities(`${contact.firstName} ${contact.lastName}`)}</span></TableCell>
                                   <TableCell>{contact.email || '—'}</TableCell>
                                   <TableCell>{contact.phone || '—'}</TableCell>
                                   <TableCell>{contact.role || '—'}</TableCell>
@@ -350,7 +351,7 @@ export function CustomerDetailPage() {
                   <EmptyState title="No linked tasks" description="Link tasks to this customer from the Tasks page" icon={<TaskComplete size={48} />} />
                 ) : (() => {
                   const q = taskSearch.toLowerCase();
-                  const filtered = q ? tasks.filter((t) => t.title.toLowerCase().includes(q) || t.status.toLowerCase().includes(q)) : tasks;
+                  const filtered = q ? tasks.filter((t) => decodeEntities(t.title).toLowerCase().includes(q) || t.status.toLowerCase().includes(q)) : tasks;
                   const paginated = filtered.slice((taskPage - 1) * taskPageSize, taskPage * taskPageSize);
                   const rows = paginated.map((t) => ({ id: t.id, title: t.title, status: t.status, priority: t.priority, dueDate: t.dueDate || '' }));
                   return (<>
@@ -364,7 +365,7 @@ export function CustomerDetailPage() {
                               {paginated.map((task, i) => {
                                 const row = tableRows[i]; if (!row) return null;
                                 return (<TableRow {...getRowProps({ row })} key={row.id}>
-                                  <TableCell><span style={{ cursor: 'pointer', fontWeight: 500 }} onClick={() => navigate('/tasks')}>{task.title}</span></TableCell>
+                                  <TableCell><span style={{ cursor: 'pointer', fontWeight: 500 }} onClick={() => navigate('/tasks')}>{decodeEntities(task.title)}</span></TableCell>
                                   <TableCell><TaskStatusTag status={task.status} /></TableCell>
                                   <TableCell><PriorityBadge priority={task.priority} /></TableCell>
                                   <TableCell>{task.dueDate ? format(new Date(task.dueDate), 'MMM d, yyyy') : '—'}</TableCell>
@@ -467,7 +468,7 @@ export function CustomerDetailPage() {
 
       <ConfirmDeleteModal
         open={!!deleteContact}
-        title={deleteContact ? `${deleteContact.firstName} ${deleteContact.lastName}` : ''}
+        title={deleteContact ? decodeEntities(`${deleteContact.firstName} ${deleteContact.lastName}`) : ''}
         entityLabel="contact"
         onClose={() => setDeleteContact(null)}
         onConfirm={handleDeleteContact}
@@ -514,7 +515,7 @@ export function CustomerDetailPage() {
       <SidePanel
         open={!!selectedThread}
         onRequestClose={() => setSelectedThread(null)}
-        title={selectedThread?.subject || 'Thread'}
+        title={decodeEntities(selectedThread?.subject) || 'Thread'}
         size="lg"
         className="mail-page__side-panel"
       >

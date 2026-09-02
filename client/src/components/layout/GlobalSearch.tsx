@@ -12,6 +12,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { formatDistanceToNow, format } from 'date-fns';
 import { searchApi, type SearchResults } from '../../api/search';
+import { decodeEntities } from '../../utils/text';
 
 type Category = 'emails' | 'tasks' | 'events' | 'customers' | 'contacts' | 'deals';
 
@@ -61,8 +62,8 @@ function flattenResults(results: SearchResults, scopeIds: string[]): FlatResult[
       for (const email of results.emails) {
         flat.push({
           category: 'emails', icon: Email,
-          label: email.subject,
-          sublabel: `${email.fromName || email.from} · ${formatDistanceToNow(new Date(email.receivedAt), { addSuffix: true })}`,
+          label: decodeEntities(email.subject),
+          sublabel: `${decodeEntities(email.fromName || email.from)} · ${formatDistanceToNow(new Date(email.receivedAt), { addSuffix: true })}`,
           navigateTo: '/mail',
         });
       }
@@ -70,7 +71,7 @@ function flattenResults(results: SearchResults, scopeIds: string[]): FlatResult[
       for (const task of results.tasks) {
         flat.push({
           category: 'tasks', icon: Task,
-          label: task.title,
+          label: decodeEntities(task.title),
           sublabel: `${task.status.replace('_', ' ')} · ${task.priority}`,
           navigateTo: '/tasks',
         });
@@ -97,7 +98,7 @@ function flattenResults(results: SearchResults, scopeIds: string[]): FlatResult[
       for (const contact of results.contacts) {
         flat.push({
           category: 'contacts', icon: User,
-          label: `${contact.firstName} ${contact.lastName}`.trim(),
+          label: decodeEntities(`${contact.firstName} ${contact.lastName}`).trim(),
           sublabel: [contact.email, contact.customer?.name].filter(Boolean).join(' · '),
           navigateTo: `/contacts/${contact.id}`,
         });

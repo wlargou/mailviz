@@ -32,6 +32,7 @@ import { useUIStore } from '../../store/uiStore';
 import type { Task, Label, TaskStatusConfig } from '../../types/task';
 import { toolbarSearchValue, type TableToolbarSearchChangeEvent } from '../../utils/carbonSearch';
 import type { DataTableSortState } from '@carbon/react';
+import { decodeEntities } from '../../utils/text';
 
 /**
  * `sortField` names the API field a column orders by (`TASK_SORT_FIELDS` in
@@ -72,6 +73,8 @@ interface TaskListViewProps {
 }
 
 export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreateNew }: TaskListViewProps) {
+  const taskChanged = useTaskStore((s) => s.taskChanged);
+  const statusesVersion = useTaskStore((s) => s.statusesVersion);
   const { meta, setPage, setPageSize, setFilter, filters, currentPage, pageSize, resetFilters } = useTaskStore();
 
   /**
@@ -117,7 +120,11 @@ export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreat
         ...res.data.map((s: TaskStatusConfig) => ({ id: s.name, text: s.label })),
       ]);
     }).catch(() => {});
-  }, []);
+    // Re-read when the vocabulary changes: statuses are user-defined and the
+    // Kanban board can add one, but Carbon keeps this panel mounted, so an
+    // empty dep array left the filter dropdown missing the new column until
+    // the user navigated away from /tasks and back.
+  }, [statusesVersion]);
 
   const labelItems = [
     { id: '', text: 'All Labels' },
@@ -276,7 +283,7 @@ export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreat
                     <TableCell>
                       <span className="shared-title-cell">
                         <span style={{ cursor: 'pointer', fontWeight: 500 }} onClick={() => onEdit(task)}>
-                          {task.title}
+                          {decodeEntities(task.title)}
                         </span>
                         <SharedBadge ownerId={task.userId} />
                       </span>
@@ -334,16 +341,18 @@ export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreat
       <ShareDialog
         open={!!shareTask}
         onClose={() => setShareTask(null)}
-        title={shareTask?.title || ''}
+        title={decodeEntities(shareTask?.title)}
         currentShares={taskShares}
         onShare={async (userIds) => {
           if (!shareTask) return;
           await tasksApi.shareTask(shareTask.id, userIds);
+          taskChanged();
           addNotification({ kind: 'success', title: 'Task shared' });
         }}
         onUnshare={async (userId) => {
           if (!shareTask) return;
           await tasksApi.unshareTask(shareTask.id, userId);
+          taskChanged();
           addNotification({ kind: 'success', title: 'Share removed' });
         }}
         onRefresh={async () => {

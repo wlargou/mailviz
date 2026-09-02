@@ -18,12 +18,18 @@ import { tasksApi } from '../../api/tasks';
 import { taskStatusesApi } from '../../api/taskStatuses';
 import { useUIStore } from '../../store/uiStore';
 import type { Task, TaskStatus, TaskStatusConfig, ReorderItem } from '../../types/task';
+import { decodeEntities } from '../../utils/text';
+import { useTaskStore } from '../../store/taskStore';
+import { useTaskChanges } from '../../hooks/useTaskChanges';
 
 interface TaskKanbanViewProps {
   onCardClick: (task: Task) => void;
 }
 
 export function TaskKanbanView({ onCardClick }: TaskKanbanViewProps) {
+  const statusesVersion = useTaskStore((s) => s.statusesVersion);
+  const taskChanged = useTaskStore((s) => s.taskChanged);
+  const statusChanged = useTaskStore((s) => s.statusChanged);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [statuses, setStatuses] = useState<TaskStatusConfig[]>([]);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
@@ -45,8 +51,8 @@ export function TaskKanbanView({ onCardClick }: TaskKanbanViewProps) {
     }
   }, [addNotification]);
 
-  const fetchKanbanTasks = useCallback(async () => {
-    setLoading(true);
+  const fetchKanbanTasks = useCallback(async (showSkeleton = true) => {
+    if (showSkeleton) setLoading(true);
     try {
       const { data: response } = await tasksApi.getAll({
         limit: '200',
@@ -61,10 +67,15 @@ export function TaskKanbanView({ onCardClick }: TaskKanbanViewProps) {
     }
   }, [addNotification]);
 
+  useTaskChanges(useCallback(() => { void fetchKanbanTasks(false); }, [fetchKanbanTasks]));
+
   useEffect(() => {
     fetchStatuses();
+  }, [fetchStatuses, statusesVersion]);
+
+  useEffect(() => {
     fetchKanbanTasks();
-  }, [fetchStatuses, fetchKanbanTasks]);
+  }, [fetchKanbanTasks]);
 
   const statusNames = useMemo(() => statuses.map((s) => s.name), [statuses]);
 
@@ -150,7 +161,10 @@ export function TaskKanbanView({ onCardClick }: TaskKanbanViewProps) {
 
         try {
           await tasksApi.reorder(reorderItems);
+          taskChanged();
         } catch {
+          // Rollback, not a change — no bump, or every view refetches for a
+          // write that did not land.
           addNotification({ kind: 'error', title: 'Failed to reorder' });
           fetchKanbanTasks();
         }
@@ -172,6 +186,7 @@ export function TaskKanbanView({ onCardClick }: TaskKanbanViewProps) {
 
       try {
         await tasksApi.reorder(reorderItems);
+        taskChanged();
       } catch {
         addNotification({ kind: 'error', title: 'Failed to move task' });
         fetchKanbanTasks();
@@ -185,7 +200,7 @@ export function TaskKanbanView({ onCardClick }: TaskKanbanViewProps) {
       await taskStatusesApi.create({ label: newStatusLabel.trim() });
       setNewStatusLabel('');
       setAddingStatus(false);
-      fetchStatuses();
+      statusChanged();
     } catch {
       addNotification({ kind: 'error', title: 'Failed to create status' });
     }
@@ -268,7 +283,7 @@ export function TaskKanbanView({ onCardClick }: TaskKanbanViewProps) {
       <DragOverlay>
         {activeTask && (
           <ClickableTile className={`kanban-card kanban-card--${activeTask.priority.toLowerCase()}`}>
-            <div className="card-title">{activeTask.title}</div>
+            <div className="card-title">{decodeEntities(activeTask.title)}</div>
           </ClickableTile>
         )}
       </DragOverlay>

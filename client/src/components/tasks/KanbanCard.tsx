@@ -6,6 +6,7 @@ import { PriorityBadge } from '../shared/PriorityBadge';
 import { LabelTag } from '../shared/LabelTag';
 import { SharedBadge } from '../shared/SharedBadge';
 import type { Task } from '../../types/task';
+import { decodeEntities } from '../../utils/text';
 
 interface KanbanCardProps {
   task: Task;
@@ -35,7 +36,7 @@ export function KanbanCard({ task, onClick }: KanbanCardProps) {
         className={`kanban-card kanban-card--${task.priority.toLowerCase()} ${isDragging ? 'dragging' : ''}`}
         onClick={() => onClick(task)}
       >
-        <div className="card-title">{task.title}</div>
+        <div className="card-title">{decodeEntities(task.title)}</div>
         <div className="card-badges">
           <SharedBadge ownerId={task.userId} />
         </div>

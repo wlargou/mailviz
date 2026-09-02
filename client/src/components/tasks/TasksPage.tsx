@@ -12,6 +12,7 @@ import { useUIStore } from '../../store/uiStore';
 import { labelsApi } from '../../api/labels';
 import { tasksApi } from '../../api/tasks';
 import type { Task, Label } from '../../types/task';
+import { decodeEntities } from '../../utils/text';
 
 export function TasksPage() {
   const { tasks, loading, fetchTasks, setFilter } = useTaskStore();
@@ -63,9 +64,14 @@ export function TasksPage() {
   const filters = useTaskStore((s) => s.filters);
   const currentPage = useTaskStore((s) => s.currentPage);
   const pageSize = useTaskStore((s) => s.pageSize);
+  // Every task write bumps this, wherever it happened — including in views
+  // that never touch this store. It is what replaces the hand-placed
+  // fetchTasks() calls the mutation handlers below used to make.
+  const tasksVersion = useTaskStore((s) => s.tasksVersion);
+  const taskChanged = useTaskStore((s) => s.taskChanged);
   useEffect(() => {
     fetchTasks();
-  }, [filters, currentPage, pageSize, fetchTasks]);
+  }, [filters, currentPage, pageSize, tasksVersion, fetchTasks]);
 
   const handleDelete = async () => {
     if (!deleteTask) return;
@@ -73,14 +79,13 @@ export function TasksPage() {
       await tasksApi.delete(deleteTask.id);
       addNotification({ kind: 'success', title: 'Task deleted' });
       setDeleteTask(null);
-      fetchTasks();
+      taskChanged();
     } catch {
       addNotification({ kind: 'error', title: 'Failed to delete task' });
     }
   };
 
   const handleTaskUpdated = () => {
-    fetchTasks();
     setEditTask(null);
   };
 
@@ -128,7 +133,6 @@ export function TasksPage() {
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         onCreated={() => {
-          fetchTasks();
           setCreateOpen(false);
         }}
         labels={labels}
@@ -144,7 +148,7 @@ export function TasksPage() {
 
       <ConfirmDeleteModal
         open={!!deleteTask}
-        title={deleteTask?.title || ''}
+        title={decodeEntities(deleteTask?.title)}
         entityLabel="task"
         onClose={() => setDeleteTask(null)}
         onConfirm={handleDelete}

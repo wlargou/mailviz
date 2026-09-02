@@ -281,7 +281,7 @@ export function ReviewCustomerGroup({
                     >
                       <div className="thread-item__top">
                         <span className="thread-item__sender">
-                          {e.contactName || e.fromName || e.from}
+                          {decodeEntities(e.contactName || e.fromName || e.from)}
                         </span>
                         <span className="thread-item__subject-inline">{decodeEntities(e.subject)}</span>
                         <div className="thread-item__right">

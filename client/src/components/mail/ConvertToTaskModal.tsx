@@ -10,6 +10,8 @@ import {
 import { emailsApi } from '../../api/emails';
 import { useUIStore } from '../../store/uiStore';
 import type { EmailMessage } from '../../types/email';
+import { decodeEntities } from '../../utils/text';
+import { useTaskStore } from '../../store/taskStore';
 
 interface ConvertToTaskModalProps {
   email: EmailMessage;
@@ -26,7 +28,8 @@ const priorityItems = [
 ];
 
 export function ConvertToTaskModal({ email, open, onClose, onConverted }: ConvertToTaskModalProps) {
-  const [title, setTitle] = useState(email.subject);
+  const taskChanged = useTaskStore((s) => s.taskChanged);
+  const [title, setTitle] = useState(decodeEntities(email.subject));
   const [priority, setPriority] = useState('MEDIUM');
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -42,6 +45,7 @@ export function ConvertToTaskModal({ email, open, onClose, onConverted }: Conver
         notes: notes.trim() || undefined,
       });
       addNotification({ kind: 'success', title: 'Task created from email' });
+      taskChanged();
       onConverted();
     } catch (err: any) {
       const msg = err?.response?.status === 409 ? 'Email already converted to task' : 'Failed to create task';

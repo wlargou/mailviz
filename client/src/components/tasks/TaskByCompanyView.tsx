@@ -24,6 +24,7 @@ import { format, isToday, isTomorrow } from 'date-fns';
 import { tasksApi, type TaskCompanyGroup, type TaskCompanyMeta, type TaskGroupSort } from '../../api/tasks';
 import { taskStatusesApi } from '../../api/taskStatuses';
 import { useTaskStore } from '../../store/taskStore';
+import { useTaskChanges } from '../../hooks/useTaskChanges';
 import { useUIStore } from '../../store/uiStore';
 import { CompanyLogo } from '../shared/CompanyLogo';
 import { EmptyState } from '../shared/EmptyState';
@@ -134,6 +135,8 @@ export function TaskByCompanyView({ labels, onEdit, onDelete, onCreateNew }: Tas
   const priority = useTaskStore((s) => s.filters.priority);
   const labelId = useTaskStore((s) => s.filters.labelId);
   const setFilter = useTaskStore((s) => s.setFilter);
+  const statusesVersion = useTaskStore((s) => s.statusesVersion);
+  const taskChanged = useTaskStore((s) => s.taskChanged);
   const resetFilters = useTaskStore((s) => s.resetFilters);
 
   /**
@@ -161,7 +164,7 @@ export function TaskByCompanyView({ labels, onEdit, onDelete, onCreateNew }: Tas
       .getAll()
       .then(({ data }) => setTerminalStatus(data.data.find((s) => s.isTerminal)?.name ?? null))
       .catch(() => setTerminalStatus(null));
-  }, []);
+  }, [statusesVersion]);
 
   const load = useCallback(
     async (showSkeleton = true) => {
@@ -183,6 +186,10 @@ export function TaskByCompanyView({ labels, onEdit, onDelete, onCreateNew }: Tas
   );
 
   useEffect(() => { void load(); }, [load]);
+
+  // In the background: the rows on screen are still valid, and only one of
+  // them is about to change.
+  useTaskChanges(useCallback(() => { void load(false); }, [load]));
 
   /**
    * Open the leading company, so the view never lands entirely collapsed.
@@ -246,12 +253,14 @@ export function TaskByCompanyView({ labels, onEdit, onDelete, onCreateNew }: Tas
     );
     try {
       await tasksApi.update(task.id, { status: terminalStatus });
-      addNotification({ kind: 'success', title: `“${task.title}” marked done` });
+      addNotification({ kind: 'success', title: `“${decodeEntities(task.title)}” marked done` });
+      // Drives this view's own reload too, via useTaskChanges — so there is no
+      // load() here, and List View and the board stop showing the old status.
+      taskChanged();
     } catch {
       addNotification({ kind: 'error', title: 'Could not update the task' });
     } finally {
       setBusyTask(null);
-      await load(false);
     }
   };
 

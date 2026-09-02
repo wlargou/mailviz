@@ -26,6 +26,25 @@ interface TaskState {
   currentPage: number;
   pageSize: number;
 
+  /**
+   * Bumped once per successful write to a task. Views that keep their own copy
+   * of the task list watch this and refetch.
+   *
+   * It is deliberately NOT bumped by `fetchTasks`. "The store refetched" is a
+   * different signal from "a task was written", and the wrong one here: it
+   * fires on paging and on every debounced keystroke in the search box, and it
+   * is blind to the writes that never touch this store at all — the Kanban
+   * drag, By Company's Mark as done, converting an email to a task from Mail.
+   * Those sibling-to-sibling cases are most of what this exists to fix.
+   */
+  tasksVersion: number;
+  /** Same idea for the status vocabulary, which the Kanban board can add to. */
+  statusesVersion: number;
+
+  /** Call after a task write lands — never inside a loader, never in a `finally`. */
+  taskChanged: () => void;
+  /** Call after the status vocabulary changes. */
+  statusChanged: () => void;
   fetchTasks: () => Promise<void>;
   fetchSummary: () => Promise<void>;
   setFilter: (key: keyof TaskFilters, value: string | undefined) => void;
@@ -47,6 +66,11 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   filters: { ...defaultFilters },
   currentPage: 1,
   pageSize: 20,
+  tasksVersion: 0,
+  statusesVersion: 0,
+
+  taskChanged: () => set((state) => ({ tasksVersion: state.tasksVersion + 1 })),
+  statusChanged: () => set((state) => ({ statusesVersion: state.statusesVersion + 1 })),
 
   fetchTasks: async () => {
     set({ loading: true });

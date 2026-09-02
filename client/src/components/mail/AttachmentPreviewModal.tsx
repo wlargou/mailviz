@@ -3,6 +3,7 @@ import { Download } from '@carbon/icons-react';
 import { emailsApi } from '../../api/emails';
 import { getFileTypeInfo, formatFileSize } from '../../utils/fileTypes';
 import type { EmailAttachment } from '../../types/email';
+import { decodeEntities } from '../../utils/text';
 
 interface AttachmentPreviewModalProps {
   attachment: EmailAttachment | null;
@@ -21,7 +22,7 @@ export function AttachmentPreviewModal({ attachment, emailId, open, onClose }: A
   const handleDownload = () => {
     const a = document.createElement('a');
     a.href = downloadUrl;
-    a.download = attachment.filename;
+    a.download = decodeEntities(attachment.filename);
     a.click();
   };
 
@@ -29,7 +30,7 @@ export function AttachmentPreviewModal({ attachment, emailId, open, onClose }: A
     if (fileInfo.category === 'image') {
       return (
         <div className="attachment-preview__image">
-          <img src={inlineUrl} alt={attachment.filename} />
+          <img src={inlineUrl} alt={decodeEntities(attachment.filename)} />
         </div>
       );
     }
@@ -37,7 +38,7 @@ export function AttachmentPreviewModal({ attachment, emailId, open, onClose }: A
     if (fileInfo.category === 'pdf') {
       return (
         <div className="attachment-preview__pdf">
-          <iframe src={inlineUrl} title={attachment.filename} />
+          <iframe src={inlineUrl} title={decodeEntities(attachment.filename)} />
         </div>
       );
     }
@@ -47,7 +48,7 @@ export function AttachmentPreviewModal({ attachment, emailId, open, onClose }: A
     return (
       <div className="attachment-preview__fallback">
         <Icon size={48} />
-        <p className="attachment-preview__filename">{attachment.filename}</p>
+        <p className="attachment-preview__filename">{decodeEntities(attachment.filename)}</p>
         <p className="attachment-preview__meta">
           {fileInfo.label} · {formatFileSize(attachment.size)}
         </p>
@@ -62,7 +63,7 @@ export function AttachmentPreviewModal({ attachment, emailId, open, onClose }: A
     <Modal
       open={open}
       onRequestClose={onClose}
-      modalHeading={attachment.filename}
+      modalHeading={decodeEntities(attachment.filename)}
       passiveModal={fileInfo.previewable}
       primaryButtonText={fileInfo.previewable ? undefined : 'Download'}
       secondaryButtonText={fileInfo.previewable ? undefined : 'Cancel'}
