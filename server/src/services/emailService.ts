@@ -30,7 +30,7 @@ import { auditService } from './auditService.js';
 import { notificationService } from './notificationService.js';
 import { snoozeService } from './snoozeService.js';
 import { mergeEngagement } from '../utils/contactEngagement.js';
-import { decodeEntities } from '../utils/htmlEntities.js';
+import { decodeEntities, decodeThenEscape } from '../utils/htmlEntities.js';
 
 /**
  * The single definition of how Gmail's labels map onto our boolean columns.
@@ -1489,7 +1489,16 @@ export const emailService = {
 
     // Build quoted HTML
     const originalDate = format(original.receivedAt, 'EEE, MMM d, yyyy \'at\' h:mm a');
-    const originalSender = original.fromName ? `${original.fromName} &lt;${original.from}&gt;` : original.from;
+    // Decoded then escaped: the stored values are Gmail-encoded, so escaping
+    // them directly would put a literal `&amp;` on screen, and decoding without
+    // escaping would let a display name carry markup into a message sent under
+    // this user's own address. The `&lt;`/`&gt;` around the address stay
+    // hand-written — those are meant to be literal angle brackets.
+    const senderName = decodeThenEscape(original.fromName);
+    const senderAddress = decodeThenEscape(original.from);
+    const originalSender = original.fromName
+      ? `${senderName} &lt;${senderAddress}&gt;`
+      : senderAddress;
 
     // Fetch original body if not stored
     let originalBody = '';
@@ -1572,7 +1581,15 @@ export const emailService = {
     }
 
     const originalDate = format(original.receivedAt, 'EEE, MMM d, yyyy \'at\' h:mm a');
-    const forwardedHtml = `<div style="margin-top:16px;padding-top:12px;border-top:1px solid #ccc"><p style="color:#666">---------- Forwarded message ----------<br>From: ${original.fromName || ''} &lt;${original.from}&gt;<br>Date: ${originalDate}<br>Subject: ${original.subject}<br>To: ${original.to.join(', ')}</p>${originalBody}</div>`;
+    // Every interpolated value here is attacker-controllable — they are headers
+    // from a message someone else sent — and this block goes out to a third
+    // party over the user's name. `originalBody` is deliberately NOT escaped:
+    // it is the forwarded message, and it is meant to be HTML.
+    const fwdFrom = decodeThenEscape(original.fromName);
+    const fwdAddress = decodeThenEscape(original.from);
+    const fwdSubject = decodeThenEscape(original.subject);
+    const fwdTo = original.to.map(decodeThenEscape).join(', ');
+    const forwardedHtml = `<div style="margin-top:16px;padding-top:12px;border-top:1px solid #ccc"><p style="color:#666">---------- Forwarded message ----------<br>From: ${fwdFrom} &lt;${fwdAddress}&gt;<br>Date: ${originalDate}<br>Subject: ${fwdSubject}<br>To: ${fwdTo}</p>${originalBody}</div>`;
     const fullHtml = `${data.htmlBody}${forwardedHtml}`;
 
     // Deduplicate recipients

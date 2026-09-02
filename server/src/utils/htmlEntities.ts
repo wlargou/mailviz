@@ -72,3 +72,44 @@ export function decodeEntities(text: string | null | undefined): string {
     }
   );
 }
+
+/** The five characters that can change the meaning of surrounding markup. */
+const ESCAPES: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+};
+
+/**
+ * Escape text that is about to be interpolated into HTML.
+ *
+ * The inverse of `decodeEntities`, and its usual partner: a value coming out of
+ * a synced message is Gmail-encoded, so it has to be decoded to be read and
+ * re-escaped to be embedded. Escaping the stored form directly would render
+ * `&amp;` on screen; decoding without escaping lets a Subject header carry
+ * markup into a message we send under the user's own address.
+ *
+ * `sanitize-html` runs over the finished body in `buildMimeMessage` and does
+ * strip `<script>` and event handlers, so this is not the difference between
+ * safe and executable. It is the difference between a subject that reads as
+ * text and one that can open a link, place an image, or close the enclosing
+ * paragraph and restructure the block it sits in.
+ */
+export function escapeHtml(text: string | null | undefined): string {
+  if (!text) return '';
+  return text.replace(/[&<>"']/g, (c) => ESCAPES[c]);
+}
+
+/**
+ * Decode Gmail's encoding, then escape for HTML — the correct single step for
+ * any synced value being interpolated into an outgoing message body.
+ *
+ * Composed rather than left to callers because doing only half is wrong in a
+ * different way each time, and the halves look interchangeable at a glance.
+ */
+export function decodeThenEscape(text: string | null | undefined): string {
+  return escapeHtml(decodeEntities(text));
+}
+

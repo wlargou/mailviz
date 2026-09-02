@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { decodeEntities } from './htmlEntities.js';
+import { decodeEntities, escapeHtml, decodeThenEscape } from './htmlEntities.js';
 
 /**
  * The server-side entity decoder.
@@ -67,3 +67,47 @@ describe('decodeEntities', () => {
     expect(decodeEntities('')).toBe('');
   });
 });
+
+describe('escapeHtml', () => {
+  it('neutralises the five characters that can change surrounding markup', () => {
+    expect(escapeHtml('<a href="x">')).toBe('&lt;a href=&quot;x&quot;&gt;');
+    expect(escapeHtml("it's & so")).toBe('it&#39;s &amp; so');
+  });
+
+  it('escapes the ampersand first, so nothing is double-escaped', () => {
+    // A sequential-replace implementation that handles `<` before `&` produces
+    // `&amp;lt;` here, which renders as the literal text "&lt;". One pass over
+    // a character class cannot reorder itself.
+    expect(escapeHtml('<')).toBe('&lt;');
+    expect(escapeHtml('&lt;')).toBe('&amp;lt;');
+  });
+
+  it('leaves ordinary text alone', () => {
+    expect(escapeHtml('Renew the contract')).toBe('Renew the contract');
+    expect(escapeHtml(null)).toBe('');
+  });
+});
+
+describe('decodeThenEscape', () => {
+  it('round-trips Gmail text back to what it means, safely', () => {
+    // Escaping the stored form alone would render a literal "&amp;"; decoding
+    // alone would hand a Subject header's markup to the recipient. Only the
+    // pair is correct.
+    expect(decodeThenEscape('Ben &amp; Co')).toBe('Ben &amp; Co');
+    expect(decodeThenEscape('Merci d&#39;avance')).toBe('Merci d&#39;avance');
+  });
+
+  it('renders a subject carrying markup as text rather than markup', () => {
+    // What a hostile Subject header looks like after this. sanitize-html would
+    // strip a <script>, but not an <a href> or an </p> that closes the block
+    // the value sits inside.
+    const hostile = '&lt;/p&gt;&lt;a href=&quot;https://evil.example&quot;&gt;Click&lt;/a&gt;';
+
+    const out = decodeThenEscape(hostile);
+
+    expect(out).not.toContain('<a');
+    expect(out).not.toContain('</p>');
+    expect(out).toContain('&lt;a href=');
+  });
+});
+
