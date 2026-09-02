@@ -1,7 +1,7 @@
 import { Response, NextFunction } from 'express';
 import type { Req } from "../types/http.js";
 import { calendarService } from '../services/calendarService.js';
-import { isCalendarSyncInProgress } from '../jobs/calendarSyncScheduler.js';
+import { isCalendarSyncInProgress, runCalendarManualSync } from '../jobs/calendarSyncScheduler.js';
 
 export const calendarController = {
   async findAll(req: Req, res: Response, next: NextFunction) {
@@ -65,8 +65,20 @@ export const calendarController = {
 
   async sync(req: Req, res: Response, next: NextFunction) {
     try {
-      const result = await calendarService.syncFromGoogle(false, req.user!.id);
-      res.json({ data: result });
+      // Through the same guard the cron tick uses. Called directly, this could
+      // overlap a scheduled sync for the account, and two concurrent full syncs
+      // each run a reconciliation that deletes local rows missing from their own
+      // listing — so one deletes what the other just wrote.
+      const outcome = await runCalendarManualSync(req.user!.id, () =>
+        calendarService.syncFromGoogle(false, req.user!.id)
+      );
+      if (!outcome.ran) {
+        res.status(409).json({
+          error: { code: 'SYNC_IN_PROGRESS', message: 'A sync is already running for this account' },
+        });
+        return;
+      }
+      res.json({ data: outcome.result });
     } catch (err) {
       next(err);
     }

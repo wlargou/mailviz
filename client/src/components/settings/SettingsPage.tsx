@@ -352,8 +352,15 @@ export function SettingsPage() {
       if (res.data.contactsCreated) parts.push(`${res.data.contactsCreated} new contacts`);
       addNotification({ kind: 'success', title: 'Calendar synced', subtitle: parts.join(' · ') });
       fetchStatus();
-    } catch {
-      addNotification({ kind: 'error', title: 'Calendar sync failed' });
+    } catch (err) {
+      // A sync already running for this account is not a failure — the manual
+      // route now shares the scheduler's guard, so this says what happened
+      // instead of reporting a break. Mirrors the mail path.
+      if (isAxiosError(err) && err.response?.status === 409) {
+        addNotification({ kind: 'info', title: 'A calendar sync is already running' });
+      } else {
+        addNotification({ kind: 'error', title: 'Calendar sync failed' });
+      }
     } finally {
       setSyncing(false);
     }

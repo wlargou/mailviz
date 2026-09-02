@@ -2,7 +2,7 @@ import request from 'supertest';
 import jwt from 'jsonwebtoken';
 import { describe, it, expect, vi } from 'vitest';
 import { app } from '../app.js';
-import { isCalendarSyncInProgress } from '../jobs/calendarSyncScheduler.js';
+import { isCalendarSyncInProgress, runCalendarManualSync } from '../jobs/calendarSyncScheduler.js';
 import { prisma } from '../lib/prisma.js';
 import { signAccessToken } from '../utils/jwt.js';
 import {
@@ -473,6 +473,49 @@ describe('calendar sync routes', () => {
   // No Google connection means no calendar client. The 400 is what the client
   // needs to prompt a reconnect — a 500 here would surface as "something went
   // wrong" with no route out of it.
+  /**
+   * "Sync now" has to lose to a sync that is already running.
+   *
+   * The route called `syncFromGoogle` directly, outside the per-account guard,
+   * so it could start a second sync for an account already syncing. That is
+   * not merely duplicated work: the sync token is null for the whole duration
+   * of a full sync, so the second one also takes the full branch, and each
+   * then runs a reconciliation that deletes local rows missing from its own
+   * listing — one deletes what the other just wrote, and an incremental sync
+   * cannot bring them back.
+   *
+   * `runCalendarManualSync` here is the real function the route uses, so
+   * holding the account through it reproduces exactly what a scheduled tick
+   * creates.
+   */
+  it('answers 409 while that account is already syncing', async () => {
+    const { alice, bob } = await createTwoUsers();
+
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => { release = resolve; });
+    const held = runCalendarManualSync(alice.id, () => blocked);
+    // Let runExclusive register the account before the request goes out.
+    await new Promise((r) => setTimeout(r, 10));
+
+    const res = await request(app)
+      .post('/api/v1/calendar/sync')
+      .set('Cookie', cookieFor(alice.id));
+
+    expect(res.status).toBe(409);
+    expect(res.body.error?.code).toBe('SYNC_IN_PROGRESS');
+
+    // Per account, not a global flag: Bob is unaffected and reaches the real
+    // handler, which refuses him for the unrelated reason that he has no
+    // Google connection. Without this the test would pass against a global lock.
+    const other = await request(app)
+      .post('/api/v1/calendar/sync')
+      .set('Cookie', cookieFor(bob.id));
+    expect(other.status).toBe(400);
+
+    release();
+    await held;
+  });
+
   it('answers 400, not 500, when Google is not connected', async () => {
     const { alice } = await createTwoUsers();
     const res = await request(app)
