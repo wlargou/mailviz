@@ -3,6 +3,7 @@ import express from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import request from 'supertest';
 import { z } from 'zod';
+import { Prisma } from '../lib/prismaClient.js';
 import { errorHandler, AppError } from './errorHandler.js';
 import { validate } from './validate.js';
 
@@ -361,3 +362,74 @@ describe('errorHandler — wired into Express', () => {
     expect(handledErrors).toBe(0);
   });
 });
+
+describe('errorHandler — Prisma codes it does and does not claim', () => {
+  let consoleError: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleError.mockRestore();
+  });
+
+  it('maps P2025 to 404', () => {
+    // The branch existed and nothing covered it — a grep for P2025 in this file
+    // returned nothing before this test, so deleting it reddened no assertion.
+    const { res, captured } = makeRes();
+    const err = new Prisma.PrismaClientKnownRequestError('Record not found', {
+      code: 'P2025',
+      clientVersion: '7.0.0',
+    });
+
+    errorHandler(err, req, res, makeNext().next);
+
+    expect(captured.statusCode).toBe(404);
+    expect((captured.body as ErrorBody).error.code).toBe('NOT_FOUND');
+  });
+
+  it('leaves P2002 as a logged 500, deliberately', () => {
+    // This pins a DECISION, not an oversight. A unique violation is sometimes
+    // the caller's fault — a company domain they already have — and sometimes
+    // ours: `findOrCreateByDomain` is check-then-create, raced by the email and
+    // calendar schedulers on their 60s and 120s ticks. The middleware sees one
+    // indistinguishable error for both.
+    //
+    // Mapping it centrally to 409 would return before the logging branch, so
+    // the race would stop being reported at all — a concurrency bug quietly
+    // relabelled as the client's mistake. Conflicts that ARE the caller's
+    // fault are answered at their call site, where the message can name the
+    // concept; customerService.create is one.
+    const { res, captured } = makeRes();
+    const err = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+      code: 'P2002',
+      clientVersion: '7.0.0',
+      meta: { target: ['user_id', 'domain'] },
+    });
+
+    errorHandler(err, req, res, makeNext().next);
+
+    expect(captured.statusCode).toBe(500);
+    // The load-bearing half: it must still reach the logs.
+    expect(consoleError).toHaveBeenCalled();
+    expect(consoleError.mock.calls[0]).toContain(err);
+  });
+
+  it('never echoes the constraint back to the caller', () => {
+    const { res, captured } = makeRes();
+    const err = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+      code: 'P2002',
+      clientVersion: '7.0.0',
+      meta: { target: ['user_id', 'domain'] },
+    });
+
+    errorHandler(err, req, res, makeNext().next);
+
+    const body = JSON.stringify(captured.body);
+    expect(body).not.toContain('user_id');
+    expect(body).not.toContain('domain');
+    expect(body).not.toContain('P2002');
+  });
+});
+

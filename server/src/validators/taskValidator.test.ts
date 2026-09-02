@@ -179,3 +179,21 @@ describe('reorderSchema', () => {
     expect(paths).toContain('items.1.position');
   });
 });
+
+describe('description trims before the service normalises it', () => {
+  it('reduces a whitespace-only description to the empty string', () => {
+    // The two halves are split across layers on purpose: the validator makes
+    // "   " and "" the same input, and taskService turns "" into NULL. Without
+    // the trim here a user who clears the box by selecting-all and typing a
+    // space stores three spaces — a third empty state that reads as content.
+    expect(updateTaskSchema.parse({ description: '   ' })).toEqual({ description: '' });
+    expect(updateTaskSchema.parse({ description: '  hi  ' })).toEqual({ description: 'hi' });
+  });
+
+  it('still refuses null, so there is one way to clear', () => {
+    // `.nullable()` here would ADMIT null without converting '', leaving three
+    // spellings of empty where the service can only normalise one.
+    expect(() => updateTaskSchema.parse({ description: null })).toThrow();
+  });
+});
+

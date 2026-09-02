@@ -379,3 +379,45 @@ describe('customerService.findOrCreateContact — merged addresses', () => {
     expect(contact.id).toBe(existing.id);
   });
 });
+
+describe('customerService — a duplicate domain is a conflict, not a crash', () => {
+  it('answers 409 rather than letting P2002 fall through to a 500', () => {
+    // `(userId, domain)` is unique, and nothing pre-checked it — so creating a
+    // company with a domain you already have returned INTERNAL_ERROR. Measured
+    // against the running app before the fix, not inferred.
+    //
+    // Handled here rather than by mapping P2002 in errorHandler: the same
+    // constraint is hit by findOrCreateByDomain, which the email and calendar
+    // schedulers race on. That collision is our bug, and has to stay a loud,
+    // logged 500. Middleware sees an identical error for both.
+    return (async () => {
+      const { alice } = await createTwoUsers();
+      await customerService.create(alice.id, { name: 'Acme', domain: 'acme.example' });
+
+      const err = await customerService
+        .create(alice.id, { name: 'Acme again', domain: 'acme.example' })
+        .then(() => null)
+        .catch((e: { statusCode?: number; code?: string }) => e);
+
+      // Not a bare rejects.toThrow(): the unfixed code also throws, so that
+      // assertion would pass without the fix.
+      expect(err?.statusCode).toBe(409);
+      expect(err?.code).toBe('CUSTOMER_EXISTS');
+    })();
+  });
+
+  it('lets two companies share an absent domain', async () => {
+    // cleanEmptyStrings turns '' into NULL, and Postgres does not consider two
+    // NULLs equal — so the unique does not collapse every domain-less company
+    // into one. Guards the normalisation this relies on.
+    const { alice } = await createTwoUsers();
+
+    await customerService.create(alice.id, { name: 'One', domain: '' });
+    const second = await customerService.create(alice.id, { name: 'Two', domain: '' });
+
+    expect(second.id).toBeTruthy();
+    const rows = await prisma.customer.findMany({ where: { userId: alice.id, domain: null } });
+    expect(rows.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
