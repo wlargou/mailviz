@@ -1,6 +1,6 @@
 import { Response, NextFunction } from 'express';
 import type { Req } from "../types/http.js";
-import { taskService } from '../services/taskService.js';
+import { taskService, TASK_GROUP_SORTS, type TaskGroupSort } from '../services/taskService.js';
 
 export const taskController = {
   async findAll(req: Req, res: Response, next: NextFunction) {
@@ -23,13 +23,17 @@ export const taskController = {
 
   async findGroupedByCompany(req: Req, res: Response, next: NextFunction) {
     try {
-      const { search, status, priority, labelId, includeCompleted } = req.query as Record<string, string>;
+      const { search, status, priority, labelId, includeCompleted, sort } = req.query as Record<string, string>;
       res.json(
         await taskService.findGroupedByCompany(req.user!.id, {
           search,
           status,
           priority,
           labelId,
+          // Whitelisted rather than cast: `sort` indexes a comparator table, and
+          // an unknown value would select `undefined` and throw inside .sort().
+          // Anything unrecognised falls back to the default.
+          sort: TASK_GROUP_SORTS.includes(sort as TaskGroupSort) ? (sort as TaskGroupSort) : undefined,
           // Query strings carry no booleans; anything other than the literal
           // 'true' means the default (hide completed).
           includeCompleted: includeCompleted === 'true',

@@ -19,6 +19,14 @@ export const onboardingController = {
     }
   },
 
+  async seedLabels(req: Req, res: Response, next: NextFunction) {
+    try {
+      res.json({ data: await onboardingService.seedDefaultLabels(req.user!.id) });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async complete(req: Req, res: Response, next: NextFunction) {
     try {
       const skipped = req.body?.skipped === true;

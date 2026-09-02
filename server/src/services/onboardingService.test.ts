@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { prisma } from '../lib/prisma.js';
 import { createUser, createTwoUsers, createGoogleAuth, createEmail } from '../test/factories.js';
-import { onboardingService, DEFAULT_TASK_STATUSES } from './onboardingService.js';
+import { onboardingService, DEFAULT_TASK_STATUSES, DEFAULT_TASK_LABELS} from './onboardingService.js';
 
 describe('onboardingService.getStatus', () => {
   it('reports a brand-new account as needing setup, with both blocking gaps', async () => {
@@ -214,5 +214,68 @@ describe('onboardingService.reset', () => {
     expect(status.needsOnboarding).toBe(true);
     // The columns the user already has must survive a replay.
     expect(status.steps.taskStatusCount).toBe(3);
+  });
+});
+
+/**
+ * The starter label vocabulary.
+ *
+ * Labels are the one field the mail sync can never infer — nothing about a
+ * thread says "billing" rather than "presales" — so an account starts with
+ * none and every task renders label-less. Seeding gives the By Company view
+ * something to show and the user something to rename.
+ *
+ * Same all-or-nothing rule as the statuses, for the same reason: topping up a
+ * customised set is worse than leaving it alone.
+ */
+describe('onboardingService.seedDefaultLabels', () => {
+  it('creates the starter set for an account with none', async () => {
+    const user = await createUser();
+
+    const result = await onboardingService.seedDefaultLabels(user.id);
+
+    expect(result).toEqual({ created: DEFAULT_TASK_LABELS.length, skipped: false });
+    const names = (await prisma.label.findMany({ where: { userId: user.id }, orderBy: { name: 'asc' } }))
+      .map((l) => l.name);
+    expect(names).toEqual(['Billing', 'Contract', 'Presales', 'Support']);
+  });
+
+  it('gives each label a distinct colour', async () => {
+    // They are rendered side by side on one row; two labels the same colour
+    // makes the column decorative rather than informative.
+    const user = await createUser();
+    await onboardingService.seedDefaultLabels(user.id);
+
+    const colors = (await prisma.label.findMany({ where: { userId: user.id } })).map((l) => l.color);
+
+    expect(new Set(colors).size).toBe(DEFAULT_TASK_LABELS.length);
+  });
+
+  it('does nothing when the account already has a label', async () => {
+    // Someone who renamed or deleted these should not find them back.
+    const user = await createUser();
+    await prisma.label.create({ data: { userId: user.id, name: 'Run', color: '#007d79' } });
+
+    const result = await onboardingService.seedDefaultLabels(user.id);
+
+    expect(result).toEqual({ created: 0, skipped: true });
+    expect(await prisma.label.count({ where: { userId: user.id } })).toBe(1);
+  });
+
+  it('is idempotent across repeated calls', async () => {
+    const user = await createUser();
+
+    await onboardingService.seedDefaultLabels(user.id);
+    await onboardingService.seedDefaultLabels(user.id);
+
+    expect(await prisma.label.count({ where: { userId: user.id } })).toBe(DEFAULT_TASK_LABELS.length);
+  });
+
+  it('seeds only the asking account', async () => {
+    const { alice, bob } = await createTwoUsers();
+
+    await onboardingService.seedDefaultLabels(alice.id);
+
+    expect(await prisma.label.count({ where: { userId: bob.id } })).toBe(0);
   });
 });

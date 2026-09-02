@@ -60,6 +60,8 @@ export async function createTask(
     assignedToId: string;
     priority: TaskPriority;
     dueDate: Date;
+    /** The company this task belongs to — what the By Company view groups on. */
+    customerId: string;
   }> = {}
 ) {
   return prisma.task.create({
@@ -70,6 +72,7 @@ export async function createTask(
       ...(overrides.priority ? { priority: overrides.priority } : {}),
       ...(overrides.assignedToId ? { assignedToId: overrides.assignedToId } : {}),
       ...(overrides.dueDate ? { dueDate: overrides.dueDate } : {}),
+      ...(overrides.customerId ? { customerId: overrides.customerId } : {}),
     },
   });
 }

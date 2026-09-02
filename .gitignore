@@ -12,3 +12,4 @@ coverage/
 
 # Prisma 7 generates the client here (outside src/, see schema.prisma)
 server/generated/
+.design-review/

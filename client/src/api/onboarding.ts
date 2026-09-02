@@ -12,6 +12,11 @@ export const onboardingApi = {
     return api.post<ApiResponse<{ created: number; skipped: boolean }>>('/onboarding/task-statuses');
   },
 
+  /** Creates the starter label vocabulary. No-op when the user already has any. */
+  seedLabels() {
+    return api.post<ApiResponse<{ created: number; skipped: boolean }>>('/onboarding/labels');
+  },
+
   /** `skipped` distinguishes "went through it" from "dismissed it" in the audit log. */
   complete(skipped = false) {
     return api.post<ApiResponse<{ completedAt: string; alreadyComplete: boolean }>>(

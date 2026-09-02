@@ -2,12 +2,25 @@ import { api } from './client';
 import type { Task, TaskSummary, CreateTaskInput, UpdateTaskInput, ReorderItem } from '../types/task';
 import type { ApiResponse } from '../types/api';
 
+/** How the By Company view orders its groups. Mirrors the server's whitelist. */
+export type TaskGroupSort = 'urgency' | 'company' | 'taskCount';
+
 /** One company's slice of the by-company view. `customer` is null for the trailing unassigned bucket. */
 export interface TaskCompanyGroup {
   customer: { id: string; name: string; domain: string | null; logoUrl: string | null } | null;
   taskCount: number;
   overdueCount: number;
+  /** Soonest unfinished work still ahead; null when there is none. */
+  nextDueAt: string | null;
   tasks: Task[];
+}
+
+export interface TaskCompanyMeta {
+  totalTasks: number;
+  companies: number;
+  truncated: boolean;
+  overdueTasks: number;
+  urgentTasks: number;
 }
 
 export const tasksApi = {
@@ -21,10 +34,11 @@ export const tasksApi = {
     priority?: string;
     labelId?: string;
     includeCompleted?: boolean;
+    sort?: TaskGroupSort;
   }) {
     return api.get<{
       data: TaskCompanyGroup[];
-      meta: { totalTasks: number; companies: number; truncated: boolean };
+      meta: TaskCompanyMeta;
     }>('/tasks/by-company', {
       params: {
         ...params,
