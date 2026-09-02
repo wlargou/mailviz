@@ -360,6 +360,68 @@ describe('calendarService.create', () => {
   });
 });
 
+describe('calendarService — clearing a field actually clears it', () => {
+  /**
+   * Emptying the description or location box used to be a silent no-op: the
+   * modal sent `value || undefined`, JSON.stringify dropped the key, and the
+   * `!== undefined` guard below correctly read that as "leave alone". The
+   * modal now always sends the key, which makes these two things load-bearing:
+   * '' has to become NULL, and an OMITTED key still has to mean "leave alone".
+   *
+   * `toBeNull()`, never `toBeFalsy()` — '' is falsy too, and storing '' beside
+   * the NULLs the Google sync writes is the defect, not the fix.
+   */
+  it('stores NULL when created with an empty description or location', async () => {
+    // The regression the client change would otherwise introduce. Create used
+    // to receive `undefined` and write NULL by accident; now it receives ''.
+    const user = await createUser();
+
+    const created = await calendarService.create({
+      title: 'Standup',
+      description: '',
+      location: '',
+      startTime: '2026-08-20T09:00:00.000Z',
+      endTime: '2026-08-20T09:30:00.000Z',
+    }, user.id);
+
+    const row = await prisma.calendarEvent.findUniqueOrThrow({ where: { id: created.id } });
+    expect(row.description).toBeNull();
+    expect(row.location).toBeNull();
+  });
+
+  it('stores NULL when an existing description or location is cleared', async () => {
+    const user = await createUser();
+    const event = await localEvent(user.id, { description: 'Notes', location: 'Room 3' });
+
+    await calendarService.update(event.id, { description: '', location: '' }, user.id);
+
+    const row = await prisma.calendarEvent.findUniqueOrThrow({ where: { id: event.id } });
+    expect(row.description).toBeNull();
+    expect(row.location).toBeNull();
+  });
+
+  it('sends the cleared value to Google rather than omitting the key', async () => {
+    // `events.update` is a full replace, so an omitted key would also clear —
+    // but only by accident. This pins the explicit form, which stays correct
+    // if the verb ever changes to `events.patch`, where omission means the
+    // opposite.
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+    const event = await localEvent(user.id, {
+      description: 'Notes',
+      location: 'Room 3',
+      googleEventId: 'g-1',
+    });
+
+    await calendarService.update(event.id, { description: '', location: '' }, user.id);
+
+    await vi.waitFor(() => expect(calendar.eventsUpdate).toHaveBeenCalled());
+    const body = calendar.eventsUpdate.mock.calls[0][0].requestBody;
+    expect(body.description).toBe('');
+    expect(body.location).toBe('');
+  });
+});
+
 describe('calendarService.update', () => {
   it('applies only the fields provided', async () => {
     const user = await createUser();

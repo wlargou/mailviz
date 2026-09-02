@@ -149,10 +149,10 @@ export const calendarService = {
       data: {
         userId,
         title: data.title,
-        description: data.description,
+        description: data.description || null,
         startTime: new Date(data.startTime),
         endTime: new Date(data.endTime),
-        location: data.location,
+        location: data.location || null,
         isAllDay: data.isAllDay ?? false,
         colorId: data.colorId || null,
         recurrence: data.recurrence ?? [],
@@ -196,10 +196,10 @@ export const calendarService = {
   }, userId: string) {
     const updateData: Prisma.CalendarEventUpdateInput = {};
     if (data.title !== undefined) updateData.title = data.title;
-    if (data.description !== undefined) updateData.description = data.description;
+    if (data.description !== undefined) updateData.description = data.description || null;
     if (data.startTime !== undefined) updateData.startTime = new Date(data.startTime);
     if (data.endTime !== undefined) updateData.endTime = new Date(data.endTime);
-    if (data.location !== undefined) updateData.location = data.location;
+    if (data.location !== undefined) updateData.location = data.location || null;
     if (data.isAllDay !== undefined) updateData.isAllDay = data.isAllDay;
     if (data.colorId !== undefined) updateData.colorId = data.colorId || null;
     if (data.attendees !== undefined) updateData.attendees = data.attendees as unknown as Prisma.InputJsonValue;
@@ -767,8 +767,17 @@ export const calendarService = {
 
         const requestBody: Record<string, any> = {
           summary: event.title,
-          description: event.description || undefined,
-          location: event.location || undefined,
+          // Sent explicitly rather than omitted. `events.update` is a full
+          // replace, so an omitted field is CLEARED — the same property the
+          // recurrence note below relies on — which means `|| undefined` here
+          // already happened to do the right thing. But it means the OPPOSITE
+          // of what it means in EventModal, where a dropped key reads as
+          // "leave alone", so the clear is spelled out: it stays correct if
+          // this ever moves to `events.patch`, where only an explicit ''
+          // clears. The insert body above is deliberately left as-is — a new
+          // event has no prior value to clear.
+          description: event.description ?? '',
+          location: event.location ?? '',
           start: event.isAllDay
             ? { date: formatAllDayDate(event.startTime) }
             : { dateTime: event.startTime.toISOString() },

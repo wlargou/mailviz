@@ -44,10 +44,10 @@ export const visibilitySchema = z.enum(['default', 'public', 'private', 'confide
 
 export const createEventSchema = z.object({
   title: z.string().min(1).max(255),
-  description: z.string().optional(),
+  description: z.string().trim().optional(),
   startTime: z.string().datetime(),
   endTime: z.string().datetime(),
-  location: z.string().optional(),
+  location: z.string().trim().optional(),
   isAllDay: z.boolean().optional(),
   attendees: z.array(z.object({
     email: z.string().email(),
