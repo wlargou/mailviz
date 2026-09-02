@@ -349,21 +349,21 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, labels }: Ta
             hideTextInput
           />
         </div>
-        {labels.length > 0 && (
-          <MultiSelect
-            id="edit-task-labels"
-            titleText="Labels"
-            label="Select labels"
-            items={labels.map((l) => ({ id: l.id, text: l.name }))}
-            itemToString={(item: LabelItem | null) => item?.text || ''}
-            initialSelectedItems={labels
-              .filter((l) => selectedLabels.includes(l.id))
-              .map((l) => ({ id: l.id, text: l.name }))}
-            onChange={({ selectedItems }: { selectedItems: LabelItem[] }) => {
-              setSelectedLabels(selectedItems.map((item: LabelItem) => item.id));
-            }}
-          />
-        )}
+        <MultiSelect
+          id="edit-task-labels"
+          titleText="Labels"
+          disabled={labels.length === 0}
+          helperText={labels.length === 0 ? 'No labels available. Add some in Settings.' : undefined}
+          label="Select labels"
+          items={labels.map((l) => ({ id: l.id, text: l.name }))}
+          itemToString={(item: LabelItem | null) => item?.text || ''}
+          initialSelectedItems={labels
+            .filter((l) => selectedLabels.includes(l.id))
+            .map((l) => ({ id: l.id, text: l.name }))}
+          onChange={({ selectedItems }: { selectedItems: LabelItem[] }) => {
+            setSelectedLabels(selectedItems.map((item: LabelItem) => item.id));
+          }}
+        />
         {task.mailToTask?.email && (
           <div className="modal-form__source-email">
             <p className="modal-form__label" style={{ fontSize: '0.75rem', color: 'var(--cds-text-secondary)', marginBottom: '0.25rem' }}>Created from email</p>

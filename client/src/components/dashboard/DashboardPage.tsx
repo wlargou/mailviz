@@ -67,8 +67,11 @@ export function DashboardPage() {
   }, [fetchData]);
 
   useEffect(() => {
-    labelsApi.getAll().then(({ data: res }) => setLabels(res.data)).catch(() => {});
-  }, []);
+    labelsApi
+      .getAll()
+      .then(({ data: res }) => setLabels(res.data))
+      .catch(() => addNotification({ kind: 'error', title: 'Could not load labels' }));
+  }, [addNotification]);
 
   const handleEmailClick = (threadId: string, subject: string) => {
     setSelectedThread({ id: threadId, subject });

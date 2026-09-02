@@ -148,6 +148,22 @@ describe('TaskDetailModal', () => {
     expect(vi.mocked(tasksApi.update).mock.calls[0][1]).toMatchObject({ labelIds: [] });
   });
 
+  it('keeps the label field on screen when there are no labels', async () => {
+    // It used to be gated on `labels.length > 0`, and a failed labelsApi fetch
+    // is swallowed into an empty array upstream — so a network blip removed the
+    // control entirely and looked identical to an account with no labels. An
+    // absent field is not a way to report an error.
+    vi.mocked(tasksApi.getById).mockResolvedValue(axiosOk({ data: makeTask() }));
+
+    render(
+      <TaskDetailModal taskId="task-1" open onClose={vi.fn()} onUpdated={vi.fn()} labels={[]} />
+    );
+
+    await screen.findByDisplayValue('Renew the contract');
+    expect(screen.getByText('Labels')).toBeInTheDocument();
+    expect(screen.getByText('No labels available. Add some in Settings.')).toBeInTheDocument();
+  });
+
   it('closes and announces when the task has been deleted underneath it', async () => {
     const onClose = vi.fn();
     vi.mocked(tasksApi.getById).mockRejectedValue({ response: { status: 404 } });

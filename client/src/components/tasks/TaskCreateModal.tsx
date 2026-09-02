@@ -181,19 +181,19 @@ export function TaskCreateModal({ open, onClose, onCreated, labels }: TaskCreate
           allowNone
         />
       </div>
-      {labels.length > 0 && (
-        <MultiSelect
-          id="task-labels"
-          titleText="Labels"
-          label="Select labels"
-          items={labels.map((l) => ({ id: l.id, text: l.name }))}
-          itemToString={(item: LabelItem | null) => item?.text || ''}
-          onChange={({ selectedItems }: { selectedItems: LabelItem[] }) => {
-            setSelectedLabels(selectedItems.map((item: LabelItem) => item.id));
-          }}
-          className="create-side-panel__form-item"
-        />
-      )}
+      <MultiSelect
+        id="task-labels"
+        titleText="Labels"
+        disabled={labels.length === 0}
+        helperText={labels.length === 0 ? 'No labels available. Add some in Settings.' : undefined}
+        label="Select labels"
+        items={labels.map((l) => ({ id: l.id, text: l.name }))}
+        itemToString={(item: LabelItem | null) => item?.text || ''}
+        onChange={({ selectedItems }: { selectedItems: LabelItem[] }) => {
+          setSelectedLabels(selectedItems.map((item: LabelItem) => item.id));
+        }}
+        className="create-side-panel__form-item"
+      />
     </SidePanel>
   );
 }

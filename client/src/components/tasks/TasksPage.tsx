@@ -31,9 +31,12 @@ export function TasksPage() {
       const { data: response } = await labelsApi.getAll();
       setLabels(response.data);
     } catch {
-      console.error('Failed to fetch labels');
+      // Not console-only: the pickers render an empty-but-present control when
+      // this fails, and without a word here that is indistinguishable from an
+      // account that simply has no labels yet.
+      addNotification({ kind: 'error', title: 'Could not load labels' });
     }
-  }, []);
+  }, [addNotification]);
 
   // Apply URL filters on mount
   useEffect(() => {
