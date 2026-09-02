@@ -119,7 +119,12 @@ function respond(groups: TaskCompanyGroup[], truncated = false) {
 function renderView(props: { onEdit: (t: Task) => void }) {
   return render(
     <MemoryRouter>
-      <TaskByCompanyView {...props} />
+      <TaskByCompanyView
+        labels={[]}
+        onDelete={vi.fn()}
+        onCreateNew={vi.fn()}
+        {...props}
+      />
     </MemoryRouter>
   );
 }
@@ -157,15 +162,13 @@ describe('TaskByCompanyView', () => {
 
     renderView({ onEdit: vi.fn() });
 
-    // "3 overdue" now appears twice on purpose — once as this company's header
-    // tag and once as the global filter chip — so each assertion has to say
-    // which. `pressed` picks the chip, because only it is a toggle; the header
-    // is Carbon's accordion heading, which is also a button but has no pressed
-    // state. Matching on the text alone finds both.
+    // "3 overdue" appears twice on purpose — once as this company's row tag and
+    // once as the global filter chip — so each assertion has to say which.
+    // `pressed` picks the chip, because only it is a toggle.
     expect(await screen.findByRole('button', { name: /3 overdue/, pressed: false })).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { expanded: true, name: /Acme/ })
-    ).toHaveAccessibleName(expect.stringContaining('3 overdue'));
+    // And the company's own row carries it as a tag, not a button.
+    const acmeRow = screen.getByText('Acme').closest('tr');
+    expect(acmeRow?.textContent).toContain('3 overdue');
 
     // A "0 overdue" tag on every healthy company is noise that makes the real
     // ones harder to spot.
@@ -213,25 +216,31 @@ describe('TaskByCompanyView', () => {
     expect(first).toBeVisible();
   });
 
-  it('hands the whole task back when a title is activated', async () => {
+  it('hands the whole task back from the row menu', async () => {
+    // Edit moved into the row's overflow menu with the redesign — the title is
+    // a table cell now, and the row itself expands. What has to survive is
+    // that onEdit still receives the whole task.
+    const user = userEvent.setup();
     const onEdit = vi.fn();
     const target = makeTask({ title: 'open me' });
     respond([group('Acme', [target])]);
 
     renderView({ onEdit });
-    await userEvent.click(await screen.findByRole('button', { name: 'open me' }));
+    await user.click(await screen.findByRole('button', { name: /Expand Acme/ }));
+    await user.click(screen.getByRole('button', { name: /Actions for open me/ }));
+    await user.click(await screen.findByText('Edit task'));
 
     // The whole object, not just an id — TasksPage looks nothing up.
     expect(onEdit).toHaveBeenCalledWith(target);
   });
 
-  it('exposes task titles as real buttons, reachable by keyboard', async () => {
+  it('exposes every task row as a labelled expand control', async () => {
+    // The row is the control now. It still has to be reachable and named, or
+    // the second level of the hierarchy is mouse-only.
     respond([group('Acme', [makeTask({ title: 'keyboard reachable' })])]);
-
     renderView({ onEdit: vi.fn() });
 
-    // A clickable div would satisfy the click test above and fail this one.
-    expect(await screen.findByRole('button', { name: 'keyboard reachable' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /Expand keyboard reachable/ })).toBeInTheDocument();
   });
 
   it('shows an empty state rather than a bare screen when there are no tasks', async () => {
@@ -343,14 +352,16 @@ describe('TaskByCompanyView — the task row', () => {
       ...overrides,
     } as Partial<Task>);
 
-  it('keeps the detail hidden until the row is expanded', async () => {
+  it('starts every row collapsed', async () => {
+    // Carbon keeps an expanded row in the DOM and hides it, so the honest
+    // assertion is the control's state rather than the absence of the content.
+    const user = userEvent.setup();
     respond([group('Acme', [withEmail()])]);
     renderView({ onEdit: vi.fn() });
 
-    await screen.findByText('Renewal');
-    // The point of a disclosure: the description is not in the DOM at rest, so
-    // a long one cannot push every other row down the page.
-    expect(screen.queryByText(/Morpheus license renewal/)).toBeNull();
+    await user.click(await screen.findByRole('button', { name: /Expand Acme/ }));
+    expect(screen.getByRole('button', { name: /Expand Renewal/ }))
+      .toHaveAttribute('aria-expanded', 'false');
   });
 
   it('reveals the description and the source email when expanded', async () => {
@@ -358,6 +369,7 @@ describe('TaskByCompanyView — the task row', () => {
     respond([group('Acme', [withEmail()])]);
     renderView({ onEdit: vi.fn() });
 
+    await user.click(await screen.findByRole('button', { name: /Expand Acme/ }));
     await user.click(await screen.findByRole('button', { name: /Expand Renewal/ }));
 
     expect(screen.getByText(/Morpheus license renewal/)).toBeInTheDocument();
@@ -369,6 +381,7 @@ describe('TaskByCompanyView — the task row', () => {
     respond([group('Acme', [withEmail()])]);
     renderView({ onEdit: vi.fn() });
 
+    await user.click(await screen.findByRole('button', { name: /Expand Acme/ }));
     const disclosure = await screen.findByRole('button', { name: /Expand Renewal/ });
     expect(disclosure).toHaveAttribute('aria-expanded', 'false');
 
@@ -383,22 +396,25 @@ describe('TaskByCompanyView — the task row', () => {
     respond([group('Acme', [withEmail()])]);
     renderView({ onEdit: vi.fn() });
 
-    await user.click(await screen.findByRole('button', { name: /Expand Renewal/ }));
-    await user.click(screen.getByRole('button', { name: 'Open email' }));
+    await user.click(await screen.findByRole('button', { name: /Expand Acme/ }));
+    await user.click(screen.getByRole('button', { name: /Actions for Renewal/ }));
+    await user.click(await screen.findByText('Open email'));
 
     expect(navigate).toHaveBeenCalledWith('/mail?thread=thread-9');
   });
 
   it('disables Open email for a task that came from nowhere', async () => {
     // Greyed rather than hidden: the absence of a source email is information
-    // about the task, and a row whose actions change shape is harder to scan.
+    // about the task, and a menu whose items change shape is harder to learn.
     const user = userEvent.setup();
     respond([group('Acme', [makeTask({ title: 'Manual task' })])]);
     renderView({ onEdit: vi.fn() });
 
-    await user.click(await screen.findByRole('button', { name: /Expand Manual task/ }));
+    await user.click(await screen.findByRole('button', { name: /Expand Acme/ }));
+    await user.click(screen.getByRole('button', { name: /Actions for Manual task/ }));
 
-    expect(screen.getByRole('button', { name: 'Open email' })).toBeDisabled();
+    const item = (await screen.findByText('Open email')).closest('button');
+    expect(item).toBeDisabled();
   });
 
   it('marks a task done using the account’s own terminal status', async () => {
@@ -410,8 +426,9 @@ describe('TaskByCompanyView — the task row', () => {
     vi.mocked(tasksApi.update).mockResolvedValue({ data: { data: target } } as never);
     renderView({ onEdit: vi.fn() });
 
-    await user.click(await screen.findByRole('button', { name: /Expand Renewal/ }));
-    await user.click(screen.getByRole('button', { name: /Mark as done/ }));
+    await user.click(await screen.findByRole('button', { name: /Expand Acme/ }));
+    await user.click(screen.getByRole('button', { name: /Actions for Renewal/ }));
+    await user.click(await screen.findByText('Mark as done'));
 
     await waitFor(() => expect(tasksApi.update).toHaveBeenCalledWith('task-9', { status: 'SHIPPED' }));
   });
@@ -498,8 +515,13 @@ describe('TaskByCompanyView — chips and sorting', () => {
     renderView({ onEdit: vi.fn() });
     await screen.findByText('Acme');
 
-    await user.click(screen.getByRole('combobox', { name: /sort/i }));
-    await user.click(await screen.findByText('Company'));
+    // Sort lives in the filter flyout now, beside the other filters — the same
+    // place the List View keeps them.
+    await user.click(screen.getByRole('button', { name: /^Filter$/ }));
+    await user.click(await screen.findByRole('combobox', { name: /sort by/i }));
+    // `option`, not text: "Company" is now also a column header, so matching on
+    // the string alone finds two things.
+    await user.click(await screen.findByRole('option', { name: 'Company' }));
 
     await waitFor(() =>
       expect(tasksApi.getGroupedByCompany).toHaveBeenLastCalledWith(
@@ -513,5 +535,95 @@ describe('TaskByCompanyView — chips and sorting', () => {
     renderView({ onEdit: vi.fn() });
 
     expect(await screen.findByText(/Next due/)).toBeInTheDocument();
+  });
+});
+
+/**
+ * The toolbar, which is the List View's toolbar.
+ *
+ * The two tabs should read as one component in different shapes, so search,
+ * the filter flyout and the New Task button come from the same Carbon
+ * primitives and sit in the same place. Sort moved inside the flyout with the
+ * other filters rather than floating beside the table.
+ */
+describe('TaskByCompanyView — toolbar', () => {
+  it('offers a New Task button that reaches the page', async () => {
+    // Previously this tab had no way to create anything: you had to go back to
+    // List View to add a task to a company you were looking at.
+    const user = userEvent.setup();
+    const onCreateNew = vi.fn();
+    respond([group('Acme', [makeTask()])]);
+    render(
+      <MemoryRouter>
+        <TaskByCompanyView labels={[]} onEdit={vi.fn()} onDelete={vi.fn()} onCreateNew={onCreateNew} />
+      </MemoryRouter>
+    );
+
+    await user.click(await screen.findByRole('button', { name: /new task/i }));
+
+    expect(onCreateNew).toHaveBeenCalled();
+  });
+
+  it('keeps sort and filters together in the flyout', async () => {
+    const user = userEvent.setup();
+    respond([group('Acme', [makeTask()])]);
+    renderView({ onEdit: vi.fn() });
+    await screen.findByText('Acme');
+
+    await user.click(screen.getByRole('button', { name: /^Filter$/ }));
+
+    expect(await screen.findByRole('combobox', { name: /sort by/i })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: /priority/i })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: /label/i })).toBeInTheDocument();
+  });
+
+  it('drives the shared search filter, so the tabs agree', async () => {
+    // The store is what List View reads, so typing here narrows both.
+    const user = userEvent.setup();
+    respond([group('Acme', [makeTask()])]);
+    renderView({ onEdit: vi.fn() });
+    await screen.findByText('Acme');
+
+    await user.type(screen.getByRole('searchbox'), 'renewal');
+
+    // Asserted on the shared store rather than the request: the store is what
+    // makes the two tabs agree, and it settles synchronously where the refetch
+    // is debounced behind a render.
+    await waitFor(() => expect(useTaskStore.getState().filters.search).toBe('renewal'));
+  });
+});
+
+describe('TaskByCompanyView — row actions', () => {
+  it('offers delete from the row menu', async () => {
+    // The design puts every row action behind the three dots; delete was not
+    // reachable from this tab at all before.
+    const user = userEvent.setup();
+    const onDelete = vi.fn();
+    const target = makeTask({ title: 'Doomed' });
+    respond([group('Acme', [target])]);
+    render(
+      <MemoryRouter>
+        <TaskByCompanyView labels={[]} onEdit={vi.fn()} onDelete={onDelete} onCreateNew={vi.fn()} />
+      </MemoryRouter>
+    );
+
+    await user.click(await screen.findByRole('button', { name: /Expand Acme/ }));
+    await user.click(screen.getByRole('button', { name: /Actions for Doomed/ }));
+    await user.click(await screen.findByText('Delete task'));
+
+    expect(onDelete).toHaveBeenCalledWith(target);
+  });
+
+  it("names each row’s menu after its task", async () => {
+    // Two menus called "Options" is what Carbon gives you by default, and it
+    // makes the rows indistinguishable to anyone not looking at the screen.
+    respond([group('Acme', [makeTask({ title: 'First' }), makeTask({ title: 'Second' })])]);
+    const user = userEvent.setup();
+    renderView({ onEdit: vi.fn() });
+
+    await user.click(await screen.findByRole('button', { name: /Expand Acme/ }));
+
+    expect(screen.getByRole('button', { name: /Actions for First/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Actions for Second/ })).toBeInTheDocument();
   });
 });

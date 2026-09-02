@@ -6,32 +6,7 @@
 @use '@carbon/react/scss/spacing' as *;
 
 .task-by-company {
-  // Search on the left, sort on the right — the design's own arrangement, and
-  // the one that keeps the sort control beside the thing it orders.
-  .task-by-company__toolbar {
-    display: flex;
-    align-items: flex-end;
-    gap: $spacing-05;
-    margin-bottom: $spacing-05;
 
-    .cds--search {
-      flex: 1;
-      min-width: 0;
-    }
-  }
-
-  .task-by-company__sort {
-    flex-shrink: 0;
-
-    // Carbon anchors an inline Dropdown's menu to the field's LEFT edge, and
-    // this field sits at the right of the toolbar. Measured in the browser at
-    // 1440px, the 288px menu ran 125px past the viewport and was clipped — the
-    // last option unreachable. Anchoring right keeps it on screen at any width.
-    .cds--list-box__menu {
-      left: auto;
-      right: 0;
-    }
-  }
 
   .task-by-company__summary-row {
     display: flex;
@@ -330,3 +305,61 @@
     color: var(--cds-text-secondary);
   }
 }
+
+  // ── Two-level table ────────────────────────────────────────────────────────
+  //
+  // Carbon expands one level, so the tasks are a nested table inside each
+  // company's expanded row. These rules exist to make the nesting read as one
+  // table rather than a table inside a card.
+
+  .task-by-company__company {
+    display: flex;
+    align-items: center;
+    gap: $spacing-03;
+  }
+
+  // The nested table owns the full width of the row it sits in — Carbon pads
+  // an expanded row for prose, which would inset every task and break the
+  // alignment the design has.
+  .task-by-company__nested > td {
+    padding: 0;
+  }
+
+  .task-by-company__tasks {
+    width: 100%;
+
+    // The task rows are the second level, so they are indented by exactly the
+    // width of the parent's chevron — enough to read as nested, not enough to
+    // stop the columns lining up.
+    td:first-of-type {
+      padding-left: $spacing-07;
+    }
+  }
+
+  .task-by-company__task-title {
+    @include type.type-style('body-compact-01');
+    color: var(--cds-text-primary);
+    // The title takes the slack so the metadata columns stay right-aligned and
+    // consistent from row to row.
+    width: 40%;
+  }
+
+  // Overdue is marked on the row's leading edge rather than given a column.
+  .task-by-company__task--overdue td:first-of-type {
+    box-shadow: inset 2px 0 0 0 var(--cds-support-error);
+  }
+
+  .task-by-company__actions-cell {
+    width: 3rem;
+    text-align: right;
+  }
+
+  .task-by-company__next-due-cell {
+    text-align: right;
+    color: var(--cds-text-secondary);
+    @include type.type-style('label-01');
+  }
+
+  .task-by-company__detail-row > td {
+    background: var(--cds-layer-01);
+  }
