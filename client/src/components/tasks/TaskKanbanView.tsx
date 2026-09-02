@@ -23,7 +23,7 @@ import { useTaskStore } from '../../store/taskStore';
 import { useTaskChanges } from '../../hooks/useTaskChanges';
 
 interface TaskKanbanViewProps {
-  onCardClick: (task: Task) => void;
+  onCardClick: (taskId: string) => void;
 }
 
 export function TaskKanbanView({ onCardClick }: TaskKanbanViewProps) {

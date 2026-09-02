@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   TextInput,
   TextArea,
@@ -6,11 +6,14 @@ import {
   DatePicker,
   DatePickerInput,
   MultiSelect,
+  InlineNotification,
+  SkeletonText,
   Button,
   Slider,
 } from '@carbon/react';
 import { SidePanel } from '@carbon/ibm-products';
 import { Save, Share } from '@carbon/icons-react';
+import type { AxiosError } from 'axios';
 import { tasksApi } from '../../api/tasks';
 import { taskStatusesApi } from '../../api/taskStatuses';
 import { authApi } from '../../api/auth';
@@ -52,15 +55,18 @@ interface LabelItem {
 }
 
 interface TaskDetailModalProps {
-  task: Task | null;
+  taskId: string | null;
   open: boolean;
   onClose: () => void;
   onUpdated: () => void;
   labels: Label[];
 }
 
-export function TaskDetailModal({ task, open, onClose, onUpdated, labels }: TaskDetailModalProps) {
+export function TaskDetailModal({ taskId, open, onClose, onUpdated, labels }: TaskDetailModalProps) {
   const taskChanged = useTaskStore((s) => s.taskChanged);
+  const [task, setTask] = useState<Task | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<TaskStatus>('TODO');
@@ -76,6 +82,13 @@ export function TaskDetailModal({ task, open, onClose, onUpdated, labels }: Task
   const [shareOpen, setShareOpen] = useState(false);
   const [taskShares, setTaskShares] = useState<any[]>([]);
   const addNotification = useUIStore((s) => s.addNotification);
+
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  const notifyRef = useRef(addNotification);
+  notifyRef.current = addNotification;
+  const changedRef = useRef(taskChanged);
+  changedRef.current = taskChanged;
 
   const fetchStatuses = useCallback(async () => {
     try {
@@ -98,19 +111,79 @@ export function TaskDetailModal({ task, open, onClose, onUpdated, labels }: Task
     }
   }, [open, fetchStatuses, fetchUsers]);
 
+  /**
+   * The panel fetches the task it was asked for, rather than being handed one.
+   *
+   * It used to take a whole `Task` captured when the row was clicked, which was
+   * wrong in three separate ways:
+   *
+   *  - **It went stale.** The views refresh in the background now, but the
+   *    captured object did not, so reopening a task could re-seed old values —
+   *    and this form PATCHes every field, so saving wrote them back over
+   *    whatever had changed.
+   *  - **It was the wrong shape from two of three views.** `findAll` does not
+   *    include `mailToTask`, so the "Created from email" block only ever
+   *    appeared for tasks opened from By Company. `findById` includes it, so it
+   *    now renders wherever the task was opened from.
+   *  - **It mounted the label field before the labels were known.** Carbon's
+   *    `MultiSelect` here is uncontrolled — it takes `initialSelectedItems`,
+   *    which `Selection` reads once into `useState` and never syncs again. The
+   *    subtree mounted on the render where `task` became non-null, one render
+   *    BEFORE the seeding effect ran, so the field showed the *previous* task's
+   *    chips: the first task opened showed none whatever its labels, and every
+   *    task after that showed its predecessor's. Touching the field then wrote
+   *    that wrong set back on save.
+   *
+   * Seeding inside the fetch is what fixes the third one: these `setState`
+   * calls batch with `setTask`, so the form — and the MultiSelect — mount in
+   * the same commit that already holds the right values.
+   */
   useEffect(() => {
-    if (task) {
-      setTitle(decodeEntities(task.title));
-      setDescription(decodeEntities(task.description));
-      setStatus(task.status);
-      setPriority(task.priority);
-      setDueDate(task.dueDate);
-      setSelectedLabels(task.labels.map((l) => l.id));
-      setCustomerId(task.customerId);
-      setAssignedToId(task.assignedToId || null);
-      setEffortIndex(minutesToStepIndex(task.estimatedMinutes));
+    if (!open || !taskId) {
+      setTask(null);
+      setLoadFailed(false);
+      return;
     }
-  }, [task]);
+
+    let cancelled = false;
+    setTask(null);
+    setLoadFailed(false);
+
+    void (async () => {
+      try {
+        const { data: res } = await tasksApi.getById(taskId);
+        if (cancelled) return;
+        const fresh = res.data;
+
+        setTitle(decodeEntities(fresh.title));
+        setDescription(decodeEntities(fresh.description));
+        setStatus(fresh.status);
+        setPriority(fresh.priority);
+        setDueDate(fresh.dueDate);
+        setSelectedLabels(fresh.labels.map((l) => l.id));
+        setCustomerId(fresh.customerId);
+        setAssignedToId(fresh.assignedToId || null);
+        setEffortIndex(minutesToStepIndex(fresh.estimatedMinutes));
+        setTask(fresh);
+      } catch (err) {
+        if (cancelled) return;
+        // Deleted in another tab or another view. Say so, drop the ghost row
+        // from every list, and close — rather than leaving a form open over a
+        // task that no longer exists.
+        if ((err as AxiosError).response?.status === 404) {
+          notifyRef.current({ kind: 'error', title: 'This task no longer exists' });
+          changedRef.current();
+          closeRef.current();
+          return;
+        }
+        setLoadFailed(true);
+      }
+    })();
+
+    // A slow open landing after the user has already opened something else
+    // must not overwrite it.
+    return () => { cancelled = true; };
+  }, [open, taskId, retry]);
 
   const handleSubmit = async () => {
     if (!task || !title.trim()) return;
@@ -148,7 +221,7 @@ export function TaskDetailModal({ task, open, onClose, onUpdated, labels }: Task
     }
   };
 
-  if (!task) return null;
+  if (!open) return null;
 
   return (
     <SidePanel
@@ -162,11 +235,35 @@ export function TaskDetailModal({ task, open, onClose, onUpdated, labels }: Task
           label: loading ? 'Saving...' : 'Save',
           onClick: handleSubmit,
           kind: 'primary' as const,
-          disabled: !title.trim() || loading,
+          // Stable footer while the task loads — a Save that appears late
+          // moves everything under the cursor.
+          disabled: !task || !title.trim() || loading,
           icon: Save,
         },
       ]}
     >
+      {!task && !loadFailed && (
+        <div className="modal-form">
+          <SkeletonText paragraph lineCount={7} />
+        </div>
+      )}
+
+      {loadFailed && (
+        <div className="modal-form">
+          <InlineNotification
+            kind="error"
+            lowContrast
+            hideCloseButton
+            title="Could not load this task"
+            subtitle="Showing nothing rather than something stale."
+          />
+          <Button kind="tertiary" size="sm" onClick={() => setRetry((n) => n + 1)}>
+            Try again
+          </Button>
+        </div>
+      )}
+
+      {task && (
       <div className="modal-form">
         <TextInput
           id="edit-task-title"
@@ -325,6 +422,7 @@ export function TaskDetailModal({ task, open, onClose, onUpdated, labels }: Task
           </Button>
         </div>
       </div>
+      )}
 
       <ShareDialog
         open={shareOpen}

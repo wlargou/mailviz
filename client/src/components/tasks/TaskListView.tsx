@@ -67,7 +67,7 @@ interface TaskListViewProps {
   tasks: Task[];
   loading: boolean;
   labels: Label[];
-  onEdit: (task: Task) => void;
+  onEdit: (taskId: string) => void;
   onDelete: (task: Task) => void;
   onCreateNew: () => void;
 }
@@ -282,7 +282,7 @@ export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreat
                   <TableRow key={task.id}>
                     <TableCell>
                       <span className="shared-title-cell">
-                        <span style={{ cursor: 'pointer', fontWeight: 500 }} onClick={() => onEdit(task)}>
+                        <span style={{ cursor: 'pointer', fontWeight: 500 }} onClick={() => onEdit(task.id)}>
                           {decodeEntities(task.title)}
                         </span>
                         <SharedBadge ownerId={task.userId} />
@@ -314,7 +314,7 @@ export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreat
                             setShareTask(task);
                           }}
                         />
-                        <Button kind="ghost" size="sm" hasIconOnly renderIcon={Edit} iconDescription="Edit" onClick={() => onEdit(task)} />
+                        <Button kind="ghost" size="sm" hasIconOnly renderIcon={Edit} iconDescription="Edit" onClick={() => onEdit(task.id)} />
                         <Button kind="danger--ghost" size="sm" hasIconOnly renderIcon={TrashCan} iconDescription="Delete" onClick={() => onDelete(task)} />
                       </div>
                     </TableCell>

@@ -38,7 +38,7 @@ import type { Label, Task } from '../../types/task';
 
 interface TaskByCompanyViewProps {
   labels: Label[];
-  onEdit: (task: Task) => void;
+  onEdit: (taskId: string) => void;
   onDelete: (task: Task) => void;
   onCreateNew: () => void;
 }
@@ -539,7 +539,7 @@ export function TaskByCompanyView({ labels, onEdit, onDelete, onCreateNew }: Tas
                                     type="button"
                                     className="task-by-company__title"
                                     title={decodeEntities(task.title)}
-                                    onClick={() => onEdit(task)}
+                                    onClick={() => onEdit(task.id)}
                                   >
                                     {decodeEntities(task.title)}
                                   </button>
@@ -585,7 +585,7 @@ export function TaskByCompanyView({ labels, onEdit, onDelete, onCreateNew }: Tas
                                     disabled={!sourceEmail?.threadId}
                                     onClick={() => openEmail(task)}
                                   />
-                                  <OverflowMenuItem itemText="Edit task" onClick={() => onEdit(task)} />
+                                  <OverflowMenuItem itemText="Edit task" onClick={() => onEdit(task.id)} />
                                   <OverflowMenuItem
                                     isDelete
                                     hasDivider

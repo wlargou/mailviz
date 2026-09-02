@@ -11,7 +11,7 @@ import { decodeEntities } from '../../utils/text';
 interface RecentTasksProps {
   stats: DashboardStats | null;
   loading: boolean;
-  onTaskClick?: (task: Task) => void;
+  onTaskClick?: (taskId: string) => void;
 }
 
 export function RecentTasks({ stats, loading, onTaskClick }: RecentTasksProps) {
@@ -40,7 +40,7 @@ export function RecentTasks({ stats, loading, onTaskClick }: RecentTasksProps) {
           className="dashboard-item dashboard-item--task"
           aria-label={`${decodeEntities(task.title)}, ${task.customer?.name || 'No company'}`}
           onClick={() => {
-            if (onTaskClick) onTaskClick(task as Task);
+            if (onTaskClick) onTaskClick(task.id);
             else navigate('/tasks');
           }}
         >

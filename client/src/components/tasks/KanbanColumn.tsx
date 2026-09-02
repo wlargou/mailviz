@@ -8,7 +8,7 @@ interface KanbanColumnProps {
   label: string;
   color: string;
   tasks: Task[];
-  onCardClick: (task: Task) => void;
+  onCardClick: (taskId: string) => void;
 }
 
 export function KanbanColumn({ status, label, color, tasks, onCardClick }: KanbanColumnProps) {

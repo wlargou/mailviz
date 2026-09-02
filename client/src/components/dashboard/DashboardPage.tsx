@@ -35,7 +35,7 @@ export function DashboardPage() {
   const [selectedThread, setSelectedThread] = useState<{ id: string; subject: string } | null>(null);
 
   // Task Detail Modal state
-  const [editTask, setEditTask] = useState<Task | null>(null);
+  const [editTaskId, setEditTaskId] = useState<string | null>(null);
   const [labels, setLabels] = useState<Label[]>([]);
 
   // Event Detail Modal state
@@ -74,8 +74,8 @@ export function DashboardPage() {
     setSelectedThread({ id: threadId, subject });
   };
 
-  const handleTaskClick = (task: Task) => {
-    setEditTask(task);
+  const handleTaskClick = (taskId: string) => {
+    setEditTaskId(taskId);
   };
 
   const handleEventClick = async (eventId: string) => {
@@ -217,12 +217,12 @@ export function DashboardPage() {
 
       {/* Task Detail Modal */}
       <TaskDetailModal
-        task={editTask}
-        open={!!editTask}
-        onClose={() => setEditTask(null)}
+        taskId={editTaskId}
+        open={!!editTaskId}
+        onClose={() => setEditTaskId(null)}
         onUpdated={() => {
           fetchData();
-          setEditTask(null);
+          setEditTaskId(null);
         }}
         labels={labels}
       />
