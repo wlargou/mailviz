@@ -1,6 +1,7 @@
 import MailComposer from 'nodemailer/lib/mail-composer/index.js';
 import sanitizeHtml from 'sanitize-html';
 import juice from 'juice';
+import { decodeEntities } from './htmlEntities.js';
 
 export interface MimeAttachment {
   filename: string;
@@ -69,8 +70,10 @@ function htmlToPlainText(html: string): string {
   text = text.replace(/<hr[^>]*>/gi, '\n---\n');
   // Strip remaining tags
   text = text.replace(/<[^>]+>/g, '');
-  // Decode entities
-  text = text.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ');
+  // Decode entities. Single-pass: the chained-replace form this replaces
+  // substituted `&amp;` first and then re-substituted the `&lt;` it had just
+  // produced, walking `&amp;lt;script&amp;gt;` all the way to `<script>`.
+  text = decodeEntities(text);
   // Collapse excessive newlines
   text = text.replace(/\n{3,}/g, '\n\n').trim();
   return text;

@@ -30,6 +30,7 @@ import { auditService } from './auditService.js';
 import { notificationService } from './notificationService.js';
 import { snoozeService } from './snoozeService.js';
 import { mergeEngagement } from '../utils/contactEngagement.js';
+import { decodeEntities } from '../utils/htmlEntities.js';
 
 /**
  * The single definition of how Gmail's labels map onto our boolean columns.
@@ -1374,8 +1375,13 @@ export const emailService = {
 
     const task = await prisma.task.create({
       data: {
-        title: data.title || email.subject,
-        description: email.snippet || undefined,
+        // Where Gmail's text stops being a mirror of Gmail and becomes our
+        // row. `data.title` is NOT decoded — the client sends it already
+        // decoded, and a title someone deliberately typed as `&amp;` is theirs
+        // to keep. Only the fallback, which any API caller omitting a title
+        // still reaches.
+        title: data.title || decodeEntities(email.subject),
+        description: decodeEntities(email.snippet) || undefined,
         priority: (data.priority as any) || 'MEDIUM',
         customerId: email.customerId,
         userId,
@@ -1478,7 +1484,8 @@ export const emailService = {
     if (to.length === 0) to = [original.from]; // Fallback: can't remove all recipients
 
     // Subject
-    const subject = original.subject.match(/^Re:/i) ? original.subject : `Re: ${original.subject}`;
+    const decodedSubject = decodeEntities(original.subject);
+    const subject = decodedSubject.match(/^Re:/i) ? decodedSubject : `Re: ${decodedSubject}`;
 
     // Build quoted HTML
     const originalDate = format(original.receivedAt, 'EEE, MMM d, yyyy \'at\' h:mm a');
@@ -1548,7 +1555,8 @@ export const emailService = {
     if (!original) throw Object.assign(new Error('Email not found'), { status: 404 });
 
     // Subject
-    const subject = original.subject.match(/^Fwd:/i) ? original.subject : `Fwd: ${original.subject}`;
+    const decodedSubject = decodeEntities(original.subject);
+    const subject = decodedSubject.match(/^Fwd:/i) ? decodedSubject : `Fwd: ${decodedSubject}`;
 
     // Fetch original body
     let originalBody = '';

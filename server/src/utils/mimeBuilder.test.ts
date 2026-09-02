@@ -482,3 +482,17 @@ describe('buildMimeMessage — attachments', () => {
     expect(contentType(message)).toContain('multipart/alternative');
   });
 });
+
+describe('the plain-text alternative does not double-decode', () => {
+  it('leaves an escaped entity escaped', async () => {
+    // The chained-replace form this file used to carry substituted `&amp;`
+    // first, then re-substituted the `&lt;` it had just produced — so a body
+    // quoting escaped markup arrived in the text/plain part as live-looking
+    // tags. One regex pass cannot do that: each match is consumed once.
+    const message = decodeMessage(
+      await buildMimeMessage({ ...BASE, htmlBody: '<p>Tom &amp;lt;3</p>' })
+    );
+
+    expect(partText(findLeaf(message, 'text/plain'))).toBe('Tom &lt;3');
+  });
+});
