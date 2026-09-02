@@ -1,7 +1,9 @@
 import { Button, ContentSwitcher, Switch } from '@carbon/react';
 import { ChevronLeft, ChevronRight, Add, Renew } from '@carbon/icons-react';
 import { format } from 'date-fns';
+import { isAxiosError } from 'axios';
 import { useCalendarStore } from '../../store/calendarStore';
+import { useUIStore } from '../../store/uiStore';
 import type { CalendarViewMode } from '../../types/calendar';
 
 interface CalendarToolbarProps {
@@ -11,6 +13,25 @@ interface CalendarToolbarProps {
 export function CalendarToolbar({ onAddEvent }: CalendarToolbarProps) {
   const { currentDate, viewMode, syncing, googleStatus, navigate, setViewMode, syncEvents } =
     useCalendarStore();
+  const addNotification = useUIStore((s) => s.addNotification);
+
+  /**
+   * The store rethrows on purpose, and nothing was catching here — so a manual
+   * sync that the scheduler refuses became an unhandled rejection with no
+   * feedback at all. A refusal is not a failure: it means a sync for this
+   * account is already running.
+   */
+  const handleSync = async () => {
+    try {
+      await syncEvents();
+    } catch (err) {
+      addNotification(
+        isAxiosError(err) && err.response?.status === 409
+          ? { kind: 'info', title: 'A calendar sync is already running' }
+          : { kind: 'error', title: 'Calendar sync failed' }
+      );
+    }
+  };
 
   const periodLabel =
     viewMode === 'month'
@@ -49,7 +70,7 @@ export function CalendarToolbar({ onAddEvent }: CalendarToolbarProps) {
             renderIcon={Renew}
             iconDescription="Sync"
             disabled={syncing}
-            onClick={syncEvents}
+            onClick={handleSync}
           />
         )}
         <Button size="sm" renderIcon={Add} onClick={onAddEvent}>

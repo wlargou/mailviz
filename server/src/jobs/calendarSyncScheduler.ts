@@ -83,3 +83,25 @@ export function isCalendarSyncInProgress(userId: string): boolean {
 export function syncCalendarNow(userId: string): Promise<void> {
   return runner.runOne(userId);
 }
+
+/**
+ * Run a manual calendar sync under the same guard the cron tick uses.
+ *
+ * The Sync button called the service directly, outside the runner entirely, so
+ * it could overlap a scheduled tick for the same account. That is not merely
+ * duplicated work: the sync token is null for the whole duration of a full
+ * sync, so a second sync starting inside one also takes the full branch, and
+ * each then runs the reconciliation `deleteMany` that removes local rows absent
+ * from *its own* listing. One sync deletes what the other has just written, and
+ * an incremental sync cannot restore them — absence from a delta is normal, so
+ * the rows stay gone until the next full sync.
+ *
+ * `runExclusive`, not `runOne`: `runOne` swallows the error and returns void,
+ * which would turn the "Google not connected" 400 into a 200.
+ *
+ * Returns `{ ran: false }` when a sync is already going, so the caller can say
+ * so rather than starting a second one.
+ */
+export function runCalendarManualSync<T>(userId: string, job: () => Promise<T>) {
+  return runner.runExclusive(userId, job);
+}

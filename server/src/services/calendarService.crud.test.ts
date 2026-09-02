@@ -600,6 +600,69 @@ describe('calendarService.delete', () => {
   });
 });
 
+describe('calendarService.respond — a Google failure is translated, not leaked', () => {
+  /**
+   * Both Google calls run before the only local write, so a failure here has
+   * nothing committed to warn about — it throws, unlike create and update.
+   *
+   * What it must NOT do is rethrow Google's own status. gaxios puts a numeric
+   * `.status` on the error, `errorHandler` returns any non-500 verbatim, and
+   * the client's axios interceptor redirects every 401 to /login — so a lapsed
+   * GOOGLE grant logged the user out of Mailviz, whose session was fine.
+   */
+  it('answers 502 for a lapsed Google grant, and does not leak Google’s message', async () => {
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+    const event = await localEvent(user.id, { googleEventId: 'g-1' });
+    calendar.eventsGet.mockRejectedValueOnce(
+      Object.assign(new Error('Invalid Credentials'), { status: 401, response: { status: 401 } })
+    );
+
+    const err = await calendarService
+      .respond(event.id, 'accepted', user.id)
+      .then(() => null)
+      .catch((e: { status?: number; message?: string }) => e);
+
+    // Not a bare rejects.toThrow(): it threw before this fix too, just with 401.
+    expect(err?.status).toBe(502);
+    expect(err?.message).toMatch(/Reconnect Google/);
+    expect(err?.message).not.toMatch(/Invalid Credentials/);
+  });
+
+  it('answers 502, not 404, when the event is gone from Google', async () => {
+    // 404 would be wrong in a way that loses data on screen: every other 404
+    // from this service means "the local row is absent or not yours", and the
+    // client drops the row on that — but the row is still here.
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+    const event = await localEvent(user.id, { googleEventId: 'g-1' });
+    calendar.eventsGet.mockRejectedValueOnce(Object.assign(new Error('Not Found'), { status: 404 }));
+
+    const err = await calendarService
+      .respond(event.id, 'accepted', user.id)
+      .then(() => null)
+      .catch((e: { status?: number; message?: string }) => e);
+
+    expect(err?.status).toBe(502);
+    expect(err?.message).toMatch(/no longer exists/);
+  });
+
+  it('leaves the local row untouched when the patch fails', async () => {
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+    const event = await localEvent(user.id, { googleEventId: 'g-1' });
+    const before = await prisma.calendarEvent.findUniqueOrThrow({ where: { id: event.id } });
+    calendar.eventsGet.mockResolvedValueOnce({ data: { attendees: [{ email: 'a@b.c', self: true }] } });
+    eventsPatch.mockRejectedValueOnce(Object.assign(new Error('boom'), { status: 500 }));
+
+    await expect(calendarService.respond(event.id, 'accepted', user.id)).rejects.toMatchObject({ status: 502 });
+
+    const after = await prisma.calendarEvent.findUniqueOrThrow({ where: { id: event.id } });
+    expect(after.attendees).toEqual(before.attendees);
+    expect(after.syncedAt).toEqual(before.syncedAt);
+  });
+});
+
 describe('calendarService.respond', () => {
   it('404s on another account event and makes no Google call — REGRESSION', async () => {
     const { alice, bob } = await createTwoUsers();
