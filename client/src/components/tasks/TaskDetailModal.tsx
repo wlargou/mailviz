@@ -49,6 +49,20 @@ function stepIndexToMinutes(index: number): number | null {
   return val === 0 ? null : val;
 }
 
+/**
+ * Same labels, regardless of order.
+ *
+ * Selection order drifts as chips are toggled off and on, so an order-sensitive
+ * compare would call an unchanged set dirty. That is not merely wasteful:
+ * sending `labelIds` reaches a delete-then-recreate rewrite on the server, so a
+ * false positive here clobbers a label change made anywhere else.
+ */
+export function sameIdSet(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const seen = new Set(b);
+  return a.every((id) => seen.has(id));
+}
+
 interface LabelItem {
   id: string;
   text: string;
@@ -65,6 +79,18 @@ interface TaskDetailModalProps {
 export function TaskDetailModal({ taskId, open, onClose, onUpdated, labels }: TaskDetailModalProps) {
   const taskChanged = useTaskStore((s) => s.taskChanged);
   const [task, setTask] = useState<Task | null>(null);
+  /**
+   * The payload this panel WOULD send for the values it was seeded with.
+   *
+   * Diffing against this rather than against the fetched task is what makes
+   * "untouched" mean untouched. The form does not hold the server's values: it
+   * holds them decoded, trimmed, and snapped to the effort ladder. Comparing a
+   * transformed form value against an untransformed row reports every
+   * entity-bearing title and every off-ladder estimate as edited — precisely
+   * the rows that then get rewritten. Applying the same transforms to both
+   * sides makes an untouched field identical by construction.
+   */
+  const baselineRef = useRef<Record<string, unknown> | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [retry, setRetry] = useState(0);
   const [title, setTitle] = useState('');
@@ -142,12 +168,14 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, labels }: Ta
     if (!open || !taskId) {
       setTask(null);
       setLoadFailed(false);
+      baselineRef.current = null;
       return;
     }
 
     let cancelled = false;
     setTask(null);
     setLoadFailed(false);
+    baselineRef.current = null;
 
     void (async () => {
       try {
@@ -164,6 +192,19 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, labels }: Ta
         setCustomerId(fresh.customerId);
         setAssignedToId(fresh.assignedToId || null);
         setEffortIndex(minutesToStepIndex(fresh.estimatedMinutes));
+        baselineRef.current = {
+          title: decodeEntities(fresh.title).trim(),
+          description: decodeEntities(fresh.description).trim(),
+          status: fresh.status,
+          priority: fresh.priority,
+          dueDate: fresh.dueDate,
+          labelIds: fresh.labels.map((l) => l.id),
+          customerId: fresh.customerId,
+          // Round-tripped through the ladder, so an estimate the slider cannot
+          // represent — 45 minutes, set by an API caller — is not reported as
+          // an edit and silently deleted by a save that never touched it.
+          estimatedMinutes: stepIndexToMinutes(minutesToStepIndex(fresh.estimatedMinutes)),
+        };
         setTask(fresh);
       } catch (err) {
         if (cancelled) return;
@@ -195,16 +236,41 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, labels }: Ta
       // the assignee was never told.
       const assignmentChanged = (task.assignedToId ?? null) !== assignedToId;
 
-      await tasksApi.update(task.id, {
-        title: title.trim(),
-        description: description.trim() || undefined,
-        status,
-        priority,
-        dueDate,
-        labelIds: selectedLabels,
-        customerId,
-        estimatedMinutes: stepIndexToMinutes(effortIndex),
-      });
+      // Send what changed, not the whole form.
+      //
+      // Writing all eight fields back meant a user who edited only the title
+      // also rewrote status, due date, labels, company and estimate from
+      // whatever the form happened to hold — reverting anything changed
+      // elsewhere in between, and deleting an estimate the slider could not
+      // represent. It also made the audit log's `changes` list, which is just
+      // the payload's keys, say "everything" on every save.
+      const base = baselineRef.current;
+      if (!base) return;
+
+      const patch: Record<string, unknown> = {};
+      const nextTitle = title.trim();
+      // Not `|| undefined`: JSON.stringify drops an undefined value, so
+      // emptying the box sent no key at all and clearing a description was a
+      // silent no-op. The column is nullable but the validator is not, so ''
+      // is how it clears.
+      const nextDescription = description.trim();
+      const nextEstimate = stepIndexToMinutes(effortIndex);
+
+      if (nextTitle !== base.title) patch.title = nextTitle;
+      if (nextDescription !== base.description) patch.description = nextDescription;
+      if (status !== base.status) patch.status = status;
+      if (priority !== base.priority) patch.priority = priority;
+      if (dueDate !== base.dueDate) patch.dueDate = dueDate;
+      if (customerId !== base.customerId) patch.customerId = customerId;
+      if (nextEstimate !== base.estimatedMinutes) patch.estimatedMinutes = nextEstimate;
+      if (!sameIdSet(selectedLabels, (base.labelIds as string[]) ?? [])) {
+        patch.labelIds = selectedLabels;
+      }
+
+      // An empty PATCH is a no-op the server would still audit as a change.
+      if (Object.keys(patch).length > 0) {
+        await tasksApi.update(task.id, patch);
+      }
 
       if (assignmentChanged) {
         await tasksApi.assignTask(task.id, assignedToId);
@@ -349,21 +415,21 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, labels }: Ta
             hideTextInput
           />
         </div>
-        {labels.length > 0 && (
-          <MultiSelect
-            id="edit-task-labels"
-            titleText="Labels"
-            label="Select labels"
-            items={labels.map((l) => ({ id: l.id, text: l.name }))}
-            itemToString={(item: LabelItem | null) => item?.text || ''}
-            initialSelectedItems={labels
-              .filter((l) => selectedLabels.includes(l.id))
-              .map((l) => ({ id: l.id, text: l.name }))}
-            onChange={({ selectedItems }: { selectedItems: LabelItem[] }) => {
-              setSelectedLabels(selectedItems.map((item: LabelItem) => item.id));
-            }}
-          />
-        )}
+        <MultiSelect
+          id="edit-task-labels"
+          titleText="Labels"
+          disabled={labels.length === 0}
+          helperText={labels.length === 0 ? 'No labels available. Add some in Settings.' : undefined}
+          label="Select labels"
+          items={labels.map((l) => ({ id: l.id, text: l.name }))}
+          itemToString={(item: LabelItem | null) => item?.text || ''}
+          initialSelectedItems={labels
+            .filter((l) => selectedLabels.includes(l.id))
+            .map((l) => ({ id: l.id, text: l.name }))}
+          onChange={({ selectedItems }: { selectedItems: LabelItem[] }) => {
+            setSelectedLabels(selectedItems.map((item: LabelItem) => item.id));
+          }}
+        />
         {task.mailToTask?.email && (
           <div className="modal-form__source-email">
             <p className="modal-form__label" style={{ fontSize: '0.75rem', color: 'var(--cds-text-secondary)', marginBottom: '0.25rem' }}>Created from email</p>

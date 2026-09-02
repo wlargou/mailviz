@@ -575,20 +575,38 @@ export const taskService = {
       updateData.customerId = customerId || null;
     }
 
-    if (labelIds !== undefined) {
-      // Replace all labels
-      await prisma.taskLabel.deleteMany({ where: { taskId: id } });
-      if (labelIds.length > 0) {
-        await prisma.taskLabel.createMany({
-          data: labelIds.map((labelId) => ({ taskId: id, labelId })),
-        });
+    /**
+     * One transaction, as `reorder` below already does.
+     *
+     * These were three separate statements, so anything that failed after the
+     * `deleteMany` left the task with no labels at all — the destructive half
+     * committed and the restoring half not. A duplicate id in `labelIds` did
+     * exactly that: `createMany` raised P2002, which `errorHandler` does not
+     * map, so the caller got a 500 and the labels were already gone.
+     *
+     * `skipDuplicates` removes that trigger, and the transaction removes the
+     * consequence for every other one.
+     */
+    const task = await prisma.$transaction(async (tx) => {
+      if (labelIds !== undefined) {
+        await tx.taskLabel.deleteMany({ where: { taskId: id } });
+        if (labelIds.length > 0) {
+          await tx.taskLabel.createMany({
+            data: labelIds.map((labelId) => ({ taskId: id, labelId })),
+            skipDuplicates: true,
+          });
+        }
       }
-    }
 
-    const task = await prisma.task.update({
-      where: { id },
-      data: updateData,
-      include: { labels: { include: { label: true } }, customer: true },
+      return tx.task.update({
+        // The ownership filter belongs in the `where`, not only in the
+        // `canAccessTask` check above — it closes the window between that read
+        // and this write. `existing.userId` rather than `userId`: a share
+        // recipient may edit, and the row is still the owner's.
+        where: { id, userId: existing.userId },
+        data: updateData,
+        include: { labels: { include: { label: true } }, customer: true },
+      });
     });
 
     auditService.log({ userId, action: 'TASK_UPDATED', entityType: 'task', entityId: id, details: { changes: Object.keys(data) } });
