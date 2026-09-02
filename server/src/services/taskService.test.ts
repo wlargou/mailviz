@@ -1384,6 +1384,37 @@ describe('taskService.findGroupedByCompany — fields for the By Company view', 
     expect(row.mailToTask?.email.threadId).toBe('thread-9');
   });
 
+  it('returns labels flat, not as join rows', async () => {
+    /**
+     * Prisma hands back a many-to-many `include` as the JOIN table — each
+     * element `{ taskId, labelId, label: {...} }` — while every consumer and
+     * the client's `Task` type expect `Label[]`. `LabelTag` reads `.color` off
+     * each element and calls `.replace` on it, so a join row throws rather than
+     * rendering wrongly.
+     *
+     * This endpoint was the only task endpoint that skipped `formatTask`, and
+     * nothing caught it because no account has ever had a label — which is what
+     * makes seeding a starter set the thing that would have found it the hard
+     * way.
+     */
+    const { alice } = await createTwoUsers();
+    await seedTaskStatuses(alice.id);
+    const acme = await createCustomer(alice.id, { name: 'Acme' });
+    const label = await prisma.label.create({
+      data: { userId: alice.id, name: 'Billing', color: '#d02670' },
+    });
+    const task = await createTask(alice.id, { customerId: acme.id });
+    await prisma.taskLabel.create({ data: { taskId: task.id, labelId: label.id } });
+
+    const result = await taskService.findGroupedByCompany(alice.id);
+
+    const labels = result.data[0].tasks[0].labels as unknown as Array<Record<string, unknown>>;
+    expect(labels[0]).toMatchObject({ id: label.id, name: 'Billing', color: '#d02670' });
+    // The join row's own keys must be gone, or a consumer reading `.color`
+    // silently gets undefined.
+    expect(labels[0]).not.toHaveProperty('labelId');
+  });
+
   it('leaves mailToTask null for a task nobody made from mail', async () => {
     const { alice } = await createTwoUsers();
     await seedTaskStatuses(alice.id);

@@ -6,16 +6,109 @@
 @use '@carbon/react/scss/spacing' as *;
 
 .task-by-company {
-  .task-by-company__controls {
+  // Search on the left, sort on the right — the design's own arrangement, and
+  // the one that keeps the sort control beside the thing it orders.
+  .task-by-company__toolbar {
     display: flex;
-    justify-content: flex-end;
-    margin-bottom: $spacing-03;
+    align-items: flex-end;
+    gap: $spacing-05;
+    margin-bottom: $spacing-05;
+
+    .cds--search {
+      flex: 1;
+      min-width: 0;
+    }
+  }
+
+  .task-by-company__sort {
+    flex-shrink: 0;
+
+    // Carbon anchors an inline Dropdown's menu to the field's LEFT edge, and
+    // this field sits at the right of the toolbar. Measured in the browser at
+    // 1440px, the 288px menu ran 125px past the viewport and was clipped — the
+    // last option unreachable. Anchoring right keeps it on screen at any width.
+    .cds--list-box__menu {
+      left: auto;
+      right: 0;
+    }
+  }
+
+  .task-by-company__summary-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: $spacing-05;
+    flex-wrap: wrap;
+    margin-bottom: $spacing-05;
   }
 
   .task-by-company__summary {
     @include type.type-style('body-compact-01');
     color: var(--cds-text-secondary);
-    margin: 0 0 $spacing-05;
+    margin: 0;
+  }
+
+  .task-by-company__chips {
+    display: flex;
+    align-items: center;
+    gap: $spacing-03;
+    flex-wrap: wrap;
+  }
+
+  // Buttons, not tags: these filter the list, so they have to be focusable and
+  // report their pressed state. A Carbon Tag would look right and do neither.
+  .task-by-company__chip {
+    @include type.type-style('label-01');
+    display: inline-flex;
+    align-items: center;
+    gap: $spacing-02;
+    padding: $spacing-01 $spacing-03;
+    border: 1px solid var(--cds-border-subtle);
+    border-radius: 1rem;
+    background: var(--cds-layer-01);
+    color: var(--cds-text-secondary);
+    cursor: pointer;
+
+    &:hover {
+      background: var(--cds-layer-hover-01);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--cds-focus);
+      outline-offset: 2px;
+    }
+  }
+
+  .task-by-company__chip--active {
+    background: var(--cds-layer-selected-01);
+    border-color: var(--cds-border-interactive);
+    color: var(--cds-text-primary);
+  }
+
+  // The dot carries the meaning at a glance; the count carries it exactly.
+  .task-by-company__chip--overdue::before,
+  .task-by-company__chip--urgent::before {
+    content: '';
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .task-by-company__chip--overdue::before {
+    background: var(--cds-support-error);
+  }
+
+  .task-by-company__chip--urgent::before {
+    background: var(--cds-support-caution-major);
+  }
+
+  .task-by-company__next-due {
+    @include type.type-style('label-01');
+    color: var(--cds-text-secondary);
+    margin-left: $spacing-03;
+    flex-shrink: 0;
+    white-space: nowrap;
   }
 
   // The whole point of the header: every number a reader needs is visible
@@ -70,15 +163,138 @@
     padding: 0;
   }
 
+  // The row and its detail panel stack, so the list item is a column and the
+  // row itself is the flex line.
   .task-by-company__task {
+    border-bottom: 1px solid var(--cds-border-subtle);
+    // Left edge marks overdue work without spending a column on it.
+    border-left: 2px solid transparent;
+    padding-left: $spacing-03;
+
+    &:last-child {
+      border-bottom: none;
+    }
+  }
+
+  .task-by-company__task--overdue {
+    border-left-color: var(--cds-support-error);
+  }
+
+  .task-by-company__row {
     display: flex;
     align-items: center;
     gap: $spacing-05;
     padding: $spacing-03 0;
-    border-bottom: 1px solid var(--cds-border-subtle);
+  }
 
-    &:last-child {
-      border-bottom: none;
+  .task-by-company__disclosure {
+    @include type.type-style('body-compact-01');
+    background: none;
+    border: none;
+    padding: 0 $spacing-02;
+    color: var(--cds-text-secondary);
+    cursor: pointer;
+    flex-shrink: 0;
+    line-height: 1;
+
+    &:focus-visible {
+      outline: 2px solid var(--cds-focus);
+      outline-offset: 2px;
+    }
+  }
+
+  .task-by-company__mail-icon {
+    color: var(--cds-text-secondary);
+    flex-shrink: 0;
+  }
+
+  .task-by-company__due {
+    white-space: nowrap;
+  }
+
+  .task-by-company__due--overdue {
+    display: inline-flex;
+    align-items: center;
+    gap: $spacing-02;
+    color: var(--cds-text-error);
+  }
+
+  // An absent due date is information too, so it gets a mark rather than a gap.
+  .task-by-company__due--none {
+    color: var(--cds-text-placeholder);
+  }
+
+  .task-by-company__detail {
+    padding: $spacing-04 0 $spacing-05 $spacing-06;
+    background: var(--cds-layer-01);
+  }
+
+  .task-by-company__description {
+    @include type.type-style('body-compact-01');
+    color: var(--cds-text-secondary);
+    margin: 0 0 $spacing-05;
+    max-width: 60ch;
+  }
+
+  .task-by-company__facts {
+    display: flex;
+    gap: $spacing-07;
+    flex-wrap: wrap;
+    margin: 0 0 $spacing-05;
+
+    dt {
+      @include type.type-style('label-01');
+      color: var(--cds-text-secondary);
+      margin-bottom: $spacing-02;
+    }
+
+    dd {
+      @include type.type-style('body-compact-01');
+      color: var(--cds-text-primary);
+      margin: 0;
+    }
+  }
+
+  .task-by-company__actions {
+    display: flex;
+    align-items: center;
+    gap: $spacing-05;
+  }
+
+  .task-by-company__action {
+    @include type.type-style('body-compact-01');
+    display: inline-flex;
+    align-items: center;
+    gap: $spacing-02;
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--cds-link-primary);
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+      text-decoration: underline;
+    }
+
+    &:disabled {
+      color: var(--cds-text-disabled);
+      cursor: not-allowed;
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--cds-focus);
+      outline-offset: 2px;
+    }
+  }
+
+  .task-by-company__action--primary {
+    background: var(--cds-button-primary);
+    color: var(--cds-text-on-color);
+    padding: $spacing-02 $spacing-04;
+
+    &:hover:not(:disabled) {
+      background: var(--cds-button-primary-hover);
+      text-decoration: none;
     }
   }
 

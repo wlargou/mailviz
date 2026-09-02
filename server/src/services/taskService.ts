@@ -52,6 +52,8 @@ interface TaskGroupQueryParams {
 
 const TASKS_BY_COMPANY_CAP = 1000;
 
+
+
 const TASK_SORT_FIELDS = ['title', 'status', 'priority', 'dueDate', 'position', 'createdAt', 'updatedAt'] as const;
 
 /**
@@ -302,8 +304,20 @@ export const taskService = {
          */
         mailToTask: {
           select: {
+            id: true,
+            conversionNote: true,
+            // Matches the shape `Task.mailToTask` already declares on the
+            // client. Selecting a narrower one here would make that type a lie
+            // for this endpoint alone, which is worse than two extra columns.
             email: {
-              select: { id: true, threadId: true, from: true, fromName: true, receivedAt: true },
+              select: {
+                id: true,
+                subject: true,
+                from: true,
+                fromName: true,
+                threadId: true,
+                receivedAt: true,
+              },
             },
           },
         },
@@ -401,7 +415,20 @@ export const taskService = {
         taskCount: g.tasks.length,
         overdueCount: g.overdueCount,
         nextDueAt: g.nextDueAt,
-        tasks: g.tasks,
+        /**
+         * Through `formatTask`, like every other endpoint that returns tasks.
+         *
+         * Prisma returns a many-to-many `include` as the JOIN rows — each one
+         * `{ taskId, labelId, label: {...} }` — while the client's `Task` type
+         * says `Label[]` and `LabelTag` reads `.color` off each element and
+         * calls `.replace` on it. A join row therefore does not render the
+         * wrong colour, it throws.
+         *
+         * This endpoint was the only one that skipped the mapping, and nothing
+         * caught it because no account has ever had a label. Seeding a starter
+         * set is precisely what would have surfaced it.
+         */
+        tasks: g.tasks.map(formatTask),
       })),
       meta: {
         totalTasks: visible.length,

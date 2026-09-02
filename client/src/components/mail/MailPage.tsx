@@ -85,7 +85,17 @@ export function MailPage() {
     if (search) initial.search = search;
     return initial;
   });
-  const [selectedThread, setSelectedThread] = useState<string | null>(null);
+  /**
+   * `?thread=<id>` opens that conversation directly.
+   *
+   * Added for the By Company view's "Open email", which links from a task back
+   * to the mail it was created from. Without it that action had nowhere to go:
+   * the mail page could be deep-linked to a folder or a search, but never to a
+   * specific thread.
+   */
+  const [selectedThread, setSelectedThread] = useState<string | null>(
+    () => searchParams.get('thread')
+  );
   const [composeOpen, setComposeOpen] = useState(false);
   const [composeMode, setComposeMode] = useState<ComposeMode>('new');
   const [composeDraft, setComposeDraft] = useState<DraftDetail | null>(null);
