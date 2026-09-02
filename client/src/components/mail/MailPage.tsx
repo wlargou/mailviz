@@ -33,14 +33,7 @@ import { SnoozeModal } from './SnoozeModal';
 import type { MailFilters } from './MailSearchBar';
 import type { ComposeMode, DraftDetail, DraftListItem, EmailReminder, EmailThread, ReminderKind } from '../../types/email';
 import type { PaginationMeta } from '../../types/api';
-
-// Decode HTML entities in snippets (Gmail API returns &#39; etc.)
-const entityEl = document.createElement('textarea');
-function decodeEntities(text: string | null | undefined): string {
-  if (!text) return '';
-  entityEl.innerHTML = text;
-  return entityEl.value;
-}
+import { decodeEntities } from '../../utils/text';
 
 const defaultFilters: MailFilters = {
   search: '',

@@ -3,13 +3,7 @@ import { StarFilled, Star, Attachment, TrashCan, Undo, Email as EmailIcon, Email
 import { formatDistanceToNow } from 'date-fns';
 import type { EmailThread } from '../../types/email';
 import { EmptyState } from './EmptyState';
-
-const entityEl = typeof document !== 'undefined' ? document.createElement('textarea') : null;
-function decodeEntities(text: string | null | undefined): string {
-  if (!text || !entityEl) return '';
-  entityEl.innerHTML = text;
-  return entityEl.value;
-}
+import { decodeEntities } from '../../utils/text';
 
 type ThreadAction = 'star' | 'trash' | 'readToggle' | 'replyAll' | 'convertToTask';
 

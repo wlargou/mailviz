@@ -14,6 +14,10 @@
     justify-content: space-between;
     gap: $spacing-05;
     flex-wrap: wrap;
+    // The toolbar above ends flush against this row, and the chips are
+    // right-aligned — directly under the New Task button, which read as the
+    // two overlapping. The gap is what separates them.
+    margin-top: $spacing-05;
     margin-bottom: $spacing-05;
   }
 
@@ -99,8 +103,8 @@
   }
 
   .task-by-company__logo {
-    width: 1.25rem;
-    height: 1.25rem;
+    width: 1.5rem;
+    height: 1.5rem;
     border-radius: 2px;
     flex-shrink: 0;
     object-fit: contain;
@@ -110,9 +114,10 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    background: var(--cds-layer-02);
-    color: var(--cds-text-secondary);
+    background: var(--cds-background-inverse);
+    color: var(--cds-text-inverse);
     @include type.type-style('label-01');
+    font-weight: 600;
   }
 
   .task-by-company__name {
@@ -304,62 +309,245 @@
     @include type.type-style('label-01');
     color: var(--cds-text-secondary);
   }
-}
 
-  // ── Two-level table ────────────────────────────────────────────────────────
+  // ── The table ──────────────────────────────────────────────────────────────
   //
-  // Carbon expands one level, so the tasks are a nested table inside each
-  // company's expanded row. These rules exist to make the nesting read as one
-  // table rather than a table inside a card.
+  // One grid. The task columns define it and the company rows span the whole
+  // width, the way a section header does — which is what makes every task line
+  // up with every other regardless of which company it sits under.
 
-  .task-by-company__company {
+  .task-by-company__table {
+    // Fixed layout so the columns below are honoured. Without it the browser
+    // sizes columns from content, and a long subject in one company silently
+    // re-flows every other company's rows.
+    table-layout: fixed;
+    width: 100%;
+  }
+
+  // Percentages, like List View's `.tasks-table`, so the two tabs keep the same
+  // proportions as the window is resized.
+  //
+  // They must total exactly 100, and every column must be a percentage. A
+  // fixed `rem` width mixed in here does not survive: any slack left over in a
+  // `table-layout: fixed` table is redistributed, and Chrome hands it to the
+  // last column as readily as to the `auto` one — a 3.5rem actions column came
+  // out 386px wide and stole the space from the title.
+  .task-by-company__col-expand   { width: 5%; }
+  .task-by-company__col-title    { width: 37%; }
+  .task-by-company__col-status   { width: 11%; }
+  .task-by-company__col-priority { width: 11%; }
+  .task-by-company__col-due      { width: 13%; }
+  .task-by-company__col-labels   { width: 18%; }
+  .task-by-company__col-actions  { width: 5%; }
+
+  // ── Company row ────────────────────────────────────────────────────────────
+
+  .task-by-company__company-row > td {
+    padding: 0;
+    background: var(--cds-layer-accent-01);
+    border-top: 1px solid var(--cds-border-subtle);
+  }
+
+  // The whole header is the control, so the click target is the row rather
+  // than a chevron someone has to aim at.
+  .task-by-company__company-toggle {
     display: flex;
     align-items: center;
     gap: $spacing-03;
-  }
-
-  // The nested table owns the full width of the row it sits in — Carbon pads
-  // an expanded row for prose, which would inset every task and break the
-  // alignment the design has.
-  .task-by-company__nested > td {
-    padding: 0;
-  }
-
-  .task-by-company__tasks {
     width: 100%;
+    padding: $spacing-04 $spacing-05;
+    background: none;
+    border: none;
+    text-align: left;
+    cursor: pointer;
+    color: inherit;
 
-    // The task rows are the second level, so they are indented by exactly the
-    // width of the parent's chevron — enough to read as nested, not enough to
-    // stop the columns lining up.
-    td:first-of-type {
-      padding-left: $spacing-07;
+    &:hover { background: var(--cds-layer-hover-01); }
+    &:focus-visible {
+      outline: 2px solid var(--cds-focus);
+      outline-offset: -2px;
     }
   }
 
-  .task-by-company__task-title {
-    @include type.type-style('body-compact-01');
-    color: var(--cds-text-primary);
-    // The title takes the slack so the metadata columns stay right-aligned and
-    // consistent from row to row.
-    width: 40%;
+  .task-by-company__chevron {
+    flex-shrink: 0;
+    color: var(--cds-icon-secondary);
+    transition: transform 110ms cubic-bezier(0.2, 0, 0.38, 0.9);
   }
 
-  // Overdue is marked on the row's leading edge rather than given a column.
-  .task-by-company__task--overdue td:first-of-type {
+  .task-by-company__chevron--open { transform: rotate(90deg); }
+
+  .task-by-company__logo {
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 2px;
+    flex-shrink: 0;
+    object-fit: contain;
+  }
+
+  .task-by-company__logo--placeholder {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--cds-background-inverse);
+    color: var(--cds-text-inverse);
+    @include type.type-style('label-01');
+    font-weight: 600;
+  }
+
+  .task-by-company__name {
+    @include type.type-style('heading-compact-01');
+    color: var(--cds-text-primary);
+    margin-right: $spacing-02;
+  }
+
+  // Pushed to the far edge, where the eye already goes for a date.
+  .task-by-company__next-due {
+    @include type.type-style('label-01');
+    color: var(--cds-text-secondary);
+    margin-left: auto;
+    white-space: nowrap;
+  }
+
+  // ── Task row ───────────────────────────────────────────────────────────────
+
+  .task-by-company__task-row td {
+    // The row is one line. A wrapped subject was turning a table into a wall.
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+
+  // Overdue is marked on the leading edge rather than given a column of its own.
+  .task-by-company__task-row--overdue td:first-of-type {
     box-shadow: inset 2px 0 0 0 var(--cds-support-error);
   }
 
-  .task-by-company__actions-cell {
-    width: 3rem;
-    text-align: right;
+  // Indented one step so the second level reads as nested rather than as more
+  // company rows. Applied to the cell, not the button, so the button's hit
+  // area and focus ring stay where they are drawn.
+  .task-by-company__task-row .task-by-company__col-expand {
+    // Carbon's own cell padding is the 1rem here, so the 1% is the indent. It
+    // is proportional rather than a fixed step because a fixed one large
+    // enough to read at 1900px pushes the chevron out of the gutter and into
+    // the title at 800px.
+    padding-left: calc(#{$spacing-05} + 1%);
   }
 
-  .task-by-company__next-due-cell {
-    text-align: right;
-    color: var(--cds-text-secondary);
-    @include type.type-style('label-01');
+  .task-by-company__task-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+
+    &:focus-visible {
+      outline: 2px solid var(--cds-focus);
+      outline-offset: 2px;
+    }
   }
+
+  // A real button: it opens the task, so it is reachable and activatable by
+  // keyboard like any other control.
+  .task-by-company__title {
+    @include type.type-style('body-compact-01');
+    background: none;
+    border: none;
+    padding: 0;
+    text-align: left;
+    color: var(--cds-text-primary);
+    cursor: pointer;
+    // Truncate rather than wrap. The full subject is in the title attribute
+    // and in the expanded panel; a four-line cell helps nobody.
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    &:hover { text-decoration: underline; }
+    &:focus-visible {
+      outline: 2px solid var(--cds-focus);
+      outline-offset: 2px;
+    }
+  }
+
+  .task-by-company__col-labels { overflow: hidden; }
+
+  // The icon and the title share the cell, and only the title may shrink.
+  .task-by-company__title-cell {
+    display: flex;
+    align-items: center;
+    gap: $spacing-03;
+    min-width: 0;
+  }
+
+  .task-by-company__mail-icon {
+    flex-shrink: 0;
+    color: var(--cds-icon-secondary);
+  }
+
+  .task-by-company__due--overdue {
+    display: inline-flex;
+    align-items: center;
+    gap: $spacing-02;
+    color: var(--cds-text-error);
+  }
+
+  .task-by-company__due--none { color: var(--cds-text-placeholder); }
+
+  .task-by-company__col-actions { text-align: right; }
+
+  // ── Expanded task detail ───────────────────────────────────────────────────
+
+  // An open task and its panel are one block, so they share a background and
+  // the pair is bracketed. Without this the panel read as floating between two
+  // unrelated rows.
+  .task-by-company__task-row--open td,
+  .task-by-company__detail-row > td {
+    background: var(--cds-layer-accent-01);
+  }
+
+  .task-by-company__task-row--open td { border-top: 1px solid var(--cds-border-subtle); }
 
   .task-by-company__detail-row > td {
-    background: var(--cds-layer-01);
+    padding: 0;
+    border-bottom: 1px solid var(--cds-border-subtle);
   }
+
+  .task-by-company__detail {
+    // Starts under the task title rather than under its chevron. The cell
+    // spans the table and carries no padding of its own, so a percentage here
+    // resolves against the table width — `4%` is exactly the expand column,
+    // whatever the window is doing, and the 1rem is Carbon's cell padding.
+    padding: $spacing-05 $spacing-05 $spacing-06 calc(5% + #{$spacing-05});
+  }
+
+  .task-by-company__description {
+    @include type.type-style('body-compact-01');
+    color: var(--cds-text-secondary);
+    margin: 0 0 $spacing-05;
+    max-width: 75ch;
+    white-space: normal;
+  }
+
+  .task-by-company__facts {
+    display: flex;
+    gap: $spacing-07;
+    flex-wrap: wrap;
+    margin: 0;
+
+    dt {
+      @include type.type-style('label-01');
+      color: var(--cds-text-secondary);
+      margin-bottom: $spacing-02;
+    }
+
+    dd {
+      @include type.type-style('body-compact-01');
+      color: var(--cds-text-primary);
+      margin: 0;
+    }
+  }
+}

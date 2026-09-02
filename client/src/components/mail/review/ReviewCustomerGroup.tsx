@@ -19,6 +19,7 @@ import { UNCATEGORIZED_CUSTOMER_ID } from '../../../types/email';
 import type { EmailThread } from '../../../types/email';
 import type { PaginationMeta } from '../../../types/api';
 import type { ReviewPeriod } from './ReviewPage';
+import { decodeEntities } from '../../../utils/text';
 
 /**
  * One company's slice of the review, fetched and paged on its own.
@@ -33,14 +34,6 @@ import type { ReviewPeriod } from './ReviewPage';
 
 /** Batch size for each request. The server caps `limit` at 100. */
 const PAGE_SIZE = 25;
-
-// Decode HTML entities in snippets (Gmail API returns &#39; etc.)
-const entityEl = document.createElement('textarea');
-function decodeEntities(text: string | null | undefined): string {
-  if (!text) return '';
-  entityEl.innerHTML = text;
-  return entityEl.value;
-}
 
 interface Props {
   /** Customer id, or null for the Uncategorized bucket. */
