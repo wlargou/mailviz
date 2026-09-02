@@ -167,6 +167,36 @@ export const onboardingService = {
   },
 
   /**
+   * Give an account the configuration it cannot work without.
+   *
+   * Seeded on sign-in rather than on finishing the wizard, because the wizard
+   * is skippable: "Explore on my own" completes onboarding without ever
+   * reaching the board step, and that account then had no task statuses — an
+   * empty Kanban with no columns — and no labels, so the label picker on every
+   * task form hid itself. Defaults that only arrive if you read the tour are
+   * not defaults.
+   *
+   * Both seeders are all-or-nothing and idempotent, so this is two COUNT
+   * queries on every login after the first and cannot disturb a set the user
+   * has since curated. That is what makes it safe to run on a hot path.
+   *
+   * The wizard still calls them directly. It is the same operation, and a step
+   * that reports what it found reads better than one that silently did nothing.
+   */
+  async ensureAccountDefaults(userId: string) {
+    const [statuses, labels] = await Promise.all([
+      this.seedDefaultTaskStatuses(userId),
+      this.seedDefaultLabels(userId),
+    ]);
+    if (statuses.created > 0 || labels.created > 0) {
+      console.log(
+        `[Onboarding] Seeded defaults for ${userId}: ${statuses.created} statuses, ${labels.created} labels`
+      );
+    }
+    return { statuses, labels };
+  },
+
+  /**
    * Mark first-run setup as done.
    *
    * Called both when the user completes the wizard and when they dismiss it —

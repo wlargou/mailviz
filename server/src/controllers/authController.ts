@@ -1,6 +1,7 @@
 import { Response, NextFunction } from 'express';
 import type { Req } from "../types/http.js";
 import { syncAccountNow } from '../jobs/emailSyncScheduler.js';
+import { onboardingService } from '../services/onboardingService.js';
 import { syncCalendarNow } from '../jobs/calendarSyncScheduler.js';
 import { googleAuthService } from '../services/googleAuthService.js';
 import { accountService } from '../services/accountService.js';
@@ -159,6 +160,23 @@ export const authController = {
           }
           throw err;
         }
+
+        /**
+         * The configuration a working account needs, before anything renders.
+         *
+         * Not awaited, for the same reason the syncs below are not: the browser
+         * is waiting on this redirect. Unlike them it is two COUNT queries in
+         * the steady state, so it settles long before the first page load that
+         * would notice.
+         *
+         * Here rather than in the wizard because the wizard is skippable —
+         * "Explore on my own" finishes onboarding without ever reaching the
+         * board step, leaving a Kanban with no columns and a label picker that
+         * hides itself because there are no labels to offer.
+         */
+        void onboardingService.ensureAccountDefaults(user.id).catch((err) => {
+          console.warn('[Auth] Seeding account defaults failed:', err?.message || err);
+        });
 
         // Start syncing immediately rather than waiting for the next scheduler
         // tick. A new account otherwise sits empty for up to a full interval
