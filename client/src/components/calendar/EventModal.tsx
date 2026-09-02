@@ -618,8 +618,14 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
     try {
       const payload = {
         title: title.trim(),
-        description: description || undefined,
-        location: location || undefined,
+        // Always send the key, empty or not — the same mistake as the
+        // attendees list below, third time in this modal. `|| undefined` is
+        // dropped by JSON.stringify, so the update path saw no key at all and
+        // read that as "leave this field alone": emptying either box and
+        // saving kept the old text, in the app and in Google, while the form
+        // showed it gone.
+        description: description.trim(),
+        location: location.trim(),
         /**
          * All-day bounds are floating dates, not local times.
          *
@@ -651,7 +657,7 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
         // people should be told they are no longer invited.
         sendUpdates,
         addGoogleMeet: addGoogleMeet || undefined,
-        colorId: colorId || undefined,
+        colorId: colorId ?? '',
         // Omitted entirely when the existing rule is locked, so the server
         // leaves whatever Google has in place.
         recurrence:

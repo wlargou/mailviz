@@ -236,3 +236,48 @@ describe('all-day event bounds', () => {
     expect(shown.startDateStr).toBe('02/10/2026');
   });
 });
+
+describe('EventModal — clearing a text field', () => {
+  /**
+   * The same bug as the attendees list above, third time in this modal:
+   * `value || undefined` is dropped by JSON.stringify, so the update path saw
+   * no key and read that as "leave this field alone". Emptying the box and
+   * saving kept the old text — in the app, in the database, and in Google.
+   *
+   * Assert per field with `toBe('')`. A whole-object `toEqual` would pass
+   * against the unfixed code, because vitest treats a missing key and an
+   * `undefined` value as equal — which is exactly the distinction under test.
+   */
+  const WITH_TEXT = { ...EVENT, description: 'Agenda in the doc', location: 'Room 3' } as CalendarEvent;
+
+  it('sends an empty string, not a missing key, when the boxes are emptied', async () => {
+    const user = userEvent.setup();
+    renderModal(WITH_TEXT);
+
+    await user.clear(await screen.findByDisplayValue('Agenda in the doc'));
+    await user.clear(screen.getByDisplayValue('Room 3'));
+    await user.click(screen.getByRole('button', { name: /save changes/i }));
+
+    await waitFor(() => expect(calendarApi.update).toHaveBeenCalled());
+    const [, payload] = vi.mocked(calendarApi.update).mock.calls[0];
+    expect(payload.description).toBe('');
+    expect(payload.location).toBe('');
+  });
+
+  it('sends the same shape on create', async () => {
+    // Redundant with the case above today — one payload object serves both
+    // verbs — and kept anyway, because splitting that object later would
+    // silently reopen the bug on whichever half nobody tested.
+    const user = userEvent.setup();
+    renderModal(null);
+
+    await user.type(screen.getByLabelText(/title/i), 'New event');
+    await user.click(screen.getByRole('button', { name: /create event/i }));
+
+    await waitFor(() => expect(calendarApi.create).toHaveBeenCalled());
+    const [payload] = vi.mocked(calendarApi.create).mock.calls[0];
+    expect(payload.description).toBe('');
+    expect(payload.location).toBe('');
+  });
+});
+
