@@ -207,6 +207,39 @@ describe('calendarService.syncFromGoogle — sync token', () => {
     }
   });
 
+  it('recovers from an expired token reported only on response.status', async () => {
+    // The check here was hand-rolled as `err.code === 410 || err.status === 410`
+    // and missed the third form gaxios uses. A 410 that arrived that way was
+    // not recognised as an expired token, so the full-sync fallback never ran
+    // and the sync just failed. `googleErrorStatus` reads all three; the
+    // sibling test above uses `{ code: 410 }`, which the old check already
+    // caught, so it could not have shown this.
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+    await prisma.googleAuth.updateMany({
+      where: { userId: user.id },
+      data: { calendarSyncToken: 'stale-token' },
+    });
+
+    let sawStaleToken = false;
+    stubEventsList(calendar, (params) => {
+      if (params.syncToken === 'stale-token') {
+        sawStaleToken = true;
+        throw Object.assign(new Error('Sync token is no longer valid'), {
+          response: { status: 410 },
+        });
+      }
+      return eventsPage([{ id: 'g-fresh' }], { nextSyncToken: 'token-fresh' });
+    });
+
+    await calendarService.syncFromGoogle(false, user.id);
+
+    expect(sawStaleToken).toBe(true);
+    // It re-listed and stored a fresh token rather than giving up.
+    const auth = await prisma.googleAuth.findFirstOrThrow({ where: { userId: user.id } });
+    expect(auth.calendarSyncToken).toBe('token-fresh');
+  });
+
   it('recovers from an expired token without wiping the calendar — REGRESSION', async () => {
     const user = await createUser();
     await createGoogleAuth(user.id);

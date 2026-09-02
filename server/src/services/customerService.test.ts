@@ -421,3 +421,44 @@ describe('customerService — a duplicate domain is a conflict, not a crash', ()
   });
 });
 
+describe('customerService.findOrCreateByDomain — the check-then-create race', () => {
+  it('returns the winner’s row instead of raising P2002', async () => {
+    // The gap between the read and the write is reachable in normal operation:
+    // the email and calendar syncs run on separate 60s and 120s schedules with
+    // nothing serialising them, and on first connect every domain is new — so
+    // both importing the same attendee address at once is the common case. The
+    // loser used to raise P2002, which errorHandler does not map, so an
+    // ordinary sync answered 500.
+    const { alice } = await createTwoUsers();
+
+    const [first, second] = await Promise.all([
+      customerService.findOrCreateByDomain(alice.id, 'acme.example'),
+      customerService.findOrCreateByDomain(alice.id, 'acme.example'),
+    ]);
+
+    // One row, and both callers get it.
+    expect(first.customer.id).toBe(second.customer.id);
+    const rows = await prisma.customer.findMany({
+      where: { userId: alice.id, domain: 'acme.example' },
+    });
+    expect(rows).toHaveLength(1);
+
+    // Exactly one of them may claim to have created it — `created` is the
+    // sync's customersCreated count, so double-counting would misreport it.
+    expect([first.created, second.created].filter(Boolean)).toHaveLength(1);
+  });
+
+  it('does not report another account’s domain as a conflict', async () => {
+    // The unique is (userId, domain), so the same domain under two accounts is
+    // two rows and neither races the other.
+    const { alice, bob } = await createTwoUsers();
+
+    const mine = await customerService.findOrCreateByDomain(alice.id, 'shared.example');
+    const theirs = await customerService.findOrCreateByDomain(bob.id, 'shared.example');
+
+    expect(mine.created).toBe(true);
+    expect(theirs.created).toBe(true);
+    expect(mine.customer.id).not.toBe(theirs.customer.id);
+  });
+});
+

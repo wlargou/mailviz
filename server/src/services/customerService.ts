@@ -174,6 +174,20 @@ export const customerService = {
     return { success: true };
   },
 
+  /**
+   * Check-then-create, with the race actually handled.
+   *
+   * `(userId, domain)` is unique, and the gap between the read and the write is
+   * reachable in normal operation: the email and calendar syncs run on separate
+   * 60s and 120s schedules with nothing serialising them, and on first connect
+   * every domain is new — so both importing the same attendee's address at once
+   * is the common case, not the exotic one. The loser used to raise P2002,
+   * which `errorHandler` does not map, so an ordinary sync answered 500.
+   *
+   * Not `upsert`: the `created` flag is the sync's `customersCreated` count, and
+   * an upsert cannot report which branch it took. Catching and re-reading keeps
+   * that honest — the row exists, and we did not create it.
+   */
   async findOrCreateByDomain(userId: string, domain: string) {
     const existing = await prisma.customer.findUnique({
       where: { userId_domain: { userId, domain } },
@@ -181,17 +195,30 @@ export const customerService = {
     if (existing) return { customer: existing, created: false };
 
     const name = domainToCompanyName(domain);
-    const customer = await prisma.customer.create({
-      data: {
-        name,
-        company: name,
-        domain,
-        website: `https://${domain}`,
-        logoUrl: getLogoUrl(domain),
-        userId,
-      },
-    });
-    return { customer, created: true };
+    try {
+      const customer = await prisma.customer.create({
+        data: {
+          name,
+          company: name,
+          domain,
+          website: `https://${domain}`,
+          logoUrl: getLogoUrl(domain),
+          userId,
+        },
+      });
+      return { customer, created: true };
+    } catch (err: unknown) {
+      if ((err as { code?: string })?.code !== 'P2002') throw err;
+      // Someone else created it between the read and the write. Their row is
+      // as good as ours would have been.
+      const raced = await prisma.customer.findUnique({
+        where: { userId_domain: { userId, domain } },
+      });
+      // A P2002 with nothing to re-read is a different constraint entirely, so
+      // it must not be silently reported as a success.
+      if (!raced) throw err;
+      return { customer: raced, created: false };
+    }
   },
 
   /**

@@ -488,6 +488,33 @@ describe('calendar sync routes', () => {
    * holding the account through it reproduces exactly what a scheduled tick
    * creates.
    */
+  it('rate limits repeated sync requests', async () => {
+    // Gmail calls are throttled per user inside getGmailClient because Gmail's
+    // quota is per user. Calendar's is per PROJECT and its client is
+    // deliberately unthrottled, so without this one account holding down Sync
+    // degrades every tenant. The 409 guard covers concurrent clicks; this
+    // covers sequential ones.
+    const { alice } = await createTwoUsers();
+
+    // Its own client address, so exhausting the budget here does not starve
+    // the rest of this file — express-rate-limit keys on req.ip, and supertest
+    // reuses one connection for every test. `trust proxy` is an allow-list that
+    // includes loopback, so the forwarded header is honoured.
+    const codes: number[] = [];
+    for (let i = 0; i < 7; i++) {
+      const res = await request(app)
+        .post('/api/v1/calendar/sync')
+        .set('X-Forwarded-For', '203.0.113.7')
+        .set('Cookie', cookieFor(alice.id));
+      codes.push(res.status);
+    }
+
+    // The first five reach the handler and are refused for the unrelated
+    // reason that Google is not connected; the rest never get that far.
+    expect(codes.filter((c) => c === 429).length).toBeGreaterThan(0);
+    expect(codes.slice(0, 5).every((c) => c !== 429)).toBe(true);
+  });
+
   it('answers 409 while that account is already syncing', async () => {
     const { alice, bob } = await createTwoUsers();
 
