@@ -25,6 +25,7 @@ import { EmptyState } from '../shared/EmptyState';
 import { TableFilterFlyout } from '../shared/TableFilterFlyout';
 import { useUIStore } from '../../store/uiStore';
 import { toolbarSearchValue } from '../../utils/carbonSearch';
+import { decodeEntities } from '../../utils/text';
 
 interface AuditLogEntry {
   id: string;
@@ -133,8 +134,8 @@ function getSummary(entry: AuditLogEntry): string {
 
   const parts: string[] = [];
 
-  if (d.subject) parts.push(`"${String(d.subject).slice(0, 60)}"`);
-  if (d.title) parts.push(`"${String(d.title).slice(0, 60)}"`);
+  if (d.subject) parts.push(`"${decodeEntities(String(d.subject)).slice(0, 60)}"`);
+  if (d.title) parts.push(`"${decodeEntities(String(d.title)).slice(0, 60)}"`);
   if (d.name) parts.push(String(d.name));
   if (d.to) {
     const to = Array.isArray(d.to) ? d.to.join(', ') : String(d.to);

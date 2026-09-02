@@ -9,6 +9,7 @@ import { useUIStore } from '../../store/uiStore';
 import { useNotificationStore } from '../../store/notificationStore';
 import { useEmailWebSocket } from '../../hooks/useEmailWebSocket';
 import type { AppNotification } from '../../api/notifications';
+import { decodeEntities } from '../../utils/text';
 
 function mapNotificationKind(type: string): 'error' | 'warning' | 'info' {
   if (type.includes('OVERDUE') || type.includes('EXPIRED')) return 'error';
@@ -29,8 +30,8 @@ export function AppShell() {
       addRealtime(data);
       addToast({
         kind: mapNotificationKind(data.type),
-        title: data.title,
-        subtitle: data.message || undefined,
+        title: decodeEntities(data.title),
+        subtitle: decodeEntities(data.message) || undefined,
       });
     },
   });

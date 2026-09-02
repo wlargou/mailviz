@@ -825,7 +825,7 @@ export function MailPage() {
                 <div key={se.id} className="scheduled-email-item">
                   <div className="scheduled-email-item__info">
                     <div className="scheduled-email-item__subject">
-                      {se.subject || '(No subject)'}
+                      {decodeEntities(se.subject) || '(No subject)'}
                     </div>
                     <div className="scheduled-email-item__meta">
                       To: {se.to?.join(', ') || '—'}
@@ -961,7 +961,7 @@ export function MailPage() {
                     >
                     <div className="thread-item__top">
                       <span className="thread-item__sender">
-                        {e.contactName || e.fromName || e.from}
+                        {decodeEntities(e.contactName || e.fromName || e.from)}
                       </span>
                       <span className="thread-item__subject-inline">{decodeEntities(e.subject)}</span>
                       <div className="thread-item__right">
@@ -1087,7 +1087,7 @@ export function MailPage() {
       <SidePanel
         open={!!selectedThread}
         onRequestClose={() => setSelectedThread(null)}
-        title={selectedThreadData?.latestEmail.subject || 'Thread'}
+        title={decodeEntities(selectedThreadData?.latestEmail.subject) || 'Thread'}
         size="lg"
         className="mail-page__side-panel"
       >
@@ -1142,7 +1142,7 @@ export function MailPage() {
       <Modal
         open={!!reschedulingEmail}
         modalHeading="Reschedule send"
-        modalLabel={reschedulingEmail?.subject || '(No subject)'}
+        modalLabel={decodeEntities(reschedulingEmail?.subject) || '(No subject)'}
         primaryButtonText={rescheduleSaving ? 'Saving…' : 'Update send time'}
         secondaryButtonText="Cancel"
         primaryButtonDisabled={!rescheduleDate || rescheduleSaving}

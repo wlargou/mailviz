@@ -25,6 +25,7 @@ import { useUIStore } from '../../store/uiStore';
 import type { DashboardStats } from '../../types/dashboard';
 import type { Task, Label } from '../../types/task';
 import type { CalendarEvent } from '../../types/calendar';
+import { decodeEntities } from '../../utils/text';
 
 export function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -200,7 +201,7 @@ export function DashboardPage() {
       <SidePanel
         open={!!selectedThread}
         onRequestClose={() => setSelectedThread(null)}
-        title={selectedThread?.subject || 'Thread'}
+        title={decodeEntities(selectedThread?.subject) || 'Thread'}
         size="lg"
         className="mail-page__side-panel"
       >

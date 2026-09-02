@@ -306,7 +306,7 @@ export function ThreadDetail({ threadId, onEmailAction }: ThreadDetailProps) {
                 role="button"
                 tabIndex={0}
                 aria-expanded={isExpanded}
-                aria-label={`${isExpanded ? 'Collapse' : 'Expand'} message from ${msg.fromName || msg.from}`}
+                aria-label={`${isExpanded ? 'Collapse' : 'Expand'} message from ${decodeEntities(msg.fromName || msg.from)}`}
                 onClick={(e) => {
                   // Don't toggle expand if click was on the avatar link
                   if ((e.target as HTMLElement).closest('.message-bubble__avatar-link')) return;
@@ -329,7 +329,7 @@ export function ThreadDetail({ threadId, onEmailAction }: ThreadDetailProps) {
                     tabIndex={0}
                     className="message-bubble__avatar-link"
                     title="View contact"
-                    aria-label={`View contact ${msg.fromName || msg.from}`}
+                    aria-label={`View contact ${decodeEntities(msg.fromName || msg.from)}`}
                     onClick={openSender(msg)}
                     // It already had role="button" and tabIndex={0} and no key
                     // handler at all — a focus stop that did nothing when
@@ -342,12 +342,12 @@ export function ThreadDetail({ threadId, onEmailAction }: ThreadDetailProps) {
                     }}
                   >
                     <UserAvatar
-                      name={msg.fromName || msg.from}
+                      name={decodeEntities(msg.fromName || msg.from)}
                       size="sm"
                     />
                   </div>
                   <div className="message-bubble__sender-info">
-                    <span className="message-bubble__sender-name">{msg.fromName || msg.from}</span>
+                    <span className="message-bubble__sender-name">{decodeEntities(msg.fromName || msg.from)}</span>
                     <span className="message-bubble__sender-email">{msg.from}</span>
                   </div>
                 </div>
@@ -477,24 +477,24 @@ export function ThreadDetail({ threadId, onEmailAction }: ThreadDetailProps) {
                                 onClick={() => setPreviewAttachment({ attachment: att, emailId: msg.id })}
                               >
                                 <FileIcon size={16} />
-                                <span className="attachment-chip__name">{att.filename}</span>
+                                <span className="attachment-chip__name">{decodeEntities(att.filename)}</span>
                                 <span className="attachment-chip__size">{formatSize(att.size)}</span>
                               </span>
                             ) : (
                               <a
                                 className="attachment-chip__clickable"
                                 href={emailsApi.getAttachmentUrl(msg.id, att.id)}
-                                download={att.filename}
+                                download={decodeEntities(att.filename)}
                               >
                                 <FileIcon size={16} />
-                                <span className="attachment-chip__name">{att.filename}</span>
+                                <span className="attachment-chip__name">{decodeEntities(att.filename)}</span>
                                 <span className="attachment-chip__size">{formatSize(att.size)}</span>
                               </a>
                             )}
                             <a
                               className="attachment-chip__download"
                               href={emailsApi.getAttachmentUrl(msg.id, att.id)}
-                              download={att.filename}
+                              download={decodeEntities(att.filename)}
                               onClick={(e) => e.stopPropagation()}
                               title="Download"
                             >
@@ -563,7 +563,7 @@ export function ThreadDetail({ threadId, onEmailAction }: ThreadDetailProps) {
       <ShareDialog
         open={shareOpen}
         onClose={() => setShareOpen(false)}
-        title={messages[0]?.subject || 'Thread'}
+        title={decodeEntities(messages[0]?.subject) || 'Thread'}
         currentShares={threadShares}
         onShare={async (userIds) => {
           await emailsApi.shareThread(threadId, userIds);

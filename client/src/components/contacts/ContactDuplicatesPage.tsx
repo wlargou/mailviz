@@ -20,6 +20,7 @@ import { useUIStore } from '../../store/uiStore';
 import type { DuplicateContact, DuplicateGroup } from '../../types/customer';
 import type { PaginationMeta } from '../../types/api';
 import { CompanyLogo } from '../shared/CompanyLogo';
+import { decodeEntities } from '../../utils/text';
 
 /**
  * Review-and-merge for duplicate contacts.
@@ -31,7 +32,7 @@ import { CompanyLogo } from '../shared/CompanyLogo';
  */
 
 function fullName(contact: DuplicateContact): string {
-  return `${contact.firstName} ${contact.lastName}`.trim() || '(no name)';
+  return decodeEntities(`${contact.firstName} ${contact.lastName}`).trim() || '(no name)';
 }
 
 function addressesOf(contact: DuplicateContact): string[] {

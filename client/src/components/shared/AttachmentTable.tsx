@@ -22,6 +22,7 @@ import { emailsApi } from '../../api/emails';
 import { getFileTypeInfo, formatFileSize } from '../../utils/fileTypes';
 import type { AttachmentWithEmail } from '../../types/email';
 import { toolbarSearchValue } from '../../utils/carbonSearch';
+import { decodeEntities } from '../../utils/text';
 
 interface AttachmentTableProps {
   attachments: AttachmentWithEmail[];
@@ -45,16 +46,35 @@ export function AttachmentTable({ attachments, emptyDescription = 'No attachment
   const [sortKey, setSortKey] = useState<string>('dateRaw');
   const [sortDirection, setSortDirection] = useState<'ASC' | 'DESC' | 'NONE'>('DESC');
 
+  /**
+   * Decode once, here, rather than in the cells.
+   *
+   * Three things read these strings — the search filter below, the sort
+   * comparators, and the cells — and decoding only the cells makes them
+   * disagree: the column sorts by a value nobody can see, and typing the "&"
+   * that is on screen matches nothing because the filter still holds "&amp;".
+   * Normalising the source keeps all three, plus the download filename, on the
+   * same text.
+   */
+  const decoded = useMemo(
+    () => attachments.map((a) => ({
+      ...a,
+      filename: decodeEntities(a.filename),
+      email: { ...a.email, subject: decodeEntities(a.email.subject) },
+    })),
+    [attachments]
+  );
+
   // Filter by search term
   const filtered = useMemo(() => {
-    if (!searchTerm) return attachments;
+    if (!searchTerm) return decoded;
     const q = searchTerm.toLowerCase();
-    return attachments.filter((a) =>
+    return decoded.filter((a) =>
       a.filename.toLowerCase().includes(q) ||
       a.email.subject.toLowerCase().includes(q) ||
       a.mimeType.toLowerCase().includes(q)
     );
-  }, [attachments, searchTerm]);
+  }, [decoded, searchTerm]);
 
   // Sort
   const sorted = useMemo(() => {

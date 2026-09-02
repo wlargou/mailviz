@@ -14,6 +14,7 @@ import {
 import { formatDistanceToNow } from 'date-fns';
 import { useNotificationStore } from '../../store/notificationStore';
 import type { AppNotification } from '../../api/notifications';
+import { decodeEntities } from '../../utils/text';
 
 // Icon mapping for notification types using Carbon icons
 function getNotificationIcon(type: string) {
@@ -164,7 +165,7 @@ export function NotificationBell() {
                     {getNotificationIcon(n.type)}
                   </div>
                   <div className="notification-item__content">
-                    <span className="notification-item__title">{n.title}</span>
+                    <span className="notification-item__title">{decodeEntities(n.title)}</span>
                     {n.message && (
                       <span className="notification-item__message">
                         {n.message}

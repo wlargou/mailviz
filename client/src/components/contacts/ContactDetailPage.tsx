@@ -44,6 +44,7 @@ import type { EmailThread, AttachmentWithEmail } from '../../types/email';
 import { ThreadItemList } from '../shared/ThreadItemList';
 import { toolbarSearchValue } from '../../utils/carbonSearch';
 import { CompanyLogo } from '../shared/CompanyLogo';
+import { decodeEntities } from '../../utils/text';
 
 const eventHeaders = [
   { key: 'title', header: 'Title' },
@@ -157,7 +158,7 @@ export function ContactDetailPage() {
   return (
     <div>
       <PageHeader
-        title={contact ? `${contact.firstName} ${contact.lastName}` : 'Contact'}
+        title={contact ? decodeEntities(`${contact.firstName} ${contact.lastName}`) : 'Contact'}
         breadcrumbs={[{ label: 'Contacts', href: '/contacts' }]}
       />
 
@@ -172,7 +173,7 @@ export function ContactDetailPage() {
                     name={contact.customer?.name ?? contact.firstName}
                     size="lg"
                   />
-                  <h2 style={{ margin: 0 }}>{contact.firstName} {contact.lastName}</h2>
+                  <h2 style={{ margin: 0 }}>{decodeEntities(`${contact.firstName} ${contact.lastName}`)}</h2>
                   <VipBadge
                     isVip={contact.isVip}
                     size={20}
@@ -342,7 +343,7 @@ export function ContactDetailPage() {
       <SidePanel
         open={!!selectedThread}
         onRequestClose={() => setSelectedThread(null)}
-        title={selectedThread?.subject || 'Thread'}
+        title={decodeEntities(selectedThread?.subject) || 'Thread'}
         size="lg"
         className="mail-page__side-panel"
       >

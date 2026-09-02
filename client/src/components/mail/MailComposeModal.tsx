@@ -15,6 +15,7 @@ import { RecipientInput } from './RecipientInput';
 import type { Editor } from '@tiptap/react';
 import type { ComposeMode, DraftDetail, DraftSaveInput, EmailMessage } from '../../types/email';
 import type { EmailTemplate } from '../../types/template';
+import { decodeEntities } from '../../utils/text';
 
 interface ComposeAttachment {
   id: string;
@@ -137,7 +138,7 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, dr
       setCc(draft.cc);
       setBcc(draft.bcc);
       setShowBcc(draft.bcc.length > 0);
-      setSubject(draft.subject);
+      setSubject(decodeEntities(draft.subject));
       setAttachments(
         draft.attachments.map((a) => ({
           id: crypto.randomUUID(),
@@ -161,7 +162,7 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, dr
       setTo([replyToEmail.from]);
       setCc([]);
       setBcc([]);
-      setSubject(replyToEmail.subject.match(/^Re:/i) ? replyToEmail.subject : `Re: ${replyToEmail.subject}`);
+      setSubject(decodeEntities(replyToEmail.subject.match(/^Re:/i) ? replyToEmail.subject : `Re: ${replyToEmail.subject}`));
       setShowBcc(false);
     } else if (mode === 'replyAll' && replyToEmail) {
       setTo([replyToEmail.from]);
@@ -170,13 +171,13 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, dr
       );
       setCc([...new Set(allCc.map((e) => e.toLowerCase()))]);
       setBcc([]);
-      setSubject(replyToEmail.subject.match(/^Re:/i) ? replyToEmail.subject : `Re: ${replyToEmail.subject}`);
+      setSubject(decodeEntities(replyToEmail.subject.match(/^Re:/i) ? replyToEmail.subject : `Re: ${replyToEmail.subject}`));
       setShowBcc(false);
     } else if (mode === 'forward' && replyToEmail) {
       setTo([]);
       setCc([]);
       setBcc([]);
-      setSubject(replyToEmail.subject.match(/^Fwd:/i) ? replyToEmail.subject : `Fwd: ${replyToEmail.subject}`);
+      setSubject(decodeEntities(replyToEmail.subject.match(/^Fwd:/i) ? replyToEmail.subject : `Fwd: ${replyToEmail.subject}`));
       setShowBcc(false);
       // Pre-populate original attachments for forwarding
       if (replyToEmail.attachments?.length > 0) {
@@ -274,7 +275,7 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, dr
         ...(recipient ? { recipientEmail: recipient } : {}),
         // The display name is only a valid hint for the person it belongs to.
         ...(replyToEmail?.fromName && recipient?.toLowerCase() === replyToEmail.from.toLowerCase()
-          ? { recipientName: replyToEmail.fromName }
+          ? { recipientName: decodeEntities(replyToEmail.fromName) }
           : {}),
       });
       const rendered = data.data;
@@ -789,7 +790,7 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, dr
 
         {(mode === 'reply' || mode === 'replyAll') && (
           <div className="compose-form__subject-display">
-            <span className="compose-form__subject-label">Subject:</span> {subject}
+            <span className="compose-form__subject-label">Subject:</span> {decodeEntities(subject)}
           </div>
         )}
 
@@ -855,7 +856,7 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, dr
             </div>
             {forwardedAttachments.map((att) => (
               <div key={att.id} className="compose-attachments__item">
-                <span className="compose-attachments__name">{att.filename}</span>
+                <span className="compose-attachments__name">{decodeEntities(att.filename)}</span>
                 <Tag size="sm" type="cool-gray">forwarded</Tag>
                 <span className="compose-attachments__meta">{formatFileSize(att.size)}</span>
                 <Button
@@ -871,7 +872,7 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, dr
             ))}
             {attachments.map((att) => (
               <div key={att.id} className="compose-attachments__item">
-                <span className="compose-attachments__name">{att.filename}</span>
+                <span className="compose-attachments__name">{decodeEntities(att.filename)}</span>
                 {att.status === 'reading' && <InlineLoading description="" />}
                 {att.status === 'error' && <Tag size="sm" type="red">error</Tag>}
                 <span className="compose-attachments__meta">{formatFileSize(att.size)}</span>

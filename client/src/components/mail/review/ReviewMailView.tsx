@@ -7,6 +7,7 @@ import { ThreadDetail } from '../ThreadDetail';
 import { ReviewCustomerGroup } from './ReviewCustomerGroup';
 import type { EmailThread, ReviewSummary } from '../../../types/email';
 import type { ReviewPeriod } from './ReviewPage';
+import { decodeEntities } from '../../../utils/text';
 
 /**
  * Step 3 of the review: the selected companies, each paging its own threads.
@@ -193,7 +194,7 @@ export function ReviewMailView({ period, customerIds, includeUncategorized, onBa
       <SidePanel
         open={!!selectedThread}
         onRequestClose={() => setSelectedThread(null)}
-        title={selectedThread?.latestEmail.subject || 'Thread'}
+        title={decodeEntities(selectedThread?.latestEmail.subject) || 'Thread'}
         size="lg"
         className="mail-page__side-panel"
       >

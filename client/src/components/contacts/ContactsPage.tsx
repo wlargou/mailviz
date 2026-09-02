@@ -29,6 +29,7 @@ import type { PaginationMeta } from '../../types/api';
 import { toolbarSearchValue } from '../../utils/carbonSearch';
 import { CompanyLogo } from '../shared/CompanyLogo';
 import { useTableSort } from '../../hooks/useTableSort';
+import { decodeEntities } from '../../utils/text';
 
 /**
  * `sortField` is the API field, which is not always the column key:
@@ -262,7 +263,7 @@ export function ContactsPage() {
                               src={contact.customer?.logoUrl}
                               name={contact.customer?.name ?? contact.firstName}
                             />
-                            {contact.firstName} {contact.lastName}
+                            {decodeEntities(`${contact.firstName} ${contact.lastName}`)}
                           </span>
                         </TableCell>
                         <TableCell>

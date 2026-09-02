@@ -6,6 +6,7 @@ import { PriorityBadge } from '../shared/PriorityBadge';
 import type { DashboardStats } from '../../types/dashboard';
 import type { Task } from '../../types/task';
 import { EmptyState } from '../shared/EmptyState';
+import { decodeEntities } from '../../utils/text';
 
 interface RecentTasksProps {
   stats: DashboardStats | null;
@@ -37,7 +38,7 @@ export function RecentTasks({ stats, loading, onTaskClick }: RecentTasksProps) {
           key={task.id}
           type="button"
           className="dashboard-item dashboard-item--task"
-          aria-label={`${task.title}, ${task.customer?.name || 'No company'}`}
+          aria-label={`${decodeEntities(task.title)}, ${task.customer?.name || 'No company'}`}
           onClick={() => {
             if (onTaskClick) onTaskClick(task as Task);
             else navigate('/tasks');
@@ -47,7 +48,7 @@ export function RecentTasks({ stats, loading, onTaskClick }: RecentTasksProps) {
             <PriorityBadge priority={task.priority} />
           </span>
           <span className="dashboard-item__info">
-            <span className="dashboard-item__title">{task.title}</span>
+            <span className="dashboard-item__title">{decodeEntities(task.title)}</span>
             <span className="dashboard-item__sub">{task.customer?.name || 'No company'}</span>
           </span>
           <span className="dashboard-item__tag">
