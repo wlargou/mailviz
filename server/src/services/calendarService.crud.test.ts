@@ -287,7 +287,7 @@ describe('calendarService.create', () => {
   it('stores the event against the calling account', async () => {
     const { alice, bob } = await createTwoUsers();
 
-    const created = await calendarService.create(
+    const { event: created } = await calendarService.create(
       {
         title: 'Design review',
         description: 'Go through the mocks',
@@ -318,7 +318,7 @@ describe('calendarService.create', () => {
   it('still creates the event when Google is not connected', async () => {
     const user = await createUser();
 
-    const created = await calendarService.create(
+    const { event: created } = await calendarService.create(
       { title: 'Solo block', startTime: '2026-08-20T09:00:00.000Z', endTime: '2026-08-20T10:00:00.000Z' },
       user.id
     );
@@ -340,7 +340,7 @@ describe('calendarService.create', () => {
       },
     });
 
-    const created = await calendarService.create(
+    const { event: created } = await calendarService.create(
       {
         title: 'Kickoff',
         startTime: '2026-08-20T09:00:00.000Z',
@@ -376,7 +376,7 @@ describe('calendarService — clearing a field actually clears it', () => {
     // to receive `undefined` and write NULL by accident; now it receives ''.
     const user = await createUser();
 
-    const created = await calendarService.create({
+    const { event: created } = await calendarService.create({
       title: 'Standup',
       description: '',
       location: '',
@@ -431,7 +431,7 @@ describe('calendarService.update', () => {
       location: 'Room 3',
     });
 
-    const updated = await calendarService.update(event.id, { title: 'New title' }, user.id);
+    const { event: updated } = await calendarService.update(event.id, { title: 'New title' }, user.id);
 
     expect(updated.title).toBe('New title');
     // A blanket write of the whole object would clear everything the edit form
@@ -463,7 +463,7 @@ describe('calendarService.update', () => {
       recurrence: ['RRULE:FREQ=DAILY'],
     });
 
-    const updated = await calendarService.update(
+    const { event: updated } = await calendarService.update(
       instance.id,
       { title: 'Renamed', recurrence: ['RRULE:FREQ=WEEKLY'] },
       user.id
@@ -480,7 +480,7 @@ describe('calendarService.update', () => {
     const user = await createUser();
     const master = await localEvent(user.id, { recurrence: ['RRULE:FREQ=DAILY'] });
 
-    const updated = await calendarService.update(
+    const { event: updated } = await calendarService.update(
       master.id,
       { recurrence: ['RRULE:FREQ=WEEKLY;BYDAY=MO'] },
       user.id
@@ -679,3 +679,117 @@ describe('calendarService.respond', () => {
     expect(updated.syncedAt).not.toBeNull();
   });
 });
+
+describe('calendarService — a push to Google that fails is reported, not swallowed', () => {
+  /**
+   * `pushToGoogle` used to return `undefined` from five places for four
+   * different reasons, and swallow every Google error into a `console.error`.
+   * So the request answered 201/200 whether the change reached Google or not,
+   * and the user was told "Event created" over a divergence they could not see.
+   *
+   * The two silences are not the same and must not be conflated: a user with no
+   * Google account connected is working locally on purpose, and must never be
+   * warned. Only a real failure does.
+   */
+  it('reports a rate limit as retryable, and keeps the local event', async () => {
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+    calendar.eventsInsert.mockRejectedValueOnce({ code: 429 });
+
+    const { event, push } = await calendarService.create({
+      title: 'Standup',
+      startTime: '2026-08-20T09:00:00.000Z',
+      endTime: '2026-08-20T09:30:00.000Z',
+    }, user.id);
+
+    expect(push.status).toBe('failed');
+    expect(push.status === 'failed' && push.failure.code).toBe('rate_limited');
+    expect(push.status === 'failed' && push.failure.retryable).toBe(true);
+    // The write is real. Rolling it back would be worse than the divergence:
+    // the user would be told nothing saved when the row exists.
+    const row = await prisma.calendarEvent.findUnique({ where: { id: event.id } });
+    expect(row).not.toBeNull();
+    expect(row?.googleEventId).toBeNull();
+  });
+
+  it('stays silent for a user who has not connected Google', async () => {
+    // The guard on the whole design. `skipped` must never look like `failed`.
+    const user = await createUser();
+
+    const { push } = await calendarService.create({
+      title: 'Local only',
+      startTime: '2026-08-20T09:00:00.000Z',
+      endTime: '2026-08-20T09:30:00.000Z',
+    }, user.id);
+
+    expect(push.status).toBe('skipped');
+    expect(push.status === 'skipped' && push.reason).toBe('not-connected');
+    expect(calendar.eventsInsert).not.toHaveBeenCalled();
+  });
+
+  it('keeps an edit that Google refused, and says it is not worth retrying', async () => {
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+    const event = await localEvent(user.id, { title: 'Before', googleEventId: 'g-1' });
+    calendar.eventsUpdate.mockRejectedValueOnce({
+      response: { status: 403 },
+      errors: [{ reason: 'insufficientPermissions' }],
+    });
+
+    const { push } = await calendarService.update(event.id, { title: 'After' }, user.id);
+
+    const row = await prisma.calendarEvent.findUniqueOrThrow({ where: { id: event.id } });
+    expect(row.title).toBe('After');
+    expect(push.status === 'failed' && push.failure.retryable).toBe(false);
+  });
+
+  it('refuses to delete locally when Google could not be told', async () => {
+    // Delete is the one verb where the push runs FIRST, so a failure can abort
+    // it and leave both sides agreeing. 502 rather than Google's own status: a
+    // propagated 401 would log the user out of Mailviz over a lapsed Google
+    // grant, and its session is fine.
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+    const event = await localEvent(user.id, { title: 'Keep me', googleEventId: 'g-1' });
+    calendar.eventsDelete.mockRejectedValueOnce({ code: 500 });
+
+    const err = await calendarService
+      .delete(event.id, user.id)
+      .then(() => null)
+      .catch((e: { status?: number }) => e);
+
+    expect(err?.status).toBe(502);
+    const row = await prisma.calendarEvent.findUnique({ where: { id: event.id } });
+    expect(row).not.toBeNull();
+  });
+
+  it('treats an event already gone from Google as deleted', async () => {
+    // Otherwise a row whose Google event was removed in Google's own UI can
+    // never be deleted here: every attempt repeats the same 404.
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+    const event = await localEvent(user.id, { googleEventId: 'g-1' });
+    calendar.eventsDelete.mockRejectedValueOnce({ code: 404 });
+
+    await calendarService.delete(event.id, user.id);
+
+    const row = await prisma.calendarEvent.findUnique({ where: { id: event.id } });
+    expect(row).toBeNull();
+  });
+
+  it('reads a status carried only on response.status', async () => {
+    // Gaxios puts it on `code`, `status`, or `response.status`. This service
+    // checked only the first, which is why the shared helper moved out of
+    // gmailLimiter rather than being written again here.
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+    const event = await localEvent(user.id, { googleEventId: 'g-1' });
+    calendar.eventsDelete.mockRejectedValueOnce({ response: { status: 410 } });
+
+    await calendarService.delete(event.id, user.id);
+
+    const row = await prisma.calendarEvent.findUnique({ where: { id: event.id } });
+    expect(row).toBeNull();
+  });
+});
+

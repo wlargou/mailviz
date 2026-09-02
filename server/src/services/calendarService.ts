@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma.js';
 import { formatAllDayDate } from '../utils/timezone.js';
 import { getCalendarClient } from '../lib/calendar.js';
 import { googleAuthService } from './googleAuthService.js';
+import { classifyGoogleError, isAlreadyGone, type PushFailure } from '../lib/googleErrors.js';
 import { customerService } from './customerService.js';
 import { extractDomain, isPersonalDomain, normalizeDomain } from '../utils/domainResolver.js';
 import { wsEmit, wsEmitToUser } from '../websocket.js';
@@ -77,6 +78,22 @@ function remindersColumn(
 ): Prisma.InputJsonValue | typeof Prisma.DbNull {
   return reminders ? (reminders as unknown as Prisma.InputJsonValue) : Prisma.DbNull;
 }
+
+/**
+ * What a push to Google actually did.
+ *
+ * It used to return `undefined` from five places for four different reasons —
+ * not connected, row gone, no Google event, and a swallowed failure — so the
+ * caller could not tell "there was nothing to do" from "it broke". That is the
+ * whole bug: the request answered success either way.
+ *
+ * Positive at every exit, so `skipped` can never be inferred from the absence
+ * of a success. Only `failed` warns or blocks.
+ */
+export type PushOutcome =
+  | { status: 'pushed' }
+  | { status: 'skipped'; reason: 'not-connected' | 'row-missing' | 'no-google-event' }
+  | { status: 'failed'; failure: PushFailure };
 
 export const calendarService = {
   async findAll(query: { start?: string; end?: string }, userId: string) {
@@ -163,7 +180,7 @@ export const calendarService = {
     });
 
     // Sync to Google if connected
-    await this.pushToGoogle(event.id, 'create', userId, {
+    const push = await this.pushToGoogle(event.id, 'create', userId, {
       attendees: data.attendees,
       sendUpdates: data.sendUpdates,
       addGoogleMeet: data.addGoogleMeet,
@@ -175,8 +192,10 @@ export const calendarService = {
 
     // Re-fetch event after pushToGoogle updated it with Google response data
     const updated = await prisma.calendarEvent.findUnique({ where: { id: event.id } });
+    // Logged whether or not the push landed: the writes that fail to reach
+    // Google are exactly the ones that later diverge and need explaining.
     auditService.log({ userId, action: 'EVENT_CREATED', entityType: 'event', entityId: event.id, details: { title: data.title, startTime: data.startTime, endTime: data.endTime } });
-    return updated || event;
+    return { event: updated || event, push };
   },
 
   async update(id: string, data: {
@@ -224,7 +243,7 @@ export const calendarService = {
       data: updateData,
     });
 
-    await this.pushToGoogle(event.id, 'update', userId, {
+    const push = await this.pushToGoogle(event.id, 'update', userId, {
       attendees: data.attendees,
       sendUpdates: data.sendUpdates,
       addGoogleMeet: data.addGoogleMeet,
@@ -237,7 +256,7 @@ export const calendarService = {
     // Re-fetch event after pushToGoogle updated it with Google response data
     const updated = await prisma.calendarEvent.findUnique({ where: { id: event.id } });
     auditService.log({ userId, action: 'EVENT_UPDATED', entityType: 'event', entityId: id, details: { changes: Object.keys(data) } });
-    return updated || event;
+    return { event: updated || event, push };
   },
 
   async delete(id: string, userId: string, mode: 'single' | 'all' = 'single') {
@@ -255,7 +274,17 @@ export const calendarService = {
             eventId: event.recurringEventId,
           });
         } catch (err) {
-          console.error('Failed to delete recurring series on Google Calendar:', err);
+          // Already gone in Google is the outcome we wanted; anything else must
+          // stop the deleteMany below from removing a series still live there.
+          if (!isAlreadyGone(err)) {
+            console.error('Failed to delete recurring series on Google Calendar:', err);
+            throw Object.assign(
+              new Error(
+                `Could not delete this series from Google Calendar. ${classifyGoogleError(err).message}`
+              ),
+              { status: 502 }
+            );
+          }
         }
       }
       // Delete all local instances of this recurring series
@@ -265,7 +294,22 @@ export const calendarService = {
     } else {
       // Delete single instance from Google
       if (event.googleEventId) {
-        await this.pushToGoogle(id, 'delete', userId);
+        const push = await this.pushToGoogle(id, 'delete', userId);
+        /**
+         * Unlike create and update, the push here happens BEFORE the local
+         * write — so aborting leaves the database and Google in agreement and
+         * makes the error honest rather than a lie about a committed change.
+         *
+         * 502, never Google's own status: a 401 propagated from a lapsed
+         * Google grant would reach the client's axios interceptor and log the
+         * user out of Mailviz, whose session is perfectly valid.
+         */
+        if (push.status === 'failed') {
+          throw Object.assign(
+            new Error(`Could not delete this event from Google Calendar. ${push.failure.message}`),
+            { status: 502 }
+          );
+        }
       }
       await prisma.calendarEvent.delete({ where: { id, userId } });
     }
@@ -649,9 +693,9 @@ export const calendarService = {
       reminders?: EventReminders;
       visibility?: EventVisibility;
     },
-  ) {
+  ): Promise<PushOutcome> {
     const oauth2Client = await googleAuthService.getAuthenticatedClient(userId);
-    if (!oauth2Client) return; // Not connected, skip
+    if (!oauth2Client) return { status: 'skipped', reason: 'not-connected' };
 
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
@@ -674,7 +718,7 @@ export const calendarService = {
     try {
       if (action === 'create') {
         const event = await prisma.calendarEvent.findUnique({ where: { id: eventId } });
-        if (!event) return;
+        if (!event) return { status: 'skipped', reason: 'row-missing' };
 
         const requestBody: Record<string, any> = {
           summary: event.title,
@@ -763,7 +807,7 @@ export const calendarService = {
         });
       } else if (action === 'update') {
         const event = await prisma.calendarEvent.findUnique({ where: { id: eventId } });
-        if (!event?.googleEventId) return;
+        if (!event?.googleEventId) return { status: 'skipped', reason: 'no-google-event' };
 
         const requestBody: Record<string, any> = {
           summary: event.title,
@@ -871,15 +915,21 @@ export const calendarService = {
         });
       } else if (action === 'delete') {
         const event = await prisma.calendarEvent.findUnique({ where: { id: eventId } });
-        if (!event?.googleEventId) return;
+        if (!event?.googleEventId) return { status: 'skipped', reason: 'no-google-event' };
 
         await calendar.events.delete({
           calendarId: 'primary',
           eventId: event.googleEventId,
         });
       }
+      return { status: 'pushed' };
     } catch (err) {
+      // A delete treats "already gone" as success. Otherwise a row whose Google
+      // event was removed in Google's own UI can never be deleted here: every
+      // attempt repeats the same 404.
+      if (action === 'delete' && isAlreadyGone(err)) return { status: 'pushed' };
       console.error(`Failed to ${action} event on Google Calendar:`, err);
+      return { status: 'failed', failure: classifyGoogleError(err) };
     }
   },
 };
