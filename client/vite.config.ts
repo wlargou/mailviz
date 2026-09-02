@@ -1,7 +1,31 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+/**
+ * The version, baked in at build time.
+ *
+ * The browser cannot read the repo's VERSION file, so it is substituted into
+ * the bundle here — which also means the string in a user's tab is the one from
+ * the commit that built it, not whatever the server happens to be running now.
+ * That difference is the point: the About dialog shows both, so a stale cached
+ * client is visible rather than mysterious.
+ */
+function appVersion(): string {
+  try {
+    return readFileSync(resolve(__dirname, '../VERSION'), 'utf-8').trim() || 'unknown';
+  } catch {
+    // A missing file must not fail the build — the version is diagnostic.
+    return 'unknown';
+  }
+}
 
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion()),
+    __BUILT_AT__: JSON.stringify(new Date().toISOString()),
+  },
   plugins: [react()],
   resolve: {
     dedupe: ['react', 'react-dom'],

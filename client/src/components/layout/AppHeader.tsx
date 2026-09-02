@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   Header,
   HeaderGlobalAction,
@@ -6,17 +7,19 @@ import {
   HeaderName,
   SkipToContent,
 } from '@carbon/react';
-import { Light, Asleep, Logout } from '@carbon/icons-react';
+import { Light, Asleep, Logout, Information } from '@carbon/icons-react';
 import { useUIStore } from '../../store/uiStore';
 import { useAuthStore } from '../../store/authStore';
 import { GlobalSearch } from './GlobalSearch';
 import { NotificationBell } from './NotificationBell';
 import { ConnectionStatus } from './ConnectionStatus';
 import { MailvizLogo } from '../shared/MailvizLogo';
+import { AboutModal } from '../shared/AboutModal';
 
 export function AppHeader() {
   const { theme, toggleTheme, sideNavOpen, setSideNavOpen } = useUIStore();
   const logout = useAuthStore((s) => s.logout);
+  const [aboutOpen, setAboutOpen] = useState(false);
 
   return (
     <Header aria-label="Mailviz Productivity Hub">
@@ -34,6 +37,12 @@ export function AppHeader() {
         <GlobalSearch />
         <ConnectionStatus />
         <NotificationBell />
+        {/* Next to the connection indicator on purpose: both answer "is what I
+            am looking at current", which is the question someone has when they
+            reach for either. */}
+        <HeaderGlobalAction aria-label="About Mailviz" onClick={() => setAboutOpen(true)}>
+          <Information size={20} />
+        </HeaderGlobalAction>
         <HeaderGlobalAction
           aria-label="Toggle theme"
           onClick={toggleTheme}
@@ -49,6 +58,7 @@ export function AppHeader() {
           <Logout size={20} />
         </HeaderGlobalAction>
       </HeaderGlobalBar>
+      <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
     </Header>
   );
 }
