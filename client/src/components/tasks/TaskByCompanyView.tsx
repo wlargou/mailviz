@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Button,
   DataTableSkeleton,
@@ -9,9 +9,6 @@ import {
   TableBody,
   TableCell,
   TableContainer,
-  TableExpandHeader,
-  TableExpandRow,
-  TableExpandedRow,
   TableHead,
   TableHeader,
   TableRow,
@@ -21,7 +18,7 @@ import {
   Tag,
   Toggle,
 } from '@carbon/react';
-import { Add, Email, WarningFilled } from '@carbon/icons-react';
+import { Add, ChevronRight, Email, WarningFilled } from '@carbon/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { format, isToday, isTomorrow } from 'date-fns';
 import { tasksApi, type TaskCompanyGroup, type TaskCompanyMeta, type TaskGroupSort } from '../../api/tasks';
@@ -35,6 +32,7 @@ import { TaskStatusTag } from '../shared/TaskStatusTag';
 import { PriorityBadge } from '../shared/PriorityBadge';
 import { LabelTag } from '../shared/LabelTag';
 import { toolbarSearchValue, type TableToolbarSearchChangeEvent } from '../../utils/carbonSearch';
+import { decodeEntities } from '../../utils/text';
 import type { Label, Task } from '../../types/task';
 
 interface TaskByCompanyViewProps {
@@ -46,6 +44,23 @@ interface TaskByCompanyViewProps {
 
 /** Which subset of the returned tasks the chips are narrowing to. */
 type Chip = 'all' | 'overdue' | 'urgent';
+
+/**
+ * Expand, task, status, priority, due, labels, actions — List View's column
+ * order, minus the Company column that is the grouping here.
+ */
+const COLUMN_COUNT = 7;
+
+/** Tasks with no company still need a stable row key. */
+const UNASSIGNED_KEY = '__unassigned__';
+
+/** `90` reads as `1h 30m`. Minutes are how the field is stored, not how it reads. */
+function formatEstimate(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (!h) return `${m}m`;
+  return m ? `${h}h ${m}m` : `${h}h`;
+}
 
 const SORT_ITEMS: Array<{ id: TaskGroupSort; text: string }> = [
   { id: 'urgency', text: 'Urgency' },
@@ -169,6 +184,24 @@ export function TaskByCompanyView({ labels, onEdit, onDelete, onCreateNew }: Tas
 
   useEffect(() => { void load(); }, [load]);
 
+  /**
+   * Open the leading company, so the view never lands entirely collapsed.
+   *
+   * Keyed on which company leads rather than run once on mount: a search that
+   * promotes a different company should open that one too. Keying it also
+   * means collapsing the leading company sticks — re-running on every `groups`
+   * identity would reopen it under the user on the next background refresh.
+   */
+  const seededFor = useRef<string | null>(null);
+  useEffect(() => {
+    const first = groups[0];
+    if (!first) return;
+    const key = first.customer?.id ?? UNASSIGNED_KEY;
+    if (seededFor.current === key) return;
+    seededFor.current = key;
+    setOpenCompanies((set) => new Set(set).add(key));
+  }, [groups]);
+
   const toggle = (set: Set<string>, id: string) => {
     const next = new Set(set);
     if (next.has(id)) next.delete(id);
@@ -242,10 +275,14 @@ export function TaskByCompanyView({ labels, onEdit, onDelete, onCreateNew }: Tas
   const activeFilterCount = [status, priority, labelId].filter(Boolean).length;
   const filtered = Boolean(search || status || priority || labelId);
 
+  // Shape for the loading skeleton only — the real header is written out
+  // below, because two of its columns are icons with no visible label.
   const headers = [
-    { key: 'name', header: 'Company' },
-    { key: 'count', header: 'Tasks' },
-    { key: 'due', header: '' },
+    { key: 'title', header: 'Task' },
+    { key: 'labels', header: 'Labels' },
+    { key: 'due', header: 'Due' },
+    { key: 'priority', header: 'Priority' },
+    { key: 'status', header: 'Status' },
   ];
 
   const toolbar = (
@@ -321,7 +358,7 @@ export function TaskByCompanyView({ labels, onEdit, onDelete, onCreateNew }: Tas
 
   return (
     <div className="task-by-company">
-      <TableContainer className="tasks-table">
+      <TableContainer className="task-by-company__container">
         {toolbar}
 
         {groups.length === 0 ? (
@@ -378,194 +415,230 @@ export function TaskByCompanyView({ labels, onEdit, onDelete, onCreateNew }: Tas
               </div>
             </div>
 
-            <Table className="task-by-company__table">
+            {/*
+              ONE table, not a table per company.
+
+              The first attempt nested a table inside each company's
+              `TableExpandedRow`, and both of its problems came from that
+              nesting: Carbon hides an expanded row with a sibling selector on
+              the parent row, which does not reach across a table boundary — so
+              every task's detail panel rendered open — and each inner table
+              sized its own columns, so nothing lined up with anything.
+
+              So the task columns define the grid and the company rows span it
+              with `colSpan`, the way a section header does. Alignment is then
+              automatic, and what is open is decided here in React rather than
+              by CSS that cannot see the hierarchy.
+            */}
+            <Table className="task-by-company__table" size="lg">
               <TableHead>
                 <TableRow>
-                  <TableExpandHeader aria-label="Expand company" />
-                  {headers.map((h) => (
-                    <TableHeader key={h.key} id={h.key}>{h.header}</TableHeader>
-                  ))}
+                  <TableHeader className="task-by-company__col-expand">
+                    <span className="cds--visually-hidden">Expand</span>
+                  </TableHeader>
+                  <TableHeader className="task-by-company__col-title">Title</TableHeader>
+                  <TableHeader className="task-by-company__col-status">Status</TableHeader>
+                  <TableHeader className="task-by-company__col-priority">Priority</TableHeader>
+                  <TableHeader className="task-by-company__col-due">Due Date</TableHeader>
+                  <TableHeader className="task-by-company__col-labels">Labels</TableHeader>
+                  <TableHeader className="task-by-company__col-actions">
+                    <span className="cds--visually-hidden">Actions</span>
+                  </TableHeader>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {visibleGroups.map((group) => {
-                  const key = group.customer?.id ?? '__unassigned__';
+                  const key = group.customer?.id ?? UNASSIGNED_KEY;
                   const companyOpen = openCompanies.has(key);
                   const name = group.customer?.name ?? 'No company';
 
                   return (
-                    <>
-                      <TableExpandRow
-                        key={key}
-                        isExpanded={companyOpen}
-                        onExpand={() => setOpenCompanies((s) => toggle(s, key))}
-                        aria-label={`${companyOpen ? 'Collapse' : 'Expand'} ${name}`}
-                      >
-                        <TableCell>
-                          <span className="task-by-company__company">
+                    <Fragment key={key}>
+                      <TableRow className="task-by-company__company-row">
+                        <TableCell colSpan={COLUMN_COUNT}>
+                          <button
+                            type="button"
+                            className="task-by-company__company-toggle"
+                            aria-expanded={companyOpen}
+                            aria-label={`${companyOpen ? 'Collapse' : 'Expand'} ${name}`}
+                            onClick={() => setOpenCompanies((set) => toggle(set, key))}
+                          >
+                            <ChevronRight
+                              size={16}
+                              className={`task-by-company__chevron${companyOpen ? ' task-by-company__chevron--open' : ''}`}
+                            />
                             <CompanyLogo
                               src={group.customer?.logoUrl}
                               name={name}
                               className="task-by-company__logo"
                             />
                             <span className="task-by-company__name">{name}</span>
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <span className="task-by-company__counts">
                             <Tag type="cool-gray" size="sm">
                               {group.tasks.length} {group.tasks.length === 1 ? 'task' : 'tasks'}
                             </Tag>
                             {group.overdueCount > 0 && chip !== 'urgent' && (
                               <Tag type="red" size="sm">
-                                <WarningFilled size={12} /> {group.overdueCount} overdue
+                                {group.overdueCount} overdue
                               </Tag>
                             )}
-                          </span>
+                            {group.overdueCount === 0 && group.nextDueAt && (
+                              <span className="task-by-company__next-due">
+                                Next due {dueLabel(group.nextDueAt)}
+                              </span>
+                            )}
+                          </button>
                         </TableCell>
-                        <TableCell className="task-by-company__next-due-cell">
-                          {group.overdueCount === 0 && group.nextDueAt
-                            ? `Next due ${dueLabel(group.nextDueAt)}`
-                            : ''}
-                        </TableCell>
-                      </TableExpandRow>
+                      </TableRow>
 
-                      {/* The second level. Carbon expands one, so the tasks are
-                          their own table inside the company's expanded row. */}
-                      <TableExpandedRow colSpan={headers.length + 1} className="task-by-company__nested">
-                        <Table className="task-by-company__tasks" size="sm">
-                          <TableBody>
-                            {group.tasks.map((task) => {
-                              const taskOpen = openTasks.has(task.id);
-                              const overdue = isOverdue(task);
-                              const sourceEmail = task.mailToTask?.email ?? null;
+                      {/* Rendered only while the company is open, so a
+                          collapsed section costs nothing and cannot leak its
+                          rows into the layout. */}
+                      {companyOpen && group.tasks.map((task) => {
+                        const taskOpen = openTasks.has(task.id);
+                        const overdue = isOverdue(task);
+                        const sourceEmail = task.mailToTask?.email ?? null;
 
-                              return (
-                                <>
-                                  <TableExpandRow
-                                    key={task.id}
-                                    isExpanded={taskOpen}
-                                    onExpand={() => setOpenTasks((s) => toggle(s, task.id))}
-                                    aria-label={`${taskOpen ? 'Collapse' : 'Expand'} ${task.title}`}
-                                    className={overdue ? 'task-by-company__task--overdue' : undefined}
+                        return (
+                          <Fragment key={task.id}>
+                            <TableRow
+                              className={`task-by-company__task-row${overdue ? ' task-by-company__task-row--overdue' : ''}${taskOpen ? ' task-by-company__task-row--open' : ''}`}
+                            >
+                              <TableCell className="task-by-company__col-expand">
+                                <button
+                                  type="button"
+                                  className="task-by-company__task-toggle"
+                                  aria-expanded={taskOpen}
+                                  aria-label={`${taskOpen ? 'Collapse' : 'Expand'} ${decodeEntities(task.title)}`}
+                                  onClick={() => setOpenTasks((set) => toggle(set, task.id))}
+                                >
+                                  <ChevronRight
+                                    size={16}
+                                    className={`task-by-company__chevron${taskOpen ? ' task-by-company__chevron--open' : ''}`}
+                                  />
+                                </button>
+                              </TableCell>
+                              <TableCell className="task-by-company__col-title">
+                                <span className="task-by-company__title-cell">
+                                  {sourceEmail && (
+                                    <Email
+                                      size={16}
+                                      className="task-by-company__mail-icon"
+                                      aria-label="Created from an email"
+                                    />
+                                  )}
+                                  <button
+                                    type="button"
+                                    className="task-by-company__title"
+                                    title={decodeEntities(task.title)}
+                                    onClick={() => onEdit(task)}
                                   >
-                                    <TableCell className="task-by-company__task-title">
-                                      {task.title}
-                                    </TableCell>
-                                    <TableCell>
-                                      {task.labels.map((label) => (
-                                        <LabelTag key={label.id} label={label} />
-                                      ))}
-                                    </TableCell>
-                                    <TableCell>
-                                      {sourceEmail && (
-                                        <Email
-                                          size={16}
-                                          className="task-by-company__mail-icon"
-                                          aria-label="Created from an email"
-                                        />
-                                      )}
-                                    </TableCell>
-                                    <TableCell>
-                                      {task.dueDate ? (
-                                        <span
-                                          className={`task-by-company__due${overdue ? ' task-by-company__due--overdue' : ''}`}
-                                        >
-                                          {overdue && <WarningFilled size={12} />}{' '}
-                                          {dueLabel(task.dueDate)}
-                                        </span>
-                                      ) : (
-                                        <span className="task-by-company__due--none">—</span>
-                                      )}
-                                    </TableCell>
-                                    <TableCell>
-                                      <PriorityBadge priority={task.priority} />
-                                    </TableCell>
-                                    <TableCell>
-                                      <TaskStatusTag status={task.status} />
-                                    </TableCell>
-                                    <TableCell className="task-by-company__actions-cell">
-                                      {/* Row actions, as the design has them.
-                                          An OverflowMenu rather than a row of
-                                          icon buttons: the same three actions
-                                          on every row is a menu, and it keeps
-                                          the row scannable. */}
-                                      {/*
-                                        `iconDescription`, not `aria-label`.
-                                        Both are typed, but v11 renders the
-                                        former as the button's assistive text
-                                        (defaulting to "Options") and drops the
-                                        latter — so every row's menu would
-                                        otherwise be called the same thing.
-                                      */}
-                                      <OverflowMenu
-                                        size="sm"
-                                        flipped
-                                        iconDescription={`Actions for ${task.title}`}
-                                      >
-                                        {terminalStatus && task.status !== terminalStatus && (
-                                          <OverflowMenuItem
-                                            itemText="Mark as done"
-                                            disabled={busyTask === task.id}
-                                            onClick={() => void markDone(task)}
-                                          />
-                                        )}
-                                        <OverflowMenuItem
-                                          itemText="Open email"
-                                          disabled={!sourceEmail?.threadId}
-                                          onClick={() => openEmail(task)}
-                                        />
-                                        <OverflowMenuItem
-                                          itemText="Edit task"
-                                          onClick={() => onEdit(task)}
-                                        />
-                                        <OverflowMenuItem
-                                          isDelete
-                                          hasDivider
-                                          itemText="Delete task"
-                                          onClick={() => onDelete(task)}
-                                        />
-                                      </OverflowMenu>
-                                    </TableCell>
-                                  </TableExpandRow>
+                                    {decodeEntities(task.title)}
+                                  </button>
+                                </span>
+                              </TableCell>
+                              <TableCell className="task-by-company__col-status">
+                                <TaskStatusTag status={task.status} />
+                              </TableCell>
+                              <TableCell className="task-by-company__col-priority">
+                                <PriorityBadge priority={task.priority} />
+                              </TableCell>
+                              <TableCell className="task-by-company__col-due">
+                                {task.dueDate ? (
+                                  <span
+                                    className={`task-by-company__due${overdue ? ' task-by-company__due--overdue' : ''}`}
+                                  >
+                                    {overdue && <WarningFilled size={12} />} {dueLabel(task.dueDate)}
+                                  </span>
+                                ) : (
+                                  <span className="task-by-company__due--none">—</span>
+                                )}
+                              </TableCell>
+                              <TableCell className="task-by-company__col-labels">
+                                {task.labels.map((label) => (
+                                  <LabelTag key={label.id} label={label} />
+                                ))}
+                              </TableCell>
+                              <TableCell className="task-by-company__col-actions">
+                                <OverflowMenu
+                                  size="sm"
+                                  flipped
+                                  iconDescription={`Actions for ${decodeEntities(task.title)}`}
+                                >
+                                  {terminalStatus && task.status !== terminalStatus && (
+                                    <OverflowMenuItem
+                                      itemText="Mark as done"
+                                      disabled={busyTask === task.id}
+                                      onClick={() => void markDone(task)}
+                                    />
+                                  )}
+                                  <OverflowMenuItem
+                                    itemText="Open email"
+                                    disabled={!sourceEmail?.threadId}
+                                    onClick={() => openEmail(task)}
+                                  />
+                                  <OverflowMenuItem itemText="Edit task" onClick={() => onEdit(task)} />
+                                  <OverflowMenuItem
+                                    isDelete
+                                    hasDivider
+                                    itemText="Delete task"
+                                    onClick={() => onDelete(task)}
+                                  />
+                                </OverflowMenu>
+                              </TableCell>
+                            </TableRow>
 
-                                  <TableExpandedRow colSpan={8} className="task-by-company__detail-row">
-                                    <div className="task-by-company__detail">
-                                      {task.description && (
-                                        <p className="task-by-company__description">{task.description}</p>
-                                      )}
-                                      <dl className="task-by-company__facts">
-                                        {sourceEmail && (
-                                          <div>
-                                            <dt>From email</dt>
-                                            <dd>
-                                              {sourceEmail.fromName || sourceEmail.from} ·{' '}
-                                              {dueLabel(sourceEmail.receivedAt)}
-                                            </dd>
-                                          </div>
-                                        )}
+                            {taskOpen && (
+                              <TableRow className="task-by-company__detail-row">
+                                <TableCell colSpan={COLUMN_COUNT}>
+                                  <div className="task-by-company__detail">
+                                    {task.description && (
+                                      <p className="task-by-company__description">
+                                        {decodeEntities(task.description)}
+                                      </p>
+                                    )}
+                                    <dl className="task-by-company__facts">
+                                      {sourceEmail && (
                                         <div>
-                                          <dt>Due</dt>
+                                          <dt>From email</dt>
                                           <dd>
-                                            {task.dueDate
-                                              ? format(new Date(task.dueDate), 'MMM d, yyyy')
-                                              : 'No due date'}
+                                            {decodeEntities(sourceEmail.fromName || sourceEmail.from)} ·{' '}
+                                            {dueLabel(sourceEmail.receivedAt)}
                                           </dd>
                                         </div>
+                                      )}
+                                      {task.assignedTo && (
                                         <div>
-                                          <dt>Priority</dt>
-                                          <dd><PriorityBadge priority={task.priority} /></dd>
+                                          <dt>Assigned to</dt>
+                                          <dd>{task.assignedTo.name || task.assignedTo.email}</dd>
                                         </div>
-                                      </dl>
-                                    </div>
-                                  </TableExpandedRow>
-                                </>
-                              );
-                            })}
-                          </TableBody>
-                        </Table>
-                      </TableExpandedRow>
-                    </>
+                                      )}
+                                      {task.estimatedMinutes != null && (
+                                        <div>
+                                          <dt>Estimate</dt>
+                                          <dd>{formatEstimate(task.estimatedMinutes)}</dd>
+                                        </div>
+                                      )}
+                                      <div>
+                                        <dt>Due</dt>
+                                        <dd>
+                                          {task.dueDate
+                                            ? format(new Date(task.dueDate), 'MMM d, yyyy')
+                                            : 'No due date'}
+                                        </dd>
+                                      </div>
+                                      <div>
+                                        <dt>Created</dt>
+                                        <dd>{format(new Date(task.createdAt), 'MMM d, yyyy')}</dd>
+                                      </div>
+                                    </dl>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </Fragment>
+                        );
+                      })}
+                    </Fragment>
                   );
                 })}
               </TableBody>

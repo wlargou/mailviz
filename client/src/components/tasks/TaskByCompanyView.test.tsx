@@ -129,6 +129,20 @@ function renderView(props: { onEdit: (t: Task) => void }) {
   );
 }
 
+/**
+ * Ensure a company section is open.
+ *
+ * The leading company opens itself on mount, so a bare click on
+ * `/Expand Acme/` finds nothing when Acme happens to lead — and *collapses* it
+ * if the matcher is loosened to catch both labels. Asserting on the label is
+ * the point: it is the same control either way, and this reads its state
+ * rather than assuming an order the fixtures are free to change.
+ */
+async function openCompany(user: ReturnType<typeof userEvent.setup>, name: RegExp) {
+  const control = await screen.findByRole('button', { name: new RegExp(`(Expand|Collapse) ${name.source}`) });
+  if (control.getAttribute('aria-expanded') !== 'true') await user.click(control);
+}
+
 /** Captured before any test mutates it; setState(_, true) replaces actions too. */
 const initialTaskState = useTaskStore.getState();
 
@@ -208,12 +222,18 @@ describe('TaskByCompanyView', () => {
       group('Globex', [makeTask({ title: 'behind a click' })]),
     ]);
 
+    const user = userEvent.setup();
     renderView({ onEdit: vi.fn() });
 
-    // Carbon renders collapsed content in the DOM, so visibility is the check
-    // that distinguishes open from closed.
-    const first = await screen.findByText('visible on mount');
-    expect(first).toBeVisible();
+    expect(await screen.findByText('visible on mount')).toBeVisible();
+
+    // And only the first. Every company section rendering open is the same
+    // failure seen from the other side — the screen becomes one flat list and
+    // the grouping stops meaning anything.
+    expect(screen.queryByText('behind a click')).not.toBeInTheDocument();
+
+    await openCompany(user, /Globex/);
+    expect(screen.getByText('behind a click')).toBeVisible();
   });
 
   it('hands the whole task back from the row menu', async () => {
@@ -226,7 +246,7 @@ describe('TaskByCompanyView', () => {
     respond([group('Acme', [target])]);
 
     renderView({ onEdit });
-    await user.click(await screen.findByRole('button', { name: /Expand Acme/ }));
+    await openCompany(user, /Acme/);
     await user.click(screen.getByRole('button', { name: /Actions for open me/ }));
     await user.click(await screen.findByText('Edit task'));
 
@@ -353,15 +373,18 @@ describe('TaskByCompanyView — the task row', () => {
     } as Partial<Task>);
 
   it('starts every row collapsed', async () => {
-    // Carbon keeps an expanded row in the DOM and hides it, so the honest
-    // assertion is the control's state rather than the absence of the content.
+    // Both halves are load-bearing. Opening a company used to render every one
+    // of its task panels at once while each toggle still reported itself
+    // collapsed, so `aria-expanded` alone passed straight through the bug —
+    // the detail content has to be absent, not merely announced as hidden.
     const user = userEvent.setup();
     respond([group('Acme', [withEmail()])]);
     renderView({ onEdit: vi.fn() });
 
-    await user.click(await screen.findByRole('button', { name: /Expand Acme/ }));
+    await openCompany(user, /Acme/);
     expect(screen.getByRole('button', { name: /Expand Renewal/ }))
       .toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText(/Morpheus license renewal terms/)).not.toBeInTheDocument();
   });
 
   it('reveals the description and the source email when expanded', async () => {
@@ -369,8 +392,8 @@ describe('TaskByCompanyView — the task row', () => {
     respond([group('Acme', [withEmail()])]);
     renderView({ onEdit: vi.fn() });
 
-    await user.click(await screen.findByRole('button', { name: /Expand Acme/ }));
-    await user.click(await screen.findByRole('button', { name: /Expand Renewal/ }));
+    await openCompany(user, /Acme/);
+    await openCompany(user, /Renewal/);
 
     expect(screen.getByText(/Morpheus license renewal/)).toBeInTheDocument();
     expect(screen.getByText(/Ilham Bennani/)).toBeInTheDocument();
@@ -381,7 +404,7 @@ describe('TaskByCompanyView — the task row', () => {
     respond([group('Acme', [withEmail()])]);
     renderView({ onEdit: vi.fn() });
 
-    await user.click(await screen.findByRole('button', { name: /Expand Acme/ }));
+    await openCompany(user, /Acme/);
     const disclosure = await screen.findByRole('button', { name: /Expand Renewal/ });
     expect(disclosure).toHaveAttribute('aria-expanded', 'false');
 
@@ -396,7 +419,7 @@ describe('TaskByCompanyView — the task row', () => {
     respond([group('Acme', [withEmail()])]);
     renderView({ onEdit: vi.fn() });
 
-    await user.click(await screen.findByRole('button', { name: /Expand Acme/ }));
+    await openCompany(user, /Acme/);
     await user.click(screen.getByRole('button', { name: /Actions for Renewal/ }));
     await user.click(await screen.findByText('Open email'));
 
@@ -410,7 +433,7 @@ describe('TaskByCompanyView — the task row', () => {
     respond([group('Acme', [makeTask({ title: 'Manual task' })])]);
     renderView({ onEdit: vi.fn() });
 
-    await user.click(await screen.findByRole('button', { name: /Expand Acme/ }));
+    await openCompany(user, /Acme/);
     await user.click(screen.getByRole('button', { name: /Actions for Manual task/ }));
 
     const item = (await screen.findByText('Open email')).closest('button');
@@ -426,7 +449,7 @@ describe('TaskByCompanyView — the task row', () => {
     vi.mocked(tasksApi.update).mockResolvedValue({ data: { data: target } } as never);
     renderView({ onEdit: vi.fn() });
 
-    await user.click(await screen.findByRole('button', { name: /Expand Acme/ }));
+    await openCompany(user, /Acme/);
     await user.click(screen.getByRole('button', { name: /Actions for Renewal/ }));
     await user.click(await screen.findByText('Mark as done'));
 
@@ -607,7 +630,7 @@ describe('TaskByCompanyView — row actions', () => {
       </MemoryRouter>
     );
 
-    await user.click(await screen.findByRole('button', { name: /Expand Acme/ }));
+    await openCompany(user, /Acme/);
     await user.click(screen.getByRole('button', { name: /Actions for Doomed/ }));
     await user.click(await screen.findByText('Delete task'));
 
@@ -621,7 +644,7 @@ describe('TaskByCompanyView — row actions', () => {
     const user = userEvent.setup();
     renderView({ onEdit: vi.fn() });
 
-    await user.click(await screen.findByRole('button', { name: /Expand Acme/ }));
+    await openCompany(user, /Acme/);
 
     expect(screen.getByRole('button', { name: /Actions for First/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Actions for Second/ })).toBeInTheDocument();
