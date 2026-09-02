@@ -10,7 +10,7 @@ import { decodeEntities } from '../../utils/text';
 
 interface KanbanCardProps {
   task: Task;
-  onClick: (task: Task) => void;
+  onClick: (taskId: string) => void;
 }
 
 export function KanbanCard({ task, onClick }: KanbanCardProps) {
@@ -34,7 +34,7 @@ export function KanbanCard({ task, onClick }: KanbanCardProps) {
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
       <ClickableTile
         className={`kanban-card kanban-card--${task.priority.toLowerCase()} ${isDragging ? 'dragging' : ''}`}
-        onClick={() => onClick(task)}
+        onClick={() => onClick(task.id)}
       >
         <div className="card-title">{decodeEntities(task.title)}</div>
         <div className="card-badges">

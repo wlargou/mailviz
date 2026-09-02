@@ -21,7 +21,9 @@ export function TasksPage() {
 
   const [labels, setLabels] = useState<Label[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
-  const [editTask, setEditTask] = useState<Task | null>(null);
+  // An id, not the object. Handing the panel a row captured at click time
+  // is what let it re-seed stale values and save them back.
+  const [editTaskId, setEditTaskId] = useState<string | null>(null);
   const [deleteTask, setDeleteTask] = useState<Task | null>(null);
 
   const fetchLabels = useCallback(async () => {
@@ -86,7 +88,7 @@ export function TasksPage() {
   };
 
   const handleTaskUpdated = () => {
-    setEditTask(null);
+    setEditTaskId(null);
   };
 
   return (
@@ -110,18 +112,18 @@ export function TasksPage() {
                   tasks={tasks}
                   loading={loading}
                   labels={labels}
-                  onEdit={setEditTask}
+                  onEdit={setEditTaskId}
                   onDelete={setDeleteTask}
                   onCreateNew={() => setCreateOpen(true)}
                 />
               </TabPanel>
               <TabPanel>
-                <TaskKanbanView onCardClick={setEditTask} />
+                <TaskKanbanView onCardClick={setEditTaskId} />
               </TabPanel>
               <TabPanel>
                 <TaskByCompanyView
                   labels={labels}
-                  onEdit={setEditTask}
+                  onEdit={setEditTaskId}
                   onDelete={setDeleteTask}
                   onCreateNew={() => setCreateOpen(true)}
                 />
@@ -139,9 +141,9 @@ export function TasksPage() {
       />
 
       <TaskDetailModal
-        task={editTask}
-        open={!!editTask}
-        onClose={() => setEditTask(null)}
+        taskId={editTaskId}
+        open={!!editTaskId}
+        onClose={() => setEditTaskId(null)}
         onUpdated={handleTaskUpdated}
         labels={labels}
       />

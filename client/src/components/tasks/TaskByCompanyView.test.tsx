@@ -120,7 +120,7 @@ function respond(groups: TaskCompanyGroup[], truncated = false) {
   vi.mocked(tasksApi.getGroupedByCompany).mockResolvedValue(payload(groups, truncated));
 }
 
-function renderView(props: { onEdit: (t: Task) => void }) {
+function renderView(props: { onEdit: (taskId: string) => void }) {
   return render(
     <MemoryRouter>
       <TaskByCompanyView
@@ -245,10 +245,13 @@ describe('TaskByCompanyView', () => {
     expect(screen.getByText('behind a click')).toBeVisible();
   });
 
-  it('hands the whole task back from the row menu', async () => {
-    // Edit moved into the row's overflow menu with the redesign — the title is
-    // a table cell now, and the row itself expands. What has to survive is
-    // that onEdit still receives the whole task.
+  it('hands back the task id, not the row it was holding', async () => {
+    // This assertion used to be the opposite, and the old contract was the bug:
+    // a view passing its own copy upward is how the edit panel came to re-seed
+    // stale values and save them back over newer ones. It also handed over the
+    // wrong SHAPE — this endpoint includes `mailToTask`, the list endpoint does
+    // not, so what the panel received depended on which tab you opened it from.
+    // The panel fetches by id now, so an id is all a view may pass.
     const user = userEvent.setup();
     const onEdit = vi.fn();
     const target = makeTask({ title: 'open me' });
@@ -259,8 +262,7 @@ describe('TaskByCompanyView', () => {
     await user.click(screen.getByRole('button', { name: /Actions for open me/ }));
     await user.click(await screen.findByText('Edit task'));
 
-    // The whole object, not just an id — TasksPage looks nothing up.
-    expect(onEdit).toHaveBeenCalledWith(target);
+    expect(onEdit).toHaveBeenCalledWith(target.id);
   });
 
   it('exposes every task row as a labelled expand control', async () => {
