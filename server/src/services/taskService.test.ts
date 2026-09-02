@@ -618,6 +618,52 @@ describe('taskService.create', () => {
   });
 });
 
+describe('taskService — description has one empty representation', () => {
+  /**
+   * The column is nullable, every other writer stores NULL for "no
+   * description", and the edit form clears by sending ''. Left alone the table
+   * would hold both — indistinguishable to every reader, and unrepairable by a
+   * later edit, since the form's diff baseline trims and so sees them as the
+   * same thing.
+   *
+   * Every assertion reads the raw Prisma row. Asserting the API response, or
+   * `toBeFalsy()`, passes for both representations — which is the entire bug.
+   */
+  it('stores NULL when a description is cleared', async () => {
+    const { alice } = await createTwoUsers();
+    const task = await createTask(alice.id, { title: 'Has one' });
+    await taskService.update(alice.id, task.id, { description: 'chase the renewal paperwork' });
+
+    await taskService.update(alice.id, task.id, { description: '' });
+
+    const row = await prisma.task.findUniqueOrThrow({ where: { id: task.id } });
+    expect(row.description).toBeNull();
+  });
+
+  it('leaves an untouched description alone', async () => {
+    // The mistake the fix invites: normalising unconditionally rather than
+    // only when the key is present would wipe the field on every unrelated
+    // save — which is exactly what the client no longer sends.
+    const { alice } = await createTwoUsers();
+    const task = await createTask(alice.id, { title: 'Keep it' });
+    await taskService.update(alice.id, task.id, { description: 'chase the renewal paperwork' });
+
+    await taskService.update(alice.id, task.id, { title: 'Renamed' });
+
+    const row = await prisma.task.findUniqueOrThrow({ where: { id: task.id } });
+    expect(row.description).toBe('chase the renewal paperwork');
+  });
+
+  it('stores NULL when created with an empty description', async () => {
+    const { alice } = await createTwoUsers();
+
+    const created = await taskService.create(alice.id, { title: 'Fresh', description: '' });
+
+    const row = await prisma.task.findUniqueOrThrow({ where: { id: created.id } });
+    expect(row.description).toBeNull();
+  });
+});
+
 describe('taskService.update', () => {
   it('survives a duplicate label id instead of losing every label', async () => {
     // TaskLabel is keyed on (taskId, labelId), and the rewrite is

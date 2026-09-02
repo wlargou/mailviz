@@ -504,6 +504,7 @@ export const taskService = {
         ...taskData,
         userId,
         dueDate: taskData.dueDate ? new Date(taskData.dueDate) : null,
+        description: taskData.description || null,
         position,
         customerId: customerId || null,
         assignedToId: assignedToId || null,
@@ -573,6 +574,19 @@ export const taskService = {
 
     if (customerId !== undefined) {
       updateData.customerId = customerId || null;
+    }
+
+    /**
+     * One empty representation, not two.
+     *
+     * The column is nullable and every other writer stores NULL for "no
+     * description", but the edit form clears by sending '' — so without this
+     * the table would hold both, indistinguishable to every reader and
+     * unrepairable by a later edit (the form's diff baseline trims, so a NULL
+     * row and an '' row look identical to it).
+     */
+    if (taskData.description !== undefined) {
+      updateData.description = taskData.description || null;
     }
 
     /**

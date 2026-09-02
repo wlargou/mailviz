@@ -121,10 +121,21 @@ export const customerService = {
   async create(userId: string, data: CreateCustomerInput) {
     await this.assertCategoryOwnedBy(userId, data.categoryId);
     const cleaned = cleanEmptyStrings(data);
-    const customer = await prisma.customer.create({
-      data: { ...cleaned, userId } as any,
-      include: { category: true, _count: { select: { contacts: true, tasks: true, emails: true } } },
-    });
+    let customer;
+    try {
+      customer = await prisma.customer.create({
+        data: { ...cleaned, userId } as any,
+        include: { category: true, _count: { select: { contacts: true, tasks: true, emails: true } } },
+      });
+    } catch (err: any) {
+      // `(userId, domain)` is unique. Naming the concept rather than echoing
+      // the constraint: under Prisma 7 + the pg adapter `meta.target` is
+      // undefined anyway, and what it does carry is raw column names.
+      if (err?.code === 'P2002') {
+        throw new AppError(409, 'CUSTOMER_EXISTS', 'A company with this domain already exists');
+      }
+      throw err;
+    }
     auditService.log({ userId, action: 'COMPANY_CREATED', entityType: 'company', entityId: customer.id, details: { name: data.name, domain: data.domain } });
     return customer;
   },
@@ -136,11 +147,19 @@ export const customerService = {
     }
     await this.assertCategoryOwnedBy(userId, data.categoryId);
     const cleaned = cleanEmptyStrings(data);
-    const customer = await prisma.customer.update({
-      where: { id, userId },
-      data: cleaned,
-      include: { category: true, _count: { select: { contacts: true, tasks: true, emails: true } } },
-    });
+    let customer;
+    try {
+      customer = await prisma.customer.update({
+        where: { id, userId },
+        data: cleaned,
+        include: { category: true, _count: { select: { contacts: true, tasks: true, emails: true } } },
+      });
+    } catch (err: any) {
+      if (err?.code === 'P2002') {
+        throw new AppError(409, 'CUSTOMER_EXISTS', 'A company with this domain already exists');
+      }
+      throw err;
+    }
     auditService.log({ userId, action: 'COMPANY_UPDATED', entityType: 'company', entityId: id, details: { changes: Object.keys(data) } });
     return customer;
   },

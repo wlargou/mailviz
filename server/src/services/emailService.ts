@@ -1381,7 +1381,7 @@ export const emailService = {
         // to keep. Only the fallback, which any API caller omitting a title
         // still reaches.
         title: data.title || decodeEntities(email.subject),
-        description: decodeEntities(email.snippet) || undefined,
+        description: decodeEntities(email.snippet) || null,
         priority: (data.priority as any) || 'MEDIUM',
         customerId: email.customerId,
         userId,
