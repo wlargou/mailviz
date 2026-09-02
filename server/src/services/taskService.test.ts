@@ -619,6 +619,25 @@ describe('taskService.create', () => {
 });
 
 describe('taskService.update', () => {
+  it('survives a duplicate label id instead of losing every label', async () => {
+    // TaskLabel is keyed on (taskId, labelId), and the rewrite is
+    // delete-then-recreate. Without skipDuplicates, `[x, x]` deleted the rows
+    // and then raised P2002 — which errorHandler does not map — so the caller
+    // saw a 500 with the labels already gone. The transaction means even an
+    // unmapped failure now rolls the delete back.
+    const { alice } = await createTwoUsers();
+    const label = await createLabel(alice.id, 'One');
+    const task = await createTask(alice.id, { title: 'Tagged' });
+    await prisma.taskLabel.create({ data: { taskId: task.id, labelId: label.id } });
+
+    const updated = await taskService.update(alice.id, task.id, {
+      labelIds: [label.id, label.id],
+    });
+
+    expect(updated.labels.map((l: { name: string }) => l.name)).toEqual(['One']);
+  });
+
+
   it('updates a task the caller owns', async () => {
     const { alice } = await createTwoUsers();
     const task = await createTask(alice.id, { title: 'Before', status: 'TODO' });

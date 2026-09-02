@@ -128,24 +128,32 @@ describe('TaskDetailModal', () => {
     // the control and save, and those labels were written onto a task that
     // never had them.
     const user = userEvent.setup();
+    const onUpdated = vi.fn();
     vi.mocked(tasksApi.getById).mockResolvedValue(
       axiosOk({ data: makeTask({ id: 'labelled', labels: [LABELS[0], LABELS[1]] }) })
     );
-    const { rerender } = renderPanel('labelled');
+    const { rerender } = render(
+      <TaskDetailModal taskId="labelled" open onClose={vi.fn()} onUpdated={onUpdated} labels={LABELS} />
+    );
     await waitFor(() => expect(shownLabelCount()).toBe(2));
 
     vi.mocked(tasksApi.getById).mockResolvedValue(
       axiosOk({ data: makeTask({ id: 'bare', title: 'No labels here', labels: [] }) })
     );
     rerender(
-      <TaskDetailModal taskId="bare" open onClose={vi.fn()} onUpdated={vi.fn()} labels={LABELS} />
+      <TaskDetailModal taskId="bare" open onClose={vi.fn()} onUpdated={onUpdated} labels={LABELS} />
     );
 
     await screen.findByDisplayValue('No labels here');
     expect(shownLabelCount()).toBe(0);
+
+    // Saving an untouched form must send nothing at all. That is the sharper
+    // form of the same assertion: if the field had inherited the previous
+    // task's two labels, they would differ from this task's empty set, and the
+    // save would write them onto a task that never had any.
     await user.click(screen.getByRole('button', { name: /Save/i }));
-    await waitFor(() => expect(tasksApi.update).toHaveBeenCalled());
-    expect(vi.mocked(tasksApi.update).mock.calls[0][1]).toMatchObject({ labelIds: [] });
+    await waitFor(() => expect(onUpdated).toHaveBeenCalled());
+    expect(tasksApi.update).not.toHaveBeenCalled();
   });
 
   it('keeps the label field on screen when there are no labels', async () => {
@@ -186,4 +194,146 @@ describe('TaskDetailModal', () => {
     // Never a form seeded with nothing — that is how a blank Save wipes a task.
     expect(screen.queryByLabelText('Title')).not.toBeInTheDocument();
   });
+
+  describe('sends only what changed', () => {
+    /**
+     * Writing the whole form back on every save meant a user who edited one
+     * field rewrote seven others from whatever the form held — reverting
+     * anything changed elsewhere in between, and destroying values the form
+     * could not represent.
+     *
+     * Every assertion here is an exact `toEqual` on the payload. An
+     * `objectContaining` would pass against the old all-fields payload too,
+     * which makes it no evidence at all.
+     */
+    const FULL = () =>
+      makeTask({
+        title: 'Original',
+        description: 'Original body',
+        status: 'TODO',
+        priority: 'HIGH',
+        dueDate: '2026-09-30T00:00:00.000Z',
+        labels: [LABELS[0], LABELS[1]],
+        customerId: 'cust-1',
+        estimatedMinutes: 60,
+      });
+
+    async function editTitleAndSave(user: ReturnType<typeof userEvent.setup>, to = 'New') {
+      const field = await screen.findByDisplayValue('Original');
+      await user.clear(field);
+      await user.type(field, to);
+      await user.click(screen.getByRole('button', { name: /Save/i }));
+      await waitFor(() => expect(tasksApi.update).toHaveBeenCalled());
+      return vi.mocked(tasksApi.update).mock.calls[0][1];
+    }
+
+    it('sends the one field the user edited, and nothing else', async () => {
+      const user = userEvent.setup();
+      vi.mocked(tasksApi.getById).mockResolvedValue(axiosOk({ data: FULL() }));
+      renderPanel('task-1');
+
+      expect(await editTitleAndSave(user)).toEqual({ title: 'New' });
+    });
+
+    it('does not treat a decoded title as an edit', async () => {
+      // The form holds `Renew A & B`; the row holds `Renew A &amp; B`. Diffing
+      // the form against the ROW reports every entity-bearing title as changed
+      // — re-sending exactly the rows this is meant to leave alone.
+      const user = userEvent.setup();
+      vi.mocked(tasksApi.getById).mockResolvedValue(
+        axiosOk({ data: makeTask({ title: 'Renew A &amp; B' }) })
+      );
+      renderPanel('task-1');
+
+      await screen.findByDisplayValue('Renew A & B');
+      await user.click(screen.getByRole('button', { name: /Save/i }));
+
+      await waitFor(() => expect(tasksApi.update).not.toHaveBeenCalled());
+    });
+
+    it('leaves an estimate the slider cannot represent alone', async () => {
+      // 45 minutes is not on the ladder, so the slider snaps to None. Saving
+      // used to write that None back and delete the estimate, without the user
+      // touching the control.
+      const user = userEvent.setup();
+      vi.mocked(tasksApi.getById).mockResolvedValue(
+        axiosOk({ data: makeTask({ title: 'Original', estimatedMinutes: 45 }) })
+      );
+      renderPanel('task-1');
+
+      expect(await editTitleAndSave(user)).toEqual({ title: 'New' });
+    });
+
+    it('clears a description the user emptied', async () => {
+      // `description.trim() || undefined` sent no key at all, and clearing a
+      // description was a silent no-op. The column is nullable but the
+      // validator is not, so '' is how it clears.
+      const user = userEvent.setup();
+      vi.mocked(tasksApi.getById).mockResolvedValue(
+        axiosOk({ data: makeTask({ description: 'Some body text' }) })
+      );
+      renderPanel('task-1');
+
+      const box = await screen.findByDisplayValue('Some body text');
+      await user.clear(box);
+      await user.click(screen.getByRole('button', { name: /Save/i }));
+
+      await waitFor(() => expect(tasksApi.update).toHaveBeenCalled());
+      expect(vi.mocked(tasksApi.update).mock.calls[0][1]).toEqual({ description: '' });
+    });
+
+    it('ignores a label set that was toggled off and back on', async () => {
+      // Selection order drifts, and sending labelIds reaches a
+      // delete-then-recreate rewrite — so an order-sensitive compare would
+      // clobber a label change made elsewhere for no reason.
+      const user = userEvent.setup();
+      vi.mocked(tasksApi.getById).mockResolvedValue(
+        axiosOk({ data: makeTask({ title: 'Original', labels: [LABELS[0], LABELS[1]] }) })
+      );
+      renderPanel('task-1');
+      await screen.findByDisplayValue('Original');
+
+      await user.click(screen.getByRole('combobox', { name: /Labels/i }));
+      await user.click(await screen.findByRole('option', { name: 'Billing' }));
+      await user.click(await screen.findByRole('option', { name: 'Billing' }));
+      await user.keyboard('{Escape}');
+
+      expect(await editTitleAndSave(user)).toEqual({ title: 'New' });
+    });
+
+    it('sends an empty list when the last label is removed', async () => {
+      const user = userEvent.setup();
+      vi.mocked(tasksApi.getById).mockResolvedValue(
+        axiosOk({ data: makeTask({ labels: [LABELS[0]] }) })
+      );
+      renderPanel('task-1');
+      await screen.findByDisplayValue('Renew the contract');
+
+      await user.click(screen.getByRole('combobox', { name: /Labels/i }));
+      await user.click(await screen.findByRole('option', { name: 'Billing' }));
+      await user.keyboard('{Escape}');
+      await user.click(screen.getByRole('button', { name: /Save/i }));
+
+      await waitFor(() => expect(tasksApi.update).toHaveBeenCalled());
+      expect(vi.mocked(tasksApi.update).mock.calls[0][1]).toEqual({ labelIds: [] });
+    });
+
+    it('sends nothing at all when the user changed nothing', async () => {
+      const user = userEvent.setup();
+      const onUpdated = vi.fn();
+      vi.mocked(tasksApi.getById).mockResolvedValue(axiosOk({ data: FULL() }));
+      render(
+        <TaskDetailModal taskId="task-1" open onClose={vi.fn()} onUpdated={onUpdated} labels={LABELS} />
+      );
+
+      await screen.findByDisplayValue('Original');
+      await user.click(screen.getByRole('button', { name: /Save/i }));
+
+      // Still closes and still reports success — an empty PATCH would be
+      // audited as a change to every field.
+      await waitFor(() => expect(onUpdated).toHaveBeenCalled());
+      expect(tasksApi.update).not.toHaveBeenCalled();
+    });
+  });
 });
+
