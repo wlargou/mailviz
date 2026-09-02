@@ -322,3 +322,31 @@ describe('taskStore', () => {
     expect(useTaskStore.getState().summary).toEqual(summary);
   });
 });
+
+describe('the task-change signal', () => {
+  it('counts writes, not refetches', async () => {
+    // The distinction is the whole design. Views that keep their own copy of
+    // the list watch this counter, and "the store refetched" is the wrong
+    // signal to give them: fetchTasks re-runs on paging and on every debounced
+    // keystroke in the search box, so bumping here would make the two heaviest
+    // queries in the page fire twice per keystroke.
+    vi.mocked(tasksApi.getAll).mockResolvedValue(axiosOk({ data: [] as Task[] }));
+
+    expect(useTaskStore.getState().tasksVersion).toBe(0);
+    await useTaskStore.getState().fetchTasks();
+    expect(useTaskStore.getState().tasksVersion).toBe(0);
+
+    useTaskStore.getState().taskChanged();
+    expect(useTaskStore.getState().tasksVersion).toBe(1);
+  });
+
+  it('keeps the status vocabulary on its own counter', async () => {
+    // Adding a Kanban column must not make every view refetch its tasks, and a
+    // task edit must not make them re-read the status list.
+    useTaskStore.getState().statusChanged();
+
+    expect(useTaskStore.getState().statusesVersion).toBe(1);
+    expect(useTaskStore.getState().tasksVersion).toBe(0);
+  });
+});
+

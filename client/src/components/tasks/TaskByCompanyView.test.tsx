@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { act } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import userEvent from '@testing-library/user-event';
@@ -98,22 +99,25 @@ function group(
   };
 }
 
+/** One response body. Split out of `respond` so a test can queue two of them. */
+function payload(groups: TaskCompanyGroup[], truncated = false) {
+  return axiosOk({
+    data: groups,
+    meta: {
+      totalTasks: groups.reduce((n, g) => n + g.taskCount, 0),
+      companies: groups.filter((g) => g.customer).length,
+      truncated,
+      overdueTasks: groups.reduce((n, g) => n + g.overdueCount, 0),
+      urgentTasks: groups.reduce(
+        (n, g) => n + g.tasks.filter((t) => t.priority === 'URGENT').length,
+        0
+      ),
+    },
+  });
+}
+
 function respond(groups: TaskCompanyGroup[], truncated = false) {
-  vi.mocked(tasksApi.getGroupedByCompany).mockResolvedValue(
-    axiosOk({
-      data: groups,
-      meta: {
-        totalTasks: groups.reduce((n, g) => n + g.taskCount, 0),
-        companies: groups.filter((g) => g.customer).length,
-        truncated,
-        overdueTasks: groups.reduce((n, g) => n + g.overdueCount, 0),
-        urgentTasks: groups.reduce(
-          (n, g) => n + g.tasks.filter((t) => t.priority === 'URGENT').length,
-          0
-        ),
-      },
-    })
-  );
+  vi.mocked(tasksApi.getGroupedByCompany).mockResolvedValue(payload(groups, truncated));
 }
 
 function renderView(props: { onEdit: (t: Task) => void }) {
@@ -148,6 +152,11 @@ const initialTaskState = useTaskStore.getState();
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // clearAllMocks resets call history but NOT a queue of mockResolvedValueOnce
+  // values. A test that queues two responses and consumes one would otherwise
+  // hand its leftover to whichever test runs next, which is both a flake and a
+  // way for a broken component to look fine.
+  vi.mocked(tasksApi.getGroupedByCompany).mockReset();
   useTaskStore.setState(initialTaskState, true);
 });
 
@@ -352,6 +361,45 @@ describe('TaskByCompanyView — shared filters', () => {
  * without being opened, and the expanded one should answer "what is it" without
  * leaving the page. Each of these asserts one half of that.
  */
+describe('TaskByCompanyView — staying current', () => {
+  it('reloads when a task is written anywhere in the app', async () => {
+    // The reported bug: edit a task, get "Task updated", and the row underneath
+    // still shows the old values until the page is reloaded. This view keeps
+    // its own copy of the rows — it reads a different endpoint than the store —
+    // and Carbon keeps inactive tab panels mounted, so nothing ever remounted
+    // it either.
+    //
+    // Asserting the new text, not just a second call, is what stops this being
+    // vacuous: a component that refetches and then discards the result would
+    // satisfy a call count on its own.
+    vi.mocked(tasksApi.getGroupedByCompany)
+      .mockResolvedValueOnce(payload([group('Acme', [makeTask({ title: 'Old title' })])]))
+      .mockResolvedValueOnce(payload([group('Acme', [makeTask({ title: 'Renew contract' })])]));
+
+    renderView({ onEdit: vi.fn() });
+
+    expect(await screen.findByText('Old title')).toBeInTheDocument();
+    expect(tasksApi.getGroupedByCompany).toHaveBeenCalledTimes(1);
+
+    act(() => { useTaskStore.getState().taskChanged(); });
+
+    expect(await screen.findByText('Renew contract')).toBeInTheDocument();
+    expect(screen.queryByText('Old title')).not.toBeInTheDocument();
+  });
+
+  it('does not reload on mount, when nothing has changed yet', async () => {
+    // The subscription seeds itself with the current version precisely so a
+    // mount does not duplicate the fetch the view already makes. Without that,
+    // every view would issue two requests on every page load.
+    respond([group('Acme', [makeTask({ title: 'Only once' })])]);
+    renderView({ onEdit: vi.fn() });
+
+    expect(await screen.findByText('Only once')).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(tasksApi.getGroupedByCompany).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('TaskByCompanyView — the task row', () => {
   const withEmail = (overrides: Partial<Task> = {}) =>
     makeTask({

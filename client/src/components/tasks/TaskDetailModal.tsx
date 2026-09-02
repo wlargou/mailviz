@@ -18,6 +18,8 @@ import { ShareDialog } from '../shared/ShareDialog';
 import { CompanyComboBox } from '../shared/CompanyComboBox';
 import { useUIStore } from '../../store/uiStore';
 import type { Task, Label, TaskPriority, TaskStatus, TaskStatusConfig } from '../../types/task';
+import { decodeEntities } from '../../utils/text';
+import { useTaskStore } from '../../store/taskStore';
 
 const priorityItems = [
   { id: 'LOW', text: 'Low' },
@@ -58,6 +60,7 @@ interface TaskDetailModalProps {
 }
 
 export function TaskDetailModal({ task, open, onClose, onUpdated, labels }: TaskDetailModalProps) {
+  const taskChanged = useTaskStore((s) => s.taskChanged);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<TaskStatus>('TODO');
@@ -97,8 +100,8 @@ export function TaskDetailModal({ task, open, onClose, onUpdated, labels }: Task
 
   useEffect(() => {
     if (task) {
-      setTitle(task.title);
-      setDescription(task.description || '');
+      setTitle(decodeEntities(task.title));
+      setDescription(decodeEntities(task.description));
       setStatus(task.status);
       setPriority(task.priority);
       setDueDate(task.dueDate);
@@ -135,6 +138,7 @@ export function TaskDetailModal({ task, open, onClose, onUpdated, labels }: Task
       }
 
       addNotification({ kind: 'success', title: 'Task updated' });
+      taskChanged();
       onUpdated();
       onClose();
     } catch {
@@ -290,10 +294,10 @@ export function TaskDetailModal({ task, open, onClose, onUpdated, labels }: Task
               }}
             >
               <div style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--cds-text-primary)' }}>
-                {task.mailToTask.email.subject}
+                {decodeEntities(task.mailToTask.email.subject)}
               </div>
               <div style={{ fontSize: '0.75rem', color: 'var(--cds-text-secondary)', marginTop: '0.125rem' }}>
-                From: {task.mailToTask.email.fromName || task.mailToTask.email.from}
+                From: {decodeEntities(task.mailToTask.email.fromName || task.mailToTask.email.from)}
               </div>
               {task.mailToTask.conversionNote && (
                 <div style={{ fontSize: '0.75rem', color: 'var(--cds-text-secondary)', marginTop: '0.25rem', fontStyle: 'italic' }}>
@@ -325,16 +329,18 @@ export function TaskDetailModal({ task, open, onClose, onUpdated, labels }: Task
       <ShareDialog
         open={shareOpen}
         onClose={() => setShareOpen(false)}
-        title={task?.title || ''}
+        title={decodeEntities(task?.title)}
         currentShares={taskShares}
         onShare={async (userIds) => {
           if (!task) return;
           await tasksApi.shareTask(task.id, userIds);
+          taskChanged();
           addNotification({ kind: 'success', title: 'Task shared' });
         }}
         onUnshare={async (userId) => {
           if (!task) return;
           await tasksApi.unshareTask(task.id, userId);
+          taskChanged();
           addNotification({ kind: 'success', title: 'Share removed' });
         }}
         onRefresh={async () => {
