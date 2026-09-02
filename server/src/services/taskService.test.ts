@@ -8,6 +8,7 @@ import {
   createCustomer,
   shareTaskWith,
   seedTaskStatuses,
+  createEmail,
 } from '../test/factories.js';
 
 /**
@@ -1347,5 +1348,176 @@ describe('taskService — terminal statuses are per account', () => {
 
     expect((await taskService.getSummary(alice.id)).completed).toBe(1);
     expect((await taskService.getSummary(bob.id)).completed).toBe(0);
+  });
+});
+
+/**
+ * The fields the By Company view renders, beyond the task itself.
+ *
+ * Each of these exists because the design needs it and the API did not return
+ * it: the linked email (so a row can say who it came from, and "Open email"
+ * has somewhere to go), the per-company next due date (what a collapsed row
+ * shows when nothing is overdue), and the counts behind the filter chips.
+ */
+describe('taskService.findGroupedByCompany — fields for the By Company view', () => {
+  async function company(userId: string, name: string) {
+    return createCustomer(userId, { name });
+  }
+
+  it('returns the email a task was created from', async () => {
+    const { alice } = await createTwoUsers();
+    await seedTaskStatuses(alice.id);
+    const acme = await company(alice.id, 'Acme');
+    const email = await createEmail(alice.id, {
+      from: 'ilham@acme.test', threadId: 'thread-9', receivedAt: new Date('2026-08-24T09:00:00Z'),
+    });
+    const task = await createTask(alice.id, { customerId: acme.id, title: 'Renewal' });
+    await prisma.mailToTask.create({ data: { emailId: email.id, taskId: task.id } });
+
+    const result = await taskService.findGroupedByCompany(alice.id);
+
+    const row = result.data[0].tasks[0] as unknown as {
+      mailToTask: { email: { threadId: string | null; from: string } } | null;
+    };
+    expect(row.mailToTask?.email.from).toBe('ilham@acme.test');
+    // Without the thread id "Open email" has nothing to navigate to.
+    expect(row.mailToTask?.email.threadId).toBe('thread-9');
+  });
+
+  it('leaves mailToTask null for a task nobody made from mail', async () => {
+    const { alice } = await createTwoUsers();
+    await seedTaskStatuses(alice.id);
+    const acme = await company(alice.id, 'Acme');
+    await createTask(alice.id, { customerId: acme.id });
+
+    const result = await taskService.findGroupedByCompany(alice.id);
+
+    expect((result.data[0].tasks[0] as unknown as { mailToTask: unknown }).mailToTask).toBeNull();
+  });
+
+  it('reports the soonest upcoming due date per company', async () => {
+    const { alice } = await createTwoUsers();
+    await seedTaskStatuses(alice.id);
+    const acme = await company(alice.id, 'Acme');
+    const soon = new Date(Date.now() + 2 * 24 * 3600 * 1000);
+    const later = new Date(Date.now() + 9 * 24 * 3600 * 1000);
+    await createTask(alice.id, { customerId: acme.id, dueDate: later });
+    await createTask(alice.id, { customerId: acme.id, dueDate: soon });
+
+    const result = await taskService.findGroupedByCompany(alice.id);
+
+    expect(result.data[0].nextDueAt?.toISOString()).toBe(soon.toISOString());
+  });
+
+  it('does not count a past date as “next due”', async () => {
+    // A date in the past is the overdue count's business. Reporting it as the
+    // next thing coming up would put a stale date on the row for ever.
+    const { alice } = await createTwoUsers();
+    await seedTaskStatuses(alice.id);
+    const acme = await company(alice.id, 'Acme');
+    await createTask(alice.id, { customerId: acme.id, dueDate: new Date(Date.now() - 86400000) });
+
+    const result = await taskService.findGroupedByCompany(alice.id);
+
+    expect(result.data[0].nextDueAt).toBeNull();
+    expect(result.data[0].overdueCount).toBe(1);
+  });
+
+  it('ignores a finished task when working out what is next', async () => {
+    const { alice } = await createTwoUsers();
+    await seedTaskStatuses(alice.id);
+    const acme = await company(alice.id, 'Acme');
+    const soon = new Date(Date.now() + 2 * 24 * 3600 * 1000);
+    await createTask(alice.id, { customerId: acme.id, status: 'DONE', dueDate: soon });
+
+    const result = await taskService.findGroupedByCompany(alice.id, { includeCompleted: true });
+
+    expect(result.data[0].nextDueAt).toBeNull();
+  });
+
+  it('counts overdue and urgent work for the filter chips', async () => {
+    const { alice } = await createTwoUsers();
+    await seedTaskStatuses(alice.id);
+    const acme = await company(alice.id, 'Acme');
+    await createTask(alice.id, { customerId: acme.id, dueDate: new Date(Date.now() - 86400000) });
+    await createTask(alice.id, { customerId: acme.id, priority: 'URGENT' });
+    await createTask(alice.id, { customerId: acme.id, priority: 'LOW' });
+
+    const result = await taskService.findGroupedByCompany(alice.id);
+
+    expect(result.meta.overdueTasks).toBe(1);
+    expect(result.meta.urgentTasks).toBe(1);
+  });
+
+  it('does not count a finished urgent task as urgent', async () => {
+    // Otherwise the chip counts work that is already dealt with, and clicking
+    // it shows nothing that needs doing.
+    const { alice } = await createTwoUsers();
+    await seedTaskStatuses(alice.id);
+    const acme = await company(alice.id, 'Acme');
+    await createTask(alice.id, { customerId: acme.id, priority: 'URGENT', status: 'DONE' });
+
+    const result = await taskService.findGroupedByCompany(alice.id, { includeCompleted: true });
+
+    expect(result.meta.urgentTasks).toBe(0);
+  });
+});
+
+/**
+ * Group order.
+ *
+ * `urgency` is the default and answers "where should I look first" — overdue
+ * companies, then the busiest, then alphabetical. The other two answer "where
+ * is X" and "who has the most", so each needs its own assertion: a comparator
+ * table is exactly the shape where two entries silently do the same thing.
+ */
+describe('taskService.findGroupedByCompany — sorting', () => {
+  async function scenario(userId: string) {
+    await seedTaskStatuses(userId);
+    const past = new Date(Date.now() - 86400000);
+    const zulu = await createCustomer(userId, { name: 'Zulu' });      // 3 tasks, none overdue
+    const alpha = await createCustomer(userId, { name: 'Alpha' });    // 1 task, overdue
+    const mid = await createCustomer(userId, { name: 'Mid' });        // 2 tasks, none overdue
+    for (let i = 0; i < 3; i++) await createTask(userId, { customerId: zulu.id });
+    await createTask(userId, { customerId: alpha.id, dueDate: past });
+    for (let i = 0; i < 2; i++) await createTask(userId, { customerId: mid.id });
+  }
+
+  const names = (r: { data: Array<{ customer: { name: string } | null }> }) =>
+    r.data.map((g) => g.customer?.name ?? '—');
+
+  it('puts companies with overdue work first by default', async () => {
+    const { alice } = await createTwoUsers();
+    await scenario(alice.id);
+
+    // Alpha has one task but it is overdue, so it outranks Zulu's three.
+    expect(names(await taskService.findGroupedByCompany(alice.id))).toEqual(['Alpha', 'Zulu', 'Mid']);
+  });
+
+  it('sorts alphabetically on request', async () => {
+    const { alice } = await createTwoUsers();
+    await scenario(alice.id);
+
+    expect(names(await taskService.findGroupedByCompany(alice.id, { sort: 'company' })))
+      .toEqual(['Alpha', 'Mid', 'Zulu']);
+  });
+
+  it('sorts by volume on request, ignoring overdue', async () => {
+    const { alice } = await createTwoUsers();
+    await scenario(alice.id);
+
+    expect(names(await taskService.findGroupedByCompany(alice.id, { sort: 'taskCount' })))
+      .toEqual(['Zulu', 'Mid', 'Alpha']);
+  });
+
+  it('keeps the company-less bucket last whatever the sort', async () => {
+    const { alice } = await createTwoUsers();
+    await scenario(alice.id);
+    await createTask(alice.id, { title: 'No company' });
+
+    for (const sort of ['urgency', 'company', 'taskCount'] as const) {
+      const ordered = names(await taskService.findGroupedByCompany(alice.id, { sort }));
+      expect(ordered[ordered.length - 1]).toBe('—');
+    }
   });
 });

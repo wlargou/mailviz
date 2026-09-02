@@ -1,5 +1,5 @@
 import { Tag } from '@carbon/react';
-import { red60, blue60, purple60, orange40, green60, cyan50 } from '@carbon/colors';
+import { red60, blue60, purple60, orange40, green60, cyan50, magenta60, teal60 } from '@carbon/colors';
 import type { Label } from '../../types/task';
 
 // Map label hex colors (from DB) to the closest Carbon Tag type.
@@ -12,6 +12,12 @@ const colorToTagType: Record<string, string> = {
   [orange40]: 'magenta',  // Design
   [green60]: 'green',     // Backend
   [cyan50]: 'cyan',       // Frontend
+  // The starter labels seeded by onboarding. Without these two the heuristic
+  // below reads magenta60 as red (its red channel dominates) and teal60 as
+  // green, so Billing and Support came out the wrong colour — and, worse, the
+  // same colour as labels that mean something else.
+  [magenta60]: 'magenta', // Billing
+  [teal60]: 'teal',       // Support
 };
 
 // Fallback: pick a Carbon tag type based on the color hex

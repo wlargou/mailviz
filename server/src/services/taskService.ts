@@ -34,6 +34,11 @@ interface TaskQueryParams {
  * distribution and a truncated group misleads — but an unbounded findMany over
  * a table that could grow is worse. The response flags when it bites.
  */
+/** How the By Company view orders its groups. */
+export type TaskGroupSort = 'urgency' | 'company' | 'taskCount';
+
+export const TASK_GROUP_SORTS: readonly TaskGroupSort[] = ['urgency', 'company', 'taskCount'];
+
 interface TaskGroupQueryParams {
   search?: string;
   status?: string;
@@ -41,6 +46,8 @@ interface TaskGroupQueryParams {
   labelId?: string;
   /** Completed tasks are excluded by default; this brings them back. */
   includeCompleted?: boolean;
+  /** Defaults to 'urgency' — see the comparator in findGroupedByCompany. */
+  sort?: TaskGroupSort;
 }
 
 const TASKS_BY_COMPANY_CAP = 1000;
@@ -285,6 +292,21 @@ export const taskService = {
         customer: { select: { id: true, name: true, domain: true, logoUrl: true } },
         labels: { include: { label: true } },
         assignedTo: { select: { id: true, name: true, email: true, avatarUrl: true } },
+        /**
+         * The email this task was made from, if any.
+         *
+         * Most tasks here have one — they are created from mail — and the row
+         * is far more identifiable with "from Ilham Bennani, 24 Aug" on it than
+         * with a title alone. `threadId` is what makes "Open email" able to go
+         * anywhere; without it the link would have nothing to navigate to.
+         */
+        mailToTask: {
+          select: {
+            email: {
+              select: { id: true, threadId: true, from: true, fromName: true, receivedAt: true },
+            },
+          },
+        },
       },
       // Deterministic within a group: soonest due first, undated last, then a
       // stable id tiebreaker so the order does not shuffle between loads.
@@ -296,11 +318,17 @@ export const taskService = {
     const visible = truncated ? tasks.slice(0, TASKS_BY_COMPANY_CAP) : tasks;
 
     const now = new Date();
-    const groups = new Map<string, {
+    type Group = {
       customer: { id: string; name: string; domain: string | null; logoUrl: string | null } | null;
       tasks: typeof visible;
       overdueCount: number;
-    }>();
+      /** Soonest upcoming due date among unfinished tasks; null if none. */
+      nextDueAt: Date | null;
+    };
+    const groups = new Map<string, Group>();
+
+    let overdueTasks = 0;
+    let urgentTasks = 0;
 
     for (const task of visible) {
       // '' is the bucket for tasks with no company — a real key, so the group
@@ -308,23 +336,63 @@ export const taskService = {
       const key = task.customerId ?? '';
       let group = groups.get(key);
       if (!group) {
-        group = { customer: task.customer ?? null, tasks: [], overdueCount: 0 };
+        group = { customer: task.customer ?? null, tasks: [], overdueCount: 0, nextDueAt: null };
         groups.set(key, group);
       }
       group.tasks.push(task);
+
+      const unfinished = !isTerminalStatus(task.status, terminal);
       // "Overdue" excludes finished work — a completed task that happens to sit
       // past its due date is not something anyone needs chasing.
-      if (task.dueDate && task.dueDate < now && !isTerminalStatus(task.status, terminal)) {
+      if (task.dueDate && task.dueDate < now && unfinished) {
         group.overdueCount += 1;
+        overdueTasks += 1;
       }
+      /**
+       * What a collapsed company row shows when nothing is overdue.
+       *
+       * Only unfinished work, and only the future: the soonest thing still
+       * ahead is the useful summary. A past date belongs to the overdue count,
+       * and a finished task's due date says nothing about what is left.
+       */
+      if (task.dueDate && task.dueDate >= now && unfinished) {
+        if (!group.nextDueAt || task.dueDate < group.nextDueAt) group.nextDueAt = task.dueDate;
+      }
+      if (task.priority === 'URGENT' && unfinished) urgentTasks += 1;
     }
 
+    const byName = (
+      a: { customer: { name: string } | null },
+      b: { customer: { name: string } | null }
+    ) => (a.customer?.name ?? '').localeCompare(b.customer?.name ?? '');
+
+    /**
+     * Group order.
+     *
+     * `urgency` is the default and the only one that is not obvious: companies
+     * with overdue work first, then the busiest, then alphabetical. It answers
+     * "where should I look first" rather than "where is X", which is what the
+     * other two are for.
+     */
+    const comparators: Record<TaskGroupSort, (a: Group, b: Group) => number> = {
+      urgency: (a, b) => {
+        const overdue = (b.overdueCount > 0 ? 1 : 0) - (a.overdueCount > 0 ? 1 : 0);
+        if (overdue !== 0) return overdue;
+        if (b.tasks.length !== a.tasks.length) return b.tasks.length - a.tasks.length;
+        return byName(a, b);
+      },
+      company: byName,
+      taskCount: (a, b) =>
+        b.tasks.length !== a.tasks.length ? b.tasks.length - a.tasks.length : byName(a, b),
+    };
+
+    const compare = comparators[query.sort ?? 'urgency'] ?? comparators.urgency;
     const ordered = [...groups.values()].sort((a, b) => {
-      // The unassigned bucket always trails, however big it is.
+      // The unassigned bucket always trails, whatever the sort and however big
+      // it is — it is not a company, so it does not compete with them.
       if (a.customer === null) return 1;
       if (b.customer === null) return -1;
-      if (b.tasks.length !== a.tasks.length) return b.tasks.length - a.tasks.length;
-      return a.customer.name.localeCompare(b.customer.name);
+      return compare(a, b);
     });
 
     return {
@@ -332,9 +400,18 @@ export const taskService = {
         customer: g.customer,
         taskCount: g.tasks.length,
         overdueCount: g.overdueCount,
+        nextDueAt: g.nextDueAt,
         tasks: g.tasks,
       })),
-      meta: { totalTasks: visible.length, companies: ordered.filter((g) => g.customer).length, truncated },
+      meta: {
+        totalTasks: visible.length,
+        companies: ordered.filter((g) => g.customer).length,
+        truncated,
+        // Drive the filter chips above the list. Counted over what is actually
+        // returned, so they agree with what the user can see.
+        overdueTasks,
+        urgentTasks,
+      },
     };
   },
 

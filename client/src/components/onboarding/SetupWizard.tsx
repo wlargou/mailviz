@@ -113,6 +113,20 @@ export function SetupWizard({ status, onFinish }: SetupWizardProps) {
             await guard('Board columns', async () => {
               const { data } = await onboardingApi.seedTaskStatuses();
               setSeeded(data.data.created);
+              /**
+               * Labels are seeded here too, and deliberately without their own
+               * step. Nothing in the mail sync can infer that a thread is about
+               * billing rather than presales, so an account that never sets any
+               * shows a permanently empty label column — but that is not worth
+               * a wizard page of its own. Both are "your board", both are
+               * no-ops when something already exists, and both are renameable
+               * in Settings.
+               *
+               * Its failure is swallowed on purpose: the columns are what this
+               * step promises, and losing them to a labels error would be a bad
+               * trade.
+               */
+              await onboardingApi.seedLabels().catch(() => {});
             });
           }}
         >
@@ -131,7 +145,9 @@ export function SetupWizard({ status, onFinish }: SetupWizardProps) {
                   </p>
                 )}
               <p className="onboarding-step__note">
-                Add, rename, recolour or reorder them any time in Settings → Task statuses.
+                Add, rename, recolour or reorder them any time in Settings → Task statuses. We will
+                also add four starter labels — Billing, Presales, Contract and Support — to tag
+                tasks with. Rename them to match your work.
               </p>
               {seeded !== null && seeded > 0 && (
                 <InlineNotification

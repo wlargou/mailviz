@@ -26,6 +26,29 @@ import { auditService } from './auditService.js';
  * with eight columns has to curate before they can work; adding a column is one
  * click in Settings, removing eight is not.
  */
+/**
+ * The starter label vocabulary.
+ *
+ * Labels are the one part of a task this app never invents: nothing in the mail
+ * sync can guess that a thread is about billing rather than presales. So an
+ * account begins with none, every task renders without them, and the column
+ * that shows them looks broken rather than empty.
+ *
+ * These four are the categories this account's work actually falls into, taken
+ * from the design. They are a starting point to rename, not a taxonomy — which
+ * is why seeding is all-or-nothing, like the statuses below.
+ *
+ * The hex values are Carbon palette tokens chosen so `LabelTag` maps each one
+ * to a distinct tag colour rather than falling through to its
+ * dominant-channel heuristic.
+ */
+export const DEFAULT_TASK_LABELS = [
+  { name: 'Billing', color: '#d02670' },   // magenta60
+  { name: 'Presales', color: '#0f62fe' },  // blue60
+  { name: 'Contract', color: '#8a3ffc' },  // purple60
+  { name: 'Support', color: '#007d79' },   // teal60
+] as const;
+
 export const DEFAULT_TASK_STATUSES = [
   { name: 'TODO', label: 'To do', color: '#4589ff', position: 0 },
   { name: 'IN_PROGRESS', label: 'In progress', color: '#f1c21b', position: 1 },
@@ -120,6 +143,25 @@ export const onboardingService = {
     }
     const result = await prisma.taskStatus.createMany({
       data: DEFAULT_TASK_STATUSES.map((status) => ({ ...status, userId })),
+    });
+    return { created: result.count, skipped: false };
+  },
+
+  /**
+   * Create the starter labels.
+   *
+   * Same all-or-nothing rule as the statuses: if the account already has any
+   * label, this does nothing. Someone who renamed "Support" to "Run" should not
+   * find "Support" reappearing next to it, and someone who deliberately deleted
+   * the lot should not have them restored on their next visit.
+   */
+  async seedDefaultLabels(userId: string) {
+    const existing = await prisma.label.count({ where: { userId } });
+    if (existing > 0) {
+      return { created: 0, skipped: true };
+    }
+    const result = await prisma.label.createMany({
+      data: DEFAULT_TASK_LABELS.map((label) => ({ ...label, userId })),
     });
     return { created: result.count, skipped: false };
   },

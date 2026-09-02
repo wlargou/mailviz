@@ -5,6 +5,7 @@ const router = Router();
 
 router.get('/status', onboardingController.getStatus);
 router.post('/task-statuses', onboardingController.seedTaskStatuses);
+router.post('/labels', onboardingController.seedLabels);
 router.post('/complete', onboardingController.complete);
 router.post('/reset', onboardingController.reset);
 
