@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Modal, SkeletonText, StructuredListBody, StructuredListCell, StructuredListRow, StructuredListWrapper, Tag } from '@carbon/react';
+import { Modal, SkeletonText, Tag } from '@carbon/react';
 import { fetchServerVersion, type ServerVersion } from '../../api/auth';
 import { MailvizLogo } from './MailvizLogo';
 
@@ -8,27 +8,25 @@ interface AboutModalProps {
   onClose: () => void;
 }
 
-/** Local time, so "when did this deploy" reads as a moment rather than a UTC string. */
-function when(iso: string): string {
+/** A date a person reads, in their own locale and zone. */
+function releaseDate(iso: string): string {
   const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? '—'
-    : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString(undefined, { dateStyle: 'long' });
 }
 
 /**
- * What is running, and where.
+ * What this is and when it shipped. Nothing else.
  *
- * A `passiveModal` because there is nothing to confirm — Carbon's own guidance
- * is that a dialog with no decision in it should not offer buttons that imply
- * one. It is a Modal rather than a SidePanel or Tearsheet by the same rubric
- * the rest of this app follows: a handful of read-only fields is the smallest
- * container, not the largest.
+ * An earlier version listed the browser's build, the server's build, the
+ * environment and two timestamps. That is a diagnostic panel, not an About
+ * box: it asks the reader to work out which of two numbers is "the version",
+ * which is a question they should never have been handed.
  *
- * It reports the CLIENT version and the SERVER version separately, and says so
- * when they differ. That is the whole reason this exists: the bundle in a tab
- * can be older than the deploy it is talking to, and "which version is in
- * production" has two answers that are usually — but not always — the same.
+ * So one version is shown — the SERVER's, because that is what "the app" is —
+ * and one date. The client's own build is still fetched and compared, but only
+ * to answer a question the reader cannot: whether this tab is running what the
+ * server is. When it is not, the number on screen would otherwise be quietly
+ * wrong for them, so a reload prompt appears. That is an action, not a detail.
  */
 export function AboutModal({ open, onClose }: AboutModalProps) {
   const [server, setServer] = useState<ServerVersion | null>(null);
@@ -47,8 +45,10 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
     return () => { cancelled = true; };
   }, [open]);
 
-  const clientVersion = __APP_VERSION__;
-  const mismatch = server !== null && server.version !== clientVersion;
+  // Falls back to the bundle's own version when the server cannot be reached,
+  // so the dialog still answers its one question offline.
+  const shownVersion = server?.version ?? __APP_VERSION__;
+  const stale = server !== null && server.version !== __APP_VERSION__;
 
   return (
     <Modal
@@ -56,65 +56,35 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
       passiveModal
       size="sm"
       modalHeading="About Mailviz"
-      modalLabel="Version"
       onRequestClose={onClose}
     >
       <div className="about-modal">
-        <div className="about-modal__brand">
-          <MailvizLogo size={32} />
-          <div>
-            <p className="about-modal__name">Mailviz</p>
-            <p className="about-modal__tagline">Personal CRM &amp; email manager</p>
-          </div>
-        </div>
+        <MailvizLogo size={40} />
 
-        <StructuredListWrapper isCondensed aria-label="Version details">
-          <StructuredListBody>
-            <StructuredListRow>
-              <StructuredListCell noWrap>This browser</StructuredListCell>
-              <StructuredListCell>
-                <code>{clientVersion}</code>
-              </StructuredListCell>
-            </StructuredListRow>
+        <p className="about-modal__name">Mailviz</p>
+        <p className="about-modal__tagline">Personal CRM &amp; email manager</p>
 
-            <StructuredListRow>
-              <StructuredListCell noWrap>Server</StructuredListCell>
-              <StructuredListCell>
-                {loading && <SkeletonText width="60%" />}
-                {!loading && failed && (
-                  <span className="about-modal__unreachable">Could not reach the server</span>
-                )}
-                {!loading && server && (
-                  <>
-                    <code>{server.version}</code>{' '}
-                    {mismatch && (
-                      // The case this dialog exists to make visible: a tab
-                      // holding an older bundle than the server is running.
-                      <Tag type="magenta" size="sm">Reload to update</Tag>
-                    )}
-                  </>
-                )}
-              </StructuredListCell>
-            </StructuredListRow>
-
-            <StructuredListRow>
-              <StructuredListCell noWrap>Deployed</StructuredListCell>
-              <StructuredListCell>
-                {server ? when(server.startedAt) : '—'}
-              </StructuredListCell>
-            </StructuredListRow>
-
-            <StructuredListRow>
-              <StructuredListCell noWrap>Environment</StructuredListCell>
-              <StructuredListCell>{server ? server.environment : '—'}</StructuredListCell>
-            </StructuredListRow>
-
-            <StructuredListRow>
-              <StructuredListCell noWrap>This build</StructuredListCell>
-              <StructuredListCell>{when(__BUILT_AT__)}</StructuredListCell>
-            </StructuredListRow>
-          </StructuredListBody>
-        </StructuredListWrapper>
+        {loading ? (
+          <SkeletonText width="50%" />
+        ) : (
+          <>
+            <p className="about-modal__version">
+              Version <code>{shownVersion}</code>
+            </p>
+            <p className="about-modal__released">
+              {failed
+                ? 'Release date unavailable offline'
+                : server
+                  ? `Released ${releaseDate(server.releasedAt)}`
+                  : ''}
+            </p>
+            {stale && (
+              // The one thing the reader cannot work out for themselves: the
+              // page they are on is older than the app it is talking to.
+              <Tag type="magenta" size="sm">Reload to update</Tag>
+            )}
+          </>
+        )}
       </div>
     </Modal>
   );

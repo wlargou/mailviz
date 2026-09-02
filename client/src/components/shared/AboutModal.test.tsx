@@ -4,12 +4,13 @@ import { AboutModal } from './AboutModal';
 import { fetchServerVersion } from '../../api/auth';
 
 /**
- * The About dialog exists to answer "what is deployed", so the case that
- * matters is when the two answers disagree.
+ * The About dialog answers two things: what this is, and when it shipped.
  *
- * The bundle in a browser tab is fixed at build time; the server it talks to
- * can be redeployed under it. Showing one number would make a stale tab look
- * like a stale deploy, which is the wrong thing to go and investigate.
+ * It deliberately shows ONE version — the server's, because that is what "the
+ * app" is. It still fetches and compares the browser's own build, but only to
+ * answer the question a reader cannot: whether this tab is running what the
+ * server is. When it is not, the number on screen would be quietly wrong for
+ * them, so a reload prompt appears. That prompt is the interesting case here.
  */
 
 vi.mock('../../api/auth', () => ({ fetchServerVersion: vi.fn() }));
@@ -22,8 +23,7 @@ vi.stubGlobal('__BUILT_AT__', '2026-09-02T08:00:00.000Z');
 const serverSays = (version: string) =>
   vi.mocked(fetchServerVersion).mockResolvedValue({
     version,
-    startedAt: '2026-09-02T09:30:00.000Z',
-    environment: 'production',
+    releasedAt: '2026-09-02T09:30:00.000Z',
   });
 
 beforeEach(() => vi.clearAllMocks());
@@ -48,24 +48,46 @@ describe('AboutModal', () => {
     serverSays('1.0.0.0');
     render(<AboutModal open onClose={vi.fn()} />);
 
-    await screen.findByText('production');
+    await screen.findByText(/^Released /);
     expect(screen.queryByText(/reload to update/i)).toBeNull();
   });
 
-  it('reports an unreachable server rather than showing nothing', async () => {
-    // Version is most often checked while something is broken, so a silent
-    // blank here would be the least helpful possible response.
-    vi.mocked(fetchServerVersion).mockRejectedValue(new Error('offline'));
-    render(<AboutModal open onClose={vi.fn()} />);
-
-    expect(await screen.findByText(/could not reach the server/i)).toBeInTheDocument();
-  });
-
-  it('names the environment it is talking to', async () => {
+  it('shows the release date, not a timestamp', async () => {
+    // An About box is read by a person, not grepped by a script — the time of
+    // day tells them nothing they wanted to know.
     serverSays('1.0.0.0');
     render(<AboutModal open onClose={vi.fn()} />);
 
-    expect(await screen.findByText('production')).toBeInTheDocument();
+    const released = await screen.findByText(/^Released /);
+    expect(released.textContent).not.toMatch(/\d{2}:\d{2}/);
+  });
+
+  it('shows one version, not two', async () => {
+    // The whole point of the trim: a reader should never have to work out
+    // which of two numbers is "the version".
+    serverSays('1.0.0.0');
+    render(<AboutModal open onClose={vi.fn()} />);
+
+    await screen.findByText(/^Released /);
+    expect(screen.queryByText(/this browser/i)).toBeNull();
+    expect(screen.queryByText(/^Server$/i)).toBeNull();
+    expect(screen.queryByText(/environment/i)).toBeNull();
+  });
+
+  it('says the date is unavailable rather than showing a wrong one', async () => {
+    vi.mocked(fetchServerVersion).mockRejectedValue(new Error('offline'));
+    render(<AboutModal open onClose={vi.fn()} />);
+
+    expect(await screen.findByText(/release date unavailable/i)).toBeInTheDocument();
+  });
+
+  it('still names a version when the server cannot be reached', async () => {
+    // Offline, the bundle's own version is the only honest answer — and it is
+    // a better one than a blank dialog.
+    vi.mocked(fetchServerVersion).mockRejectedValue(new Error('offline'));
+    render(<AboutModal open onClose={vi.fn()} />);
+
+    expect(await screen.findByText('1.0.0.0')).toBeInTheDocument();
   });
 
   it('asks the server only when it is opened', async () => {

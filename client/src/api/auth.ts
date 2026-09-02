@@ -80,8 +80,8 @@ export const authApi = {
 /** What the running server reports about itself. Public — no session needed. */
 export interface ServerVersion {
   version: string;
-  startedAt: string;
-  environment: string;
+  /** When the build was made — not when the process started. */
+  releasedAt: string;
 }
 
 /**
