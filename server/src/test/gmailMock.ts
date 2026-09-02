@@ -22,6 +22,8 @@ export interface GmailMock {
   messagesList: Mock;
   messagesGet: Mock;
   messagesModify: Mock;
+  /** users.messages.send — the outbound path. Its argv carries the raw MIME. */
+  messagesSend: Mock;
   messagesTrash: Mock;
   messagesUntrash: Mock;
   attachmentsGet: Mock;
@@ -40,6 +42,7 @@ export function createGmailMock(): GmailMock {
   const messagesList = vi.fn().mockResolvedValue({ data: { messages: [] } });
   const messagesGet = vi.fn().mockResolvedValue({ data: gmailMessage({ id: 'unstubbed' }) });
   const messagesModify = vi.fn().mockResolvedValue({ data: {} });
+  const messagesSend = vi.fn().mockResolvedValue({ data: { id: 'sent-msg', threadId: 'thread-sent' } });
   const messagesTrash = vi.fn().mockResolvedValue({ data: {} });
   const messagesUntrash = vi.fn().mockResolvedValue({ data: {} });
   const attachmentsGet = vi.fn().mockResolvedValue({ data: { data: '' } });
@@ -59,6 +62,7 @@ export function createGmailMock(): GmailMock {
         list: messagesList,
         get: messagesGet,
         modify: messagesModify,
+        send: messagesSend,
         trash: messagesTrash,
         untrash: messagesUntrash,
         attachments: { get: attachmentsGet },
@@ -82,6 +86,7 @@ export function createGmailMock(): GmailMock {
     messagesList,
     messagesGet,
     messagesModify,
+    messagesSend,
     messagesTrash,
     messagesUntrash,
     attachmentsGet,
