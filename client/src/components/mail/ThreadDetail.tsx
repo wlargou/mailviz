@@ -20,14 +20,7 @@ import { MailComposeModal } from './MailComposeModal';
 import { ShareDialog } from '../shared/ShareDialog';
 import { getFileTypeInfo, formatFileSize as formatSize } from '../../utils/fileTypes';
 import type { EmailMessage, EmailAttachment, ComposeMode } from '../../types/email';
-
-// Decode HTML entities in snippets (Gmail API returns &#39; &amp; etc.)
-const entityEl = document.createElement('textarea');
-function decodeEntities(text: string | null | undefined): string {
-  if (!text) return '';
-  entityEl.innerHTML = text;
-  return entityEl.value;
-}
+import { decodeEntities } from '../../utils/text';
 
 interface ThreadDetailProps {
   threadId: string;
