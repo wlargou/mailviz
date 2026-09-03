@@ -4,6 +4,7 @@ import { env } from '../config/env.js';
 import { wsEmitToUser } from '../websocket.js';
 import { secondsToCron } from '../utils/shared.js';
 import { createPerUserRunner } from './perUserRunner.js';
+import { sweepPendingPushes } from './calendarPendingPush.js';
 
 let syncTask: ReturnType<typeof cron.schedule> | null = null;
 
@@ -11,6 +12,21 @@ async function syncAccount(userId: string): Promise<void> {
   // Per-account, like the mail scheduler — see the note there.
   wsEmitToUser(userId, 'calendar:sync:status', { syncing: true });
   try {
+    /**
+     * Before the pull, not after: a retry that lands means Google already holds
+     * our version by the time the sync lists it, so the row converges on this
+     * tick instead of staying skipped until the next one.
+     *
+     * Its own try/catch — a failing retry must not cost the account its sync.
+     * Running here also puts the push under `perUserRunner`'s per-account
+     * guard for free, so it can never race that account's own sync.
+     */
+    try {
+      await sweepPendingPushes(userId);
+    } catch (err) {
+      console.error('[CalendarSync] Pending-push sweep failed:', (err as Error)?.message ?? err);
+    }
+
     const result = await calendarService.syncFromGoogle(false, userId);
     const hasChanges = result.synced > 0 || result.customersCreated > 0 || result.contactsCreated > 0;
     if (hasChanges) {
