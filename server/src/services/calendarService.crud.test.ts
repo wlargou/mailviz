@@ -856,3 +856,88 @@ describe('calendarService — a push to Google that fails is reported, not swall
   });
 });
 
+describe('calendarService — the pending marker', () => {
+  /**
+   * `pendingSince` is set write-ahead with the local change and cleared only
+   * when the push says it landed. Every assertion here seeds the row in the
+   * OPPOSITE state to the one being asserted — seeding it already-null and
+   * checking it is null would pass without any of this code existing.
+   */
+  it('marks a row whose push failed', async () => {
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+    const event = await localEvent(user.id, { title: 'Before', googleEventId: 'g-1' });
+    calendar.eventsUpdate.mockRejectedValueOnce({ code: 500 });
+
+    await calendarService.update(event.id, { title: 'After' }, user.id);
+
+    const row = await prisma.calendarEvent.findUniqueOrThrow({ where: { id: event.id } });
+    expect(row.pendingSince).not.toBeNull();
+  });
+
+  it('clears a marker once the push lands', async () => {
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+    // Seeded SET, so clearing is a real outcome rather than the initial state.
+    const event = await localEvent(user.id, { googleEventId: 'g-1' });
+    await prisma.calendarEvent.update({
+      where: { id: event.id },
+      data: { pendingSince: new Date('2026-08-01T00:00:00.000Z') },
+    });
+
+    await calendarService.update(event.id, { title: 'After' }, user.id);
+
+    const row = await prisma.calendarEvent.findUniqueOrThrow({ where: { id: event.id } });
+    expect(row.pendingSince).toBeNull();
+  });
+
+  it('keeps the marker when there is no Google event to push to', async () => {
+    // `skipped/no-google-event` means an earlier create never landed, so the
+    // row is still owed one. Clearing here would strand it forever.
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+    const event = await localEvent(user.id, { googleEventId: null });
+
+    const { push } = await calendarService.update(event.id, { title: 'After' }, user.id);
+
+    expect(push.status).toBe('skipped');
+    expect(push.status === 'skipped' && push.reason).toBe('no-google-event');
+    const row = await prisma.calendarEvent.findUniqueOrThrow({ where: { id: event.id } });
+    expect(row.pendingSince).not.toBeNull();
+  });
+
+  it('leaves a local-only user unmarked', async () => {
+    // Non-vacuous only because of the write-ahead: create() SETS the marker and
+    // settlePending clears it on `not-connected`, so null here is a real
+    // outcome and not the absence of any code. The reason is asserted too, so
+    // this fails loudly if the path ever changes shape.
+    const user = await createUser();
+
+    const { event, push } = await calendarService.create({
+      title: 'Local only',
+      startTime: '2026-08-20T09:00:00.000Z',
+      endTime: '2026-08-20T09:30:00.000Z',
+    }, user.id);
+
+    expect(push.status === 'skipped' && push.reason).toBe('not-connected');
+    const row = await prisma.calendarEvent.findUniqueOrThrow({ where: { id: event.id } });
+    expect(row.pendingSince).toBeNull();
+  });
+
+  it('does not let an RSVP launder a pending edit', async () => {
+    // respond() sends an attendees-only patch and then writes syncedAt. It must
+    // not be read as "this row reached Google" for a title the push never sent.
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+    const event = await localEvent(user.id, { googleEventId: 'g-1' });
+    const pending = new Date('2026-08-01T00:00:00.000Z');
+    await prisma.calendarEvent.update({ where: { id: event.id }, data: { pendingSince: pending } });
+    calendar.eventsGet.mockResolvedValueOnce({ data: { attendees: [{ email: 'a@b.c', self: true }] } });
+
+    await calendarService.respond(event.id, 'accepted', user.id);
+
+    const row = await prisma.calendarEvent.findUniqueOrThrow({ where: { id: event.id } });
+    expect(row.pendingSince).toEqual(pending);
+  });
+});
+

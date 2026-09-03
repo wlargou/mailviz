@@ -307,6 +307,10 @@ model CalendarEvent {
   // 'default' | 'public' | 'private' | 'confidential'
   visibility        String?   @db.VarChar(20)
   syncedAt          DateTime? @map("synced_at")
+  /// Set when a local create or update has not reached Google, cleared when it
+  /// does. NULL is the absence of pending intent — which is also the only
+  /// honest thing to say about every row that predates this column.
+  pendingSince      DateTime? @map("pending_since")
   userId        String    @map("user_id")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
