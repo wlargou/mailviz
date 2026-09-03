@@ -41,6 +41,15 @@ export interface CalendarEvent {
   visibility: EventVisibility | null;
   customers?: Array<{ customer: { id: string; name: string; domain: string | null; logoUrl: string | null } }>;
   syncedAt: string | null;
+  /**
+   * Set while a local create or edit has not reached Google.
+   *
+   * The sync refuses to overwrite a row carrying this, so it is also the reason
+   * the row can differ from Google without being silently reverted. Null for
+   * every event of a user who has not connected Google — they are not waiting
+   * for anything.
+   */
+  pendingSince: string | null;
   createdAt: string;
   updatedAt: string;
 }

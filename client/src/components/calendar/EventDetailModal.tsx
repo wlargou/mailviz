@@ -13,6 +13,7 @@ import { Edit, TrashCan, Location, Time, UserMultiple, Launch, Checkmark, Close,
 import { format } from 'date-fns';
 import type { CalendarEvent, EventAttendee } from '../../types/calendar';
 import { CompanyLogo } from '../shared/CompanyLogo';
+import { PendingPushTag } from './PendingPushTag';
 
 type ResponseStatus = EventAttendee['responseStatus'];
 
@@ -276,6 +277,17 @@ export function EventDetailModal({ event, open, onClose, onEdit, onDelete, onRes
         className="event-detail-panel"
       >
         <div className="event-detail">
+          {/*
+            Shown above the meta grid rather than beside the title: the panel
+            title is Carbon's and takes no children, and this is a statement
+            about the whole event rather than one field of it.
+          */}
+          {event.pendingSince && (
+            <div className="event-detail__pending">
+              <PendingPushTag pendingSince={event.pendingSince} />
+            </div>
+          )}
+
           {/* Meta info grid */}
           <div className="event-detail__meta">
             <div className="event-detail__meta-item">

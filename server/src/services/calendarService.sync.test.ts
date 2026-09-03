@@ -47,7 +47,12 @@ afterEach(() => {
 /** An event stored locally, as though a previous sync had imported it. */
 async function localEvent(
   userId: string,
-  overrides: Partial<{ googleEventId: string | null; title: string; startTime: Date }> = {}
+  overrides: Partial<{
+    googleEventId: string | null;
+    title: string;
+    startTime: Date;
+    pendingSince: Date | null;
+  }> = {}
 ) {
   const start = overrides.startTime ?? new Date('2026-08-20T09:00:00.000Z');
   return prisma.calendarEvent.create({
@@ -58,6 +63,7 @@ async function localEvent(
       startTime: start,
       endTime: new Date(start.getTime() + 3_600_000),
       calendarId: 'primary',
+      pendingSince: overrides.pendingSince ?? null,
     },
   });
 }
@@ -270,3 +276,99 @@ describe('calendarService.syncFromGoogle — sync token', () => {
     expect(auth?.calendarSyncToken).toBe('token-fresh');
   });
 });
+
+describe('calendarService.syncFromGoogle — a local edit Google never received', () => {
+  /**
+   * The hole the rest of the push work left open.
+   *
+   * create and update write locally first, then push. When that push fails the
+   * user is told — but the row still says one thing and Google says another,
+   * and the next full sync re-listed the window and wrote Google's version
+   * over it. The edit vanished, silently, long after the toast that said it
+   * had been saved.
+   *
+   * `pendingSince` marks those rows, and the sync leaves them alone.
+   */
+  it('does not overwrite a pending row with Google’s version', async () => {
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+    const event = await localEvent(user.id, {
+      googleEventId: 'g-pending',
+      title: 'Local title',
+      pendingSince: new Date(),
+    });
+    stubEventsList(calendar, () =>
+      eventsPage([{ id: 'g-pending', summary: 'Google title' }], { nextSyncToken: 't' })
+    );
+
+    await calendarService.syncFromGoogle(false, user.id);
+
+    const row = await prisma.calendarEvent.findUniqueOrThrow({ where: { id: event.id } });
+    expect(row.title).toBe('Local title');
+  });
+
+  it('does overwrite a settled row, so the skip is not just a sync that does nothing', async () => {
+    // Without this the test above passes against a sync that writes nothing at
+    // all — the classic way a guard test proves less than it looks.
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+    const event = await localEvent(user.id, {
+      googleEventId: 'g-clean',
+      title: 'Local title',
+      pendingSince: null,
+    });
+    stubEventsList(calendar, () =>
+      eventsPage([{ id: 'g-clean', summary: 'Google title' }], { nextSyncToken: 't' })
+    );
+
+    await calendarService.syncFromGoogle(false, user.id);
+
+    const row = await prisma.calendarEvent.findUniqueOrThrow({ where: { id: event.id } });
+    expect(row.title).toBe('Google title');
+  });
+
+  it('still imports companies from a pending event’s attendees', async () => {
+    // The trap. Implementing the skip as an early return before the upsert
+    // would leave the attendee-driven customer import below it unreachable —
+    // and it needs the row id, so it cannot simply be moved above.
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+    await localEvent(user.id, {
+      googleEventId: 'g-attendees',
+      title: 'Local title',
+      pendingSince: new Date(),
+    });
+    stubEventsList(calendar, () =>
+      eventsPage(
+        [{ id: 'g-attendees', summary: 'Google title', attendees: [{ email: 'someone@acme-co.test' }] }],
+        { nextSyncToken: 't' }
+      )
+    );
+
+    await calendarService.syncFromGoogle(false, user.id);
+
+    const customer = await prisma.customer.findFirst({
+      where: { userId: user.id, domain: 'acme-co.test' },
+    });
+    expect(customer).not.toBeNull();
+  });
+
+  it('does not delete a pending row that Google no longer lists', async () => {
+    // The second clobber site. The window here is on the LOCAL startTime while
+    // events.list was windowed on Google's — and an unpushed reschedule is
+    // exactly what makes the two disagree, so absence proves nothing.
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+    const event = await localEvent(user.id, {
+      googleEventId: 'g-moved',
+      startTime: new Date('2026-08-21T09:00:00.000Z'),
+      pendingSince: new Date(),
+    });
+    stubEventsList(calendar, () => eventsPage([{ id: 'g-other' }], { nextSyncToken: 't' }));
+
+    await calendarService.syncFromGoogle(false, user.id);
+
+    expect(await prisma.calendarEvent.findUnique({ where: { id: event.id } })).not.toBeNull();
+  });
+});
+

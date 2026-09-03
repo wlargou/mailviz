@@ -72,6 +72,7 @@ function makeEvent(overrides: Partial<CalendarEvent> = {}): CalendarEvent {
     reminders: null,
     visibility: null,
     syncedAt: null,
+    pendingSince: null,
     createdAt: '2026-03-01T00:00:00.000Z',
     updatedAt: '2026-03-01T00:00:00.000Z',
     ...overrides,

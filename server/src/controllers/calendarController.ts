@@ -2,6 +2,7 @@ import { Response, NextFunction } from 'express';
 import type { Req } from "../types/http.js";
 import { calendarService } from '../services/calendarService.js';
 import { isCalendarSyncInProgress, runCalendarManualSync } from '../jobs/calendarSyncScheduler.js';
+import { sweepPendingPushes } from '../jobs/calendarPendingPush.js';
 
 export const calendarController = {
   async findAll(req: Req, res: Response, next: NextFunction) {
@@ -69,9 +70,12 @@ export const calendarController = {
       // overlap a scheduled sync for the account, and two concurrent full syncs
       // each run a reconciliation that deletes local rows missing from their own
       // listing — so one deletes what the other just wrote.
-      const outcome = await runCalendarManualSync(req.user!.id, () =>
-        calendarService.syncFromGoogle(false, req.user!.id)
-      );
+      const outcome = await runCalendarManualSync(req.user!.id, async () => {
+        // "Sync now" retries pending pushes too — someone looking at a "not in
+        // Google Calendar" badge and pressing Sync expects exactly that.
+        await sweepPendingPushes(req.user!.id);
+        return calendarService.syncFromGoogle(false, req.user!.id);
+      });
       if (!outcome.ran) {
         res.status(409).json({
           error: { code: 'SYNC_IN_PROGRESS', message: 'A sync is already running for this account' },

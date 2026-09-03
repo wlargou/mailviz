@@ -95,6 +95,62 @@ export type PushOutcome =
   | { status: 'skipped'; reason: 'not-connected' | 'row-missing' | 'no-google-event' }
   | { status: 'failed'; failure: PushFailure };
 
+/**
+ * Record what a push did to the row's pending marker. The only place that
+ * clears it.
+ *
+ *  - `pushed`, or `skipped/not-connected` → clear. A user with no Google
+ *    connected is not waiting for anything, and leaving them pending would warn
+ *    and retry for exactly the people the warning is not for.
+ *  - `failed` → keep. That is the divergence this column exists to record.
+ *  - `skipped/no-google-event` → keep: the row has no Google event because an
+ *    earlier create never landed, so it is still owed one.
+ *  - `skipped/row-missing` → nothing to write.
+ */
+export async function settlePending(eventId: string, userId: string, push: PushOutcome) {
+  const clear =
+    push.status === 'pushed' ||
+    (push.status === 'skipped' && push.reason === 'not-connected');
+  if (!clear) return;
+
+  await prisma.calendarEvent.updateMany({
+    where: { id: eventId, userId, pendingSince: { not: null } },
+    data: { pendingSince: null },
+  });
+}
+
+/**
+ * Rebuild `pushToGoogle`'s `extraData` from a stored row, for a retry that has
+ * no request to read it from.
+ *
+ * Every field here is one `pushToGoogle` sends only when handed it, and
+ * `events.update` is a full replace — so a retry passing none of them would
+ * strip the attendees, colour, recurrence, reminders and visibility off the
+ * Google event, and at the default `sendUpdates` mail everyone about it.
+ */
+export function pushExtrasFromRow(event: {
+  attendees: Prisma.JsonValue;
+  colorId: string | null;
+  recurrence: string[];
+  recurringEventId: string | null;
+  reminders: Prisma.JsonValue;
+  visibility: string | null;
+}) {
+  const attendees = Array.isArray(event.attendees)
+    ? (event.attendees as Array<{ email?: string }>).flatMap((a) => (a?.email ? [{ email: a.email }] : []))
+    : undefined;
+
+  return {
+    attendees,
+    colorId: event.colorId ?? undefined,
+    // Never rewrite the rule from a series instance — `update` refuses for the
+    // same reason, and Google would reject it.
+    recurrence: event.recurringEventId ? undefined : event.recurrence,
+    reminders: normalizeReminders(event.reminders) ?? undefined,
+    visibility: normalizeVisibility(event.visibility) ?? undefined,
+  };
+}
+
 export const calendarService = {
   async findAll(query: { start?: string; end?: string }, userId: string) {
     const where: Prisma.CalendarEventWhereInput = { userId };
@@ -176,6 +232,8 @@ export const calendarService = {
         attendees: data.attendees ? (data.attendees as unknown as Prisma.InputJsonValue) : undefined,
         reminders: remindersColumn(data.reminders),
         visibility: data.visibility ?? null,
+        // Write-ahead: pending until the push below says otherwise.
+        pendingSince: new Date(),
       },
     });
 
@@ -191,6 +249,8 @@ export const calendarService = {
     });
 
     // Re-fetch event after pushToGoogle updated it with Google response data
+    await settlePending(event.id, userId, push);
+
     const updated = await prisma.calendarEvent.findUnique({ where: { id: event.id } });
     // Logged whether or not the push landed: the writes that fail to reach
     // Google are exactly the ones that later diverge and need explaining.
@@ -237,6 +297,10 @@ export const calendarService = {
     const canEditRecurrence = !existing.recurringEventId;
     const recurrence = canEditRecurrence ? data.recurrence : undefined;
     if (recurrence !== undefined) updateData.recurrence = recurrence;
+    // Always a fresh timestamp, never `existing.pendingSince ?? new Date()`. A
+    // new save is a new attempt, and resetting the clock is what puts a row
+    // that aged out of the retry window back into it — the user's escape hatch.
+    updateData.pendingSince = new Date();
 
     const event = await prisma.calendarEvent.update({
       where: { id, userId },
@@ -254,6 +318,8 @@ export const calendarService = {
     });
 
     // Re-fetch event after pushToGoogle updated it with Google response data
+    await settlePending(event.id, userId, push);
+
     const updated = await prisma.calendarEvent.findUnique({ where: { id: event.id } });
     auditService.log({ userId, action: 'EVENT_UPDATED', entityType: 'event', entityId: id, details: { changes: Object.keys(data) } });
     return { event: updated || event, push };
@@ -456,6 +522,12 @@ export const calendarService = {
         where: {
           userId,
           startTime: { gte: windowStart, lte: windowEnd },
+          // A pending row's absence from the listing is uninformative by
+          // construction: this window is on the LOCAL startTime while
+          // `events.list` was windowed on Google's, and an unpushed edit is
+          // exactly what makes the two disagree. Move an event from a year out
+          // to next week, have the push fail, and without this it is deleted.
+          pendingSince: null,
           // Both conditions are on `googleEventId`, so they go under AND. As
           // sibling keys the second silently replaced the first, leaving the
           // not-null guard off — it only behaved because SQL `NOT IN` does not
@@ -583,16 +655,42 @@ export const calendarService = {
       syncedAt: new Date(),
     };
 
-    const localEvent = await prisma.calendarEvent.upsert({
-      where: { userId_googleEventId: { userId, googleEventId: gEvent.id } },
-      update: eventData,
-      create: {
-        userId,
-        googleEventId: gEvent.id,
-        calendarId: 'primary',
-        ...eventData,
-      },
+    const key = { userId_googleEventId: { userId, googleEventId: gEvent.id } };
+
+    /**
+     * The update is gated on `pendingSince: null`; the insert is not.
+     *
+     * A row carrying a local edit we have not managed to push is the one row a
+     * sync must not write — `eventData` is almost entirely columns `update`
+     * writes, so refreshing it reverts an edit this app told the user it had
+     * saved and Google does not have. That silent revert is the whole bug.
+     *
+     * `updateMany` rather than `upsert` because an upsert's update branch
+     * cannot carry a condition. And deliberately not an early return: the
+     * attendee-driven customer and contact import below runs for every event
+     * Google returns, pending or not, and needs this row's id.
+     */
+    const { count } = await prisma.calendarEvent.updateMany({
+      where: { userId, googleEventId: gEvent.id, pendingSince: null },
+      data: eventData,
     });
+
+    const localEvent =
+      count > 0
+        ? (await prisma.calendarEvent.findUniqueOrThrow({ where: key }))
+        : await prisma.calendarEvent.upsert({
+            // `count === 0` is either "no row yet" or "a pending row we just
+            // declined to write". `update: {}` covers the second: it returns
+            // the row without changing a field.
+            where: key,
+            update: {},
+            create: {
+              userId,
+              googleEventId: gEvent.id,
+              calendarId: 'primary',
+              ...eventData,
+            },
+          });
 
     // Auto-import customers and contacts from attendees
     if (attendees && Array.isArray(attendees)) {

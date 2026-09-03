@@ -1,0 +1,18 @@
+-- A local create or update that has not reached Google yet.
+--
+-- Nullable with NO default, deliberately, against the `NOT NULL DEFAULT` shape
+-- the rest of this directory uses (see 20260818090000_add_contact_kind). That
+-- shape is right when the default is TRUE of existing rows. Here it would not
+-- be: a default of "synced" asserts something false about the edited-but-
+-- unpushed rows this column exists to find, and about every locally created
+-- event Google has never seen.
+--
+-- There is no backfill either. The only in-row evidence of divergence would be
+-- `updated_at > synced_at`, and those two are read from the same Node clock at
+-- different moments — measured at ~20% of cleanly pushed rows reading as dirty,
+-- with the clean and dirty ranges overlapping, so no threshold separates them.
+--
+-- NULL is not a claim about the past; it is the correct admission that we were
+-- not recording one. The sweep's scope is therefore empty at cutover, which is
+-- what stops this migration mailing every attendee of every existing event.
+ALTER TABLE "calendar_events" ADD COLUMN "pending_since" TIMESTAMP(3);

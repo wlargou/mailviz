@@ -201,6 +201,10 @@ export const dashboardService = {
           isAllDay: true,
           location: true,
           conferenceLink: true,
+          // Narrowed selects silently drop new columns. The week strip shows
+          // the same events as the calendar, so it has to be able to say the
+          // same thing about them.
+          pendingSince: true,
         },
       }),
 

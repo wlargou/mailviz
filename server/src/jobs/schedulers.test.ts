@@ -455,7 +455,13 @@ describe('calendarSyncScheduler — one bad account', () => {
     );
 
     const inFlight = syncCalendarNow(syncing.id);
-    await Promise.resolve(); // let syncCalendarNow reach the pending sync
+    // Wait for the sync to actually be reached, rather than for a fixed number
+    // of microtasks. `syncAccount` retries pending pushes before it pulls, and
+    // that does real database work — so `await Promise.resolve()` now lands
+    // mid-sweep, before `release` has been assigned, and this failed with
+    // `release is not a function`. Waiting on the call is what the assertions
+    // below actually depend on.
+    await vi.waitFor(() => expect(mocks.syncCalendar).toHaveBeenCalled());
 
     expect(isCalendarSyncInProgress(syncing.id)).toBe(true);
     expect(isCalendarSyncInProgress(idle.id)).toBe(false);
