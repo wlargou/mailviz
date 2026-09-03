@@ -1192,3 +1192,20 @@
   }
 }
 
+// ─── PENDING PUSH ────────────────────────────────────────────────────────────
+//
+// Shown when a local change has not reached Google. The hint is visible rather
+// than a tooltip: this is a state the user has to act on, and Carbon's `Tag`
+// spends its `title` attribute on its own dismiss control anyway.
+.pending-push {
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-03;
+  flex-wrap: wrap;
+}
+
+.pending-push__hint {
+  @include type.type-style('label-01');
+  color: var(--cds-text-secondary);
+}
+
