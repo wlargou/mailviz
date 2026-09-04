@@ -870,7 +870,10 @@ export const calendarService = {
             : { dateTime: event.endTime.toISOString() },
         };
 
-        if (extraData?.attendees) {
+        // Consistency with the update body below. Behaviour-neutral: arrays are
+        // always truthy and the validator makes `null` unreachable. A new event
+        // has no prior guest list to clear, so no fallback belongs here.
+        if (extraData?.attendees !== undefined) {
           requestBody.attendees = extraData.attendees;
         }
         if (extraData?.colorId) {
@@ -968,8 +971,29 @@ export const calendarService = {
             : { dateTime: event.endTime.toISOString() },
         };
 
-        if (extraData?.attendees) {
-          requestBody.attendees = extraData.attendees;
+        /**
+         * Fall back to the stored row, exactly as colour, recurrence, reminders
+         * and visibility below already do — attendees was the only field in
+         * this full-replace body without it.
+         *
+         * Omitting the key CLEARED the Google guest list and, at the default
+         * `sendUpdates`, mailed every one of them about it. The local column
+         * kept them, so the row diverged; the push reported success, so
+         * `settlePending` cleared its protection; and the next sync wrote
+         * Google's now-empty list back over it. The bug erased its own
+         * evidence.
+         *
+         * Through `pushExtrasFromRow`, which strips to `{ email }`. Never the
+         * raw column: `responseStatus` is writable and the stored copy is a
+         * snapshot a diverged row freezes, so pushing it back would re-RSVP for
+         * the guests — the same reason `respond()` re-reads from Google first.
+         *
+         * `??`, not `||` or a `.length` check: an explicit `[]` is how the user
+         * says "remove everyone", and it has to survive.
+         */
+        const attendeesToSend = extraData?.attendees ?? pushExtrasFromRow(event).attendees;
+        if (attendeesToSend !== undefined) {
+          requestBody.attendees = attendeesToSend;
         }
         if (extraData?.colorId) {
           requestBody.colorId = extraData.colorId;
