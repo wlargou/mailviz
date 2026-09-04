@@ -74,6 +74,7 @@ async function localEvent(
     recurrence: string[];
     description: string;
     location: string;
+    attendees: unknown;
   }> = {}
 ) {
   const start = overrides.startTime ?? new Date('2026-08-20T09:00:00.000Z');
@@ -92,6 +93,7 @@ async function localEvent(
       ...(overrides.recurrence ? { recurrence: overrides.recurrence } : {}),
       ...(overrides.description ? { description: overrides.description } : {}),
       ...(overrides.location ? { location: overrides.location } : {}),
+      ...(overrides.attendees !== undefined ? { attendees: overrides.attendees as never } : {}),
     },
   });
 }
@@ -938,6 +940,70 @@ describe('calendarService — the pending marker', () => {
 
     const row = await prisma.calendarEvent.findUniqueOrThrow({ where: { id: event.id } });
     expect(row.pendingSince).toEqual(pending);
+  });
+});
+
+describe('calendarService.update — the Google guest list', () => {
+  /**
+   * `events.update` is a full replace, and `attendees` was the only field in
+   * that request body without a fallback to the stored row — colour,
+   * recurrence, reminders and visibility all have one.
+   *
+   * So a PATCH that did not mention attendees CLEARED the Google guest list and,
+   * at the default `sendUpdates`, mailed every one of them about it. The local
+   * column kept them, so the row diverged; the push reported success, so
+   * `settlePending` cleared the row's protection; and the next sync then wrote
+   * Google's now-empty list back over it. Silent, self-erasing, and it took the
+   * evidence with it.
+   */
+  it('keeps the guest list when the update does not mention attendees', async () => {
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+    const event = await localEvent(user.id, {
+      googleEventId: 'g-1',
+      attendees: [
+        { email: 'jane@acme.test', displayName: 'Jane', responseStatus: 'accepted', self: false, organizer: false },
+      ],
+    });
+
+    await calendarService.update(event.id, { title: 'Renamed' }, user.id);
+
+    await vi.waitFor(() => expect(calendar.eventsUpdate).toHaveBeenCalled());
+    const body = calendar.eventsUpdate.mock.calls[0][0].requestBody;
+    // Exactly `{ email }` — the strict shape is the second half of the
+    // assertion. `responseStatus` is writable, and the stored copy is a
+    // snapshot that a diverged row freezes, so pushing it back would re-RSVP
+    // on the guests' behalf. That is why `respond()` re-reads from Google
+    // rather than trusting this column.
+    expect(body.attendees).toEqual([{ email: 'jane@acme.test' }]);
+  });
+
+  it('still clears the guests when the update says so explicitly', async () => {
+    // Honest label: this cannot fail, and that is worth writing down rather
+    // than dressing up.
+    //
+    // It passes against the unfixed code, and it also passes against every
+    // wrong shape of the fix — including `attendees?.length ? … : fromRow()`,
+    // which looks like it would swallow the empty array. It does not, because
+    // `update` writes the column BEFORE it pushes, so the fallback reads the
+    // `[]` straight back off the row and still clears. `[]` is truthy, so `||`
+    // preserves it too.
+    //
+    // So this documents the contract — "remove everyone" must reach Google —
+    // and records that the write-before-push ordering is what makes it hold.
+    // Change that ordering and this test still will not catch you; the comment
+    // is the warning, not the assertion.
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+    const event = await localEvent(user.id, {
+      googleEventId: 'g-1',
+      attendees: [{ email: 'jane@acme.test' }],
+    });
+
+    await calendarService.update(event.id, { attendees: [] }, user.id);
+
+    await vi.waitFor(() => expect(calendar.eventsUpdate).toHaveBeenCalled());
+    expect(calendar.eventsUpdate.mock.calls[0][0].requestBody.attendees).toEqual([]);
   });
 });
 
