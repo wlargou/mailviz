@@ -1092,12 +1092,27 @@ export function SettingsPage() {
         </p>
         <UnorderedList>
           <ListItem>All synced emails and attachments</ListItem>
-          <ListItem>All calendar events</ListItem>
-          <ListItem>All companies and contacts (auto-discovered from emails)</ListItem>
+          {/*
+            "All calendar events" was true and is not any more — an event
+            created here that never reached Google is kept, on the same
+            reasoning that keeps tasks. Saying otherwise would make the fix a
+            different surprise.
+          */}
+          <ListItem>
+            All calendar events synced from Google — events you created here that never
+            reached Google are kept
+          </ListItem>
+          {/*
+            "(auto-discovered from emails)" was already wrong: companies and
+            contacts can be created by hand, neither model records an origin,
+            and the disconnect deletes them all regardless.
+          */}
+          <ListItem>All companies and contacts, including any you added by hand</ListItem>
           <ListItem>Email-to-task links (tasks themselves will be kept but unlinked)</ListItem>
         </UnorderedList>
         <p style={{ marginTop: '1rem', color: 'var(--cds-support-error)' }}>
-          This action cannot be undone. Your tasks will be preserved but will lose their company and email associations.
+          This action cannot be undone. Your tasks are kept, and so are any events that exist
+          only in Mailviz — both lose their company associations.
         </p>
       </Modal>
     </div>

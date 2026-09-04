@@ -379,9 +379,15 @@ describe('googleAuthService.disconnect', () => {
         size: 1024,
       },
     });
+    // `googleEventId` set deliberately: this fixture stands for data that came
+    // FROM Google, and without it the row is one Google never had — which the
+    // disconnect now keeps. The assertion below would then have been passing
+    // for the wrong reason, certifying a bug while claiming to test synced-data
+    // deletion.
     const event = await prisma.calendarEvent.create({
       data: {
         userId,
+        googleEventId: 'g-synced-1',
         title: 'Standup',
         startTime: new Date('2026-08-20T09:00:00.000Z'),
         endTime: new Date('2026-08-20T09:15:00.000Z'),
@@ -528,3 +534,85 @@ describe('googleAuthService.getStatus', () => {
     expect(status.needsReauth).toBe(true);
   });
 });
+
+describe('googleAuthService.disconnect — what is the user’s own', () => {
+  /**
+   * Step 1 of the same transaction keeps the user's tasks, saying they are
+   * "the user's own work, not synced data". An event created here that never
+   * reached Google passes exactly that test — Google has never seen it, so
+   * unlinking Google is no reason to destroy it. It was being deleted anyway.
+   */
+  it('keeps an event Google never had, and deletes the ones it did', async () => {
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+    const mine = await prisma.calendarEvent.create({
+      data: {
+        userId: user.id,
+        googleEventId: null,
+        title: 'Written here, never pushed',
+        startTime: new Date('2026-08-20T09:00:00.000Z'),
+        endTime: new Date('2026-08-20T10:00:00.000Z'),
+      },
+    });
+    const synced = await prisma.calendarEvent.create({
+      data: {
+        userId: user.id,
+        googleEventId: 'g-from-google',
+        title: 'Came from Google',
+        startTime: new Date('2026-08-21T09:00:00.000Z'),
+        endTime: new Date('2026-08-21T10:00:00.000Z'),
+      },
+    });
+
+    await googleAuthService.disconnect(user.id);
+
+    // Both halves matter. Keeping everything would be just as wrong as
+    // keeping nothing, and a test asserting only the survivor would pass.
+    expect(await prisma.calendarEvent.findUnique({ where: { id: mine.id } })).not.toBeNull();
+    expect(await prisma.calendarEvent.findUnique({ where: { id: synced.id } })).toBeNull();
+  });
+
+  it('clears a pending marker on the events it keeps', async () => {
+    // Nothing will ever push them again: the retry sweep enumerates accounts
+    // from GoogleAuth, which this transaction deletes. A marker left behind
+    // would age into a permanent "no longer retrying" warning about an event
+    // the user deliberately took out of Google.
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+    const kept = await prisma.calendarEvent.create({
+      data: {
+        userId: user.id,
+        googleEventId: null,
+        title: 'Never pushed',
+        startTime: new Date('2026-08-20T09:00:00.000Z'),
+        endTime: new Date('2026-08-20T10:00:00.000Z'),
+        pendingSince: new Date('2026-08-19T00:00:00.000Z'),
+      },
+    });
+
+    await googleAuthService.disconnect(user.id);
+
+    const row = await prisma.calendarEvent.findUniqueOrThrow({ where: { id: kept.id } });
+    expect(row.pendingSince).toBeNull();
+  });
+
+  it('does not reach another account’s local events', async () => {
+    const { alice, bob } = await createTwoUsers();
+    await createGoogleAuth(alice.id);
+    await createGoogleAuth(bob.id);
+    const theirs = await prisma.calendarEvent.create({
+      data: {
+        userId: bob.id,
+        googleEventId: null,
+        title: 'Bob wrote this',
+        startTime: new Date('2026-08-20T09:00:00.000Z'),
+        endTime: new Date('2026-08-20T10:00:00.000Z'),
+      },
+    });
+
+    await googleAuthService.disconnect(alice.id);
+
+    expect(await prisma.calendarEvent.findUnique({ where: { id: theirs.id } })).not.toBeNull();
+  });
+});
+

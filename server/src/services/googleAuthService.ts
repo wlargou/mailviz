@@ -285,13 +285,28 @@ export const googleAuthService = {
       prisma.email.deleteMany({ where: { userId: ownerId } }),
       // 5. Delete calendar event-company links
       prisma.calendarEventCustomer.deleteMany({ where: { calendarEvent: { userId: ownerId } } }),
-      // 6. Delete this user's calendar events
-      prisma.calendarEvent.deleteMany({ where: { userId: ownerId } }),
-      // 7. Delete this user's contacts
+      // 6. Delete the calendar events that came FROM Google. An event created
+      //    here that never reached Google is the user's own work, not synced
+      //    data — the same test step 1 applies to tasks, and the same one the
+      //    sync's orphan reconciliation already applies to a row Google has
+      //    never seen.
+      prisma.calendarEvent.deleteMany({
+        where: { userId: ownerId, googleEventId: { not: null } },
+      }),
+      // 7. Nothing will ever push the survivors: the retry sweep enumerates
+      //    accounts from GoogleAuth, which this transaction deletes, and the
+      //    Sync button is hidden while disconnected. A marker left behind would
+      //    age into a permanent "no longer retrying" warning on an event the
+      //    user has deliberately taken out of Google.
+      prisma.calendarEvent.updateMany({
+        where: { userId: ownerId, pendingSince: { not: null } },
+        data: { pendingSince: null },
+      }),
+      // 8. Delete this user's contacts
       prisma.contact.deleteMany({ where: { customer: { userId: ownerId } } }),
-      // 8. Delete this user's companies
+      // 9. Delete this user's companies
       prisma.customer.deleteMany({ where: { userId: ownerId } }),
-      // 9. Delete the GoogleAuth record
+      // 10. Delete the GoogleAuth record
       prisma.googleAuth.delete({ where: { id: auth.id } }),
     ]);
   },
