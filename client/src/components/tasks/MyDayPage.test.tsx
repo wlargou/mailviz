@@ -68,6 +68,7 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     blockedByCount: 0,
     openBlockerCount: 0,
     blocksCount: 0,
+    linkCount: 0,
     recurrence: null,
     recurrenceNextId: null,
     ...overrides,

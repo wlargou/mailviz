@@ -10,6 +10,7 @@ import {
   createCommentSchema,
   updateCommentSchema,
   addDependencySchema,
+  addLinkSchema,
 } from '../validators/taskValidator.js';
 
 const router = Router();
@@ -37,5 +38,7 @@ router.patch('/:id/comments/:commentId', validate(updateCommentSchema), taskCont
 router.delete('/:id/comments/:commentId', taskController.deleteComment);
 router.post('/:id/dependencies', validate(addDependencySchema), taskController.addDependency);
 router.delete('/:id/dependencies/:blockerId', taskController.removeDependency);
+router.post('/:id/links', validate(addLinkSchema), taskController.addLink);
+router.delete('/:id/links/:entityType/:entityId', taskController.removeLink);
 
 export { router as taskRoutes };

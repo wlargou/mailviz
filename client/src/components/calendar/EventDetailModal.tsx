@@ -14,6 +14,7 @@ import { format } from 'date-fns';
 import type { CalendarEvent, EventAttendee } from '../../types/calendar';
 import { CompanyLogo } from '../shared/CompanyLogo';
 import { PendingPushTag } from './PendingPushTag';
+import { LinkedTasks } from '../tasks/LinkedTasks';
 
 type ResponseStatus = EventAttendee['responseStatus'];
 
@@ -312,6 +313,12 @@ export function EventDetailModal({ event, open, onClose, onEdit, onDelete, onRes
                 <span>Organized by <strong>{organizer.displayName || organizer.email}</strong></span>
               </div>
             )}
+          </div>
+
+          {/* Tasks attached to this event — the action items it produced. */}
+          <div className="event-detail__tasks">
+            <h5 className="event-detail__tasks-title">Tasks</h5>
+            <LinkedTasks entityType="event" entityId={event.id} size="sm" />
           </div>
 
           {/* Action bar: join + RSVP */}
