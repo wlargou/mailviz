@@ -155,6 +155,22 @@ describe('taskService — dependencies', () => {
     expect(unblocked.data.find((t) => t.id === free.id)).toMatchObject({ openBlockerCount: 0 });
   });
 
+  it('a finished task is not blocked, whatever its blockers are doing', async () => {
+    // Forced past an open blocker: the row keeps the dependency but must not
+    // read as blocked — "blocked" means "cannot be finished", and it is.
+    const { alice } = await createTwoUsers();
+    await seedTaskStatuses(alice.id);
+    const design = await createTask(alice.id, { title: 'Design', status: 'TODO' });
+    const build = await createTask(alice.id, { title: 'Build', status: 'TODO' });
+    await taskService.addDependency(alice.id, build.id, design.id);
+
+    const forced = await taskService.update(alice.id, build.id, { status: 'DONE', force: true });
+    expect(forced).toMatchObject({ blockedByCount: 1, openBlockerCount: 0 });
+
+    const row = (await taskService.findAll(alice.id, {})).data.find((t) => t.id === build.id)!;
+    expect(row).toMatchObject({ blockedByCount: 1, openBlockerCount: 0 });
+  });
+
   it('a dependency goes with either task', async () => {
     const { alice } = await createTwoUsers();
     const a = await createTask(alice.id);

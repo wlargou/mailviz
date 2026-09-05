@@ -169,7 +169,7 @@ interface RelationCounts {
  * `findGroupedByCompany` makes for shared tasks, so a board and a list never
  * disagree about the same row.
  */
-async function withSubtaskProgress<T extends { id: string }>(userId: string, tasks: T[]): Promise<Array<T & RelationCounts>> {
+async function withSubtaskProgress<T extends { id: string; status?: string }>(userId: string, tasks: T[]): Promise<Array<T & RelationCounts>> {
   if (tasks.length === 0) return [];
   const ids = tasks.map((t) => t.id);
   const [children, blockers, blocks, terminal] = await Promise.all([
@@ -211,10 +211,13 @@ async function withSubtaskProgress<T extends { id: string }>(userId: string, tas
   for (const row of blocks) {
     entry(row.blockerId).blocksCount = row._count.blockedId;
   }
-  return tasks.map((t) => ({
-    ...t,
-    ...(counts.get(t.id) ?? { subtaskCount: 0, subtaskDoneCount: 0, blockedByCount: 0, openBlockerCount: 0, blocksCount: 0 }),
-  }));
+  return tasks.map((t) => {
+    const c = counts.get(t.id) ?? { subtaskCount: 0, subtaskDoneCount: 0, blockedByCount: 0, openBlockerCount: 0, blocksCount: 0 };
+    // A finished task is not blocked, whatever its blockers are doing:
+    // "blocked" means "cannot be finished", and this one already is.
+    const finished = t.status !== undefined && isTerminalStatus(t.status, terminal);
+    return { ...t, ...c, openBlockerCount: finished ? 0 : c.openBlockerCount };
+  });
 }
 
 /** The shape a dependency's other end takes in a task's detail. */
