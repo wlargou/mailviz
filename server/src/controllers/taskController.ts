@@ -45,6 +45,14 @@ export const taskController = {
     }
   },
 
+  async getMyDay(req: Req, res: Response, next: NextFunction) {
+    try {
+      res.json(await taskService.findMyDay(req.user!.id));
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async getSummary(req: Req, res: Response, next: NextFunction) {
     try {
       const summary = await taskService.getSummary(req.user!.id);

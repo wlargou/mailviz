@@ -5,6 +5,7 @@ import { LoginPage } from './components/auth/LoginPage';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { DashboardPage } from './components/dashboard/DashboardPage';
 import { TasksPage } from './components/tasks/TasksPage';
+import { MyDayPage } from './components/tasks/MyDayPage';
 import { CustomersPage } from './components/customers/CustomersPage';
 import { CustomerDetailPage } from './components/customers/CustomerDetailPage';
 import { ContactsPage } from './components/contacts/ContactsPage';
@@ -71,6 +72,7 @@ export function App() {
           <Route element={<AppShell />}>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/tasks" element={<TasksPage />} />
+            <Route path="/my-day" element={<MyDayPage />} />
             <Route path="/customers" element={<CustomersPage />} />
             <Route path="/customers/:id" element={<CustomerDetailPage />} />
             <Route path="/contacts" element={<ContactsPage />} />

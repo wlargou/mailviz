@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { Task, TaskSummary, CreateTaskInput, UpdateTaskInput, ReorderItem, ChecklistItem, TaskComment, TaskActivityEntry } from '../types/task';
+import type { Task, TaskSummary, CreateTaskInput, UpdateTaskInput, ReorderItem, ChecklistItem, TaskComment, TaskActivityEntry, MyDay } from '../types/task';
 import type { ApiResponse } from '../types/api';
 
 /** How the By Company view orders its groups. Mirrors the server's whitelist. */
@@ -51,6 +51,10 @@ export const tasksApi = {
 
   getById(id: string) {
     return api.get<ApiResponse<Task>>(`/tasks/${id}`);
+  },
+
+  getMyDay() {
+    return api.get<{ data: MyDay; meta: { timezone: string; today: string; total: number } }>('/tasks/my-day');
   },
 
   getSummary() {

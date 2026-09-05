@@ -15,6 +15,7 @@ import { useUIStore } from '../../store/uiStore';
 import type { Label, TaskPriority, TaskStatus, TaskStatusConfig } from '../../types/task';
 import { useTaskStore } from '../../store/taskStore';
 import { buildRecurrenceOptions, buildRecurrenceRules, type RecurrencePresetId } from '../../utils/recurrence';
+import { REMINDER_OPTIONS, reminderFor, type ReminderPresetId } from '../../utils/reminders';
 
 const priorityItems = [
   { id: 'LOW', text: 'Low' },
@@ -45,6 +46,8 @@ export function TaskCreateModal({ open, onClose, onCreated, labels }: TaskCreate
   const [selectedLabels, setSelectedLabels] = useState<string[]>([]);
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [recurrencePreset, setRecurrencePreset] = useState<RecurrencePresetId>('none');
+  const [startDate, setStartDate] = useState<string | null>(null);
+  const [reminder, setReminder] = useState<ReminderPresetId>('none');
   const [statusItems, setStatusItems] = useState<{ id: string; text: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const addNotification = useUIStore((s) => s.addNotification);
@@ -71,6 +74,8 @@ export function TaskCreateModal({ open, onClose, onCreated, labels }: TaskCreate
     setSelectedLabels([]);
     setCustomerId(null);
     setRecurrencePreset('none');
+    setStartDate(null);
+    setReminder('none');
   };
 
   const handleSubmit = async () => {
@@ -86,6 +91,8 @@ export function TaskCreateModal({ open, onClose, onCreated, labels }: TaskCreate
         labelIds: selectedLabels.length > 0 ? selectedLabels : undefined,
         customerId: customerId || undefined,
         recurrence: dueDate ? buildRecurrenceRules(recurrencePreset, new Date(dueDate))[0] ?? undefined : undefined,
+        startDate: startDate ?? undefined,
+        remindAt: reminderFor(reminder, dueDate ? new Date(dueDate) : null)?.toISOString() ?? undefined,
       });
       addNotification({ kind: 'success', title: 'Task created', subtitle: title.trim() });
       resetForm();
@@ -176,6 +183,33 @@ export function TaskCreateModal({ open, onClose, onCreated, labels }: TaskCreate
           className="create-side-panel__form-item"
         />
       </DatePicker>
+      <DatePicker
+        datePickerType="single"
+        onChange={([date]: Date[]) => {
+          setStartDate(date ? date.toISOString() : null);
+        }}
+      >
+        <DatePickerInput
+          id="task-start-date"
+          labelText="Start Date"
+          placeholder="mm/dd/yyyy"
+          className="create-side-panel__form-item"
+        />
+      </DatePicker>
+      <Dropdown
+        id="task-reminder"
+        titleText="Reminder"
+        label="No reminder"
+        helperText={dueDate ? undefined : 'Set a due date first'}
+        disabled={!dueDate}
+        items={REMINDER_OPTIONS}
+        itemToString={(item) => item?.label || ''}
+        selectedItem={REMINDER_OPTIONS.find((o) => o.id === (dueDate ? reminder : 'none'))}
+        onChange={({ selectedItem }) => {
+          if (selectedItem) setReminder(selectedItem.id);
+        }}
+        className="create-side-panel__form-item"
+      />
       <Dropdown
         id="task-recurrence"
         titleText="Repeat"

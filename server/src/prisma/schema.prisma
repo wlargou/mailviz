@@ -28,6 +28,12 @@ model Task {
   status         String       @default("TODO") @db.VarChar(100)
   priority       TaskPriority @default(MEDIUM)
   dueDate        DateTime?    @map("due_date")
+  /// When work on this task can begin. Never after the due date (service rule).
+  startDate      DateTime?    @map("start_date")
+  /// When to raise a TASK_REMINDER notification. Fires once: `reminderSentAt`
+  /// records the firing, and changing `remindAt` clears it.
+  remindAt       DateTime?    @map("remind_at")
+  reminderSentAt DateTime?    @map("reminder_sent_at")
   position       Int          @default(0)
   estimatedMinutes Int?       @map("estimated_minutes")
   customerId     String?      @map("customer_id")
@@ -71,6 +77,9 @@ model Task {
   @@index([userId])
   @@index([assignedToId])
   @@index([parentId])
+  @@index([startDate])
+  /// Serves the reminder sweep: due reminders not yet sent.
+  @@index([remindAt, reminderSentAt])
   @@map("tasks")
 }
 

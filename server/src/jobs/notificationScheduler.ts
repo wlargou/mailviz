@@ -63,6 +63,35 @@ async function runNotificationCheck() {
           });
         }
 
+        // b2. Task reminders that are due and have not fired.
+        //
+        // Stamped before the notification is written, so a write that fails
+        // does not fire again on every tick for ever; the stamp is the
+        // once-only, and `createIfNotExists` is not needed here.
+        const reminders = await prisma.task.findMany({
+          where: {
+            userId,
+            remindAt: { lte: now },
+            reminderSentAt: null,
+            ...notTerminal(terminal),
+          },
+          select: { id: true, title: true, dueDate: true },
+        });
+        for (const t of reminders) {
+          const claimed = await prisma.task.updateMany({
+            where: { id: t.id, reminderSentAt: null },
+            data: { reminderSentAt: now },
+          });
+          if (claimed.count === 0) continue;
+          await notificationService.create(userId, {
+            type: 'TASK_REMINDER',
+            title: `Reminder: ${t.title}`,
+            message: t.dueDate ? `Due ${t.dueDate.toISOString().slice(0, 10)}` : undefined,
+            entityType: 'task',
+            entityId: t.id,
+          });
+        }
+
         // c. Events starting within 15 min
         const upcomingEvents = await prisma.calendarEvent.findMany({
           where: {

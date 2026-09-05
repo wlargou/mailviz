@@ -50,6 +50,7 @@ interface NotificationInput {
 }
 
 const mocks = vi.hoisted(() => ({
+  createNotification: vi.fn(),
   cronSchedule: vi.fn<(expression: string, fn: () => void | Promise<void>) => { stop: () => void }>(),
   cronStop: vi.fn<() => void>(),
   syncFromGmail: vi.fn<(userId: string) => Promise<MailSyncResult>>(),
@@ -100,7 +101,7 @@ vi.mock('../services/snoozeService.js', () => ({
   },
 }));
 vi.mock('../services/notificationService.js', () => ({
-  notificationService: { createIfNotExists: mocks.createIfNotExists },
+  notificationService: { createIfNotExists: mocks.createIfNotExists, create: mocks.createNotification },
 }));
 
 const { startEmailSyncScheduler, stopEmailSyncScheduler, syncAccountNow, isSyncInProgressFor } =
@@ -574,5 +575,29 @@ describe('notificationScheduler', () => {
     await captureTick(startNotificationScheduler)();
 
     expect(mocks.createIfNotExists).not.toHaveBeenCalled();
+  });
+
+  it('fires a due task reminder once, and not for a finished task — REGRESSION guard', async () => {
+    const alice = await createConnectedUser();
+    await prisma.taskStatus.create({ data: { userId: alice.id, name: 'DONE', label: 'Done', position: 0, isTerminal: true } });
+    const due = await prisma.task.create({
+      data: { userId: alice.id, title: 'Call Sam', remindAt: new Date(Date.now() - 60_000) },
+    });
+    await prisma.task.create({
+      data: { userId: alice.id, title: 'Not yet', remindAt: new Date(Date.now() + 60 * 60_000) },
+    });
+    await prisma.task.create({
+      data: { userId: alice.id, title: 'Already done', status: 'DONE', remindAt: new Date(Date.now() - 60_000) },
+    });
+
+    const tick = captureTick(startNotificationScheduler);
+    await tick();
+    await tick();
+
+    const reminders = mocks.createNotification.mock.calls.filter(([, p]) => p.type === 'TASK_REMINDER');
+    expect(reminders).toHaveLength(1);
+    expect(reminders[0][0]).toBe(alice.id);
+    expect(reminders[0][1]).toMatchObject({ entityId: due.id, title: 'Reminder: Call Sam' });
+    expect((await prisma.task.findUniqueOrThrow({ where: { id: due.id } })).reminderSentAt).not.toBeNull();
   });
 });
