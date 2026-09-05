@@ -1,0 +1,210 @@
+// ─── TASKS: SUBTASKS, CHECKLIST AND PROGRESS ─────────────────────────────────
+//
+// `@use` scopes each partial, so the tokens this file needs are declared here
+// rather than inherited from index.scss.
+@use '@carbon/react/scss/type' as type;
+@use '@carbon/react/scss/spacing' as *;
+
+// A section inside the task edit panel: heading, count, bar, list, add row.
+.task-section {
+  margin-top: $spacing-06;
+  padding-top: $spacing-05;
+  border-top: 1px solid var(--cds-border-subtle);
+
+  &__header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: $spacing-03;
+  }
+
+  &__title {
+    @include type.type-style('heading-compact-01');
+    color: var(--cds-text-primary);
+  }
+
+  &__count {
+    @include type.type-style('label-01');
+    color: var(--cds-text-secondary);
+  }
+
+  &__progress {
+    margin-bottom: $spacing-04;
+  }
+
+  &__list {
+    list-style: none;
+    margin: 0 0 $spacing-03;
+    padding: 0;
+  }
+
+  &__item {
+    display: flex;
+    align-items: center;
+    gap: $spacing-03;
+    min-height: 2rem;
+    padding: $spacing-02 0;
+    border-bottom: 1px solid var(--cds-border-subtle-00);
+
+    &--done .task-section__text {
+      color: var(--cds-text-secondary);
+      text-decoration: line-through;
+    }
+  }
+
+  &__check {
+    flex: none;
+    width: 1rem;
+    height: 1rem;
+    margin: 0;
+    accent-color: var(--cds-interactive);
+    cursor: pointer;
+
+    &:disabled {
+      cursor: not-allowed;
+    }
+  }
+
+  &__text {
+    @include type.type-style('body-compact-01');
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    color: var(--cds-text-primary);
+    text-align: left;
+
+    &--link {
+      background: none;
+      border: 0;
+      padding: 0;
+      font: inherit;
+      cursor: pointer;
+
+      &:hover:not(:disabled) {
+        color: var(--cds-link-primary-hover);
+        text-decoration: underline;
+      }
+
+      &:focus-visible {
+        outline: 2px solid var(--cds-focus);
+        outline-offset: 2px;
+      }
+
+      &:disabled {
+        cursor: default;
+      }
+    }
+  }
+
+  &__meta {
+    @include type.type-style('label-01');
+    flex: none;
+    color: var(--cds-text-secondary);
+  }
+
+  // The delete button only appears on hover or focus, so a long checklist is
+  // not a column of trash cans.
+  &__remove {
+    flex: none;
+    opacity: 0;
+    transition: opacity 0.1s;
+  }
+
+  &__item:hover &__remove,
+  &__item:focus-within &__remove {
+    opacity: 1;
+  }
+
+  &__add {
+    display: flex;
+    align-items: center;
+    gap: $spacing-02;
+
+    .cds--text-input__field-wrapper,
+    .cds--form-item {
+      flex: 1;
+    }
+  }
+}
+
+// The row a subtask shows above its title, in the panel and in lists.
+.task-parent-crumb {
+  @include type.type-style('label-01');
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-02;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--cds-text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &::before {
+    content: '↳';
+    flex: none;
+  }
+
+  &--link {
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+
+    &:hover {
+      color: var(--cds-link-primary-hover);
+      text-decoration: underline;
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--cds-focus);
+      outline-offset: 2px;
+    }
+  }
+}
+
+// The panel's own header for a subtask: crumb above the title field.
+.task-detail-panel__crumb {
+  margin-bottom: $spacing-03;
+}
+
+.task-progress-tags {
+  display: inline-flex;
+  gap: $spacing-02;
+  flex-wrap: wrap;
+
+  // Tags carry their own outer margin; the row already spaces them.
+  .cds--tag {
+    margin: 0;
+  }
+
+  &__icon {
+    flex: none;
+    margin-inline-end: $spacing-02;
+  }
+
+  .cds--tag__label {
+    display: inline-flex;
+    align-items: center;
+  }
+}
+
+// Where the tags sit on a Kanban card, below the title.
+.kanban-card .card-parent {
+  margin-bottom: $spacing-02;
+}
+
+.kanban-card .card-progress {
+  margin-bottom: $spacing-03;
+
+  &:empty {
+    display: none;
+  }
+}
+
+// In the list and By Company tables the crumb stacks above the title.
+.task-title-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}

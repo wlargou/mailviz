@@ -10,6 +10,8 @@ export const createTaskSchema = z.object({
   customerId: z.string().uuid().nullable().optional(),
   assignedToId: z.string().uuid().nullable().optional(),
   estimatedMinutes: z.number().int().min(0).nullable().optional(),
+  /** Makes the task a subtask of another. `null` detaches it. */
+  parentId: z.string().uuid().nullable().optional(),
 });
 
 export const updateTaskSchema = createTaskSchema.partial();
@@ -24,6 +26,23 @@ export const reorderSchema = z.object({
   ),
 });
 
+// `.trim()` before `.min()`, so a line of spaces is rejected rather than
+// stored as ''.
+export const createChecklistItemSchema = z.object({
+  text: z.string().trim().min(1).max(500),
+});
+
+export const updateChecklistItemSchema = z
+  .object({
+    text: z.string().trim().min(1).max(500).optional(),
+    isDone: z.boolean().optional(),
+  })
+  .refine((v) => v.text !== undefined || v.isDone !== undefined, {
+    message: 'Nothing to update',
+  });
+
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;
 export type UpdateTaskInput = z.infer<typeof updateTaskSchema>;
 export type ReorderInput = z.infer<typeof reorderSchema>;
+export type CreateChecklistItemInput = z.infer<typeof createChecklistItemSchema>;
+export type UpdateChecklistItemInput = z.infer<typeof updateChecklistItemSchema>;

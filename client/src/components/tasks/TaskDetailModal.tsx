@@ -19,6 +19,9 @@ import { taskStatusesApi } from '../../api/taskStatuses';
 import { authApi } from '../../api/auth';
 import { ShareDialog } from '../shared/ShareDialog';
 import { CompanyComboBox } from '../shared/CompanyComboBox';
+import { TaskSubtasks } from './TaskSubtasks';
+import { TaskChecklist } from './TaskChecklist';
+import { TaskParentCrumb } from './TaskProgressTags';
 import { useUIStore } from '../../store/uiStore';
 import type { Task, Label, TaskPriority, TaskStatus, TaskStatusConfig } from '../../types/task';
 import { decodeEntities } from '../../utils/text';
@@ -73,10 +76,16 @@ interface TaskDetailModalProps {
   open: boolean;
   onClose: () => void;
   onUpdated: () => void;
+  /**
+   * Swap the panel to another task — a subtask, or the parent. The panel is
+   * keyed on `taskId`, so the caller changes that and this component refetches.
+   * Optional: a host that cannot navigate (the dashboard) just gets no links.
+   */
+  onOpenTask?: (taskId: string) => void;
   labels: Label[];
 }
 
-export function TaskDetailModal({ taskId, open, onClose, onUpdated, labels }: TaskDetailModalProps) {
+export function TaskDetailModal({ taskId, open, onClose, onUpdated, onOpenTask, labels }: TaskDetailModalProps) {
   const taskChanged = useTaskStore((s) => s.taskChanged);
   const [task, setTask] = useState<Task | null>(null);
   /**
@@ -104,6 +113,8 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, labels }: Ta
   const [effortIndex, setEffortIndex] = useState(0);
   const [users, setUsers] = useState<Array<{ id: string; name: string | null; email: string }>>([]);
   const [statusItems, setStatusItems] = useState<{ id: string; text: string }[]>([]);
+  // The full rows too: the subtask checkboxes need to know which are terminal.
+  const [statusConfigs, setStatusConfigs] = useState<TaskStatusConfig[]>([]);
   const [loading, setLoading] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [taskShares, setTaskShares] = useState<any[]>([]);
@@ -119,9 +130,26 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, labels }: Ta
   const fetchStatuses = useCallback(async () => {
     try {
       const { data: res } = await taskStatusesApi.getAll();
+      setStatusConfigs(res.data);
       setStatusItems(res.data.map((s: TaskStatusConfig) => ({ id: s.name, text: s.label })));
     } catch { /* ignore */ }
   }, []);
+
+  /**
+   * Re-read the task WITHOUT re-seeding the form.
+   *
+   * The subtask and checklist sections write immediately, and afterwards the
+   * panel needs the new rows and counts — but not a reset of the fields the
+   * user may be mid-edit in. The loading effect below clears everything and
+   * seeds again, which is right for opening a task and wrong here.
+   */
+  const reloadTask = useCallback(async () => {
+    if (!taskId) return;
+    try {
+      const { data: res } = await tasksApi.getById(taskId);
+      setTask((current) => (current && current.id === res.data.id ? res.data : current));
+    } catch { /* the sections keep what they have; the next open reloads */ }
+  }, [taskId]);
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -331,6 +359,14 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, labels }: Ta
 
       {task && (
       <div className="modal-form">
+        {task.parent && (
+          <div className="task-detail-panel__crumb">
+            <TaskParentCrumb
+              parent={{ ...task.parent, title: decodeEntities(task.parent.title) }}
+              onOpen={onOpenTask}
+            />
+          </div>
+        )}
         <TextInput
           id="edit-task-title"
           labelText="Title"
@@ -430,6 +466,12 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, labels }: Ta
             setSelectedLabels(selectedItems.map((item: LabelItem) => item.id));
           }}
         />
+        {/* A subtask cannot have subtasks (two levels), so its panel has no
+            section for them — the crumb above is its whole hierarchy. */}
+        {!task.parentId && (
+          <TaskSubtasks task={task} statuses={statusConfigs} onOpenTask={onOpenTask} onChanged={reloadTask} />
+        )}
+        <TaskChecklist taskId={task.id} items={task.checklist ?? []} onChanged={reloadTask} />
         {task.mailToTask?.email && (
           <div className="modal-form__source-email">
             <p className="modal-form__label" style={{ fontSize: '0.75rem', color: 'var(--cds-text-secondary)', marginBottom: '0.25rem' }}>Created from email</p>

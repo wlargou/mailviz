@@ -73,6 +73,7 @@ const actionLabels: Record<string, string> = {
   TASK_DELETED: 'Task Deleted',
   TASK_SHARED: 'Task Shared',
   TASK_ASSIGNED: 'Task Assigned',
+  TASK_CHECKLIST_UPDATED: 'Checklist Updated',
   DEAL_CREATED: 'Deal Created',
   DEAL_UPDATED: 'Deal Updated',
   DEAL_DELETED: 'Deal Deleted',

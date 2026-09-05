@@ -80,6 +80,12 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     updatedAt: '2026-08-01T00:00:00.000Z',
     labels: [],
     customer: null,
+    parentId: null,
+    parent: null,
+    subtaskCount: 0,
+    subtaskDoneCount: 0,
+    checklistCount: 0,
+    checklistDoneCount: 0,
     ...overrides,
   };
 }

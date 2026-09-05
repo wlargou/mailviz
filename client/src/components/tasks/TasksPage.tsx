@@ -148,6 +148,7 @@ export function TasksPage() {
         open={!!editTaskId}
         onClose={() => setEditTaskId(null)}
         onUpdated={handleTaskUpdated}
+        onOpenTask={setEditTaskId}
         labels={labels}
       />
 
@@ -155,6 +156,11 @@ export function TasksPage() {
         open={!!deleteTask}
         title={decodeEntities(deleteTask?.title)}
         entityLabel="task"
+        consequence={
+          deleteTask && deleteTask.subtaskCount > 0
+            ? `Its ${deleteTask.subtaskCount} ${deleteTask.subtaskCount === 1 ? 'subtask' : 'subtasks'} will be deleted with it.`
+            : undefined
+        }
         onClose={() => setDeleteTask(null)}
         onConfirm={handleDelete}
       />

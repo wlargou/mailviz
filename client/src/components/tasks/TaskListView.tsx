@@ -25,6 +25,7 @@ import { EmptyState } from '../shared/EmptyState';
 import { SharedBadge } from '../shared/SharedBadge';
 import { TableFilterFlyout } from '../shared/TableFilterFlyout';
 import { ShareDialog } from '../shared/ShareDialog';
+import { TaskProgressTags, TaskParentCrumb } from './TaskProgressTags';
 import { useTaskStore } from '../../store/taskStore';
 import { taskStatusesApi } from '../../api/taskStatuses';
 import { tasksApi } from '../../api/tasks';
@@ -282,10 +283,19 @@ export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreat
                   <TableRow key={task.id}>
                     <TableCell>
                       <span className="shared-title-cell">
-                        <span style={{ cursor: 'pointer', fontWeight: 500 }} onClick={() => onEdit(task.id)}>
-                          {decodeEntities(task.title)}
+                        <span className="task-title-stack">
+                          {task.parent && (
+                            <TaskParentCrumb
+                              parent={{ ...task.parent, title: decodeEntities(task.parent.title) }}
+                              onOpen={onEdit}
+                            />
+                          )}
+                          <span style={{ cursor: 'pointer', fontWeight: 500 }} onClick={() => onEdit(task.id)}>
+                            {decodeEntities(task.title)}
+                          </span>
                         </span>
                         <SharedBadge ownerId={task.userId} />
+                        <TaskProgressTags task={task} />
                       </span>
                     </TableCell>
                     <TableCell><TaskStatusTag status={task.status} /></TableCell>

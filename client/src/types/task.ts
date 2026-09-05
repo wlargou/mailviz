@@ -33,6 +33,17 @@ export interface TaskAssignee {
   avatarUrl: string | null;
 }
 
+/** One line on a task's checklist. */
+export interface ChecklistItem {
+  id: string;
+  taskId: string;
+  text: string;
+  isDone: boolean;
+  position: number;
+  createdAt: string;
+  completedAt: string | null;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -50,6 +61,18 @@ export interface Task {
   updatedAt: string;
   labels: Label[];
   customer: TaskCustomer | null;
+  /** Set when this task is a subtask. Two levels only. */
+  parentId: string | null;
+  parent: { id: string; title: string } | null;
+  subtaskCount: number;
+  /** Subtasks in one of the account's terminal statuses. */
+  subtaskDoneCount: number;
+  checklistCount: number;
+  checklistDoneCount: number;
+  /** Only on `GET /tasks/:id`. */
+  subtasks?: Task[];
+  /** Only on `GET /tasks/:id`. */
+  checklist?: ChecklistItem[];
   mailToTask?: {
     id: string;
     conversionNote: string | null;
@@ -82,6 +105,7 @@ export interface CreateTaskInput {
   customerId?: string | null;
   assignedToId?: string | null;
   estimatedMinutes?: number | null;
+  parentId?: string | null;
 }
 
 export interface UpdateTaskInput extends Partial<CreateTaskInput> {}

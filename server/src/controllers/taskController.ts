@@ -121,6 +121,33 @@ export const taskController = {
     }
   },
 
+  async addChecklistItem(req: Req, res: Response, next: NextFunction) {
+    try {
+      const item = await taskService.addChecklistItem(req.user!.id, req.params.id, req.body);
+      res.status(201).json({ data: item });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async updateChecklistItem(req: Req, res: Response, next: NextFunction) {
+    try {
+      const item = await taskService.updateChecklistItem(req.user!.id, req.params.id, req.params.itemId, req.body);
+      res.json({ data: item });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async deleteChecklistItem(req: Req, res: Response, next: NextFunction) {
+    try {
+      await taskService.deleteChecklistItem(req.user!.id, req.params.id, req.params.itemId);
+      res.status(204).send();
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async assignTask(req: Req, res: Response, next: NextFunction) {
     try {
       const { assignedToId } = req.body;

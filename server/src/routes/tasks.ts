@@ -1,7 +1,13 @@
 import { Router } from 'express';
 import { taskController } from '../controllers/taskController.js';
 import { validate } from '../middleware/validate.js';
-import { createTaskSchema, updateTaskSchema, reorderSchema } from '../validators/taskValidator.js';
+import {
+  createTaskSchema,
+  updateTaskSchema,
+  reorderSchema,
+  createChecklistItemSchema,
+  updateChecklistItemSchema,
+} from '../validators/taskValidator.js';
 
 const router = Router();
 
@@ -18,5 +24,8 @@ router.post('/:id/share', taskController.shareTask);
 router.delete('/:id/shares/:recipientId', taskController.unshareTask);
 router.get('/:id/shares', taskController.getTaskShares);
 router.patch('/:id/assign', taskController.assignTask);
+router.post('/:id/checklist', validate(createChecklistItemSchema), taskController.addChecklistItem);
+router.patch('/:id/checklist/:itemId', validate(updateChecklistItemSchema), taskController.updateChecklistItem);
+router.delete('/:id/checklist/:itemId', taskController.deleteChecklistItem);
 
 export { router as taskRoutes };

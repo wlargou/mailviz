@@ -1405,3 +1405,77 @@ describe('/api/v1/tasks', () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe('/api/v1/tasks — subtasks and checklist', () => {
+  it('POST / with a parentId owned by another account is a 404, and creates nothing', async () => {
+    const { alice, bob } = await createTwoUsers();
+    const bobs = await createTask(bob.id, { title: 'BobsSecretTask' });
+
+    const res = await request(app)
+      .post('/api/v1/tasks')
+      .set('Cookie', authFor(alice.id))
+      .send({ title: 'Sneaky', parentId: bobs.id });
+
+    expect(res.status).toBe(404);
+    expect(JSON.stringify(res.body)).not.toContain('BobsSecretTask');
+    expect(await prisma.task.count({ where: { parentId: bobs.id } })).toBe(0);
+  });
+
+  it('GET /:id returns the subtasks and checklist, and list rows carry the counts', async () => {
+    const { alice } = await createTwoUsers();
+    await seedTaskStatuses(alice.id);
+    const cookie = authFor(alice.id);
+    const parent = await createTask(alice.id, { title: 'Parent' });
+    await createTask(alice.id, { parentId: parent.id, status: 'DONE' });
+    await createTask(alice.id, { parentId: parent.id, status: 'TODO' });
+
+    const added = await request(app)
+      .post(`/api/v1/tasks/${parent.id}/checklist`)
+      .set('Cookie', cookie)
+      .send({ text: '  Call Sam  ' });
+    expect(added.status).toBe(201);
+    expect(added.body.data.text).toBe('Call Sam');
+
+    const detail = await request(app).get(`/api/v1/tasks/${parent.id}`).set('Cookie', cookie);
+    expect(detail.body.data).toMatchObject({ subtaskCount: 2, subtaskDoneCount: 1, checklistCount: 1, checklistDoneCount: 0 });
+    expect(detail.body.data.subtasks).toHaveLength(2);
+    expect(detail.body.data.checklist).toHaveLength(1);
+
+    const list = await request(app).get('/api/v1/tasks?topLevel=true').set('Cookie', cookie);
+    expect(list.body.data).toHaveLength(1);
+    expect(list.body.data[0]).toMatchObject({ id: parent.id, subtaskCount: 2, subtaskDoneCount: 1, checklistCount: 1 });
+    expect(list.body.data[0]).not.toHaveProperty('checklist');
+  });
+
+  it('checklist writes validate, and an item on another account\'s task is a 404', async () => {
+    const { alice, bob } = await createTwoUsers();
+    const mine = await createTask(alice.id);
+    const bobs = await createTask(bob.id);
+    const bobsItem = await prisma.taskChecklistItem.create({ data: { taskId: bobs.id, text: 'BobsSecretStep' } });
+
+    const blank = await request(app)
+      .post(`/api/v1/tasks/${mine.id}/checklist`)
+      .set('Cookie', authFor(alice.id))
+      .send({ text: '   ' });
+    expect(blank.status).toBe(400);
+
+    const empty = await request(app)
+      .patch(`/api/v1/tasks/${mine.id}/checklist/${bobsItem.id}`)
+      .set('Cookie', authFor(alice.id))
+      .send({});
+    expect(empty.status).toBe(400);
+
+    const cross = await request(app)
+      .patch(`/api/v1/tasks/${mine.id}/checklist/${bobsItem.id}`)
+      .set('Cookie', authFor(alice.id))
+      .send({ isDone: true });
+    expect(cross.status).toBe(404);
+    expect(JSON.stringify(cross.body)).not.toContain('BobsSecretStep');
+
+    const gone = await request(app)
+      .delete(`/api/v1/tasks/${bobs.id}/checklist/${bobsItem.id}`)
+      .set('Cookie', authFor(alice.id));
+    expect(gone.status).toBe(404);
+    expect((await prisma.taskChecklistItem.findUniqueOrThrow({ where: { id: bobsItem.id } })).isDone).toBe(false);
+  });
+});
