@@ -23,7 +23,13 @@ import type { Task, Label } from '../../types/task';
  */
 
 vi.mock('../../api/tasks', () => ({
-  tasksApi: { getById: vi.fn(), update: vi.fn(), assignTask: vi.fn(), getTaskShares: vi.fn() },
+  tasksApi: {
+    getById: vi.fn(),
+    update: vi.fn(),
+    assignTask: vi.fn(),
+    getTaskShares: vi.fn(),
+    getActivity: vi.fn().mockResolvedValue({ data: { data: [] } }),
+  },
 }));
 vi.mock('../../api/taskStatuses', () => ({
   taskStatusesApi: {

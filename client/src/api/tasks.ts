@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { Task, TaskSummary, CreateTaskInput, UpdateTaskInput, ReorderItem, ChecklistItem } from '../types/task';
+import type { Task, TaskSummary, CreateTaskInput, UpdateTaskInput, ReorderItem, ChecklistItem, TaskComment, TaskActivityEntry } from '../types/task';
 import type { ApiResponse } from '../types/api';
 
 /** How the By Company view orders its groups. Mirrors the server's whitelist. */
@@ -98,5 +98,19 @@ export const tasksApi = {
   },
   deleteChecklistItem(taskId: string, itemId: string) {
     return api.delete(`/tasks/${taskId}/checklist/${itemId}`);
+  },
+
+  // Activity and comments
+  getActivity(taskId: string) {
+    return api.get<{ data: TaskActivityEntry[] }>(`/tasks/${taskId}/activity`);
+  },
+  addComment(taskId: string, data: { body: string; mentions?: string[] }) {
+    return api.post<ApiResponse<TaskComment>>(`/tasks/${taskId}/comments`, data);
+  },
+  updateComment(taskId: string, commentId: string, data: { body: string; mentions?: string[] }) {
+    return api.patch<ApiResponse<TaskComment>>(`/tasks/${taskId}/comments/${commentId}`, data);
+  },
+  deleteComment(taskId: string, commentId: string) {
+    return api.delete(`/tasks/${taskId}/comments/${commentId}`);
   },
 };

@@ -1479,3 +1479,43 @@ describe('/api/v1/tasks — subtasks and checklist', () => {
     expect((await prisma.taskChecklistItem.findUniqueOrThrow({ where: { id: bobsItem.id } })).isDone).toBe(false);
   });
 });
+
+describe('/api/v1/tasks — activity and comments', () => {
+  it('a comment round-trips, appears in the activity, and validates its body', async () => {
+    const { alice } = await createTwoUsers();
+    const cookie = authFor(alice.id);
+    const task = await createTask(alice.id, { title: 'Discuss' });
+
+    const blank = await request(app).post(`/api/v1/tasks/${task.id}/comments`).set('Cookie', cookie).send({ body: '   ' });
+    expect(blank.status).toBe(400);
+
+    const posted = await request(app)
+      .post(`/api/v1/tasks/${task.id}/comments`)
+      .set('Cookie', cookie)
+      .send({ body: '  First thought  ' });
+    expect(posted.status).toBe(201);
+    expect(posted.body.data).toMatchObject({ body: 'First thought', mentions: [], user: { id: alice.id } });
+
+    const activity = await request(app).get(`/api/v1/tasks/${task.id}/activity`).set('Cookie', cookie);
+    expect(activity.status).toBe(200);
+    expect(activity.body.data[0]).toMatchObject({ kind: 'comment', body: 'First thought', actor: { id: alice.id } });
+  });
+
+  it('a stranger gets a 404 on the activity, and cannot reach a comment through their own task', async () => {
+    const { alice, bob } = await createTwoUsers();
+    const bobs = await createTask(bob.id);
+    const mine = await createTask(alice.id);
+    const comment = await prisma.taskComment.create({ data: { taskId: bobs.id, userId: bob.id, body: 'BobsSecretComment' } });
+
+    const activity = await request(app).get(`/api/v1/tasks/${bobs.id}/activity`).set('Cookie', authFor(alice.id));
+    expect(activity.status).toBe(404);
+
+    const cross = await request(app)
+      .patch(`/api/v1/tasks/${mine.id}/comments/${comment.id}`)
+      .set('Cookie', authFor(alice.id))
+      .send({ body: 'hijacked' });
+    expect(cross.status).toBe(404);
+    expect(JSON.stringify(cross.body)).not.toContain('BobsSecretComment');
+    expect((await prisma.taskComment.findUniqueOrThrow({ where: { id: comment.id } })).body).toBe('BobsSecretComment');
+  });
+});

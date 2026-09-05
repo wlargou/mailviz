@@ -34,6 +34,7 @@ A full-stack CRM with deep Gmail and Google Calendar integration. Manage custome
 - **Dynamic statuses** — user-defined, drag-reorderable, managed in Settings (not a fixed enum). Any status can be flagged *terminal*, and "finished" means whatever the account's terminal statuses say
 - **Subtasks** — two levels: a task and its subtasks. A parent shows "2/5" on its card and row and a progress bar in its panel; a subtask shows a breadcrumb back to its parent and inherits its company. Deleting the parent deletes them
 - **Checklists** — ordered lines on a task for the steps that do not deserve a task of their own, ticked from the panel by anyone the task is shared with
+- **Activity and comments** — every change anyone made to a task, with before and after values, interleaved with comments. `@mention` a colleague to notify them; the owner and assignee hear about other people's comments. A notification opens the task's panel directly
 - Priority levels, due dates, estimated effort
 - Edits reach every open view without a reload, and a save sends only the fields that changed
 - **Labels** — create, rename, recolour, and delete in Settings; attach any number to a task
@@ -275,7 +276,7 @@ All endpoints are prefixed with `/api/v1`. Every group except `auth` sits behind
 | Snooze | `/snooze` | Follow-up reminders on threads |
 | Templates | `/templates` | Email templates, `/variables`, `/:id/render` |
 | Onboarding | `/onboarding` | Status, seed statuses/labels, complete, reset |
-| Tasks | `/tasks` | CRUD, reorder, assign, sharing, `?parentId=` / `?topLevel=true`, `/:id/checklist` |
+| Tasks | `/tasks` | CRUD, reorder, assign, sharing, `?parentId=` / `?topLevel=true`, `/:id/checklist`, `/:id/activity`, `/:id/comments` |
 | Task statuses | `/task-statuses` | User-defined Kanban columns, reorderable |
 | Customers | `/customers` | CRUD, VIP, linked events and attachments |
 | Company categories | `/company-categories` | Customer tagging, reorderable |

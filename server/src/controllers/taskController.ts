@@ -1,6 +1,7 @@
 import { Response, NextFunction } from 'express';
 import type { Req } from "../types/http.js";
 import { taskService, TASK_GROUP_SORTS, type TaskGroupSort } from '../services/taskService.js';
+import { taskActivityService } from '../services/taskActivityService.js';
 
 export const taskController = {
   async findAll(req: Req, res: Response, next: NextFunction) {
@@ -142,6 +143,42 @@ export const taskController = {
   async deleteChecklistItem(req: Req, res: Response, next: NextFunction) {
     try {
       await taskService.deleteChecklistItem(req.user!.id, req.params.id, req.params.itemId);
+      res.status(204).send();
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async getActivity(req: Req, res: Response, next: NextFunction) {
+    try {
+      const result = await taskActivityService.listActivity(req.user!.id, req.params.id);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async addComment(req: Req, res: Response, next: NextFunction) {
+    try {
+      const comment = await taskActivityService.addComment(req.user!.id, req.params.id, req.body);
+      res.status(201).json({ data: comment });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async updateComment(req: Req, res: Response, next: NextFunction) {
+    try {
+      const comment = await taskActivityService.updateComment(req.user!.id, req.params.id, req.params.commentId, req.body);
+      res.json({ data: comment });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async deleteComment(req: Req, res: Response, next: NextFunction) {
+    try {
+      await taskActivityService.deleteComment(req.user!.id, req.params.id, req.params.commentId);
       res.status(204).send();
     } catch (err) {
       next(err);

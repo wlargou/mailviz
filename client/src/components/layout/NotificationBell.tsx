@@ -87,7 +87,9 @@ export function NotificationBell() {
           navigate('/mail');
           break;
         case 'task':
-          navigate('/tasks');
+          // Straight to the task's panel when the notification names one —
+          // a mention or a comment is about a specific task, not the list.
+          navigate(notification.entityId ? `/tasks?task=${notification.entityId}` : '/tasks');
           break;
         case 'deal':
           navigate('/deals');

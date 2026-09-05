@@ -48,6 +48,10 @@ export function TasksPage() {
     if (priority) setFilter('priority', priority);
     if (overdue === 'true') setFilter('overdue', 'true');
     if (search) setFilter('search', search);
+    // `?task=<id>` opens that task's panel — how a notification about a
+    // comment or a mention lands on the thing it is about.
+    const task = searchParams.get('task');
+    if (task) setEditTaskId(task);
   }, [searchParams, setFilter]);
 
   useEffect(() => {

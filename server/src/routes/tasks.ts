@@ -7,6 +7,8 @@ import {
   reorderSchema,
   createChecklistItemSchema,
   updateChecklistItemSchema,
+  createCommentSchema,
+  updateCommentSchema,
 } from '../validators/taskValidator.js';
 
 const router = Router();
@@ -27,5 +29,9 @@ router.patch('/:id/assign', taskController.assignTask);
 router.post('/:id/checklist', validate(createChecklistItemSchema), taskController.addChecklistItem);
 router.patch('/:id/checklist/:itemId', validate(updateChecklistItemSchema), taskController.updateChecklistItem);
 router.delete('/:id/checklist/:itemId', taskController.deleteChecklistItem);
+router.get('/:id/activity', taskController.getActivity);
+router.post('/:id/comments', validate(createCommentSchema), taskController.addComment);
+router.patch('/:id/comments/:commentId', validate(updateCommentSchema), taskController.updateComment);
+router.delete('/:id/comments/:commentId', taskController.deleteComment);
 
 export { router as taskRoutes };

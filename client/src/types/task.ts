@@ -33,6 +33,47 @@ export interface TaskAssignee {
   avatarUrl: string | null;
 }
 
+/** Who did something on a task's timeline. */
+export interface TaskActor {
+  id: string;
+  name: string | null;
+  email: string;
+  avatarUrl: string | null;
+}
+
+export interface TaskComment {
+  id: string;
+  taskId: string;
+  userId: string;
+  body: string;
+  /** User ids the author named with @. */
+  mentions: string[];
+  createdAt: string;
+  updatedAt: string;
+  editedAt: string | null;
+  user: TaskActor;
+}
+
+/** One line of a task's timeline: an audit event, or a comment. */
+export type TaskActivityEntry =
+  | {
+      kind: 'event';
+      id: string;
+      at: string;
+      actor: TaskActor;
+      action: string;
+      details: Record<string, unknown> | null;
+    }
+  | {
+      kind: 'comment';
+      id: string;
+      at: string;
+      actor: TaskActor;
+      body: string;
+      mentions: string[];
+      editedAt: string | null;
+    };
+
 /** One line on a task's checklist. */
 export interface ChecklistItem {
   id: string;

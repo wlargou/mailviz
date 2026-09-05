@@ -746,7 +746,13 @@ export const taskService = {
       });
     });
 
-    auditService.log({ userId, action: 'TASK_UPDATED', entityType: 'task', entityId: id, details: { changes: Object.keys(data) } });
+    auditService.log({
+      userId,
+      action: 'TASK_UPDATED',
+      entityType: 'task',
+      entityId: id,
+      details: describeTaskChanges(existing, task, data),
+    });
 
     const [updated] = await withSubtaskProgress(userId, [formatTask(task)]);
     return updated;
@@ -885,6 +891,7 @@ export const taskService = {
       if (!assignee) throw Object.assign(new Error('User not found'), { status: 404 });
     }
 
+    const before = await prisma.task.findUnique({ where: { id: taskId }, select: { assignedToId: true } });
     const task = await prisma.task.update({
       where: { id: taskId, userId },
       data: { assignedToId },
@@ -904,7 +911,19 @@ export const taskService = {
       });
     }
 
-    auditService.log({ userId, action: 'TASK_ASSIGNED', entityType: 'task', entityId: taskId, details: { assignedToId } });
+    auditService.log({
+      userId,
+      action: 'TASK_ASSIGNED',
+      entityType: 'task',
+      entityId: taskId,
+      details: {
+        assignedToId,
+        // Names, so the task's timeline can read "assigned to Sam" without a
+        // lookup against a user who may since have been deleted.
+        from: { assignedTo: await userLabel(before?.assignedToId ?? null) },
+        to: { assignedTo: await userLabel(assignedToId) },
+      },
+    });
 
     if (assignedToId && assignedToId !== userId) {
       await notificationService.create(assignedToId, {
@@ -976,6 +995,69 @@ export const taskService = {
     return { success: true };
   },
 };
+
+/** A user as the timeline names them; null for "nobody". */
+async function userLabel(id: string | null): Promise<string | null> {
+  if (!id) return null;
+  const u = await prisma.user.findUnique({ where: { id }, select: { name: true, email: true } });
+  return u?.name || u?.email || null;
+}
+
+/**
+ * What a TASK_UPDATED audit row records.
+ *
+ * `changes` (the payload's keys) is what it always recorded and what the
+ * Activity page reads. `from` / `to` are new and carry the values, so a task's
+ * timeline can say "status: To do → Done" rather than "changed: status". Only
+ * the fields that actually differ are listed — the panel sends only what
+ * changed, but an API caller may not — and only scalar ones; labels and the
+ * description are named without their contents.
+ */
+function describeTaskChanges(
+  before: { title: string; status: string; priority: string; dueDate: Date | null; customerId: string | null; parentId: string | null; estimatedMinutes: number | null; description: string | null },
+  after: { title: string; status: string; priority: string; dueDate: Date | null; customerId: string | null; parentId: string | null; estimatedMinutes: number | null; description: string | null; customer?: { name: string } | null; parent?: { title: string } | null },
+  data: UpdateTaskInput
+): Prisma.InputJsonObject {
+  const from: Record<string, string | number | null> = {};
+  const to: Record<string, string | number | null> = {};
+  const changed: string[] = [];
+
+  const scalar = (key: 'title' | 'status' | 'priority' | 'estimatedMinutes') => {
+    if (before[key] !== after[key]) {
+      changed.push(key);
+      from[key] = before[key];
+      to[key] = after[key];
+    }
+  };
+  scalar('title');
+  scalar('status');
+  scalar('priority');
+  scalar('estimatedMinutes');
+
+  const beforeDue = before.dueDate?.toISOString() ?? null;
+  const afterDue = after.dueDate?.toISOString() ?? null;
+  if (beforeDue !== afterDue) {
+    changed.push('dueDate');
+    from.dueDate = beforeDue;
+    to.dueDate = afterDue;
+  }
+  if (before.customerId !== after.customerId) {
+    changed.push('customerId');
+    from.customerId = before.customerId;
+    to.customerId = after.customerId;
+    to.customer = after.customer?.name ?? null;
+  }
+  if (before.parentId !== after.parentId) {
+    changed.push('parentId');
+    from.parentId = before.parentId;
+    to.parentId = after.parentId;
+    to.parent = after.parent?.title ?? null;
+  }
+  if ((before.description ?? '') !== (after.description ?? '')) changed.push('description');
+  if (data.labelIds !== undefined) changed.push('labelIds');
+
+  return { changes: changed, from, to };
+}
 
 /**
  * Shape a Prisma row into what the client's `Task` type declares.
