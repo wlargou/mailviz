@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { Task, TaskSummary, CreateTaskInput, UpdateTaskInput, ReorderItem, ChecklistItem, TaskComment, TaskActivityEntry, MyDay, TaskLinkType } from '../types/task';
+import type { Task, TaskSummary, CreateTaskInput, UpdateTaskInput, ReorderItem, ChecklistItem, TaskComment, TaskActivityEntry, MyDay, TaskLinkType, TaskTimeEntry } from '../types/task';
 import type { ApiResponse } from '../types/api';
 
 /** How the By Company view orders its groups. Mirrors the server's whitelist. */
@@ -102,6 +102,23 @@ export const tasksApi = {
   },
   deleteChecklistItem(taskId: string, itemId: string) {
     return api.delete(`/tasks/${taskId}/checklist/${itemId}`);
+  },
+
+  // Time tracking
+  getRunningTimer() {
+    return api.get<ApiResponse<(TaskTimeEntry & { task: { id: string; title: string } }) | null>>('/tasks/time/running');
+  },
+  startTimer(taskId: string) {
+    return api.post<ApiResponse<TaskTimeEntry>>(`/tasks/${taskId}/time/start`);
+  },
+  stopTimer(taskId: string) {
+    return api.post<ApiResponse<TaskTimeEntry>>(`/tasks/${taskId}/time/stop`);
+  },
+  logTime(taskId: string, data: { minutes: number; note?: string; at?: string }) {
+    return api.post<ApiResponse<TaskTimeEntry>>(`/tasks/${taskId}/time`, data);
+  },
+  deleteTimeEntry(taskId: string, entryId: string) {
+    return api.delete(`/tasks/${taskId}/time/${entryId}`);
   },
 
   // Links

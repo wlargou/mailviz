@@ -193,6 +193,46 @@ export const taskController = {
     }
   },
 
+  async getRunningTimer(req: Req, res: Response, next: NextFunction) {
+    try {
+      res.json({ data: await taskService.getRunningTimer(req.user!.id) });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async startTimer(req: Req, res: Response, next: NextFunction) {
+    try {
+      res.status(201).json({ data: await taskService.startTimer(req.user!.id, req.params.id) });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async stopTimer(req: Req, res: Response, next: NextFunction) {
+    try {
+      res.json({ data: await taskService.stopTimer(req.user!.id, req.params.id) });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async logTime(req: Req, res: Response, next: NextFunction) {
+    try {
+      res.status(201).json({ data: await taskService.logTime(req.user!.id, req.params.id, req.body) });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async deleteTimeEntry(req: Req, res: Response, next: NextFunction) {
+    try {
+      res.json({ data: await taskService.deleteTimeEntry(req.user!.id, req.params.id, req.params.entryId) });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async addLink(req: Req, res: Response, next: NextFunction) {
     try {
       const task = await taskService.addLink(req.user!.id, req.params.id, req.body);

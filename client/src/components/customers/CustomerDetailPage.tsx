@@ -354,7 +354,13 @@ export function CustomerDetailPage() {
                   const filtered = q ? tasks.filter((t) => decodeEntities(t.title).toLowerCase().includes(q) || t.status.toLowerCase().includes(q)) : tasks;
                   const paginated = filtered.slice((taskPage - 1) * taskPageSize, taskPage * taskPageSize);
                   const rows = paginated.map((t) => ({ id: t.id, title: t.title, status: t.status, priority: t.priority, dueDate: t.dueDate || '' }));
+                  const trackedTotal = tasks.reduce((sum, t) => sum + (t.trackedMinutes ?? 0), 0);
                   return (<>
+                    {trackedTotal > 0 && (
+                      <p className="customer-time-total">
+                        {Math.floor(trackedTotal / 60)}h {trackedTotal % 60}m tracked across {tasks.filter((t) => (t.trackedMinutes ?? 0) > 0).length} {tasks.filter((t) => (t.trackedMinutes ?? 0) > 0).length === 1 ? 'task' : 'tasks'}
+                      </p>
+                    )}
                     <DataTable rows={rows} headers={taskHeaders} isSortable>
                       {({ rows: tableRows, headers: tableHeaders, getTableProps, getHeaderProps, getRowProps }) => (
                         <TableContainer>

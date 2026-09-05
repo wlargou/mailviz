@@ -604,3 +604,50 @@
     margin-bottom: $spacing-03;
   }
 }
+
+// ─── TIME ────────────────────────────────────────────────────────────────────
+.task-time {
+  &__timer {
+    display: flex;
+    align-items: center;
+    gap: $spacing-04;
+    margin-bottom: $spacing-04;
+  }
+
+  &__elapsed {
+    @include type.type-style('heading-03');
+    font-variant-numeric: tabular-nums;
+    color: var(--cds-text-primary);
+  }
+
+  &__log {
+    display: flex;
+    align-items: center;
+    gap: $spacing-02;
+    margin-bottom: $spacing-03;
+
+    .cds--number {
+      flex: 0 0 8rem;
+    }
+
+    .cds--text-input__field-wrapper,
+    .cds--form-item {
+      flex: 1;
+    }
+  }
+
+  &__minutes {
+    @include type.type-style('label-01');
+    flex: none;
+    min-width: 3.5rem;
+    color: var(--cds-text-primary);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.customer-time-total {
+  @include type.type-style('label-01');
+  margin-bottom: $spacing-03;
+  color: var(--cds-text-secondary);
+}

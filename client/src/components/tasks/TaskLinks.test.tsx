@@ -57,6 +57,7 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     openBlockerCount: 0,
     blocksCount: 0,
     linkCount: 0,
+    trackedMinutes: 0,
     recurrence: null,
     recurrenceNextId: null,
     ...overrides,

@@ -65,6 +65,7 @@ model Task {
   recurrenceNext     Task?  @relation("TaskRecurrence", fields: [recurrenceNextId], references: [id], onDelete: SetNull)
   recurrencePrevious Task?  @relation("TaskRecurrence")
   links      TaskLink[]
+  timeEntries TaskTimeEntry[]
   parent     Task?        @relation("TaskSubtasks", fields: [parentId], references: [id], onDelete: Cascade)
   subtasks   Task[]       @relation("TaskSubtasks")
   customer   Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
@@ -82,6 +83,28 @@ model Task {
   /// Serves the reminder sweep: due reminders not yet sent.
   @@index([remindAt, reminderSentAt])
   @@map("tasks")
+}
+
+/// Time spent on a task. A running timer is an entry with no `endedAt`; a
+/// person has at most one running at a time, across all tasks (service rule).
+/// `minutes` is written when the entry ends, or directly for a manual log.
+model TaskTimeEntry {
+  id        String    @id @default(uuid())
+  taskId    String    @map("task_id")
+  userId    String    @map("user_id")
+  startedAt DateTime  @map("started_at")
+  endedAt   DateTime? @map("ended_at")
+  minutes   Int       @default(0)
+  note      String?   @db.VarChar(500)
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation("TaskTimeEntries", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  /// Serves "this person's running timer".
+  @@index([userId, endedAt])
+  @@map("task_time_entries")
 }
 
 /// A task attached to a contact, a deal or a calendar event. Polymorphic —
@@ -349,6 +372,7 @@ model User {
   taskSharesReceived  TaskShare[]        @relation("TaskSharesReceived")
   taskAssignments     Task[]             @relation("TaskAssignments")
   taskComments        TaskComment[]      @relation("TaskCommentAuthor")
+  taskTimeEntries     TaskTimeEntry[]    @relation("TaskTimeEntries")
   scheduledEmails     ScheduledEmail[]
   emailDrafts         EmailDraft[]
   auditLogs           AuditLog[]

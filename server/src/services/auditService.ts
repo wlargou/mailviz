@@ -46,6 +46,8 @@ export type AuditAction =
   | 'TASK_DEPENDENCY_REMOVED'
   | 'TASK_LINK_ADDED'
   | 'TASK_LINK_REMOVED'
+  | 'TASK_TIME_LOGGED'
+  | 'TASK_TIME_DELETED'
   // Deal actions
   | 'DEAL_CREATED'
   | 'DEAL_UPDATED'

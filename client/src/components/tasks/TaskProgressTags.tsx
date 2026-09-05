@@ -1,5 +1,6 @@
 import { Tag } from '@carbon/react';
-import { Link, ListChecked, Locked, Renew, TreeViewAlt } from '@carbon/icons-react';
+import { Link, ListChecked, Locked, Renew, Time, TreeViewAlt } from '@carbon/icons-react';
+import { formatMinutes } from './TaskTime';
 import { describeRecurrence } from '../../utils/recurrence';
 import type { Task } from '../../types/task';
 
@@ -15,13 +16,14 @@ import type { Task } from '../../types/task';
  * The icon is a child, not `renderIcon`: Carbon's Tag drops `renderIcon`
  * entirely at `size="sm"`, and the small size is the right one for a row.
  */
-export function TaskProgressTags({ task }: { task: Pick<Task, 'subtaskCount' | 'subtaskDoneCount' | 'checklistCount' | 'checklistDoneCount' | 'openBlockerCount'> & { recurrence?: string | null; linkCount?: number } }) {
+export function TaskProgressTags({ task }: { task: Pick<Task, 'subtaskCount' | 'subtaskDoneCount' | 'checklistCount' | 'checklistDoneCount' | 'openBlockerCount'> & { recurrence?: string | null; linkCount?: number; trackedMinutes?: number; estimatedMinutes?: number | null } }) {
   const subtasks = task.subtaskCount ?? 0;
   const checklist = task.checklistCount ?? 0;
   const blockers = task.openBlockerCount ?? 0;
   const links = task.linkCount ?? 0;
+  const tracked = task.trackedMinutes ?? 0;
   const repeats = describeRecurrence(task.recurrence);
-  if (subtasks === 0 && checklist === 0 && blockers === 0 && links === 0 && !repeats) return null;
+  if (subtasks === 0 && checklist === 0 && blockers === 0 && links === 0 && tracked === 0 && !repeats) return null;
 
   return (
     <span className="task-progress-tags">
@@ -47,6 +49,14 @@ export function TaskProgressTags({ task }: { task: Pick<Task, 'subtaskCount' | '
         >
           <TreeViewAlt size={12} className="task-progress-tags__icon" aria-hidden="true" />
           {task.subtaskDoneCount}/{subtasks}
+        </Tag>
+      )}
+      {tracked > 0 && (
+        <Tag size="sm" type={task.estimatedMinutes && tracked > task.estimatedMinutes ? 'red' : 'cool-gray'}>
+          <span className="task-progress-tags__icon" title={task.estimatedMinutes ? `${formatMinutes(tracked)} tracked of ${formatMinutes(task.estimatedMinutes)} estimated` : `${formatMinutes(tracked)} tracked`}>
+            <Time size={12} aria-hidden="true" />
+          </span>
+          {formatMinutes(tracked)}
         </Tag>
       )}
       {links > 0 && (
