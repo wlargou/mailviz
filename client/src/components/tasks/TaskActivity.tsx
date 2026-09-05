@@ -424,6 +424,10 @@ export function describeEvent(
       return 'removed a blocker';
     case 'TASK_LINK_ADDED':
       return d.label ? <>linked this to <strong>{decodeEntities(String(d.label))}</strong></> : `linked this to a ${String(d.linkType ?? 'record')}`;
+    case 'TASK_TIME_LOGGED':
+      return <>logged <strong>{String(d.minutes)} min</strong>{d.note ? <> — {String(d.note)}</> : d.timer ? ' from a timer' : ''}</>;
+    case 'TASK_TIME_DELETED':
+      return `deleted a ${String(d.minutes)} min time entry`;
     case 'TASK_LINK_REMOVED':
       return `unlinked a ${String(d.linkType ?? 'record')}`;
     case 'TASK_UPDATED': {

@@ -625,8 +625,19 @@ what the previous one adds:
   Not done: no Tasks column on the Deals page (the panel picker reaches deals
   already); no "create a task from this event" button; customers are
   deliberately not a link type — a task already has a company.
-- [ ] **T7 Time tracking** — `time_entries` against the estimate that already
-  exists.
+- [x] **T7 Time tracking** (1.9.0). `task_time_entries`: a running timer is
+  an entry with no end; stopping writes the minutes (at least one). One
+  timer per person across all tasks — a second start is a 409 `TIMER_RUNNING`
+  naming the first, not a silent stop. Manual logs take minutes, a note and
+  an optional time. Access, not ownership, to log; the logger or the task
+  owner may delete. `trackedMinutes` on every row counts finished entries
+  only, so a running timer inflates nothing until it stops. The panel's Time
+  section: a ticking timer, a log line, the entries, and a bar drawn against
+  the estimate that goes red past it; a clock tag on the rows; the company
+  page's Tasks tab sums the time across its tasks. `GET /tasks/time/running`
+  exists for a header chip. Not done: no header chip yet (a timer left
+  running is visible only when its task is reopened), no reports or export,
+  no editing an entry's minutes (delete and re-log).
 - [ ] **T8 Task templates and blueprints** — a saved tree with relative due
   dates, instantiated against a company or deal.
 - [ ] **T9 Saved views and table batch actions** — the `TableBatchActions`

@@ -86,6 +86,19 @@ export interface TaskLink {
   when: string | null;
 }
 
+/** One stretch of time spent on a task; `endedAt` null while a timer runs. */
+export interface TaskTimeEntry {
+  id: string;
+  taskId: string;
+  userId: string;
+  startedAt: string;
+  endedAt: string | null;
+  minutes: number;
+  note: string | null;
+  createdAt: string;
+  user?: TaskActor;
+}
+
 /** The other end of a dependency. */
 export interface TaskRef {
   id: string;
@@ -150,6 +163,12 @@ export interface Task {
   blocksCount: number;
   /** Contacts, deals and events this task is attached to. */
   linkCount: number;
+  /** Minutes logged, finished entries only. */
+  trackedMinutes: number;
+  /** Only on `GET /tasks/:id`. */
+  timeEntries?: TaskTimeEntry[];
+  /** Only on `GET /tasks/:id`: the caller's own running timer on this task. */
+  runningEntry?: TaskTimeEntry | null;
   /** Only on `GET /tasks/:id`. */
   links?: TaskLink[];
   /** Only on `GET /tasks/:id`. */

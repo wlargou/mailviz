@@ -42,6 +42,13 @@ export const addLinkSchema = z.object({
   entityId: z.string().uuid(),
 });
 
+/** A manual time log. `at` is when the work happened; defaults to now. */
+export const logTimeSchema = z.object({
+  minutes: z.number().int().min(1).max(24 * 60),
+  note: z.string().trim().max(500).optional(),
+  at: z.string().datetime().optional(),
+});
+
 export const addDependencySchema = z.object({
   blockerId: z.string().uuid(),
 });
@@ -88,3 +95,4 @@ export type ReorderInput = z.infer<typeof reorderSchema>;
 export type CreateChecklistItemInput = z.infer<typeof createChecklistItemSchema>;
 export type UpdateChecklistItemInput = z.infer<typeof updateChecklistItemSchema>;
 export type CommentInput = z.infer<typeof createCommentSchema>;
+export type LogTimeInput = z.infer<typeof logTimeSchema>;

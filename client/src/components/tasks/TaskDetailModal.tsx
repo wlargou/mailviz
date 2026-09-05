@@ -25,6 +25,7 @@ import { TaskChecklist } from './TaskChecklist';
 import { TaskActivity } from './TaskActivity';
 import { TaskDependencies } from './TaskDependencies';
 import { TaskLinks } from './TaskLinks';
+import { TaskTime } from './TaskTime';
 import { apiError } from '../../utils/apiError';
 import { buildRecurrenceOptions, buildRecurrenceRules, parseRecurrencePreset, type RecurrencePresetId } from '../../utils/recurrence';
 import { format } from 'date-fns';
@@ -614,6 +615,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, onOpenTask, 
         <TaskChecklist taskId={task.id} items={task.checklist ?? []} onChanged={reloadTask} />
         <TaskDependencies task={task} statuses={statusConfigs} onOpenTask={onOpenTask} onChanged={reloadTask} />
         <TaskLinks task={task} onChanged={reloadTask} />
+        <TaskTime task={task} onChanged={reloadTask} />
         <TaskActivity taskId={task.id} ownerId={task.userId} users={users} statuses={statusConfigs} version={sectionVersion} />
         {task.mailToTask?.email && (
           <div className="modal-form__source-email">

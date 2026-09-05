@@ -1581,3 +1581,33 @@ describe('/api/v1/tasks — links', () => {
     expect(gone.body.data.links).toEqual([]);
   });
 });
+
+describe('/api/v1/tasks — time', () => {
+  it('starts and stops a timer, logs by hand with validation, and reports the running one', async () => {
+    const { alice } = await createTwoUsers();
+    const cookie = authFor(alice.id);
+    const task = await createTask(alice.id, { title: 'Brief' });
+
+    const none = await request(app).get('/api/v1/tasks/time/running').set('Cookie', cookie);
+    expect(none.status).toBe(200);
+    expect(none.body.data).toBeNull();
+
+    const started = await request(app).post(`/api/v1/tasks/${task.id}/time/start`).set('Cookie', cookie);
+    expect(started.status).toBe(201);
+    const running = await request(app).get('/api/v1/tasks/time/running').set('Cookie', cookie);
+    expect(running.body.data).toMatchObject({ taskId: task.id, task: { title: 'Brief' } });
+
+    const stopped = await request(app).post(`/api/v1/tasks/${task.id}/time/stop`).set('Cookie', cookie);
+    expect(stopped.status).toBe(200);
+    expect(stopped.body.data.minutes).toBeGreaterThanOrEqual(1);
+
+    const bad = await request(app).post(`/api/v1/tasks/${task.id}/time`).set('Cookie', cookie).send({ minutes: 0 });
+    expect(bad.status).toBe(400);
+    const logged = await request(app).post(`/api/v1/tasks/${task.id}/time`).set('Cookie', cookie).send({ minutes: 30, note: 'Call' });
+    expect(logged.status).toBe(201);
+
+    const detail = await request(app).get(`/api/v1/tasks/${task.id}`).set('Cookie', cookie);
+    expect(detail.body.data.trackedMinutes).toBe(stopped.body.data.minutes + 30);
+    expect(detail.body.data.timeEntries).toHaveLength(2);
+  });
+});

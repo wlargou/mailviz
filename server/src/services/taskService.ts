@@ -9,6 +9,7 @@ import {
   UpdateChecklistItemInput,
   TASK_LINK_TYPES,
   type TaskLinkType,
+  type LogTimeInput,
 } from '../validators/taskValidator.js';
 import { parsePagination, paginationMeta } from '../utils/pagination.js';
 import { AppError } from '../middleware/errorHandler.js';
@@ -167,6 +168,8 @@ interface RelationCounts {
   blocksCount: number;
   /** Contacts, deals and events this task is attached to. */
   linkCount: number;
+  /** Minutes logged against this task, finished entries only. */
+  trackedMinutes: number;
 }
 
 /**
@@ -180,7 +183,7 @@ interface RelationCounts {
 async function withSubtaskProgress<T extends { id: string; status?: string }>(userId: string, tasks: T[]): Promise<Array<T & RelationCounts>> {
   if (tasks.length === 0) return [];
   const ids = tasks.map((t) => t.id);
-  const [children, blockers, blocks, links, terminal] = await Promise.all([
+  const [children, blockers, blocks, links, time, terminal] = await Promise.all([
     prisma.task.findMany({
       where: { parentId: { in: ids } },
       select: { parentId: true, status: true },
@@ -199,6 +202,11 @@ async function withSubtaskProgress<T extends { id: string; status?: string }>(us
       where: { taskId: { in: ids } },
       _count: { entityId: true },
     }),
+    prisma.taskTimeEntry.groupBy({
+      by: ['taskId'],
+      where: { taskId: { in: ids }, endedAt: { not: null } },
+      _sum: { minutes: true },
+    }),
     terminalStatusNames(userId),
   ]);
 
@@ -206,7 +214,7 @@ async function withSubtaskProgress<T extends { id: string; status?: string }>(us
   const entry = (id: string) => {
     let c = counts.get(id);
     if (!c) {
-      c = { subtaskCount: 0, subtaskDoneCount: 0, blockedByCount: 0, openBlockerCount: 0, blocksCount: 0, linkCount: 0 };
+      c = { subtaskCount: 0, subtaskDoneCount: 0, blockedByCount: 0, openBlockerCount: 0, blocksCount: 0, linkCount: 0, trackedMinutes: 0 };
       counts.set(id, c);
     }
     return c;
@@ -227,8 +235,11 @@ async function withSubtaskProgress<T extends { id: string; status?: string }>(us
   for (const row of links) {
     entry(row.taskId).linkCount = row._count.entityId;
   }
+  for (const row of time) {
+    entry(row.taskId).trackedMinutes = row._sum.minutes ?? 0;
+  }
   return tasks.map((t) => {
-    const c = counts.get(t.id) ?? { subtaskCount: 0, subtaskDoneCount: 0, blockedByCount: 0, openBlockerCount: 0, blocksCount: 0, linkCount: 0 };
+    const c = counts.get(t.id) ?? { subtaskCount: 0, subtaskDoneCount: 0, blockedByCount: 0, openBlockerCount: 0, blocksCount: 0, linkCount: 0, trackedMinutes: 0 };
     // A finished task is not blocked, whatever its blockers are doing:
     // "blocked" means "cannot be finished", and this one already is.
     const finished = t.status !== undefined && isTerminalStatus(t.status, terminal);
@@ -452,6 +463,11 @@ export const taskService = {
         recurrenceNext: { select: { id: true, title: true, dueDate: true, status: true } },
         recurrencePrevious: { select: { id: true, title: true, dueDate: true } },
         links: { orderBy: { createdAt: 'asc' } },
+        timeEntries: {
+          include: { user: { select: { id: true, name: true, email: true, avatarUrl: true } } },
+          orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
+          take: 100,
+        },
         mailToTask: {
           include: {
             email: {
@@ -464,7 +480,7 @@ export const taskService = {
     if (!task) {
       throw new AppError(404, 'TASK_NOT_FOUND', 'Task not found');
     }
-    const { blockedBy, blocks, links, ...row } = task;
+    const { blockedBy, blocks, links, timeEntries, ...row } = task;
     const [decorated] = await withSubtaskProgress(userId, [formatTask(row)]);
     return {
       ...decorated,
@@ -472,6 +488,11 @@ export const taskService = {
       blockedBy: blockedBy.map((d) => d.blocker),
       blocks: blocks.map((d) => d.blocked),
       links: await resolveLinks(task.userId, links),
+      timeEntries,
+      // The caller's own running timer on this task, if any. Another
+      // person's running entry is in the list, but it is not this caller's
+      // to stop.
+      runningEntry: timeEntries.find((e) => e.endedAt === null && e.userId === userId) ?? null,
     };
   },
 
@@ -1222,6 +1243,85 @@ export const taskService = {
 
     const [assigned] = await withSubtaskProgress(userId, [formatTask(task)]);
     return assigned;
+  },
+
+  // ─── Time tracking ────────────────────────────────────────────────────────
+  //
+  // Access, not ownership: anyone who can open a task can log time on it —
+  // that is what a shared task's time is for. A person has one running timer
+  // at a time across all tasks; starting a second is refused and names the
+  // first, rather than silently stopping it.
+
+  async getRunningTimer(userId: string) {
+    const entry = await prisma.taskTimeEntry.findFirst({
+      where: { userId, endedAt: null },
+      include: { task: { select: { id: true, title: true } } },
+      orderBy: { startedAt: 'desc' },
+    });
+    return entry;
+  },
+
+  async startTimer(userId: string, taskId: string) {
+    if (!(await canAccessTask(taskId, userId))) {
+      throw new AppError(404, 'TASK_NOT_FOUND', 'Task not found');
+    }
+    const running = await prisma.taskTimeEntry.findFirst({
+      where: { userId, endedAt: null },
+      include: { task: { select: { id: true, title: true } } },
+    });
+    if (running) {
+      if (running.taskId === taskId) return running;
+      throw new AppError(409, 'TIMER_RUNNING', `A timer is already running on “${running.task.title}”`, {
+        taskId: running.taskId,
+        title: running.task.title,
+        startedAt: running.startedAt,
+      });
+    }
+    return prisma.taskTimeEntry.create({ data: { taskId, userId, startedAt: new Date() } });
+  },
+
+  async stopTimer(userId: string, taskId: string) {
+    if (!(await canAccessTask(taskId, userId))) {
+      throw new AppError(404, 'TASK_NOT_FOUND', 'Task not found');
+    }
+    const running = await prisma.taskTimeEntry.findFirst({ where: { userId, taskId, endedAt: null } });
+    if (!running) {
+      throw new AppError(404, 'TIMER_NOT_RUNNING', 'No timer is running on this task');
+    }
+    const endedAt = new Date();
+    // At least one minute: a timer stopped after ten seconds still records
+    // that work happened, and a zero would read as "nothing".
+    const minutes = Math.max(1, Math.ceil((endedAt.getTime() - running.startedAt.getTime()) / 60_000));
+    const entry = await prisma.taskTimeEntry.update({ where: { id: running.id }, data: { endedAt, minutes } });
+    auditService.log({ userId, action: 'TASK_TIME_LOGGED', entityType: 'task', entityId: taskId, details: { minutes, entryId: entry.id, timer: true } });
+    return entry;
+  },
+
+  async logTime(userId: string, taskId: string, input: LogTimeInput) {
+    if (!(await canAccessTask(taskId, userId))) {
+      throw new AppError(404, 'TASK_NOT_FOUND', 'Task not found');
+    }
+    const endedAt = input.at ? new Date(input.at) : new Date();
+    const startedAt = new Date(endedAt.getTime() - input.minutes * 60_000);
+    const entry = await prisma.taskTimeEntry.create({
+      data: { taskId, userId, startedAt, endedAt, minutes: input.minutes, note: input.note || null },
+    });
+    auditService.log({ userId, action: 'TASK_TIME_LOGGED', entityType: 'task', entityId: taskId, details: { minutes: input.minutes, entryId: entry.id, note: input.note ?? undefined } });
+    return entry;
+  },
+
+  /** The person who logged it, or the task's owner. */
+  async deleteTimeEntry(userId: string, taskId: string, entryId: string) {
+    if (!(await canAccessTask(taskId, userId))) {
+      throw new AppError(404, 'TASK_NOT_FOUND', 'Task not found');
+    }
+    const entry = await prisma.taskTimeEntry.findFirst({ where: { id: entryId, taskId } });
+    if (!entry || (entry.userId !== userId && !(await isTaskOwner(taskId, userId)))) {
+      throw new AppError(404, 'TIME_ENTRY_NOT_FOUND', 'Time entry not found');
+    }
+    await prisma.taskTimeEntry.delete({ where: { id: entryId } });
+    auditService.log({ userId, action: 'TASK_TIME_DELETED', entityType: 'task', entityId: taskId, details: { entryId, minutes: entry.minutes } });
+    return { success: true };
   },
 
   // ─── Links ────────────────────────────────────────────────────────────────

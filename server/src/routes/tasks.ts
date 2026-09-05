@@ -11,6 +11,7 @@ import {
   updateCommentSchema,
   addDependencySchema,
   addLinkSchema,
+  logTimeSchema,
 } from '../validators/taskValidator.js';
 
 const router = Router();
@@ -19,6 +20,8 @@ router.get('/summary', taskController.getSummary);
 // Before '/:id', or Express matches 'by-company' as an id.
 router.get('/by-company', taskController.findGroupedByCompany);
 router.get('/my-day', taskController.getMyDay);
+// Before '/:id' as well: 'time' is not a task id.
+router.get('/time/running', taskController.getRunningTimer);
 router.get('/', taskController.findAll);
 router.get('/:id', taskController.findById);
 router.post('/', validate(createTaskSchema), taskController.create);
@@ -40,5 +43,9 @@ router.post('/:id/dependencies', validate(addDependencySchema), taskController.a
 router.delete('/:id/dependencies/:blockerId', taskController.removeDependency);
 router.post('/:id/links', validate(addLinkSchema), taskController.addLink);
 router.delete('/:id/links/:entityType/:entityId', taskController.removeLink);
+router.post('/:id/time/start', taskController.startTimer);
+router.post('/:id/time/stop', taskController.stopTimer);
+router.post('/:id/time', validate(logTimeSchema), taskController.logTime);
+router.delete('/:id/time/:entryId', taskController.deleteTimeEntry);
 
 export { router as taskRoutes };

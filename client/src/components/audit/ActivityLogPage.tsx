@@ -81,6 +81,8 @@ const actionLabels: Record<string, string> = {
   TASK_DEPENDENCY_REMOVED: 'Dependency Removed',
   TASK_LINK_ADDED: 'Task Linked',
   TASK_LINK_REMOVED: 'Task Unlinked',
+  TASK_TIME_LOGGED: 'Time Logged',
+  TASK_TIME_DELETED: 'Time Entry Deleted',
   DEAL_CREATED: 'Deal Created',
   DEAL_UPDATED: 'Deal Updated',
   DEAL_DELETED: 'Deal Deleted',
