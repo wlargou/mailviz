@@ -534,6 +534,42 @@ otherwise. What shipped, in one line each:
 - A delete tombstone for calendar events — no variant survives
   `@@unique([userId, googleEventId])` (PR #24).
 
+## Task management — the ten features
+
+Tasks are one of the app's two reasons to exist, and until 1.3.0 a task was a
+title, a status and a due date. The plan, in build order — each one reuses
+what the previous one adds:
+
+- [x] **T1 Subtasks and checklists** (1.3.0). `Task.parentId`, two levels
+  only, enforced in the service: a parent must be owned by the same account
+  as its child, a subtask cannot have subtasks, and a task with subtasks
+  cannot become one. A subtask inherits its parent's company unless told
+  otherwise. Progress counts (`subtaskCount` / `subtaskDoneCount`) use the
+  account's terminal statuses, like everything else since PR #4. Checklists
+  are `task_checklist_items`: text, done, position; anyone who can open the
+  task can tick one. Writes in both sections are immediate, not batched behind
+  the panel's Save. Not done, deliberately: dragging a parent on the Kanban
+  does not move its subtasks (they are their own cards, with a breadcrumb),
+  and checklist items cannot be renamed or reordered from the UI yet — the
+  endpoint accepts `text`, the UI just has no control for it.
+- [ ] **T2 Activity history and comments** — a per-task timeline from the
+  audit log, plus `task_comments` with @mentions that notify.
+- [ ] **T3 Dependencies** — `task_dependencies` (blocker, blocked); a blocked
+  task cannot reach a terminal status without an override.
+- [ ] **T4 Recurring tasks** — reuse the calendar RRULE presets; completing an
+  occurrence spawns the next.
+- [ ] **T5 Start dates, reminders and a My Day view.**
+- [ ] **T6 Links to contacts, deals and events** — polymorphic, so a meeting
+  can carry its action items and a deal its open work.
+- [ ] **T7 Time tracking** — `time_entries` against the estimate that already
+  exists.
+- [ ] **T8 Task templates and blueprints** — a saved tree with relative due
+  dates, instantiated against a company or deal.
+- [ ] **T9 Saved views and table batch actions** — the `TableBatchActions`
+  gap above, closed on Tasks first.
+- [ ] **T10 Email-to-task, second generation** — `MailToTask` becomes
+  one-to-many; replies on a linked thread surface on the task.
+
 ## Decisions waiting on a person
 
 None of these is blocked on code. One line either way closes each.
