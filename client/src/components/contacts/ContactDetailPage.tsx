@@ -26,7 +26,8 @@ import {
   SkeletonText,
   InlineLoading,
 } from '@carbon/react';
-import { Edit, Calendar, Email, Enterprise, Attachment } from '@carbon/icons-react';
+import { Edit, Calendar, Email, Enterprise, Attachment, TaskComplete } from '@carbon/icons-react';
+import { LinkedTasks } from '../tasks/LinkedTasks';
 import { VipBadge } from '../shared/VipBadge';
 import { PageHeader } from '../shared/PageHeader';
 import { SidePanel } from '@carbon/ibm-products';
@@ -58,6 +59,7 @@ export function ContactDetailPage() {
   const navigate = useNavigate();
   const addNotification = useUIStore((s) => s.addNotification);
 
+  const [linkedTaskCount, setLinkedTaskCount] = useState<number | null>(null);
   const [contact, setContact] = useState<Contact | null>(null);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [emailThreads, setEmailThreads] = useState<EmailThread[]>([]);
@@ -226,6 +228,7 @@ export function ContactDetailPage() {
               <Tab renderIcon={Calendar}>Events ({events.length})</Tab>
               <Tab renderIcon={Email}>Emails ({emailTotal})</Tab>
               <Tab renderIcon={Attachment}>Attachments ({attachments.length})</Tab>
+              <Tab renderIcon={TaskComplete}>Tasks{linkedTaskCount === null ? '' : ` (${linkedTaskCount})`}</Tab>
             </TabList>
             <TabPanels>
               <TabPanel>
@@ -326,6 +329,9 @@ export function ContactDetailPage() {
                   attachments={attachments}
                   emptyDescription="Attachments from emails involving this contact will appear here"
                 />
+              </TabPanel>
+              <TabPanel>
+                {id && <LinkedTasks entityType="contact" entityId={id} onCount={setLinkedTaskCount} />}
               </TabPanel>
             </TabPanels>
           </Tabs>

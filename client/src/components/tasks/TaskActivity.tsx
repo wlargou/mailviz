@@ -422,6 +422,10 @@ export function describeEvent(
       return d.blocker ? <>marked this as blocked by <strong>{decodeEntities(String(d.blocker))}</strong></> : 'added a blocker';
     case 'TASK_DEPENDENCY_REMOVED':
       return 'removed a blocker';
+    case 'TASK_LINK_ADDED':
+      return d.label ? <>linked this to <strong>{decodeEntities(String(d.label))}</strong></> : `linked this to a ${String(d.linkType ?? 'record')}`;
+    case 'TASK_LINK_REMOVED':
+      return `unlinked a ${String(d.linkType ?? 'record')}`;
     case 'TASK_UPDATED': {
       const changes = Array.isArray(d.changes) ? (d.changes as string[]) : [];
       const parts: React.ReactNode[] = [];

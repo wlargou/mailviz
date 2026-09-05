@@ -74,6 +74,18 @@ export type TaskActivityEntry =
       editedAt: string | null;
     };
 
+export type TaskLinkType = 'contact' | 'deal' | 'event';
+
+/** A contact, deal or event this task is attached to, resolved for display. */
+export interface TaskLink {
+  entityType: TaskLinkType;
+  entityId: string;
+  label: string;
+  subtitle: string | null;
+  /** The event's start, for events. */
+  when: string | null;
+}
+
 /** The other end of a dependency. */
 export interface TaskRef {
   id: string;
@@ -136,6 +148,10 @@ export interface Task {
   openBlockerCount: number;
   /** Tasks waiting on this one. */
   blocksCount: number;
+  /** Contacts, deals and events this task is attached to. */
+  linkCount: number;
+  /** Only on `GET /tasks/:id`. */
+  links?: TaskLink[];
   /** Only on `GET /tasks/:id`. */
   subtasks?: Task[];
   /** Only on `GET /tasks/:id`. */

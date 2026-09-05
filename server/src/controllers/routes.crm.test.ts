@@ -1553,3 +1553,31 @@ describe('/api/v1/tasks — dependencies', () => {
     expect(await prisma.taskDependency.count()).toBe(0);
   });
 });
+
+describe('/api/v1/tasks — links', () => {
+  it('links a deal, validates the type, and refuses another account\'s record', async () => {
+    const { alice, bob } = await createTwoUsers();
+    const cookie = authFor(alice.id);
+    const task = await createTask(alice.id);
+    const deal = await createDeal(alice.id, { title: 'Acme renewal' });
+    const bobsDeal = await createDeal(bob.id, { title: 'BobsSecretDeal' });
+
+    const bad = await request(app).post(`/api/v1/tasks/${task.id}/links`).set('Cookie', cookie).send({ entityType: 'customer', entityId: deal.id });
+    expect(bad.status).toBe(400);
+
+    const cross = await request(app).post(`/api/v1/tasks/${task.id}/links`).set('Cookie', cookie).send({ entityType: 'deal', entityId: bobsDeal.id });
+    expect(cross.status).toBe(404);
+    expect(JSON.stringify(cross.body)).not.toContain('BobsSecretDeal');
+
+    const ok = await request(app).post(`/api/v1/tasks/${task.id}/links`).set('Cookie', cookie).send({ entityType: 'deal', entityId: deal.id });
+    expect(ok.status).toBe(201);
+    expect(ok.body.data.links).toEqual([{ entityType: 'deal', entityId: deal.id, label: 'Acme renewal', subtitle: expect.any(String), when: null }]);
+
+    const reverse = await request(app).get(`/api/v1/tasks?linkedTo=deal:${deal.id}`).set('Cookie', cookie);
+    expect(reverse.body.data.map((t: { id: string }) => t.id)).toEqual([task.id]);
+
+    const gone = await request(app).delete(`/api/v1/tasks/${task.id}/links/deal/${deal.id}`).set('Cookie', cookie);
+    expect(gone.status).toBe(200);
+    expect(gone.body.data.links).toEqual([]);
+  });
+});
