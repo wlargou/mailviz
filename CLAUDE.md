@@ -96,6 +96,9 @@ npm run build --workspace=server  # esbuild → server/dist/
 - **Batch API pattern**: `POST /batch/{action}` with `{ ids: string[] }` body. Resolves thread IDs from email IDs, acts on all emails in threads.
 - **Optimistic UI**: For bulk/single email actions, update state immediately, then fire API call. Revert state on failure.
 - **Carbon `Tag` ignores `renderIcon` at `size="sm"`.** The icon slot is only rendered for `md` and `lg`. For a small tag with an icon, put the icon in the children (see `TaskProgressTags`).
+- **Carbon `ComboBox` has no `hideLabel`**; use `titleText` and accept the label. Its `onChange` hands `selectedItem` as `T | null | undefined`, so type the handler's parameter optional.
+- **Carbon `Modal` renders its content while closed** (hidden, not unmounted). A form inside a closed Modal is still in the DOM: a `TextInput` seeded with the task title is a second "display value" for a test, and a primary button labelled "Save" collides with the page's own. Mount the Modal only while open when its fields mirror something on the page.
+- **`git stash` without `-u` leaves new files behind.** Hopping to another branch and `git add -A`-ing there commits them into that branch. Stash with `-u` before switching, and note that `git stash pop` refuses to restore an untracked file that now exists as a tracked one — `git checkout HEAD -- <file>` and `git stash drop` is the way out.
 - **Carbon Checkbox click issues**: Carbon's `Checkbox` component captures clicks via internal `<label>`. Workaround: use native `<input type="checkbox">` in a wrapper div with its own click handler and `stopPropagation`.
 
 ## Gotchas & Lessons Learned
