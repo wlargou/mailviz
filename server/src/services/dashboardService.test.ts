@@ -408,7 +408,24 @@ describe('dashboardService.getStats — calendar', () => {
       endTime: dayOffset(1, 0),
       isAllDay: true,
     });
-    await seedEvent(alice.id, { title: 'Later this week', startTime: dayOffset(2, 14), endTime: dayOffset(2, 15) });
+    /**
+     * Still inside this week, whatever today is.
+     *
+     * The week ends next Monday, and `eventsThisWeek` counts from today to
+     * that boundary — so a fixed "+2 days" left the week on Saturday and
+     * Sunday, and this test failed every weekend (CI run 33992087482, a
+     * docs-only PR). `laterInWeek` is the number of days ahead that still
+     * lands before the boundary: two where there is room, one on Saturday,
+     * and zero on Sunday, when nothing after today is this week and the event
+     * has to be later today instead.
+     */
+    const daysUntilWeekEnd = (8 - new Date().getDay()) % 7 || 7;
+    const laterInWeek = Math.min(2, daysUntilWeekEnd - 1);
+    await seedEvent(alice.id, {
+      title: 'Later this week',
+      startTime: dayOffset(laterInWeek, 14),
+      endTime: dayOffset(laterInWeek, 15),
+    });
     // Far outside the window in both directions. Without these the query had no
     // bounds to get wrong: dropping the date filter altogether changed none of
     // the counters, because every fixture was already inside the week.
@@ -417,7 +434,8 @@ describe('dashboardService.getStats — calendar', () => {
 
     const { calendar } = await dashboardService.getStats(await inMachineZone(alice.id));
 
-    expect(calendar.eventsToday).toBe(3);
+    // On a Sunday the fourth event is today as well.
+    expect(calendar.eventsToday).toBe(laterInWeek === 0 ? 4 : 3);
     expect(calendar.eventsThisWeek).toBe(4);
     // All-day events are not meetings, so they add no hours and no count.
     expect(calendar.meetingCountThisWeek).toBe(3);
