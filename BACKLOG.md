@@ -3,6 +3,12 @@
 Working order: **Phase 1 → 2 → 3 → 4**. Phase 1 is cheapest per unit of value
 (the backend already exists); Phase 4 is the one that de-risks everything else.
 
+**Status as of 2026-09-05:** Phases 1, 3 and 4 are complete. Phase 2 has one
+item left (2.1, Gmail push) and one deliberate omission (the custom recurrence
+builder). Production runs **1.2.1.0**. The September correctness campaign
+(PRs #1–#24) and what it left open are recorded at the bottom of this file,
+together with the decisions that are waiting on a person rather than on code.
+
 This file is committed deliberately, and it is the only roadmap anyone is obliged
 to keep current. The earlier plans lived in `.claude/plans/`, which is gitignored:
 they never survived a clone, and nothing in CI or review ever read them, so they
@@ -152,8 +158,13 @@ multi-tenant.
   - [x] Gmail incremental sync, initial sync and the bounded history-expiry
     catch-up — mocked at the `getGmailClient()` seam (`src/test/gmailMock.ts`).
   - [x] The batch email actions, including that they cannot cross tenants.
-  - [ ] Send / reply / forward / attachments — still uncovered.
+  - [x] Send / reply / forward / attachments — `emailService.outbound.test.ts`,
+    `mimeBuilder.test.ts` and `composeValidator.test.ts`, added with the
+    coverage sweep of 2026-08-19 and the header-escaping fix (PR #14).
 - [x] **4.3 Client typecheck is blocking in CI** — `continue-on-error` removed.
+- [x] **4.4 The suite was audited by mutation.** 39 of the first 1018 tests
+  survived breaking the code they covered and were repaired (see the CLAUDE.md
+  testing notes for the vacuous shapes to avoid). Server: 70 files; client: 30.
 
 ---
 
@@ -165,8 +176,11 @@ multi-tenant.
 - [x] **The suite is concurrency-safe** — each run creates and drops its own
   `mailviz_test_<random>` database, so parallel runs cannot truncate each
   other's fixtures.
-- [ ] **Gmail send paths still untested** — sync and batch operations are now
-  covered; send, reply, forward and attachments are not.
+- [x] **Gmail send paths tested** — see 4.2.
+- [ ] **CI `verify` duration is drifting.** ~8 minutes for every PR until #22,
+  then 20–25 minutes on #22 and #24 and 16 on the merge of #24. Local is ~12.
+  Probably loaded runners, but the three route-smoke files are roughly half the
+  runtime, and splitting them into their own job is the next step if it recurs.
 
 ## Departures from the shipped plans
 
@@ -429,8 +443,9 @@ Not blocking, but known and deliberate.
   They stay literal values rather than `var(--cds-*)` because they are written into
   the message body and must survive in a recipient's mail client. Asserted the
   resulting array is byte-identical to what shipped before.
-- [ ] **Carbon B4 — inline `style={{}}` objects.** 106 across 27 files (was
-  "54+" when first filed). Worst: `SettingsPage` (16), `CustomerDetailPage` (15),
+- [ ] **Carbon B4 — inline `style={{}}` objects.** 114 across 30 files as of
+  2026-09-05 (106 / 27 on 2026-08-18, "54+" when first filed — it is growing).
+  Worst: `SettingsPage` (16), `CustomerDetailPage` (15),
   `TaskDetailModal` / `CalendarWeekView` / `CalendarDayView` (8 each).
   **Rescope before starting** — calendar views compute per-event pixel offsets
   and the badges paint per-record colours, so a real fraction are legitimately
@@ -443,5 +458,104 @@ Not blocking, but known and deliberate.
   suggested; `.card-empty` deleted rather than kept as an alias. At `sm` the icon is
   omitted unless asked for, and renders bare when it is — the 3rem disc was bigger
   than the message it decorated.
-- [ ] `docs/database-schema.md` is untracked and 3 migrations stale (missing
-  `AuditLog`, `Notification`, `User.signature`). Commit and regenerate, or delete.
+- [ ] `docs/database-schema.md` is committed now, but stale again: nothing on
+  `EmailDraft`, `EmailTemplate`, `ContactEmailAlias`, `Contact.kind` /
+  engagement, `User.timezone`, `TaskStatus.isTerminal`,
+  `CalendarEvent.pendingSince` or `GoogleAuth.syncFailedMessageIds`. Regenerate
+  from the schema, or delete it and point at `schema.prisma`.
+- [ ] `docs/plans/*.md` and their gitignored `.claude/plans/*.md` originals have
+  diverged. The committed copies are the ones that count; delete the originals
+  or stop editing them.
+
+## September 2026 correctness campaign — PRs #1–#24
+
+Twenty-four PRs between 2026-09-01 and 09-04, all merged and deployed as
+**1.2.1.0**. Recorded here because their leftovers live only in PR bodies
+otherwise. What shipped, in one line each:
+
+- Full code-analysis sweep (27 findings), keyboard access in the thread reader,
+  multi-day event collapse, merge aliases, user timezones, terminal task
+  statuses, a one-day notification-dismissal cooldown, the mailbox-wide read
+  behind "eight recent rows" removed, rate limiting no longer keyed on Railway's
+  single proxy IP, a four-part `VERSION` with an About dialog and a CI bump
+  gate, By Company rebuilt twice (once to the design, once as one aligned grid
+  on the List View's table), account defaults seeded at sign-in, HTML entities
+  decoded across ~63 client surfaces and at the two server sites where Gmail's
+  text becomes ours, task edits reaching every view without a reload, the edit
+  panel fetching by id and saving only what changed, outgoing headers escaped,
+  and seven calendar fixes: clearing fields, reporting a push Google rejected,
+  the RSVP path no longer logging the user out, manual sync under the
+  scheduler's guard, a per-project calendar rate limiter, pending-push
+  protection with retry and a badge, and an update no longer clearing the Google
+  guest list; disconnecting Google keeps events Google never had.
+
+### Still open from those PRs
+
+- [ ] **Tracking pixels.** The CSP permits remote images (PR #1) because mail
+  does not render otherwise. Gmail and Outlook proxy images to avoid exactly
+  this. Options: an image proxy, or a per-message "show images" toggle.
+- [ ] **`calendar:sync:status` is emitted only from the scheduler**, so a cron
+  tick's terminal `{syncing:false}` re-enables the Sync button during a manual
+  sync. The resulting click is a 409 (PR #21), so the harm is closed; the
+  flicker is not.
+- [ ] **The full-sync `nextSyncToken` comes from a separate, unwindowed listing**
+  whose events are discarded, so it can cover changes never applied.
+  Pre-existing and single-sync (PR #21).
+- [ ] **The calendar reconciliation has no create-during-sync guard.**
+  `draftService` solves the same race with an `updatedAt < startedAt` clause
+  (PR #23).
+- [ ] **Stale-attendee window.** A PATCH omitting attendees now re-pushes the
+  stored list, which can resurrect a guest removed in Google's own UI before the
+  sync catches up. Narrower than what it replaced, and the same staleness the
+  body already has for title, times and location (PR #24).
+- [ ] **`/auth/google/disconnect-summary`** with real counts, mirroring
+  `/account/summary` — whose own docstring notes that "this will delete all your
+  data" is a sentence people click through (PR #24).
+- [ ] **`retryFailedMessages` has no backoff** — a permanently failing message
+  is retried every 60 seconds forever. Needs attempt counts, so a migration.
+  Production had zero stuck messages when checked (PR #2); latent, not live.
+- [ ] **`{{today}}` still renders server-local `en-US`** — the user timezone
+  from PR #3 is not consulted (`templateService.ts`, `today:` in `render`).
+
+### Deliberately not done, so it is not re-litigated as oversight
+
+- `sendUpdates` keeping its default through `.partial()` — inert: both layers
+  default to `'all'`, every caller is explicit, and a test documents why this
+  is not the `updateDealSchema` bug (PR #21).
+- A `.max()` on calendar description/location — would guess a limit Google
+  does not document, and can be wrong in the rejecting direction (PR #21).
+- jsonb `'null'` vs SQL NULL on `attendees` — 39 production rows,
+  indistinguishable at every observation point; now a CLAUDE.md gotcha listing
+  the conditions that would make it real (PR #24).
+- Same-field last-write-wins in the task editor — an `updatedAt` precondition
+  would fire constant false conflicts, since the Kanban drag bumps `updatedAt`
+  on every card in a column. Needs a `version` column reorder does not touch,
+  plus a conflict UI (PR #16).
+- A delete tombstone for calendar events — no variant survives
+  `@@unique([userId, googleEventId])` (PR #24).
+
+## Decisions waiting on a person
+
+None of these is blocked on code. One line either way closes each.
+
+- [ ] **Gmail Pub/Sub (2.1)** needs a GCP topic, subscription and push grant.
+  Asked repeatedly without an answer; polling stays until then.
+- [ ] **The 24-hour give-up window on pending calendar pushes**
+  (`jobs/calendarPendingPush.ts`, `MAX_AGE_MS`). Past it a row stays protected
+  and badged but stops retrying, waiting for a human. Chosen over letting Google
+  eventually win, because silently discarding an edit is the bug that work
+  closed. Keep, lengthen, or add a "retry now" action.
+- [ ] **Mailing-list contacts.** Unlinking `connectedcommunity.org` and
+  `googlegroups.com` is mechanical; whether the contacts harvested from those
+  lists are wanted is not.
+- [ ] **Snoozed mail counting** in `getReviewSummary` and the dashboard.
+- [ ] **Tracking pixels** — accept, proxy, or toggle (above).
+- [ ] **Off-scale type and spacing** — ~26 font sizes and ~59 spacing values
+  sit off Carbon's scale. Normalising them changes the design.
+
+## Operational loose ends
+
+- [ ] **`railway ssh node /app/server/dist/scripts/backfillAll.js --apply` has
+  never been run against production.** Only the `decodeTaskEntities` step has,
+  by hand. Forgetting it once made the contact filters look broken. The dry run
+  writes nothing; every step is idempotent.

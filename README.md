@@ -2,7 +2,7 @@
 
 A full-stack CRM with deep Gmail and Google Calendar integration. Manage customers, contacts, deals, tasks, and email in one workspace with real-time sync.
 
-![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)
+![TypeScript](https://img.shields.io/badge/TypeScript-7-blue)
 ![React](https://img.shields.io/badge/React-19-61dafb)
 ![Express](https://img.shields.io/badge/Express-5-000)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)
@@ -15,11 +15,14 @@ A full-stack CRM with deep Gmail and Google Calendar integration. Manage custome
 - **Real-time updates** — background poll every 60s with WebSocket push to the browser
 - **Thread view** — grouped conversations, inline body rendering, attachment previews
 - **Compose** — rich text (Tiptap), attachments, recipient autocomplete, reusable signature
+- **Drafts** — Gmail is the source of truth (`users.drafts`), Postgres a mirror; explicit save, and sending consumes the draft atomically
 - **Scheduled send** — queue an email or reply for later, reschedule or cancel it; a scheduler delivers it and reports back over WebSocket
-- **Mail Review** — a guided catch-up flow for a chosen period: pick a date range, review a per-company summary, then work through the mail company by company
+- **Templates** — reusable bodies with `{{variables}}` (contact, company, today…), inserted at the cursor; compose refuses to send while any variable is unfilled
+- **Snooze / follow-up** — hide a thread until a chosen time; it returns unread at its real date. State lives in `email_reminders`, never on the email row
+- **Mail Review** — a guided catch-up flow for a chosen period: pick a date range, review a per-company summary, then work through the mail company by company, paged per company
 - **Email-to-task** — turn any email into a tracked task
-- **Search & filtering** — folder (Inbox/Sent/Starred/Archived/Trash/Scheduled), sender, date range, customer, read status, attachments
-- **Smart linking** — email is auto-linked to customers and contacts by sender domain
+- **Search & filtering** — folder (Inbox/Sent/Starred/Archived/Trash/Drafts/Snoozed/Scheduled), sender, date range, customer, read status, attachments
+- **Smart linking** — email is auto-linked to customers and contacts by sender domain. Outbound mail files under the counterparty, mailing lists never become companies, and multi-part public suffixes (`co.uk`, `co.ma`) are understood
 
 ### Deals
 - Deal registration with partners, status, and expiry tracking
@@ -27,9 +30,10 @@ A full-stack CRM with deep Gmail and Google Calendar integration. Manage custome
 - Deal partners managed in Settings
 
 ### Task Management
-- **Kanban board** with drag-and-drop (dnd-kit) and **list view**
-- **Dynamic statuses** — user-defined, drag-reorderable, managed in Settings (not a fixed enum)
+- **Kanban board** with drag-and-drop (dnd-kit), **list view**, and a **By Company** view — one aligned grid with two-level expansion
+- **Dynamic statuses** — user-defined, drag-reorderable, managed in Settings (not a fixed enum). Any status can be flagged *terminal*, and "finished" means whatever the account's terminal statuses say
 - Priority levels, due dates, estimated effort
+- Edits reach every open view without a reload, and a save sends only the fields that changed
 - **Labels** — create, rename, recolour, and delete in Settings; attach any number to a task
 - Customer association and per-task assignment (assignee is notified)
 
@@ -40,19 +44,28 @@ A full-stack CRM with deep Gmail and Google Calendar integration. Manage custome
 - **Recurrence on create** — Daily / Weekly / Monthly / Yearly presets anchored to the start date
 - Reminders (up to 5 method/minutes overrides, or the calendar default) and visibility (default/public/private)
 - RSVP from inside the app
+- **Pending push** — an edit that cannot reach Google is marked, protected from being reverted by the next sync, retried on the sync tick, and badged in the UI until it lands
+- All-day events are floating dates; every day and week boundary is computed in the user's own timezone (set in Settings)
 
 ### Customer & Contact Management
 - Company profiles with domain, logo, category (drag-reorderable in Settings), VIP flag, and notes
 - **Auto-discovery** — companies and contacts are created automatically from email domains
-- Contact directory with role, phone, and email
+- Contact directory with role, phone, and email; each contact is classified as a **person, shared mailbox, or machine**, and tracks which way mail has flowed (inbound, outbound, both)
+- **Duplicate detection and merge** — three explainable rules propose groups; "Find duplicates" on the Contacts page reviews them and merges only on confirmation, keeping the losing addresses as aliases so their mail is not orphaned
 - Per-customer activity: email, tasks, events, and attachments in one place
 
 ### Collaboration
 - **Sharing** — share email threads, tasks, and deals with other users
 - Shared items appear in the recipient's normal lists (enforced server-side in `utils/accessControl.ts`),
   carry a **Shared** badge, and can be filtered to owned-only or shared-only on Tasks and Deals
-- **Notifications** — in-app bell for overdue/due-soon tasks, starting events, expiring deals, and shares
+- **Notifications** — in-app bell for overdue/due-soon tasks, starting events, expiring deals, and shares; a dismissal suppresses the same notification for a day
 - **Audit log** — an Activity page recording actions across email, tasks, and contacts
+
+### Account
+- **Onboarding** — a welcome tour and first-run setup wizard that seeds task statuses and a starter label set; replayable from Settings
+- **Settings** in four tabs: Account (Google connection, timezone, signature, delete account), Mail (templates), Workspace (statuses, categories, labels, partners), Getting started
+- **Delete account** — with a summary of exactly what will be removed before you confirm
+- **About** dialog showing the client and server versions, and "Reload to update" when they differ
 
 ### Dashboard
 - Task summary tiles and a task-status donut
@@ -74,14 +87,14 @@ A full-stack CRM with deep Gmail and Google Calendar integration. Manage custome
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | React 19, Vite 6, TypeScript 5.9 |
+| Frontend | React 19, Vite 8, TypeScript 7 |
 | UI | IBM Carbon Design System (g100 dark theme) |
 | Charts | @carbon/charts-react, D3.js |
 | Editor | Tiptap |
 | State | Zustand |
 | Backend | Express 5, TypeScript |
 | Database | PostgreSQL 16 (Docker) |
-| ORM | Prisma 6 |
+| ORM | Prisma 7 (`@prisma/adapter-pg`) |
 | Auth | Google OAuth 2.0 → JWT in httpOnly cookies |
 | APIs | Gmail API, Google Calendar API |
 | Real-time | WebSocket (ws) |
@@ -92,7 +105,7 @@ A full-stack CRM with deep Gmail and Google Calendar integration. Manage custome
 
 ### Prerequisites
 
-- **Node.js 22** (see `.nvmrc`; Vite 6 is pinned for Node 22 compatibility)
+- **Node.js 22.19** — `.nvmrc` is pinned to the exact version Railway runs, on purpose (see `CLAUDE.md`)
 - **Docker** and Docker Compose (for PostgreSQL)
 - A **Google Cloud Console** project with OAuth 2.0 credentials
 
@@ -171,6 +184,8 @@ npm run db:seed      # Seed dev data
 npm run typecheck    # tsc --noEmit across both workspaces
 npm run test         # Vitest, both workspaces
 npm run build        # Build client then server
+npm run backfill --workspace=server            # Every data backfill, dry run
+npm run backfill --workspace=server -- --apply # …and for real (idempotent)
 ```
 
 Note that `npm run build` does **not** typecheck — Vite and esbuild strip types without reading them.
@@ -212,8 +227,9 @@ mailviz/
 │       │   ├── dashboard/      # Dashboard widgets and charts
 │       │   ├── deals/          # Deal registration
 │       │   ├── layout/         # Shell, sidebar, header, search, notifications, ConnectionStatus
-│       │   ├── mail/           # Threads, compose, and review/ subflow
-│       │   ├── settings/       # Google account, statuses, categories, labels, partners, signature
+│       │   ├── mail/           # Threads, compose, snooze, and review/ subflow
+│       │   ├── onboarding/     # Welcome tour and first-run setup wizard
+│       │   ├── settings/       # Account, Mail, Workspace and Getting started tabs
 │       │   ├── shared/         # Reusable components (SharedBadge, PageHeader, …)
 │       │   └── tasks/          # Kanban board and task modals
 │       ├── hooks/              # Custom hooks (shared WebSocket, etc.)
@@ -226,8 +242,9 @@ mailviz/
 │   └── src/
 │       ├── config/             # Environment config
 │       ├── controllers/        # HTTP request handlers
-│       ├── jobs/               # Email, calendar, scheduled-send, notification schedulers
-│       ├── lib/                # Shared Prisma client, Gmail helper, Gmail rate limiter
+│       ├── jobs/               # Email, calendar, pending-push, scheduled-send, snooze, notification schedulers
+│       ├── lib/                # Shared Prisma client, Gmail/Calendar helpers, Gmail rate limiter
+│       ├── scripts/            # Data backfills and repairs (backfillAll runs them all)
 │       ├── middleware/         # Auth, validation, error handling
 │       ├── prisma/             # Schema and migrations
 │       ├── routes/             # API route definitions
@@ -251,8 +268,11 @@ All endpoints are prefixed with `/api/v1`. Every group except `auth` sits behind
 
 | Resource | Mount | Notes |
 |----------|-------|-------|
-| Auth | `/auth` | Google OAuth login/callback, `/me`, logout, connect/disconnect, users list, signature |
-| Emails | `/emails` | Threads, actions, compose/reply/forward, attachments, scheduled send, sharing, `/review-summary` |
+| Auth | `/auth` | Google OAuth login/callback, `/me`, logout, connect/disconnect, users list, signature, timezone, `/account/summary` + `DELETE /account` |
+| Emails | `/emails` | Threads, actions, compose/reply/forward, attachments, drafts, scheduled send, sharing, `/review-summary` |
+| Snooze | `/snooze` | Follow-up reminders on threads |
+| Templates | `/templates` | Email templates, `/variables`, `/:id/render` |
+| Onboarding | `/onboarding` | Status, seed statuses/labels, complete, reset |
 | Tasks | `/tasks` | CRUD, reorder, assign, sharing |
 | Task statuses | `/task-statuses` | User-defined Kanban columns, reorderable |
 | Customers | `/customers` | CRUD, VIP, linked events and attachments |
@@ -269,6 +289,9 @@ All endpoints are prefixed with `/api/v1`. Every group except `auth` sits behind
 
 Batch actions follow `POST /emails/batch/{action}` with a `{ ids: string[] }` body.
 Tasks and deals accept `?ownership=owned|shared` to separate your own items from ones shared with you.
+
+Two endpoints sit outside `/api/v1` and need no session: `GET /api/health` and `GET /api/version`
+(the deployed version and its build time — nothing else, on purpose).
 
 ## Environment Variables
 
@@ -289,6 +312,7 @@ Tasks and deals accept `?ownership=owned|shared` to separate your own items from
 | `EMAIL_SYNC_ENABLED` | Toggle background email sync | `true` |
 | `EMAIL_SYNC_MONTHS` | Initial-sync window in months; `0` = the whole mailbox | `0` |
 | `SYNC_CATCHUP_DAYS` | Window re-listed when Gmail expires the history token (bounds the fallback so it can't become a full re-sync) | `7` |
+| `SYNC_MAX_CONCURRENT_ACCOUNTS` | Accounts synced concurrently (each account still runs one sync at a time) | `3` |
 | `CALENDAR_SYNC_ENABLED` | Toggle background calendar sync | `true` |
 | `CALENDAR_SYNC_INTERVAL_SECONDS` | Calendar poll interval | `120` |
 | `CALENDAR_SYNC_PAST_MONTHS` | How far back calendar sync reaches | `24` |
@@ -313,9 +337,10 @@ dev fallbacks so the app boots without them. **Set all four in production.**
 committed deliberately: the earlier plans lived in `.claude/plans/`, which is gitignored, so they
 never survived a clone and rotted unnoticed.
 
-It is ordered by cost-to-value — Phase 1 (backend already built, UI missing) is complete; Phase 2 is
-the scoped-but-unstarted work carried over from those plans; Phase 3 is genuine product gaps; Phase 4
-is testing.
+It is ordered by cost-to-value. Phases 1 (backend built, UI missing), 3 (product gaps) and 4 (testing)
+are complete. Phase 2 has one item left: Gmail push. The September 2026 correctness campaign
+(PRs #1–#24) and the loose ends it recorded are listed there too, along with the decisions that are
+waiting on a human rather than on code.
 
 Two design documents survive in [`docs/plans/`](docs/plans/), because they hold detail a backlog line
 cannot: [`live-email-sync.md`](docs/plans/live-email-sync.md) (the Pub/Sub design behind item 2.1) and
@@ -325,21 +350,24 @@ custom recurrence builder is acceptable). The Carbon audit that used to live in
 
 ## Known Gaps
 
-- **No Gmail push.** Phase 4 of the sync work (Google Cloud Pub/Sub) is not started — production runs
-  60s polling as a deliberate stand-in. The one architecturally significant item left.
-- **No drafts.** Gmail drafts are not synced at all, and compose has no save-and-return. The most
-  conspicuous absence for a mail client.
-- **No contact dedupe or merge.** Auto-discovery creates a contact for every sender, so there is no
-  way to collapse duplicates — the gap most likely to bite at real mailbox volume.
-- **Mail Review has no pagination** — `ReviewMailView` fetches a fixed 500 threads and filters
-  client-side, so long review periods truncate silently.
-- **No templates, snooze, CSV import/export, or mail rules.** Zero references to any of them.
-- **Gmail send paths are untested.** Sync and the batch actions run against a mocked Gmail API, but
-  send, reply, forward, and attachments have no coverage.
-- **Two reverted fixes remain unsolved**: the Carbon SidePanel close-button tooltip showing on mount,
-  and the email volume chart's opaque `g100` background (a CSS override in `_dashboard.scss` masks it).
-- **The four main list pages cannot sort.** Customers, Contacts, Deals, and Tasks use Carbon
-  `DataTable` as a styling shell only. See `BACKLOG.md` for the rest of the known quality debt.
+- **No Gmail push.** Google Cloud Pub/Sub is not started — production runs 60s polling as a
+  deliberate stand-in. The one architecturally significant item left, and it needs a GCP decision.
+- **Remote images are allowed, so tracking pixels fire.** The CSP permits them because mail does not
+  render otherwise; Gmail and Outlook proxy images to avoid exactly this. No proxy or per-message
+  "show images" toggle exists yet.
+- **Recurrence is presets only.** No custom builder (interval / count / until / several weekdays).
+  An RRULE that does not fit a preset is shown read-only and never rewritten, which is what makes the
+  gap acceptable.
+- **Snooze is owner-only and row-only** — a recipient of a shared thread cannot snooze it, and there
+  is no snooze action inside the thread reader.
+- **No CSV import/export, no mail rules.** Both deprioritised on purpose; Gmail's filters cover rules
+  for mail that syncs in.
+- **A pending calendar push stops retrying after 24 hours** and waits for a human. It stays
+  protected and badged; whether that is the right window is an open decision.
+- **The Carbon SidePanel close-button tooltip on mount** — a fix was reverted in March and the
+  behaviour has not been re-checked since.
+- See `BACKLOG.md` for the Carbon and quality debt (inline styles, native `title=` tooltips, no
+  table batch actions, thread-row markup in three copies).
 
 ## License
 
