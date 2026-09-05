@@ -7,6 +7,10 @@ export const createTaskSchema = z.object({
   status: z.string().trim().min(1).max(100).optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
   dueDate: z.string().datetime().nullable().optional(),
+  /** When work can begin. Never after the due date — the service checks the pair. */
+  startDate: z.string().datetime().nullable().optional(),
+  /** When to raise a reminder notification. Fires once. */
+  remindAt: z.string().datetime().nullable().optional(),
   labelIds: z.array(z.string().uuid()).optional(),
   customerId: z.string().uuid().nullable().optional(),
   assignedToId: z.string().uuid().nullable().optional(),
@@ -28,6 +32,14 @@ export const updateTaskSchema = createTaskSchema.partial().extend({
    * user takes in the UI, not a default a caller inherits.
    */
   force: z.boolean().optional(),
+});
+
+export const TASK_LINK_TYPES = ['contact', 'deal', 'event'] as const;
+export type TaskLinkType = (typeof TASK_LINK_TYPES)[number];
+
+export const addLinkSchema = z.object({
+  entityType: z.enum(TASK_LINK_TYPES),
+  entityId: z.string().uuid(),
 });
 
 export const addDependencySchema = z.object({

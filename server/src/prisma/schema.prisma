@@ -28,6 +28,12 @@ model Task {
   status         String       @default("TODO") @db.VarChar(100)
   priority       TaskPriority @default(MEDIUM)
   dueDate        DateTime?    @map("due_date")
+  /// When work on this task can begin. Never after the due date (service rule).
+  startDate      DateTime?    @map("start_date")
+  /// When to raise a TASK_REMINDER notification. Fires once: `reminderSentAt`
+  /// records the firing, and changing `remindAt` clears it.
+  remindAt       DateTime?    @map("remind_at")
+  reminderSentAt DateTime?    @map("reminder_sent_at")
   position       Int          @default(0)
   estimatedMinutes Int?       @map("estimated_minutes")
   customerId     String?      @map("customer_id")
@@ -58,6 +64,7 @@ model Task {
   blockedBy  TaskDependency[]    @relation("TaskBlockedBy")
   recurrenceNext     Task?  @relation("TaskRecurrence", fields: [recurrenceNextId], references: [id], onDelete: SetNull)
   recurrencePrevious Task?  @relation("TaskRecurrence")
+  links      TaskLink[]
   parent     Task?        @relation("TaskSubtasks", fields: [parentId], references: [id], onDelete: Cascade)
   subtasks   Task[]       @relation("TaskSubtasks")
   customer   Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
@@ -71,7 +78,27 @@ model Task {
   @@index([userId])
   @@index([assignedToId])
   @@index([parentId])
+  @@index([startDate])
+  /// Serves the reminder sweep: due reminders not yet sent.
+  @@index([remindAt, reminderSentAt])
   @@map("tasks")
+}
+
+/// A task attached to a contact, a deal or a calendar event. Polymorphic —
+/// `entityType` names the table — so there is no foreign key to the target;
+/// the service checks the target belongs to the task's account on write and
+/// drops links whose target has since been deleted on read.
+model TaskLink {
+  taskId     String   @map("task_id")
+  entityType String   @map("entity_type") @db.VarChar(20)
+  entityId   String   @map("entity_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, entityType, entityId])
+  @@index([entityType, entityId])
+  @@map("task_links")
 }
 
 /// "blocker must finish before blocked can". Both rows belong to the same

@@ -74,6 +74,18 @@ export type TaskActivityEntry =
       editedAt: string | null;
     };
 
+export type TaskLinkType = 'contact' | 'deal' | 'event';
+
+/** A contact, deal or event this task is attached to, resolved for display. */
+export interface TaskLink {
+  entityType: TaskLinkType;
+  entityId: string;
+  label: string;
+  subtitle: string | null;
+  /** The event's start, for events. */
+  when: string | null;
+}
+
 /** The other end of a dependency. */
 export interface TaskRef {
   id: string;
@@ -99,6 +111,11 @@ export interface Task {
   status: TaskStatus;
   priority: TaskPriority;
   dueDate: string | null;
+  /** When work can begin. */
+  startDate: string | null;
+  /** When a reminder notification fires. */
+  remindAt: string | null;
+  reminderSentAt: string | null;
   position: number;
   customerId: string | null;
   assignedToId: string | null;
@@ -131,6 +148,10 @@ export interface Task {
   openBlockerCount: number;
   /** Tasks waiting on this one. */
   blocksCount: number;
+  /** Contacts, deals and events this task is attached to. */
+  linkCount: number;
+  /** Only on `GET /tasks/:id`. */
+  links?: TaskLink[];
   /** Only on `GET /tasks/:id`. */
   subtasks?: Task[];
   /** Only on `GET /tasks/:id`. */
@@ -153,6 +174,14 @@ export interface Task {
   } | null;
 }
 
+/** The four buckets of the My Day view. */
+export interface MyDay {
+  overdue: Task[];
+  dueToday: Task[];
+  startingToday: Task[];
+  upcoming: Task[];
+}
+
 export interface TaskSummary {
   total: number;
   completed: number;
@@ -167,6 +196,8 @@ export interface CreateTaskInput {
   status?: TaskStatus;
   priority?: TaskPriority;
   dueDate?: string | null;
+  startDate?: string | null;
+  remindAt?: string | null;
   labelIds?: string[];
   customerId?: string | null;
   assignedToId?: string | null;

@@ -7,11 +7,14 @@ import {
   ReorderInput,
   CreateChecklistItemInput,
   UpdateChecklistItemInput,
+  TASK_LINK_TYPES,
+  type TaskLinkType,
 } from '../validators/taskValidator.js';
 import { parsePagination, paginationMeta } from '../utils/pagination.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { getSharedTaskIds, canAccessTask, isTaskOwner } from '../utils/accessControl.js';
 import { nextOccurrence } from '../utils/recurrence.js';
+import { resolveTimeZone, startOfDayInZone, addDaysInZone } from '../utils/timezone.js';
 import { wsEmitToUsers, wsEmitToUser } from '../websocket.js';
 import { auditService } from './auditService.js';
 import { notificationService } from './notificationService.js';
@@ -31,6 +34,8 @@ interface TaskQueryParams {
   topLevel?: string;
   /** 'true' = only tasks with an unfinished blocker; 'false' = only tasks without one. */
   blocked?: string;
+  /** `contact:<id>`, `deal:<id>` or `event:<id>` — only tasks linked to that record. */
+  linkedTo?: string;
   /** 'shared' = only rows this user does not own, 'owned' = only rows they own. */
   ownership?: string;
   sortBy?: string;
@@ -160,6 +165,8 @@ interface RelationCounts {
   openBlockerCount: number;
   /** Tasks waiting on this one. */
   blocksCount: number;
+  /** Contacts, deals and events this task is attached to. */
+  linkCount: number;
 }
 
 /**
@@ -173,7 +180,7 @@ interface RelationCounts {
 async function withSubtaskProgress<T extends { id: string; status?: string }>(userId: string, tasks: T[]): Promise<Array<T & RelationCounts>> {
   if (tasks.length === 0) return [];
   const ids = tasks.map((t) => t.id);
-  const [children, blockers, blocks, terminal] = await Promise.all([
+  const [children, blockers, blocks, links, terminal] = await Promise.all([
     prisma.task.findMany({
       where: { parentId: { in: ids } },
       select: { parentId: true, status: true },
@@ -187,6 +194,11 @@ async function withSubtaskProgress<T extends { id: string; status?: string }>(us
       where: { blockerId: { in: ids } },
       _count: { blockedId: true },
     }),
+    prisma.taskLink.groupBy({
+      by: ['taskId'],
+      where: { taskId: { in: ids } },
+      _count: { entityId: true },
+    }),
     terminalStatusNames(userId),
   ]);
 
@@ -194,7 +206,7 @@ async function withSubtaskProgress<T extends { id: string; status?: string }>(us
   const entry = (id: string) => {
     let c = counts.get(id);
     if (!c) {
-      c = { subtaskCount: 0, subtaskDoneCount: 0, blockedByCount: 0, openBlockerCount: 0, blocksCount: 0 };
+      c = { subtaskCount: 0, subtaskDoneCount: 0, blockedByCount: 0, openBlockerCount: 0, blocksCount: 0, linkCount: 0 };
       counts.set(id, c);
     }
     return c;
@@ -212,8 +224,11 @@ async function withSubtaskProgress<T extends { id: string; status?: string }>(us
   for (const row of blocks) {
     entry(row.blockerId).blocksCount = row._count.blockedId;
   }
+  for (const row of links) {
+    entry(row.taskId).linkCount = row._count.entityId;
+  }
   return tasks.map((t) => {
-    const c = counts.get(t.id) ?? { subtaskCount: 0, subtaskDoneCount: 0, blockedByCount: 0, openBlockerCount: 0, blocksCount: 0 };
+    const c = counts.get(t.id) ?? { subtaskCount: 0, subtaskDoneCount: 0, blockedByCount: 0, openBlockerCount: 0, blocksCount: 0, linkCount: 0 };
     // A finished task is not blocked, whatever its blockers are doing:
     // "blocked" means "cannot be finished", and this one already is.
     const finished = t.status !== undefined && isTerminalStatus(t.status, terminal);
@@ -354,6 +369,15 @@ export const taskService = {
     } else if (query.topLevel === 'true') {
       where.parentId = null;
     }
+    if (query.linkedTo) {
+      const [entityType, entityId] = query.linkedTo.split(':', 2);
+      if ((TASK_LINK_TYPES as readonly string[]).includes(entityType) && entityId) {
+        where.links = { some: { entityType, entityId } };
+      } else {
+        // A malformed filter matches nothing rather than everything.
+        where.links = { some: { entityType: '__none__' } };
+      }
+    }
     if (query.blocked === 'true' || query.blocked === 'false') {
       // "Blocked" is relative to what this account calls finished.
       const open = { blocker: notTerminal(await terminalStatusNames(userId)) };
@@ -427,6 +451,7 @@ export const taskService = {
         blocks: { select: { blocked: DEPENDENCY_END }, orderBy: { createdAt: 'asc' } },
         recurrenceNext: { select: { id: true, title: true, dueDate: true, status: true } },
         recurrencePrevious: { select: { id: true, title: true, dueDate: true } },
+        links: { orderBy: { createdAt: 'asc' } },
         mailToTask: {
           include: {
             email: {
@@ -439,13 +464,14 @@ export const taskService = {
     if (!task) {
       throw new AppError(404, 'TASK_NOT_FOUND', 'Task not found');
     }
-    const { blockedBy, blocks, ...row } = task;
+    const { blockedBy, blocks, links, ...row } = task;
     const [decorated] = await withSubtaskProgress(userId, [formatTask(row)]);
     return {
       ...decorated,
       subtasks: await withSubtaskProgress(userId, task.subtasks.map(formatTask)),
       blockedBy: blockedBy.map((d) => d.blocker),
       blocks: blocks.map((d) => d.blocked),
+      links: await resolveLinks(task.userId, links),
     };
   },
 
@@ -674,6 +700,73 @@ export const taskService = {
     };
   },
 
+  /**
+   * What to do today: the four buckets a person opens the app to see.
+   *
+   * Overdue and due today by the due date; starting today by the start date;
+   * and the coming week for a look ahead. Day boundaries are computed in the
+   * user's own timezone, as the dashboard's are — "today" at UTC midnight is
+   * 2am in Paris and still yesterday in California. Finished work is excluded
+   * everywhere, and a task appears in one bucket only, the most urgent.
+   */
+  async findMyDay(userId: string) {
+    const [sharedTaskIds, terminal, user] = await Promise.all([
+      getSharedTaskIds(userId),
+      terminalStatusNames(userId),
+      prisma.user.findUnique({ where: { id: userId }, select: { timezone: true } }),
+    ]);
+    const tz = resolveTimeZone(user?.timezone);
+    const now = new Date();
+    const startOfToday = startOfDayInZone(now, tz);
+    const endOfToday = addDaysInZone(startOfToday, 1, tz);
+    const endOfWeekAhead = addDaysInZone(startOfToday, 8, tz);
+
+    const reachable: Prisma.TaskWhereInput = {
+      AND: [
+        {
+          OR: [
+            { userId },
+            ...(sharedTaskIds.length > 0 ? [{ id: { in: sharedTaskIds } }] : []),
+            { assignedToId: userId },
+          ],
+        },
+        notTerminal(terminal),
+      ],
+    };
+
+    const rows = await prisma.task.findMany({
+      where: {
+        ...reachable,
+        OR: [
+          { dueDate: { lt: endOfWeekAhead } },
+          { startDate: { gte: startOfToday, lt: endOfToday } },
+        ],
+      },
+      include: TASK_INCLUDE,
+      orderBy: [{ dueDate: { sort: 'asc', nulls: 'last' } }, { priority: 'desc' }, { id: 'asc' }],
+      take: 500,
+    });
+
+    const tasks = await withSubtaskProgress(userId, rows.map(formatTask));
+    const overdue: typeof tasks = [];
+    const dueToday: typeof tasks = [];
+    const startingToday: typeof tasks = [];
+    const upcoming: typeof tasks = [];
+    for (const t of tasks) {
+      const due = t.dueDate as Date | null;
+      const start = t.startDate as Date | null;
+      if (due && due < startOfToday) overdue.push(t);
+      else if (due && due < endOfToday) dueToday.push(t);
+      else if (start && start >= startOfToday && start < endOfToday) startingToday.push(t);
+      else if (due && due < endOfWeekAhead) upcoming.push(t);
+    }
+
+    return {
+      data: { overdue, dueToday, startingToday, upcoming },
+      meta: { timezone: tz, today: startOfToday, total: overdue.length + dueToday.length + startingToday.length },
+    };
+  },
+
   async getSummary(userId: string) {
     const now = new Date();
 
@@ -727,6 +820,7 @@ export const taskService = {
     if (taskData.recurrence && !taskData.dueDate) {
       throw new AppError(400, 'RECURRENCE_NEEDS_DUE_DATE', 'A repeating task needs a due date to repeat from');
     }
+    assertDatesInOrder(taskData.startDate ?? null, taskData.dueDate ?? null);
 
     if (parentId) {
       const parent = await assertParentAllowed(userId, null, parentId);
@@ -749,6 +843,8 @@ export const taskService = {
         ...taskData,
         userId,
         dueDate: taskData.dueDate ? new Date(taskData.dueDate) : null,
+        startDate: taskData.startDate ? new Date(taskData.startDate) : null,
+        remindAt: taskData.remindAt ? new Date(taskData.remindAt) : null,
         description: taskData.description || null,
         position,
         customerId: customerId || null,
@@ -818,6 +914,8 @@ export const taskService = {
     if (nextRecurrence && !nextDueDate) {
       throw new AppError(400, 'RECURRENCE_NEEDS_DUE_DATE', 'A repeating task needs a due date to repeat from');
     }
+    const nextStart = taskData.startDate !== undefined ? taskData.startDate : existing.startDate?.toISOString() ?? null;
+    assertDatesInOrder(nextStart, typeof nextDueDate === 'string' ? nextDueDate : nextDueDate?.toISOString() ?? null);
 
     /**
      * The dependency gate. Moving to a terminal status while a blocker is
@@ -848,6 +946,14 @@ export const taskService = {
 
     if (taskData.dueDate !== undefined) {
       updateData.dueDate = taskData.dueDate ? new Date(taskData.dueDate) : null;
+    }
+    if (taskData.startDate !== undefined) {
+      updateData.startDate = taskData.startDate ? new Date(taskData.startDate) : null;
+    }
+    if (taskData.remindAt !== undefined) {
+      updateData.remindAt = taskData.remindAt ? new Date(taskData.remindAt) : null;
+      // A new time is a new reminder; one that already fired must fire again.
+      updateData.reminderSentAt = null;
     }
 
     if (customerId !== undefined) {
@@ -1118,6 +1224,43 @@ export const taskService = {
     return assigned;
   },
 
+  // ─── Links ────────────────────────────────────────────────────────────────
+  //
+  // A task attached to a contact, a deal or an event. The target must belong
+  // to the task's account: there is no foreign key on a polymorphic column,
+  // and `findById` would otherwise resolve another account's record into the
+  // response. Access to the task, not ownership, is enough to attach one.
+
+  async addLink(userId: string, taskId: string, input: { entityType: TaskLinkType; entityId: string }) {
+    if (!(await canAccessTask(taskId, userId))) {
+      throw new AppError(404, 'TASK_NOT_FOUND', 'Task not found');
+    }
+    const task = await prisma.task.findUniqueOrThrow({ where: { id: taskId }, select: { userId: true } });
+    const target = await resolveLinkTarget(task.userId, input.entityType, input.entityId);
+    if (!target) {
+      throw new AppError(404, 'LINK_TARGET_NOT_FOUND', `${input.entityType} not found`);
+    }
+    await prisma.taskLink.upsert({
+      where: { taskId_entityType_entityId: { taskId, entityType: input.entityType, entityId: input.entityId } },
+      create: { taskId, entityType: input.entityType, entityId: input.entityId },
+      update: {},
+    });
+    auditService.log({ userId, action: 'TASK_LINK_ADDED', entityType: 'task', entityId: taskId, details: { linkType: input.entityType, linkId: input.entityId, label: target.label } });
+    return this.findById(userId, taskId);
+  },
+
+  async removeLink(userId: string, taskId: string, entityType: string, entityId: string) {
+    if (!(await canAccessTask(taskId, userId))) {
+      throw new AppError(404, 'TASK_NOT_FOUND', 'Task not found');
+    }
+    const { count } = await prisma.taskLink.deleteMany({ where: { taskId, entityType, entityId } });
+    if (count === 0) {
+      throw new AppError(404, 'LINK_NOT_FOUND', 'Link not found');
+    }
+    auditService.log({ userId, action: 'TASK_LINK_REMOVED', entityType: 'task', entityId: taskId, details: { linkType: entityType, linkId: entityId } });
+    return this.findById(userId, taskId);
+  },
+
   // ─── Dependencies ─────────────────────────────────────────────────────────
 
   async addDependency(userId: string, taskId: string, blockerId: string) {
@@ -1300,6 +1443,84 @@ async function spawnNextOccurrences(userId: string, ids: string[]) {
   }
 }
 
+/**
+ * A start date after the due date is a task that cannot be done in time by
+ * construction. Refused rather than silently reordered: either date may be
+ * the wrong one, and only the user knows which.
+ */
+function assertDatesInOrder(startDate: string | null, dueDate: string | null) {
+  if (startDate && dueDate && new Date(startDate).getTime() > new Date(dueDate).getTime()) {
+    throw new AppError(400, 'START_AFTER_DUE', 'The start date cannot be after the due date');
+  }
+}
+
+/** What a link resolves to for display. */
+export interface ResolvedLink {
+  entityType: TaskLinkType;
+  entityId: string;
+  label: string;
+  subtitle: string | null;
+  /** The event's start, for events. */
+  when: Date | null;
+}
+
+/**
+ * One link's target, if it exists and belongs to `ownerId`.
+ *
+ * Contacts have no `userId` of their own — they belong to a customer, which
+ * does — so the ownership check goes through the customer.
+ */
+async function resolveLinkTarget(ownerId: string, entityType: TaskLinkType, entityId: string): Promise<ResolvedLink | null> {
+  const [resolved] = await resolveLinks(ownerId, [{ entityType, entityId }]);
+  return resolved ?? null;
+}
+
+/**
+ * Resolve a task's links to what the panel shows, dropping any whose target
+ * is gone or is not the account's. Three queries at most, one per type.
+ */
+async function resolveLinks(ownerId: string, links: Array<{ entityType: string; entityId: string }>): Promise<ResolvedLink[]> {
+  const ids = (type: TaskLinkType) => links.filter((l) => l.entityType === type).map((l) => l.entityId);
+  const [contacts, deals, events] = await Promise.all([
+    ids('contact').length
+      ? prisma.contact.findMany({
+          where: { id: { in: ids('contact') }, customer: { userId: ownerId } },
+          select: { id: true, firstName: true, lastName: true, email: true, customer: { select: { name: true } } },
+        })
+      : [],
+    ids('deal').length
+      ? prisma.deal.findMany({
+          where: { id: { in: ids('deal') }, userId: ownerId },
+          select: { id: true, title: true, status: true, partner: { select: { name: true } } },
+        })
+      : [],
+    ids('event').length
+      ? prisma.calendarEvent.findMany({
+          where: { id: { in: ids('event') }, userId: ownerId },
+          select: { id: true, title: true, startTime: true, location: true },
+        })
+      : [],
+  ]);
+  const byKey = new Map<string, ResolvedLink>();
+  for (const c of contacts) {
+    byKey.set(`contact:${c.id}`, {
+      entityType: 'contact',
+      entityId: c.id,
+      label: `${c.firstName} ${c.lastName}`.trim() || c.email || 'Contact',
+      subtitle: c.customer?.name ?? c.email ?? null,
+      when: null,
+    });
+  }
+  for (const d of deals) {
+    byKey.set(`deal:${d.id}`, { entityType: 'deal', entityId: d.id, label: d.title, subtitle: d.partner?.name ?? null, when: null });
+  }
+  for (const e of events) {
+    byKey.set(`event:${e.id}`, { entityType: 'event', entityId: e.id, label: e.title, subtitle: e.location ?? null, when: e.startTime });
+  }
+  // In the links' own order, minus the ones that resolved to nothing.
+  return links.map((l) => byKey.get(`${l.entityType}:${l.entityId}`)).filter((l): l is ResolvedLink => !!l);
+}
+
 /** A user as the timeline names them; null for "nobody". */
 async function userLabel(id: string | null): Promise<string | null> {
   if (!id) return null;
@@ -1318,8 +1539,8 @@ async function userLabel(id: string | null): Promise<string | null> {
  * description are named without their contents.
  */
 function describeTaskChanges(
-  before: { title: string; status: string; priority: string; dueDate: Date | null; customerId: string | null; parentId: string | null; estimatedMinutes: number | null; description: string | null },
-  after: { title: string; status: string; priority: string; dueDate: Date | null; customerId: string | null; parentId: string | null; estimatedMinutes: number | null; description: string | null; customer?: { name: string } | null; parent?: { title: string } | null },
+  before: { title: string; status: string; priority: string; dueDate: Date | null; startDate: Date | null; remindAt: Date | null; customerId: string | null; parentId: string | null; estimatedMinutes: number | null; description: string | null },
+  after: { title: string; status: string; priority: string; dueDate: Date | null; startDate: Date | null; remindAt: Date | null; customerId: string | null; parentId: string | null; estimatedMinutes: number | null; description: string | null; customer?: { name: string } | null; parent?: { title: string } | null },
   data: UpdateTaskInput
 ): Prisma.InputJsonObject {
   const from: Record<string, string | number | null> = {};
@@ -1338,13 +1559,18 @@ function describeTaskChanges(
   scalar('priority');
   scalar('estimatedMinutes');
 
-  const beforeDue = before.dueDate?.toISOString() ?? null;
-  const afterDue = after.dueDate?.toISOString() ?? null;
-  if (beforeDue !== afterDue) {
-    changed.push('dueDate');
-    from.dueDate = beforeDue;
-    to.dueDate = afterDue;
-  }
+  const dateField = (key: 'dueDate' | 'startDate' | 'remindAt') => {
+    const b = before[key]?.toISOString() ?? null;
+    const a = after[key]?.toISOString() ?? null;
+    if (b !== a) {
+      changed.push(key);
+      from[key] = b;
+      to[key] = a;
+    }
+  };
+  dateField('dueDate');
+  dateField('startDate');
+  dateField('remindAt');
   if (before.customerId !== after.customerId) {
     changed.push('customerId');
     from.customerId = before.customerId;

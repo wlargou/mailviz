@@ -1,5 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render as rtlRender, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import type { ReactElement } from 'react';
+
+// The panel's link section navigates, so it needs a router around it —
+// on the first render and on every rerender.
+const render = (ui: ReactElement) => {
+  const result = rtlRender(<MemoryRouter>{ui}</MemoryRouter>);
+  return { ...result, rerender: (next: ReactElement) => result.rerender(<MemoryRouter>{next}</MemoryRouter>) };
+};
 import userEvent from '@testing-library/user-event';
 import { AxiosHeaders, type AxiosResponse } from 'axios';
 import { tasksApi } from '../../api/tasks';
@@ -58,6 +67,9 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     status: 'TODO',
     priority: 'MEDIUM',
     dueDate: null,
+    startDate: null,
+    remindAt: null,
+    reminderSentAt: null,
     position: 0,
     customerId: null,
     assignedToId: null,
@@ -77,6 +89,7 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     blockedByCount: 0,
     openBlockerCount: 0,
     blocksCount: 0,
+    linkCount: 0,
     recurrence: null,
     recurrenceNextId: null,
     ...overrides,

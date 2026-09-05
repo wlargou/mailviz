@@ -79,6 +79,8 @@ const actionLabels: Record<string, string> = {
   TASK_COMMENT_DELETED: 'Comment Deleted',
   TASK_DEPENDENCY_ADDED: 'Dependency Added',
   TASK_DEPENDENCY_REMOVED: 'Dependency Removed',
+  TASK_LINK_ADDED: 'Task Linked',
+  TASK_LINK_REMOVED: 'Task Unlinked',
   DEAL_CREATED: 'Deal Created',
   DEAL_UPDATED: 'Deal Updated',
   DEAL_DELETED: 'Deal Deleted',

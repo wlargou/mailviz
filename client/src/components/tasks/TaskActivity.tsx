@@ -422,6 +422,10 @@ export function describeEvent(
       return d.blocker ? <>marked this as blocked by <strong>{decodeEntities(String(d.blocker))}</strong></> : 'added a blocker';
     case 'TASK_DEPENDENCY_REMOVED':
       return 'removed a blocker';
+    case 'TASK_LINK_ADDED':
+      return d.label ? <>linked this to <strong>{decodeEntities(String(d.label))}</strong></> : `linked this to a ${String(d.linkType ?? 'record')}`;
+    case 'TASK_LINK_REMOVED':
+      return `unlinked a ${String(d.linkType ?? 'record')}`;
     case 'TASK_UPDATED': {
       const changes = Array.isArray(d.changes) ? (d.changes as string[]) : [];
       const parts: React.ReactNode[] = [];
@@ -451,6 +455,16 @@ export function describeEvent(
                   : 'cleared the due date'
                 : 'changed the due date'
             );
+            break;
+          case 'startDate':
+            parts.push(
+              to.startDate
+                ? <>set the start date to <strong>{format(new Date(String(to.startDate)), 'MMM d, yyyy')}</strong></>
+                : 'cleared the start date'
+            );
+            break;
+          case 'remindAt':
+            parts.push(to.remindAt ? <>set a reminder for <strong>{format(new Date(String(to.remindAt)), 'MMM d, HH:mm')}</strong></> : 'removed the reminder');
             break;
           case 'customerId':
             parts.push(to.customer ? <>moved this to <strong>{String(to.customer)}</strong></> : 'removed the company');

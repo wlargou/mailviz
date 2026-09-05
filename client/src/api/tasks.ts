@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { Task, TaskSummary, CreateTaskInput, UpdateTaskInput, ReorderItem, ChecklistItem, TaskComment, TaskActivityEntry } from '../types/task';
+import type { Task, TaskSummary, CreateTaskInput, UpdateTaskInput, ReorderItem, ChecklistItem, TaskComment, TaskActivityEntry, MyDay, TaskLinkType } from '../types/task';
 import type { ApiResponse } from '../types/api';
 
 /** How the By Company view orders its groups. Mirrors the server's whitelist. */
@@ -53,6 +53,10 @@ export const tasksApi = {
     return api.get<ApiResponse<Task>>(`/tasks/${id}`);
   },
 
+  getMyDay() {
+    return api.get<{ data: MyDay; meta: { timezone: string; today: string; total: number } }>('/tasks/my-day');
+  },
+
   getSummary() {
     return api.get<ApiResponse<TaskSummary>>('/tasks/summary');
   },
@@ -98,6 +102,18 @@ export const tasksApi = {
   },
   deleteChecklistItem(taskId: string, itemId: string) {
     return api.delete(`/tasks/${taskId}/checklist/${itemId}`);
+  },
+
+  // Links
+  addLink(taskId: string, entityType: TaskLinkType, entityId: string) {
+    return api.post<ApiResponse<Task>>(`/tasks/${taskId}/links`, { entityType, entityId });
+  },
+  removeLink(taskId: string, entityType: TaskLinkType, entityId: string) {
+    return api.delete<ApiResponse<Task>>(`/tasks/${taskId}/links/${entityType}/${entityId}`);
+  },
+  /** Tasks attached to one contact, deal or event. */
+  getLinkedTo(entityType: TaskLinkType, entityId: string) {
+    return api.get<ApiResponse<Task[]>>('/tasks', { params: { linkedTo: `${entityType}:${entityId}`, limit: '50', sortBy: 'dueDate', sortOrder: 'asc' } });
   },
 
   // Dependencies

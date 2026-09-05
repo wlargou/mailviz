@@ -45,6 +45,14 @@ export const taskController = {
     }
   },
 
+  async getMyDay(req: Req, res: Response, next: NextFunction) {
+    try {
+      res.json(await taskService.findMyDay(req.user!.id));
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async getSummary(req: Req, res: Response, next: NextFunction) {
     try {
       const summary = await taskService.getSummary(req.user!.id);
@@ -180,6 +188,24 @@ export const taskController = {
     try {
       await taskActivityService.deleteComment(req.user!.id, req.params.id, req.params.commentId);
       res.status(204).send();
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async addLink(req: Req, res: Response, next: NextFunction) {
+    try {
+      const task = await taskService.addLink(req.user!.id, req.params.id, req.body);
+      res.status(201).json({ data: task });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async removeLink(req: Req, res: Response, next: NextFunction) {
+    try {
+      const task = await taskService.removeLink(req.user!.id, req.params.id, req.params.entityType, req.params.entityId);
+      res.json({ data: task });
     } catch (err) {
       next(err);
     }

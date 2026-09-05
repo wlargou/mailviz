@@ -10,6 +10,7 @@ import {
   createCommentSchema,
   updateCommentSchema,
   addDependencySchema,
+  addLinkSchema,
 } from '../validators/taskValidator.js';
 
 const router = Router();
@@ -17,6 +18,7 @@ const router = Router();
 router.get('/summary', taskController.getSummary);
 // Before '/:id', or Express matches 'by-company' as an id.
 router.get('/by-company', taskController.findGroupedByCompany);
+router.get('/my-day', taskController.getMyDay);
 router.get('/', taskController.findAll);
 router.get('/:id', taskController.findById);
 router.post('/', validate(createTaskSchema), taskController.create);
@@ -36,5 +38,7 @@ router.patch('/:id/comments/:commentId', validate(updateCommentSchema), taskCont
 router.delete('/:id/comments/:commentId', taskController.deleteComment);
 router.post('/:id/dependencies', validate(addDependencySchema), taskController.addDependency);
 router.delete('/:id/dependencies/:blockerId', taskController.removeDependency);
+router.post('/:id/links', validate(addLinkSchema), taskController.addLink);
+router.delete('/:id/links/:entityType/:entityId', taskController.removeLink);
 
 export { router as taskRoutes };
