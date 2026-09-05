@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { taskController } from '../controllers/taskController.js';
 import { validate } from '../middleware/validate.js';
 import {
@@ -12,16 +13,39 @@ import {
   addDependencySchema,
   addLinkSchema,
   logTimeSchema,
+  batchStatusSchema,
+  batchAssignSchema,
+  batchLabelSchema,
+  batchDeleteSchema,
+  saveViewSchema,
+  updateViewSchema,
 } from '../validators/taskValidator.js';
 
 const router = Router();
+
+// Bulk operations, like the mail ones: 20 a minute.
+const bulkLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: { code: 'TOO_MANY_REQUESTS', message: 'Too many bulk operations. Try again later.' } },
+});
 
 router.get('/summary', taskController.getSummary);
 // Before '/:id', or Express matches 'by-company' as an id.
 router.get('/by-company', taskController.findGroupedByCompany);
 router.get('/my-day', taskController.getMyDay);
-// Before '/:id' as well: 'time' is not a task id.
+// Before '/:id' as well: 'time', 'views' and 'batch' are not task ids.
 router.get('/time/running', taskController.getRunningTimer);
+router.get('/views', taskController.listViews);
+router.post('/views', validate(saveViewSchema), taskController.saveView);
+router.patch('/views/:viewId', validate(updateViewSchema), taskController.updateView);
+router.delete('/views/:viewId', taskController.deleteView);
+router.post('/batch/status', bulkLimiter, validate(batchStatusSchema), taskController.batchStatus);
+router.post('/batch/assign', bulkLimiter, validate(batchAssignSchema), taskController.batchAssign);
+router.post('/batch/label', bulkLimiter, validate(batchLabelSchema), taskController.batchLabel);
+router.post('/batch/delete', bulkLimiter, validate(batchDeleteSchema), taskController.batchDelete);
 router.get('/', taskController.findAll);
 router.get('/:id', taskController.findById);
 router.post('/', validate(createTaskSchema), taskController.create);

@@ -50,6 +50,8 @@ interface TaskState {
   fetchTasks: () => Promise<void>;
   fetchSummary: () => Promise<void>;
   setFilter: (key: keyof TaskFilters, value: string | undefined) => void;
+  /** Replace every filter and the sort with a saved view's. */
+  applyView: (filters: Record<string, string | boolean>, sortBy: string, sortOrder: string) => void;
   setPage: (page: number) => void;
   setPageSize: (size: number) => void;
   resetFilters: () => void;
@@ -123,6 +125,23 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       currentPage: 1,
     }));
   },
+
+  applyView: (filters, sortBy, sortOrder) =>
+    set({
+      filters: {
+        ...defaultFilters,
+        status: typeof filters.status === 'string' ? filters.status : undefined,
+        priority: typeof filters.priority === 'string' ? (filters.priority as TaskPriority) : undefined,
+        search: typeof filters.search === 'string' ? filters.search : undefined,
+        labelId: typeof filters.labelId === 'string' ? filters.labelId : undefined,
+        ownership: filters.ownership === 'shared' || filters.ownership === 'owned' ? filters.ownership : undefined,
+        blocked: typeof filters.blocked === 'string' ? filters.blocked : undefined,
+        overdue: filters.overdue === true || filters.overdue === 'true' ? true : undefined,
+        sortBy: sortBy || defaultFilters.sortBy,
+        sortOrder: sortOrder || defaultFilters.sortOrder,
+      },
+      currentPage: 1,
+    }),
 
   setPage: (page) => set({ currentPage: page }),
   setPageSize: (size) => set({ pageSize: size, currentPage: 1 }),

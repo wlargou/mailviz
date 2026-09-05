@@ -42,6 +42,23 @@ export const addLinkSchema = z.object({
   entityId: z.string().uuid(),
 });
 
+/** The ids a batch action applies to. Capped: a batch is a screen's worth. */
+const batchIds = z.array(z.string().uuid()).min(1).max(200);
+
+export const batchStatusSchema = z.object({ ids: batchIds, status: z.string().trim().min(1).max(100) });
+export const batchAssignSchema = z.object({ ids: batchIds, assignedToId: z.string().uuid().nullable() });
+export const batchLabelSchema = z.object({ ids: batchIds, labelId: z.string().uuid() });
+export const batchDeleteSchema = z.object({ ids: batchIds });
+
+/** The client's filter object, kept loose on purpose: it is the client's. */
+export const saveViewSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  filters: z.record(z.string(), z.union([z.string(), z.boolean()])).default({}),
+  sortBy: z.string().trim().max(40).optional(),
+  sortOrder: z.enum(['asc', 'desc']).optional(),
+});
+export const updateViewSchema = saveViewSchema.partial();
+
 /** A manual time log. `at` is when the work happened; defaults to now. */
 export const logTimeSchema = z.object({
   minutes: z.number().int().min(1).max(24 * 60),
@@ -96,3 +113,5 @@ export type CreateChecklistItemInput = z.infer<typeof createChecklistItemSchema>
 export type UpdateChecklistItemInput = z.infer<typeof updateChecklistItemSchema>;
 export type CommentInput = z.infer<typeof createCommentSchema>;
 export type LogTimeInput = z.infer<typeof logTimeSchema>;
+export type SaveViewInput = z.infer<typeof saveViewSchema>;
+export type UpdateViewInput = z.infer<typeof updateViewSchema>;

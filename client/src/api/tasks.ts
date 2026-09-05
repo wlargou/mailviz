@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { Task, TaskSummary, CreateTaskInput, UpdateTaskInput, ReorderItem, ChecklistItem, TaskComment, TaskActivityEntry, MyDay, TaskLinkType, TaskTimeEntry } from '../types/task';
+import type { Task, TaskSummary, CreateTaskInput, UpdateTaskInput, ReorderItem, ChecklistItem, TaskComment, TaskActivityEntry, MyDay, TaskLinkType, TaskTimeEntry, BatchResult, TaskView } from '../types/task';
 import type { ApiResponse } from '../types/api';
 
 /** How the By Company view orders its groups. Mirrors the server's whitelist. */
@@ -102,6 +102,31 @@ export const tasksApi = {
   },
   deleteChecklistItem(taskId: string, itemId: string) {
     return api.delete(`/tasks/${taskId}/checklist/${itemId}`);
+  },
+
+  // Batch actions
+  batchStatus(ids: string[], status: string) {
+    return api.post<ApiResponse<BatchResult>>('/tasks/batch/status', { ids, status });
+  },
+  batchAssign(ids: string[], assignedToId: string | null) {
+    return api.post<ApiResponse<BatchResult>>('/tasks/batch/assign', { ids, assignedToId });
+  },
+  batchLabel(ids: string[], labelId: string) {
+    return api.post<ApiResponse<BatchResult>>('/tasks/batch/label', { ids, labelId });
+  },
+  batchDelete(ids: string[]) {
+    return api.post<ApiResponse<BatchResult>>('/tasks/batch/delete', { ids });
+  },
+
+  // Saved views
+  getViews() {
+    return api.get<ApiResponse<TaskView[]>>('/tasks/views');
+  },
+  saveView(data: { name: string; filters: Record<string, string | boolean>; sortBy?: string; sortOrder?: string }) {
+    return api.post<ApiResponse<TaskView>>('/tasks/views', data);
+  },
+  deleteView(id: string) {
+    return api.delete(`/tasks/views/${id}`);
   },
 
   // Time tracking

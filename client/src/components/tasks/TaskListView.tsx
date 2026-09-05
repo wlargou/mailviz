@@ -11,12 +11,21 @@ import {
   TableToolbar,
   TableToolbarContent,
   TableToolbarSearch,
+  TableBatchActions,
+  TableBatchAction,
+  TableSelectAll,
+  TableSelectRow,
   Button,
   Pagination,
   DataTableSkeleton,
   Dropdown,
 } from '@carbon/react';
-import { Add, Edit, TrashCan, Share } from '@carbon/icons-react';
+import { Add, Edit, TrashCan, Share, Migrate, UserFollow, Tag as TagIcon, CheckmarkOutline } from '@carbon/icons-react';
+import { TaskBatchPicker, type PickerItem } from './TaskBatchPicker';
+import { TaskViewsMenu } from './TaskViewsMenu';
+import { authApi } from '../../api/auth';
+import { apiErrorMessage } from '../../utils/apiError';
+import type { BatchResult } from '../../types/task';
 import { format } from 'date-fns';
 import { TaskStatusTag } from '../shared/TaskStatusTag';
 import { PriorityBadge } from '../shared/PriorityBadge';
@@ -25,6 +34,7 @@ import { EmptyState } from '../shared/EmptyState';
 import { SharedBadge } from '../shared/SharedBadge';
 import { TableFilterFlyout } from '../shared/TableFilterFlyout';
 import { ShareDialog } from '../shared/ShareDialog';
+import { ConfirmDeleteModal } from '../shared/ConfirmDeleteModal';
 import { TaskProgressTags, TaskParentCrumb } from './TaskProgressTags';
 import { useTaskStore } from '../../store/taskStore';
 import { taskStatusesApi } from '../../api/taskStatuses';
@@ -119,9 +129,43 @@ export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreat
   const [shareTask, setShareTask] = useState<Task | null>(null);
   const [taskShares, setTaskShares] = useState<any[]>([]);
   const addNotification = useUIStore((s) => s.addNotification);
+  const [statusConfigs, setStatusConfigs] = useState<TaskStatusConfig[]>([]);
+  const [users, setUsers] = useState<Array<{ id: string; name: string | null; email: string }>>([]);
+  /** Which batch picker is open, and for which selected ids. */
+  const [picker, setPicker] = useState<{ kind: 'status' | 'assign' | 'label'; ids: string[] } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string[] | null>(null);
+
+  useEffect(() => {
+    authApi.getUsers().then(({ data: res }) => setUsers(res.data)).catch(() => {});
+  }, []);
+
+  /**
+   * Report what a batch did. "Updated 4" is the whole story when nothing was
+   * skipped; when something was, say how many and why the first one was,
+   * since the reasons are usually all the same.
+   */
+  const report = (verb: string, result: BatchResult) => {
+    const skipped = result.skipped.length;
+    addNotification({
+      kind: skipped > 0 && result.updated === 0 ? 'error' : skipped > 0 ? 'warning' : 'success',
+      title: `${verb} ${result.updated} ${result.updated === 1 ? 'task' : 'tasks'}`,
+      subtitle: skipped > 0 ? `${skipped} skipped: ${result.skipped[0]!.reason}` : undefined,
+    });
+    if (result.updated > 0) taskChanged();
+  };
+
+  const runBatch = async (fn: () => Promise<{ data: { data: BatchResult } }>, verb: string) => {
+    try {
+      const { data: res } = await fn();
+      report(verb, res.data);
+    } catch (err) {
+      addNotification({ kind: 'error', title: `Could not ${verb.toLowerCase()} the tasks`, subtitle: apiErrorMessage(err, '') });
+    }
+  };
 
   useEffect(() => {
     taskStatusesApi.getAll().then(({ data: res }) => {
+      setStatusConfigs(res.data);
       setStatuses([
         { id: '', text: 'All Statuses' },
         ...res.data.map((s: TaskStatusConfig) => ({ id: s.name, text: s.label })),
@@ -202,10 +246,39 @@ export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreat
   return (
     <>
       <DataTable rows={rows} headers={headers}>
-        {({ getTableProps }) => (
+        {({ getTableProps, getSelectionProps, getBatchActionProps, selectedRows, getRowProps, rows: tableRows }) => {
+          const batchActionProps = getBatchActionProps();
+          const selectedIds = selectedRows.map((r) => r.id);
+          const batchTab = batchActionProps.shouldShowBatchActions ? 0 : -1;
+          return (
           <TableContainer className="tasks-table">
             <TableToolbar>
-              <TableToolbarContent>
+              <TableBatchActions {...batchActionProps}>
+                <TableBatchAction tabIndex={batchTab} renderIcon={Migrate} onClick={() => setPicker({ kind: 'status', ids: selectedIds })}>
+                  Move to…
+                </TableBatchAction>
+                <TableBatchAction tabIndex={batchTab} renderIcon={CheckmarkOutline} onClick={() => {
+                  const done = statusConfigs.find((s) => s.isTerminal)?.name;
+                  if (!done) {
+                    addNotification({ kind: 'warning', title: 'No status is marked as finished', subtitle: 'Set one in Settings.' });
+                    return;
+                  }
+                  void runBatch(() => tasksApi.batchStatus(selectedIds, done), 'Finished');
+                }}>
+                  Complete
+                </TableBatchAction>
+                <TableBatchAction tabIndex={batchTab} renderIcon={UserFollow} onClick={() => setPicker({ kind: 'assign', ids: selectedIds })}>
+                  Assign…
+                </TableBatchAction>
+                <TableBatchAction tabIndex={batchTab} renderIcon={TagIcon} onClick={() => setPicker({ kind: 'label', ids: selectedIds })}>
+                  Add label…
+                </TableBatchAction>
+                <TableBatchAction tabIndex={batchTab} renderIcon={TrashCan} onClick={() => setConfirmDelete(selectedIds)}>
+                  Delete
+                </TableBatchAction>
+              </TableBatchActions>
+              <TableToolbarContent aria-hidden={batchActionProps.shouldShowBatchActions}>
+                <TaskViewsMenu />
                 <TableToolbarSearch
                   ref={searchRef}
                   placeholder="Search tasks..."
@@ -276,6 +349,7 @@ export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreat
             <Table {...getTableProps()} size="lg">
               <TableHead>
                 <TableRow>
+                  <TableSelectAll {...getSelectionProps()} />
                   {headers.map((header) => (
                     <TableHeader
                       key={header.key}
@@ -289,15 +363,21 @@ export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreat
               <TableBody>
                 {tasks.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={headers.length}>
+                    <TableCell colSpan={headers.length + 1}>
                       <EmptyState
                         title="No results"
                         description={localSearch ? `No tasks match "${localSearch}"` : 'No tasks match your filters'}
                       />
                     </TableCell>
                   </TableRow>
-                ) : tasks.map((task) => (
-                  <TableRow key={task.id}>
+                ) : tasks.map((task, i) => {
+                  // Carbon's own row object carries `isSelected`; a bare id
+                  // would leave the checkbox unchecked while the count said
+                  // otherwise. `rows` was built from `tasks` in order.
+                  const tableRow = tableRows[i];
+                  return (
+                  <TableRow key={task.id} {...(tableRow ? getRowProps({ row: tableRow }) : {})}>
+                    {tableRow ? <TableSelectRow {...getSelectionProps({ row: tableRow })} /> : <TableCell />}
                     <TableCell>
                       <span className="shared-title-cell">
                         <span className="task-title-stack">
@@ -346,12 +426,63 @@ export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreat
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           </TableContainer>
-        )}
+          );
+        }}
       </DataTable>
+
+      <TaskBatchPicker
+        open={picker?.kind === 'status'}
+        heading={`Move ${picker?.ids.length ?? 0} ${picker?.ids.length === 1 ? 'task' : 'tasks'} to…`}
+        label="Status"
+        items={statusConfigs.map((s) => ({ id: s.name, text: s.label }))}
+        onClose={() => setPicker(null)}
+        onPick={async (item: PickerItem) => {
+          const ids = picker?.ids ?? [];
+          setPicker(null);
+          await runBatch(() => tasksApi.batchStatus(ids, item.id), 'Moved');
+        }}
+      />
+      <TaskBatchPicker
+        open={picker?.kind === 'assign'}
+        heading={`Assign ${picker?.ids.length ?? 0} ${picker?.ids.length === 1 ? 'task' : 'tasks'} to…`}
+        label="Assignee"
+        items={[{ id: '', text: 'Unassigned' }, ...users.map((u) => ({ id: u.id, text: u.name || u.email }))]}
+        onClose={() => setPicker(null)}
+        onPick={async (item: PickerItem) => {
+          const ids = picker?.ids ?? [];
+          setPicker(null);
+          await runBatch(() => tasksApi.batchAssign(ids, item.id || null), 'Assigned');
+        }}
+      />
+      <TaskBatchPicker
+        open={picker?.kind === 'label'}
+        heading={`Add a label to ${picker?.ids.length ?? 0} ${picker?.ids.length === 1 ? 'task' : 'tasks'}`}
+        label="Label"
+        items={labels.map((l) => ({ id: l.id, text: l.name }))}
+        onClose={() => setPicker(null)}
+        onPick={async (item: PickerItem) => {
+          const ids = picker?.ids ?? [];
+          setPicker(null);
+          await runBatch(() => tasksApi.batchLabel(ids, item.id), 'Labelled');
+        }}
+      />
+      <ConfirmDeleteModal
+        open={!!confirmDelete}
+        title={`${confirmDelete?.length ?? 0} ${confirmDelete?.length === 1 ? 'task' : 'tasks'}`}
+        entityLabel="tasks"
+        consequence="Their subtasks, checklists, comments and time entries go with them. Tasks shared with you but not yours are skipped."
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={() => {
+          const ids = confirmDelete ?? [];
+          setConfirmDelete(null);
+          void runBatch(() => tasksApi.batchDelete(ids), 'Deleted');
+        }}
+      />
       {meta && (meta.totalPages > 1 || pageSize !== 20) && (
         <Pagination
           totalItems={meta.total}
