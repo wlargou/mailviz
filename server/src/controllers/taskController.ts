@@ -193,6 +193,65 @@ export const taskController = {
     }
   },
 
+  async batchStatus(req: Req, res: Response, next: NextFunction) {
+    try {
+      res.json({ data: await taskService.batchStatus(req.user!.id, req.body.ids, req.body.status) });
+    } catch (err) {
+      next(err);
+    }
+  },
+  async batchAssign(req: Req, res: Response, next: NextFunction) {
+    try {
+      res.json({ data: await taskService.batchAssign(req.user!.id, req.body.ids, req.body.assignedToId) });
+    } catch (err) {
+      next(err);
+    }
+  },
+  async batchLabel(req: Req, res: Response, next: NextFunction) {
+    try {
+      res.json({ data: await taskService.batchLabel(req.user!.id, req.body.ids, req.body.labelId) });
+    } catch (err) {
+      next(err);
+    }
+  },
+  async batchDelete(req: Req, res: Response, next: NextFunction) {
+    try {
+      res.json({ data: await taskService.batchDelete(req.user!.id, req.body.ids) });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async listViews(req: Req, res: Response, next: NextFunction) {
+    try {
+      res.json({ data: await taskService.listViews(req.user!.id) });
+    } catch (err) {
+      next(err);
+    }
+  },
+  async saveView(req: Req, res: Response, next: NextFunction) {
+    try {
+      res.status(201).json({ data: await taskService.saveView(req.user!.id, req.body) });
+    } catch (err) {
+      next(err);
+    }
+  },
+  async updateView(req: Req, res: Response, next: NextFunction) {
+    try {
+      res.json({ data: await taskService.updateView(req.user!.id, req.params.viewId, req.body) });
+    } catch (err) {
+      next(err);
+    }
+  },
+  async deleteView(req: Req, res: Response, next: NextFunction) {
+    try {
+      await taskService.deleteView(req.user!.id, req.params.viewId);
+      res.status(204).send();
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async getRunningTimer(req: Req, res: Response, next: NextFunction) {
     try {
       res.json({ data: await taskService.getRunningTimer(req.user!.id) });

@@ -10,6 +10,8 @@ import {
   TASK_LINK_TYPES,
   type TaskLinkType,
   type LogTimeInput,
+  type SaveViewInput,
+  type UpdateViewInput,
 } from '../validators/taskValidator.js';
 import { parsePagination, paginationMeta } from '../utils/pagination.js';
 import { AppError } from '../middleware/errorHandler.js';
@@ -1245,6 +1247,150 @@ export const taskService = {
     return assigned;
   },
 
+  // ─── Batch actions ────────────────────────────────────────────────────────
+  //
+  // Each action applies to the ids it may and reports the rest with a reason,
+  // rather than failing the whole batch on the first refusal: a selection of
+  // twenty tasks with one blocked among them should finish nineteen. Access
+  // rules are the single-task ones — a status change needs access, assigning
+  // and deleting need ownership — applied per row.
+
+  async batchStatus(userId: string, ids: string[], status: string) {
+    const { reachable, skipped } = await partitionByAccess(userId, ids, 'access');
+    const terminal = new Map<string, string[]>();
+    const updated: string[] = [];
+    for (const task of reachable) {
+      if (task.status === status) {
+        updated.push(task.id);
+        continue;
+      }
+      let names = terminal.get(task.userId);
+      if (!names) {
+        names = await terminalStatusNames(task.userId);
+        terminal.set(task.userId, names);
+      }
+      if (isTerminalStatus(status, names)) {
+        const open = await openBlockers(task.id, task.userId);
+        if (open.length > 0) {
+          skipped.push({ id: task.id, reason: `Blocked by ${open.map((b) => b.title).join(', ')}` });
+          continue;
+        }
+      }
+      await prisma.task.update({ where: { id: task.id }, data: { status } });
+      updated.push(task.id);
+    }
+    if (updated.length > 0) {
+      await spawnNextOccurrences(userId, updated);
+      auditService.log({ userId, action: 'TASK_BATCH_STATUS', entityType: 'task', details: { count: updated.length, status, skipped: skipped.length } });
+    }
+    return { updated: updated.length, skipped };
+  },
+
+  async batchAssign(userId: string, ids: string[], assignedToId: string | null) {
+    if (assignedToId) {
+      const assignee = await prisma.user.findUnique({ where: { id: assignedToId }, select: { id: true } });
+      if (!assignee) throw new AppError(404, 'USER_NOT_FOUND', 'User not found');
+    }
+    const { reachable, skipped } = await partitionByAccess(userId, ids, 'owner');
+    const owned = reachable.map((t) => t.id);
+    if (owned.length > 0) {
+      await prisma.task.updateMany({ where: { id: { in: owned }, userId }, data: { assignedToId } });
+      auditService.log({ userId, action: 'TASK_BATCH_ASSIGNED', entityType: 'task', details: { count: owned.length, assignedToId, skipped: skipped.length } });
+      if (assignedToId && assignedToId !== userId) {
+        const assigner = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true } });
+        await notificationService.create(assignedToId, {
+          type: 'TASK_ASSIGNED',
+          title: `${owned.length} ${owned.length === 1 ? 'task' : 'tasks'} assigned to you`,
+          message: `${assigner?.name || assigner?.email || 'Someone'} assigned ${owned.length} ${owned.length === 1 ? 'task' : 'tasks'} to you`,
+          entityType: 'task',
+          entityId: owned.length === 1 ? owned[0] : undefined,
+        });
+        wsEmitToUser(assignedToId, 'task:assigned', { taskIds: owned });
+      }
+    }
+    return { updated: owned.length, skipped };
+  },
+
+  async batchLabel(userId: string, ids: string[], labelId: string) {
+    const label = await prisma.label.findFirst({ where: { id: labelId, userId }, select: { id: true } });
+    if (!label) throw new AppError(404, 'LABEL_NOT_FOUND', 'Label not found');
+    // A label is the owner's; it can only go on the owner's tasks.
+    const { reachable, skipped } = await partitionByAccess(userId, ids, 'owner');
+    const owned = reachable.map((t) => t.id);
+    if (owned.length > 0) {
+      await prisma.taskLabel.createMany({ data: owned.map((taskId) => ({ taskId, labelId })), skipDuplicates: true });
+      auditService.log({ userId, action: 'TASK_BATCH_LABELLED', entityType: 'task', details: { count: owned.length, labelId, skipped: skipped.length } });
+    }
+    return { updated: owned.length, skipped };
+  },
+
+  async batchDelete(userId: string, ids: string[]) {
+    const { reachable, skipped } = await partitionByAccess(userId, ids, 'owner');
+    const owned = reachable.map((t) => t.id);
+    if (owned.length > 0) {
+      await prisma.task.deleteMany({ where: { id: { in: owned }, userId } });
+      auditService.log({ userId, action: 'TASK_BATCH_DELETED', entityType: 'task', details: { count: owned.length, skipped: skipped.length } });
+    }
+    return { updated: owned.length, skipped };
+  },
+
+  // ─── Saved views ──────────────────────────────────────────────────────────
+
+  async listViews(userId: string) {
+    return prisma.taskView.findMany({ where: { userId }, orderBy: [{ position: 'asc' }, { name: 'asc' }] });
+  },
+
+  async saveView(userId: string, data: SaveViewInput) {
+    try {
+      const last = await prisma.taskView.findFirst({ where: { userId }, orderBy: { position: 'desc' }, select: { position: true } });
+      const view = await prisma.taskView.create({
+        data: {
+          userId,
+          name: data.name,
+          filters: data.filters as Prisma.InputJsonObject,
+          sortBy: data.sortBy ?? 'createdAt',
+          sortOrder: data.sortOrder ?? 'desc',
+          position: (last?.position ?? 0) + 1000,
+        },
+      });
+      auditService.log({ userId, action: 'TASK_VIEW_SAVED', entityType: 'task', entityId: view.id, details: { name: view.name } });
+      return view;
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new AppError(409, 'VIEW_NAME_TAKEN', 'A view with that name already exists');
+      }
+      throw err;
+    }
+  },
+
+  async updateView(userId: string, id: string, data: UpdateViewInput) {
+    const existing = await prisma.taskView.findFirst({ where: { id, userId } });
+    if (!existing) throw new AppError(404, 'VIEW_NOT_FOUND', 'View not found');
+    try {
+      return await prisma.taskView.update({
+        where: { id },
+        data: {
+          ...(data.name !== undefined ? { name: data.name } : {}),
+          ...(data.filters !== undefined ? { filters: data.filters as Prisma.InputJsonObject } : {}),
+          ...(data.sortBy !== undefined ? { sortBy: data.sortBy } : {}),
+          ...(data.sortOrder !== undefined ? { sortOrder: data.sortOrder } : {}),
+        },
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new AppError(409, 'VIEW_NAME_TAKEN', 'A view with that name already exists');
+      }
+      throw err;
+    }
+  },
+
+  async deleteView(userId: string, id: string) {
+    const { count } = await prisma.taskView.deleteMany({ where: { id, userId } });
+    if (count === 0) throw new AppError(404, 'VIEW_NOT_FOUND', 'View not found');
+    auditService.log({ userId, action: 'TASK_VIEW_DELETED', entityType: 'task', entityId: id });
+    return { success: true };
+  },
+
   // ─── Time tracking ────────────────────────────────────────────────────────
   //
   // Access, not ownership: anyone who can open a task can log time on it —
@@ -1619,6 +1765,31 @@ async function resolveLinks(ownerId: string, links: Array<{ entityType: string; 
   }
   // In the links' own order, minus the ones that resolved to nothing.
   return links.map((l) => byKey.get(`${l.entityType}:${l.entityId}`)).filter((l): l is ResolvedLink => !!l);
+}
+
+/**
+ * Split a batch's ids into the rows the caller may act on and the rest.
+ *
+ * `access` is the single-task rule for edits (owned, shared or assigned);
+ * `owner` is the rule for assigning and deleting. An id that is not a task
+ * at all, or belongs to another account, is skipped as "not found" — the
+ * same answer a single request would get — never reported as someone else's.
+ */
+async function partitionByAccess(userId: string, ids: string[], level: 'access' | 'owner') {
+  const unique = [...new Set(ids)];
+  const sharedIds = level === 'access' ? await getSharedTaskIds(userId) : [];
+  const rows = await prisma.task.findMany({
+    where: {
+      id: { in: unique },
+      OR: level === 'owner'
+        ? [{ userId }]
+        : [{ userId }, { assignedToId: userId }, ...(sharedIds.length ? [{ id: { in: sharedIds } }] : [])],
+    },
+    select: { id: true, userId: true, status: true },
+  });
+  const found = new Set(rows.map((r) => r.id));
+  const skipped = unique.filter((id) => !found.has(id)).map((id) => ({ id, reason: level === 'owner' ? 'Not yours to change' : 'Not found' }));
+  return { reachable: rows, skipped };
 }
 
 /** A user as the timeline names them; null for "nobody". */

@@ -38,6 +38,7 @@ A full-stack CRM with deep Gmail and Google Calendar integration. Manage custome
 - **Start dates and reminders** — a start date that cannot pass the due date, and a reminder preset (the morning of, the day before, a week before) that raises a notification once
 - **My Day** — a page of what to do today: overdue, due today, starting today, and the week ahead, computed in your timezone, each task finishable in place
 - **Links to contacts, deals and events** — attach a task to any of the three from one search box; a contact's page and an event's panel list the tasks attached to them
+- **Batch actions and saved views** — select rows in the list to move, complete, assign, label or delete them at once (each row judged by its own rules, the rest reported); save the current filters and sort as a named view
 - **Task templates** — save a task's shape (subtasks, checklist, labels, priority, estimate, and the spacing of its due dates) and apply it against a company and a day; "New partner onboarding" becomes one click
 - **Time tracking** — a timer per person (one at a time, across tasks) and manual logs with a note; the total is drawn against the estimate, and a company page sums the time across its tasks
 - **Recurring tasks** — the same Daily / Weekly / Monthly / Yearly presets the calendar uses, anchored on the due date. Finishing an occurrence creates the next one with the due date advanced, the checklist unticked and everything else carried over; a task finished late is rescheduled after today, not into the past
@@ -284,7 +285,7 @@ All endpoints are prefixed with `/api/v1`. Every group except `auth` sits behind
 | Snooze | `/snooze` | Follow-up reminders on threads |
 | Templates | `/templates` | Email templates, `/variables`, `/:id/render` |
 | Onboarding | `/onboarding` | Status, seed statuses/labels, complete, reset |
-| Tasks | `/tasks` | CRUD, reorder, assign, sharing, `?parentId=` / `?topLevel=true`, `/my-day`, `/:id/checklist`, `/:id/dependencies`, `/:id/links`, `?linkedTo=deal:<id>`, `/:id/time`, `/time/running`, `/:id/activity`, `/:id/comments`, `?blocked=true` |
+| Tasks | `/tasks` | CRUD, reorder, assign, sharing, `?parentId=` / `?topLevel=true`, `/my-day`, `/:id/checklist`, `/:id/dependencies`, `/:id/links`, `?linkedTo=deal:<id>`, `/:id/time`, `/time/running`, `/batch/{status,assign,label,delete}`, `/views`, `/:id/activity`, `/:id/comments`, `?blocked=true` |
 | Task statuses | `/task-statuses` | User-defined Kanban columns, reorderable |
 | Customers | `/customers` | CRUD, VIP, linked events and attachments |
 | Company categories | `/company-categories` | Customer tagging, reorderable |

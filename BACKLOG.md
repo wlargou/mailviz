@@ -652,8 +652,20 @@ what the previous one adds:
   (re-save the task to change the shape; the API accepts a full `items`
   PATCH), no template sharing between accounts, no "apply from this deal"
   button on the Deals page.
-- [ ] **T9 Saved views and table batch actions** — the `TableBatchActions`
-  gap above, closed on Tasks first.
+- [x] **T9 Saved views and table batch actions** (1.11.0). The list uses
+  Carbon's `TableSelectAll` / `TableSelectRow` / `TableBatchActions` — the
+  first table in the app to — with Move to, Complete, Assign, Add label and
+  Delete. `POST /tasks/batch/{status,assign,label,delete}` (20/min, like
+  mail) applies each row by the single-task rules — access for a status
+  change, ownership for the rest, the dependency gate per row, a batch
+  finish spawning the next occurrence — and reports the skipped ids with a
+  reason rather than failing the batch; the toast says "Finished 3 tasks,
+  1 skipped: Blocked by X". Saved views (`task_views`) are the list's filters
+  and sort under a name, unique per account, picked from a menu in the
+  toolbar. Not done: no grouping of the list (by status, assignee, week —
+  the By Company tab is the one grouping and stays), no view sharing, no
+  default view per account, and the Customers, Contacts and Deals tables
+  still have no batch actions.
 - [ ] **T10 Email-to-task, second generation** — `MailToTask` becomes
   one-to-many; replies on a linked thread surface on the task.
 

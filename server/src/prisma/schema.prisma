@@ -85,6 +85,27 @@ model Task {
   @@map("tasks")
 }
 
+/// A saved way of looking at the task list: the filters and sort the user
+/// had on when they saved it, under a name. `filters` mirrors the client's
+/// filter object (status, priority, labelId, ownership, blocked, search…).
+model TaskView {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  name      String   @db.VarChar(80)
+  filters   Json     @db.JsonB
+  sortBy    String   @default("createdAt") @map("sort_by") @db.VarChar(40)
+  sortOrder String   @default("desc") @map("sort_order") @db.VarChar(4)
+  position  Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation("TaskViews", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@map("task_views")
+}
+
 /// A saved tree of tasks — a blueprint — instantiated against a company, a
 /// deal, a contact or an event with due dates relative to an anchor day.
 /// `items` is the tree as JSON (see validators/taskTemplateValidator.ts);
@@ -397,6 +418,7 @@ model User {
   taskComments        TaskComment[]      @relation("TaskCommentAuthor")
   taskTimeEntries     TaskTimeEntry[]    @relation("TaskTimeEntries")
   taskTemplates       TaskTemplate[]     @relation("TaskTemplates")
+  taskViews           TaskView[]         @relation("TaskViews")
   scheduledEmails     ScheduledEmail[]
   emailDrafts         EmailDraft[]
   auditLogs           AuditLog[]

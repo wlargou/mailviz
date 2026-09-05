@@ -1643,3 +1643,31 @@ describe('/api/v1/task-templates', () => {
     expect(await prisma.task.count({ where: { userId: alice.id } })).toBe(2);
   });
 });
+
+describe('/api/v1/tasks — batch and views', () => {
+  it('a batch status change validates, applies per row, and reports skips; views round-trip', async () => {
+    const { alice, bob } = await createTwoUsers();
+    await seedTaskStatuses(alice.id);
+    const cookie = authFor(alice.id);
+    const mine = await createTask(alice.id, { title: 'Mine' });
+    const bobs = await createTask(bob.id, { title: 'BobsSecretTask' });
+
+    const empty = await request(app).post('/api/v1/tasks/batch/status').set('Cookie', cookie).send({ ids: [], status: 'DONE' });
+    expect(empty.status).toBe(400);
+
+    const res = await request(app).post('/api/v1/tasks/batch/status').set('Cookie', cookie).send({ ids: [mine.id, bobs.id], status: 'DONE' });
+    expect(res.status).toBe(200);
+    expect(res.body.data).toMatchObject({ updated: 1, skipped: [{ id: bobs.id }] });
+    expect(JSON.stringify(res.body)).not.toContain('BobsSecretTask');
+    expect((await prisma.task.findUniqueOrThrow({ where: { id: bobs.id } })).status).toBe('TODO');
+
+    const saved = await request(app).post('/api/v1/tasks/views').set('Cookie', cookie).send({ name: 'Done', filters: { status: 'DONE' } });
+    expect(saved.status).toBe(201);
+    const list = await request(app).get('/api/v1/tasks/views').set('Cookie', cookie);
+    expect(list.body.data.map((v: { name: string }) => v.name)).toEqual(['Done']);
+    const foreign = await request(app).get('/api/v1/tasks/views').set('Cookie', authFor(bob.id));
+    expect(foreign.body.data).toEqual([]);
+    const gone = await request(app).delete(`/api/v1/tasks/views/${saved.body.data.id}`).set('Cookie', cookie);
+    expect(gone.status).toBe(204);
+  });
+});

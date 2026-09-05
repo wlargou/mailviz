@@ -193,6 +193,24 @@ export interface Task {
   } | null;
 }
 
+/** What a batch action did: how many rows changed, and which it left alone and why. */
+export interface BatchResult {
+  updated: number;
+  skipped: Array<{ id: string; reason: string }>;
+}
+
+/** A saved way of looking at the list. */
+export interface TaskView {
+  id: string;
+  name: string;
+  filters: Record<string, string | boolean>;
+  sortBy: string;
+  sortOrder: string;
+  position: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** The four buckets of the My Day view. */
 export interface MyDay {
   overdue: Task[];
