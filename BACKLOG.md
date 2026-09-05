@@ -599,7 +599,19 @@ what the previous one adds:
   in the account's first non-terminal status. Not done: no custom builder
   (same stance as the calendar), no "skip this occurrence", no end date or
   count.
-- [ ] **T5 Start dates, reminders and a My Day view.**
+- [x] **T5 Start dates, reminders and My Day** (1.7.0). `startDate` may not
+  pass `dueDate` (400 `START_AFTER_DUE`, whichever of the two a PATCH moves).
+  `remindAt` is an absolute instant; the forms offer it as three presets
+  relative to the due date, and a time outside them is shown read-only.
+  The notification scheduler's five-minute tick raises `TASK_REMINDER` for
+  due reminders on unfinished tasks and stamps `reminderSentAt` first, so a
+  reminder fires once; editing `remindAt` clears the stamp. `GET /tasks/my-day`
+  buckets reachable, unfinished tasks into overdue / due today / starting
+  today / coming up, with day boundaries in the user's timezone (the same
+  helpers the dashboard uses), one bucket per task. The page sits in the side
+  nav above Tasks; a row can be finished in place (the dependency gate still
+  applies) or opened in the panel. Not done: no nav badge for My Day, no
+  "snoozed mail returning today" bucket, no custom reminder time in the UI.
 - [ ] **T6 Links to contacts, deals and events** — polymorphic, so a meeting
   can carry its action items and a deal its open work.
 - [ ] **T7 Time tracking** — `time_entries` against the estimate that already

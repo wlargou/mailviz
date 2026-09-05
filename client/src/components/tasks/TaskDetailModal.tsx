@@ -27,6 +27,7 @@ import { TaskDependencies } from './TaskDependencies';
 import { apiError } from '../../utils/apiError';
 import { buildRecurrenceOptions, buildRecurrenceRules, parseRecurrencePreset, type RecurrencePresetId } from '../../utils/recurrence';
 import { format } from 'date-fns';
+import { REMINDER_OPTIONS, reminderFor, reminderPreset, type ReminderPresetId } from '../../utils/reminders';
 import { TaskParentCrumb } from './TaskProgressTags';
 import { useUIStore } from '../../store/uiStore';
 import type { Task, Label, TaskPriority, TaskStatus, TaskStatusConfig } from '../../types/task';
@@ -113,6 +114,10 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, onOpenTask, 
   const [status, setStatus] = useState<TaskStatus>('TODO');
   const [priority, setPriority] = useState<TaskPriority>('MEDIUM');
   const [dueDate, setDueDate] = useState<string | null>(null);
+  const [startDate, setStartDate] = useState<string | null>(null);
+  /** `locked` holds a reminder time set outside the presets, shown as is. */
+  const [reminder, setReminder] = useState<ReminderPresetId>('none');
+  const [lockedReminder, setLockedReminder] = useState<string | null>(null);
   const [selectedLabels, setSelectedLabels] = useState<string[]>([]);
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [assignedToId, setAssignedToId] = useState<string | null>(null);
@@ -236,6 +241,10 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, onOpenTask, 
         setStatus(fresh.status);
         setPriority(fresh.priority);
         setDueDate(fresh.dueDate);
+        setStartDate(fresh.startDate);
+        const reminderId = reminderPreset(fresh.remindAt, fresh.dueDate ? new Date(fresh.dueDate) : null);
+        setReminder(reminderId ?? 'none');
+        setLockedReminder(reminderId === null ? fresh.remindAt : null);
         setSelectedLabels(fresh.labels.map((l) => l.id));
         setCustomerId(fresh.customerId);
         setAssignedToId(fresh.assignedToId || null);
@@ -246,6 +255,8 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, onOpenTask, 
         setLockedRecurrence(preset === null ? fresh.recurrence : null);
         baselineRef.current = {
           recurrence: fresh.recurrence ?? null,
+          startDate: fresh.startDate,
+          remindAt: fresh.remindAt,
           title: decodeEntities(fresh.title).trim(),
           description: decodeEntities(fresh.description).trim(),
           status: fresh.status,
@@ -315,6 +326,11 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, onOpenTask, 
       if (status !== base.status) patch.status = status;
       if (priority !== base.priority) patch.priority = priority;
       if (dueDate !== base.dueDate) patch.dueDate = dueDate;
+      if (startDate !== base.startDate) patch.startDate = startDate;
+      if (!lockedReminder) {
+        const nextRemindAt = reminderFor(reminder, dueDate ? new Date(dueDate) : null)?.toISOString() ?? null;
+        if (nextRemindAt !== base.remindAt) patch.remindAt = nextRemindAt;
+      }
       if (customerId !== base.customerId) patch.customerId = customerId;
       if (nextEstimate !== base.estimatedMinutes) patch.estimatedMinutes = nextEstimate;
       // A locked rule is never rewritten; a preset is re-derived from the
@@ -474,6 +490,38 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, onOpenTask, 
             placeholder="mm/dd/yyyy"
           />
         </DatePicker>
+        <div className="modal-form__row">
+          <div style={{ flex: 1 }}>
+            <DatePicker
+              datePickerType="single"
+              value={startDate ? new Date(startDate) : undefined}
+              onChange={([date]: Date[]) => {
+                setStartDate(date ? date.toISOString() : null);
+              }}
+            >
+              <DatePickerInput id="edit-task-start-date" labelText="Start Date" placeholder="mm/dd/yyyy" />
+            </DatePicker>
+          </div>
+          <div style={{ flex: 1 }}>
+            {lockedReminder ? (
+              <TextInput id="edit-task-reminder-locked" labelText="Reminder" value={format(new Date(lockedReminder), 'PPp')} readOnly helperText="Set outside the presets; shown as is." />
+            ) : (
+              <Dropdown
+                id="edit-task-reminder"
+                titleText="Reminder"
+                label="No reminder"
+                helperText={dueDate ? undefined : 'Set a due date first'}
+                disabled={!dueDate}
+                items={REMINDER_OPTIONS}
+                itemToString={(item) => item?.label || ''}
+                selectedItem={REMINDER_OPTIONS.find((o) => o.id === (dueDate ? reminder : 'none'))}
+                onChange={({ selectedItem }) => {
+                  if (selectedItem) setReminder(selectedItem.id);
+                }}
+              />
+            )}
+          </div>
+        </div>
         {lockedRecurrence ? (
           <TextInput id="edit-task-recurrence-locked" labelText="Repeat" value={lockedRecurrence} readOnly helperText="Set outside the presets; shown as is." />
         ) : (

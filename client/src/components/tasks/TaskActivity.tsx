@@ -452,6 +452,16 @@ export function describeEvent(
                 : 'changed the due date'
             );
             break;
+          case 'startDate':
+            parts.push(
+              to.startDate
+                ? <>set the start date to <strong>{format(new Date(String(to.startDate)), 'MMM d, yyyy')}</strong></>
+                : 'cleared the start date'
+            );
+            break;
+          case 'remindAt':
+            parts.push(to.remindAt ? <>set a reminder for <strong>{format(new Date(String(to.remindAt)), 'MMM d, HH:mm')}</strong></> : 'removed the reminder');
+            break;
           case 'customerId':
             parts.push(to.customer ? <>moved this to <strong>{String(to.customer)}</strong></> : 'removed the company');
             break;

@@ -12,6 +12,7 @@ import { parsePagination, paginationMeta } from '../utils/pagination.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { getSharedTaskIds, canAccessTask, isTaskOwner } from '../utils/accessControl.js';
 import { nextOccurrence } from '../utils/recurrence.js';
+import { resolveTimeZone, startOfDayInZone, addDaysInZone } from '../utils/timezone.js';
 import { wsEmitToUsers, wsEmitToUser } from '../websocket.js';
 import { auditService } from './auditService.js';
 import { notificationService } from './notificationService.js';
@@ -674,6 +675,73 @@ export const taskService = {
     };
   },
 
+  /**
+   * What to do today: the four buckets a person opens the app to see.
+   *
+   * Overdue and due today by the due date; starting today by the start date;
+   * and the coming week for a look ahead. Day boundaries are computed in the
+   * user's own timezone, as the dashboard's are — "today" at UTC midnight is
+   * 2am in Paris and still yesterday in California. Finished work is excluded
+   * everywhere, and a task appears in one bucket only, the most urgent.
+   */
+  async findMyDay(userId: string) {
+    const [sharedTaskIds, terminal, user] = await Promise.all([
+      getSharedTaskIds(userId),
+      terminalStatusNames(userId),
+      prisma.user.findUnique({ where: { id: userId }, select: { timezone: true } }),
+    ]);
+    const tz = resolveTimeZone(user?.timezone);
+    const now = new Date();
+    const startOfToday = startOfDayInZone(now, tz);
+    const endOfToday = addDaysInZone(startOfToday, 1, tz);
+    const endOfWeekAhead = addDaysInZone(startOfToday, 8, tz);
+
+    const reachable: Prisma.TaskWhereInput = {
+      AND: [
+        {
+          OR: [
+            { userId },
+            ...(sharedTaskIds.length > 0 ? [{ id: { in: sharedTaskIds } }] : []),
+            { assignedToId: userId },
+          ],
+        },
+        notTerminal(terminal),
+      ],
+    };
+
+    const rows = await prisma.task.findMany({
+      where: {
+        ...reachable,
+        OR: [
+          { dueDate: { lt: endOfWeekAhead } },
+          { startDate: { gte: startOfToday, lt: endOfToday } },
+        ],
+      },
+      include: TASK_INCLUDE,
+      orderBy: [{ dueDate: { sort: 'asc', nulls: 'last' } }, { priority: 'desc' }, { id: 'asc' }],
+      take: 500,
+    });
+
+    const tasks = await withSubtaskProgress(userId, rows.map(formatTask));
+    const overdue: typeof tasks = [];
+    const dueToday: typeof tasks = [];
+    const startingToday: typeof tasks = [];
+    const upcoming: typeof tasks = [];
+    for (const t of tasks) {
+      const due = t.dueDate as Date | null;
+      const start = t.startDate as Date | null;
+      if (due && due < startOfToday) overdue.push(t);
+      else if (due && due < endOfToday) dueToday.push(t);
+      else if (start && start >= startOfToday && start < endOfToday) startingToday.push(t);
+      else if (due && due < endOfWeekAhead) upcoming.push(t);
+    }
+
+    return {
+      data: { overdue, dueToday, startingToday, upcoming },
+      meta: { timezone: tz, today: startOfToday, total: overdue.length + dueToday.length + startingToday.length },
+    };
+  },
+
   async getSummary(userId: string) {
     const now = new Date();
 
@@ -727,6 +795,7 @@ export const taskService = {
     if (taskData.recurrence && !taskData.dueDate) {
       throw new AppError(400, 'RECURRENCE_NEEDS_DUE_DATE', 'A repeating task needs a due date to repeat from');
     }
+    assertDatesInOrder(taskData.startDate ?? null, taskData.dueDate ?? null);
 
     if (parentId) {
       const parent = await assertParentAllowed(userId, null, parentId);
@@ -749,6 +818,8 @@ export const taskService = {
         ...taskData,
         userId,
         dueDate: taskData.dueDate ? new Date(taskData.dueDate) : null,
+        startDate: taskData.startDate ? new Date(taskData.startDate) : null,
+        remindAt: taskData.remindAt ? new Date(taskData.remindAt) : null,
         description: taskData.description || null,
         position,
         customerId: customerId || null,
@@ -818,6 +889,8 @@ export const taskService = {
     if (nextRecurrence && !nextDueDate) {
       throw new AppError(400, 'RECURRENCE_NEEDS_DUE_DATE', 'A repeating task needs a due date to repeat from');
     }
+    const nextStart = taskData.startDate !== undefined ? taskData.startDate : existing.startDate?.toISOString() ?? null;
+    assertDatesInOrder(nextStart, typeof nextDueDate === 'string' ? nextDueDate : nextDueDate?.toISOString() ?? null);
 
     /**
      * The dependency gate. Moving to a terminal status while a blocker is
@@ -848,6 +921,14 @@ export const taskService = {
 
     if (taskData.dueDate !== undefined) {
       updateData.dueDate = taskData.dueDate ? new Date(taskData.dueDate) : null;
+    }
+    if (taskData.startDate !== undefined) {
+      updateData.startDate = taskData.startDate ? new Date(taskData.startDate) : null;
+    }
+    if (taskData.remindAt !== undefined) {
+      updateData.remindAt = taskData.remindAt ? new Date(taskData.remindAt) : null;
+      // A new time is a new reminder; one that already fired must fire again.
+      updateData.reminderSentAt = null;
     }
 
     if (customerId !== undefined) {
@@ -1300,6 +1381,17 @@ async function spawnNextOccurrences(userId: string, ids: string[]) {
   }
 }
 
+/**
+ * A start date after the due date is a task that cannot be done in time by
+ * construction. Refused rather than silently reordered: either date may be
+ * the wrong one, and only the user knows which.
+ */
+function assertDatesInOrder(startDate: string | null, dueDate: string | null) {
+  if (startDate && dueDate && new Date(startDate).getTime() > new Date(dueDate).getTime()) {
+    throw new AppError(400, 'START_AFTER_DUE', 'The start date cannot be after the due date');
+  }
+}
+
 /** A user as the timeline names them; null for "nobody". */
 async function userLabel(id: string | null): Promise<string | null> {
   if (!id) return null;
@@ -1318,8 +1410,8 @@ async function userLabel(id: string | null): Promise<string | null> {
  * description are named without their contents.
  */
 function describeTaskChanges(
-  before: { title: string; status: string; priority: string; dueDate: Date | null; customerId: string | null; parentId: string | null; estimatedMinutes: number | null; description: string | null },
-  after: { title: string; status: string; priority: string; dueDate: Date | null; customerId: string | null; parentId: string | null; estimatedMinutes: number | null; description: string | null; customer?: { name: string } | null; parent?: { title: string } | null },
+  before: { title: string; status: string; priority: string; dueDate: Date | null; startDate: Date | null; remindAt: Date | null; customerId: string | null; parentId: string | null; estimatedMinutes: number | null; description: string | null },
+  after: { title: string; status: string; priority: string; dueDate: Date | null; startDate: Date | null; remindAt: Date | null; customerId: string | null; parentId: string | null; estimatedMinutes: number | null; description: string | null; customer?: { name: string } | null; parent?: { title: string } | null },
   data: UpdateTaskInput
 ): Prisma.InputJsonObject {
   const from: Record<string, string | number | null> = {};
@@ -1338,13 +1430,18 @@ function describeTaskChanges(
   scalar('priority');
   scalar('estimatedMinutes');
 
-  const beforeDue = before.dueDate?.toISOString() ?? null;
-  const afterDue = after.dueDate?.toISOString() ?? null;
-  if (beforeDue !== afterDue) {
-    changed.push('dueDate');
-    from.dueDate = beforeDue;
-    to.dueDate = afterDue;
-  }
+  const dateField = (key: 'dueDate' | 'startDate' | 'remindAt') => {
+    const b = before[key]?.toISOString() ?? null;
+    const a = after[key]?.toISOString() ?? null;
+    if (b !== a) {
+      changed.push(key);
+      from[key] = b;
+      to[key] = a;
+    }
+  };
+  dateField('dueDate');
+  dateField('startDate');
+  dateField('remindAt');
   if (before.customerId !== after.customerId) {
     changed.push('customerId');
     from.customerId = before.customerId;
