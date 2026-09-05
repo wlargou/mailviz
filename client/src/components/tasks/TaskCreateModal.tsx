@@ -14,6 +14,7 @@ import { CompanyComboBox } from '../shared/CompanyComboBox';
 import { useUIStore } from '../../store/uiStore';
 import type { Label, TaskPriority, TaskStatus, TaskStatusConfig } from '../../types/task';
 import { useTaskStore } from '../../store/taskStore';
+import { buildRecurrenceOptions, buildRecurrenceRules, type RecurrencePresetId } from '../../utils/recurrence';
 
 const priorityItems = [
   { id: 'LOW', text: 'Low' },
@@ -43,6 +44,7 @@ export function TaskCreateModal({ open, onClose, onCreated, labels }: TaskCreate
   const [dueDate, setDueDate] = useState<string | null>(null);
   const [selectedLabels, setSelectedLabels] = useState<string[]>([]);
   const [customerId, setCustomerId] = useState<string | null>(null);
+  const [recurrencePreset, setRecurrencePreset] = useState<RecurrencePresetId>('none');
   const [statusItems, setStatusItems] = useState<{ id: string; text: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const addNotification = useUIStore((s) => s.addNotification);
@@ -68,6 +70,7 @@ export function TaskCreateModal({ open, onClose, onCreated, labels }: TaskCreate
     setDueDate(null);
     setSelectedLabels([]);
     setCustomerId(null);
+    setRecurrencePreset('none');
   };
 
   const handleSubmit = async () => {
@@ -82,6 +85,7 @@ export function TaskCreateModal({ open, onClose, onCreated, labels }: TaskCreate
         dueDate,
         labelIds: selectedLabels.length > 0 ? selectedLabels : undefined,
         customerId: customerId || undefined,
+        recurrence: dueDate ? buildRecurrenceRules(recurrencePreset, new Date(dueDate))[0] ?? undefined : undefined,
       });
       addNotification({ kind: 'success', title: 'Task created', subtitle: title.trim() });
       resetForm();
@@ -172,6 +176,20 @@ export function TaskCreateModal({ open, onClose, onCreated, labels }: TaskCreate
           className="create-side-panel__form-item"
         />
       </DatePicker>
+      <Dropdown
+        id="task-recurrence"
+        titleText="Repeat"
+        label="Does not repeat"
+        helperText={dueDate ? undefined : 'Set a due date to repeat from'}
+        disabled={!dueDate}
+        items={buildRecurrenceOptions(dueDate ? new Date(dueDate) : new Date())}
+        itemToString={(item) => item?.label || ''}
+        selectedItem={buildRecurrenceOptions(dueDate ? new Date(dueDate) : new Date()).find((o) => o.id === (dueDate ? recurrencePreset : 'none'))}
+        onChange={({ selectedItem }) => {
+          if (selectedItem) setRecurrencePreset(selectedItem.id);
+        }}
+        className="create-side-panel__form-item"
+      />
       <div className="create-side-panel__form-item">
         <CompanyComboBox
           id="task-customer"

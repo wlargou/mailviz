@@ -36,6 +36,13 @@ model Task {
   /// have subtasks of its own, and a parent cannot itself be a subtask —
   /// enforced in `taskService`, not here.
   parentId       String?      @map("parent_id")
+  /// An RFC 5545 RRULE line ("RRULE:FREQ=WEEKLY;BYDAY=MO"). When this task
+  /// reaches a terminal status the next occurrence is created from it, with
+  /// the due date advanced by the rule. Requires a due date.
+  recurrence     String?      @db.VarChar(255)
+  /// The occurrence created when this one was finished. Set once, so
+  /// reopening and finishing again does not spawn a second.
+  recurrenceNextId String?    @unique @map("recurrence_next_id")
   userId         String       @map("user_id")
   createdAt      DateTime     @default(now()) @map("created_at")
   updatedAt      DateTime     @updatedAt @map("updated_at")
@@ -49,6 +56,8 @@ model Task {
   blocks     TaskDependency[]    @relation("TaskBlocks")
   /// Dependencies this task is blocked by.
   blockedBy  TaskDependency[]    @relation("TaskBlockedBy")
+  recurrenceNext     Task?  @relation("TaskRecurrence", fields: [recurrenceNextId], references: [id], onDelete: SetNull)
+  recurrencePrevious Task?  @relation("TaskRecurrence")
   parent     Task?        @relation("TaskSubtasks", fields: [parentId], references: [id], onDelete: Cascade)
   subtasks   Task[]       @relation("TaskSubtasks")
   customer   Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)

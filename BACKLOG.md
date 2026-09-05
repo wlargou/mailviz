@@ -582,8 +582,23 @@ what the previous one adds:
   done: no Gantt or critical path; "blocks" is read-only from the blocked
   task's side by design; the subtask checkbox on a blocked subtask shows the
   refusal but has no "anyway" — open the subtask's own panel for that.
-- [ ] **T4 Recurring tasks** — reuse the calendar RRULE presets; completing an
-  occurrence spawns the next.
+- [x] **T4 Recurring tasks** (1.6.0). The calendar's recurrence presets moved
+  to `utils/recurrence.ts` and `EventModal` imports them, so events and tasks
+  share one vocabulary. `Task.recurrence` is one RRULE line (FREQ, optional
+  INTERVAL, a single BYDAY or BYMONTHDAY — what `utils/recurrence.ts` on the
+  server can advance; anything richer is refused by the validator). A rule
+  needs a due date, on create and on update. Finishing an occurrence — panel,
+  Kanban drag, subtask checkbox — creates the next: `nextOccurrence` steps
+  from the old due date and lands strictly after now, keeping the weekday or
+  day of month, clamping the 31st in short months. The spawn claims
+  `recurrenceNextId` with a conditional `updateMany`, so an occurrence spawns
+  once however many times it is reopened and finished; the unique index is the
+  backstop. Copied: title, description, priority, estimate, company, assignee,
+  labels, parent, the rule, and the checklist unticked. Not copied:
+  dependencies (they were about that occurrence). The next occurrence opens
+  in the account's first non-terminal status. Not done: no custom builder
+  (same stance as the calendar), no "skip this occurrence", no end date or
+  count.
 - [ ] **T5 Start dates, reminders and a My Day view.**
 - [ ] **T6 Links to contacts, deals and events** — polymorphic, so a meeting
   can carry its action items and a deal its open work.
