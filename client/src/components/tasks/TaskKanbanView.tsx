@@ -21,6 +21,7 @@ import type { Task, TaskStatus, TaskStatusConfig, ReorderItem } from '../../type
 import { decodeEntities } from '../../utils/text';
 import { useTaskStore } from '../../store/taskStore';
 import { useTaskChanges } from '../../hooks/useTaskChanges';
+import { apiErrorMessage } from '../../utils/apiError';
 
 interface TaskKanbanViewProps {
   onCardClick: (taskId: string) => void;
@@ -162,10 +163,10 @@ export function TaskKanbanView({ onCardClick }: TaskKanbanViewProps) {
         try {
           await tasksApi.reorder(reorderItems);
           taskChanged();
-        } catch {
+        } catch (err) {
           // Rollback, not a change — no bump, or every view refetches for a
           // write that did not land.
-          addNotification({ kind: 'error', title: 'Failed to reorder' });
+          addNotification({ kind: 'error', title: 'Failed to reorder', subtitle: apiErrorMessage(err, '') });
           fetchKanbanTasks();
         }
         return;
@@ -187,8 +188,10 @@ export function TaskKanbanView({ onCardClick }: TaskKanbanViewProps) {
       try {
         await tasksApi.reorder(reorderItems);
         taskChanged();
-      } catch {
-        addNotification({ kind: 'error', title: 'Failed to move task' });
+      } catch (err) {
+        // A blocked task dragged into a finished column: the server says
+        // which blockers, and the card goes back where it was.
+        addNotification({ kind: 'error', title: 'Failed to move task', subtitle: apiErrorMessage(err, '') });
         fetchKanbanTasks();
       }
     }

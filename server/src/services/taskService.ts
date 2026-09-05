@@ -28,6 +28,8 @@ interface TaskQueryParams {
   parentId?: string;
   /** 'true' = leave subtasks out; they are reached through their parent. */
   topLevel?: string;
+  /** 'true' = only tasks with an unfinished blocker; 'false' = only tasks without one. */
+  blocked?: string;
   /** 'shared' = only rows this user does not own, 'owned' = only rows they own. */
   ownership?: string;
   sortBy?: string;
@@ -148,35 +150,142 @@ async function assertParentAllowed(ownerId: string, taskId: string | null, paren
   return parent;
 }
 
+interface RelationCounts {
+  subtaskCount: number;
+  subtaskDoneCount: number;
+  /** Tasks this one waits on. */
+  blockedByCount: number;
+  /** Of those, the ones not yet in a terminal status — what "blocked" means. */
+  openBlockerCount: number;
+  /** Tasks waiting on this one. */
+  blocksCount: number;
+}
+
 /**
- * Attach `subtaskCount` / `subtaskDoneCount` to formatted tasks.
+ * Attach the subtask and dependency counts to formatted tasks.
  *
- * One query for every parent in the page rather than a count per row. "Done"
- * is whatever the CALLER's account calls terminal — the same choice
+ * Three queries for the whole page rather than several per row. "Done" is
+ * whatever the CALLER's account calls terminal — the same choice
  * `findGroupedByCompany` makes for shared tasks, so a board and a list never
  * disagree about the same row.
  */
-async function withSubtaskProgress<T extends { id: string }>(userId: string, tasks: T[]) {
-  if (tasks.length === 0) return tasks as Array<T & { subtaskCount: number; subtaskDoneCount: number }>;
-  const [children, terminal] = await Promise.all([
+async function withSubtaskProgress<T extends { id: string }>(userId: string, tasks: T[]): Promise<Array<T & RelationCounts>> {
+  if (tasks.length === 0) return [];
+  const ids = tasks.map((t) => t.id);
+  const [children, blockers, blocks, terminal] = await Promise.all([
     prisma.task.findMany({
-      where: { parentId: { in: tasks.map((t) => t.id) } },
+      where: { parentId: { in: ids } },
       select: { parentId: true, status: true },
+    }),
+    prisma.taskDependency.findMany({
+      where: { blockedId: { in: ids } },
+      select: { blockedId: true, blocker: { select: { status: true } } },
+    }),
+    prisma.taskDependency.groupBy({
+      by: ['blockerId'],
+      where: { blockerId: { in: ids } },
+      _count: { blockedId: true },
     }),
     terminalStatusNames(userId),
   ]);
-  const counts = new Map<string, { total: number; done: number }>();
+
+  const counts = new Map<string, RelationCounts>();
+  const entry = (id: string) => {
+    let c = counts.get(id);
+    if (!c) {
+      c = { subtaskCount: 0, subtaskDoneCount: 0, blockedByCount: 0, openBlockerCount: 0, blocksCount: 0 };
+      counts.set(id, c);
+    }
+    return c;
+  };
   for (const child of children) {
-    const key = child.parentId!;
-    const entry = counts.get(key) ?? { total: 0, done: 0 };
-    entry.total += 1;
-    if (isTerminalStatus(child.status, terminal)) entry.done += 1;
-    counts.set(key, entry);
+    const c = entry(child.parentId!);
+    c.subtaskCount += 1;
+    if (isTerminalStatus(child.status, terminal)) c.subtaskDoneCount += 1;
   }
-  return tasks.map((t) => {
-    const c = counts.get(t.id);
-    return { ...t, subtaskCount: c?.total ?? 0, subtaskDoneCount: c?.done ?? 0 };
+  for (const dep of blockers) {
+    const c = entry(dep.blockedId);
+    c.blockedByCount += 1;
+    if (!isTerminalStatus(dep.blocker.status, terminal)) c.openBlockerCount += 1;
+  }
+  for (const row of blocks) {
+    entry(row.blockerId).blocksCount = row._count.blockedId;
+  }
+  return tasks.map((t) => ({
+    ...t,
+    ...(counts.get(t.id) ?? { subtaskCount: 0, subtaskDoneCount: 0, blockedByCount: 0, openBlockerCount: 0, blocksCount: 0 }),
+  }));
+}
+
+/** The shape a dependency's other end takes in a task's detail. */
+const DEPENDENCY_END = { select: { id: true, title: true, status: true } } as const;
+
+/**
+ * The rules for "blocker must finish before blocked", checked before the row
+ * is written. The foreign keys accept any two task ids, so all of it lives
+ * here: no self-dependency, the blocker must be owned by the same account as
+ * the blocked task (a share is not ownership, and `findById` would otherwise
+ * echo another account's title through `blockedBy`), and the graph must stay
+ * acyclic — a cycle is a set of tasks none of which can ever be finished.
+ */
+async function assertDependencyAllowed(ownerId: string, blockedId: string, blockerId: string) {
+  if (blockedId === blockerId) {
+    throw new AppError(400, 'INVALID_DEPENDENCY', 'A task cannot block itself');
+  }
+  const blocker = await prisma.task.findFirst({
+    where: { id: blockerId, userId: ownerId },
+    select: { id: true, title: true },
   });
+  if (!blocker) {
+    throw new AppError(404, 'TASK_NOT_FOUND', 'Blocker task not found');
+  }
+  // Would the blocker, through what IT waits on, reach the blocked task?
+  // Then blocked → … → blocker → blocked is a loop. Breadth-first over the
+  // "is blocked by" edges, bounded so a pathological graph cannot spin.
+  const seen = new Set<string>([blockerId]);
+  let frontier = [blockerId];
+  let hops = 0;
+  while (frontier.length > 0 && hops < 50) {
+    const edges = await prisma.taskDependency.findMany({
+      where: { blockedId: { in: frontier } },
+      select: { blockerId: true },
+    });
+    frontier = [];
+    for (const e of edges) {
+      if (e.blockerId === blockedId) {
+        throw new AppError(400, 'INVALID_DEPENDENCY', 'That would create a cycle: the blocker already depends on this task');
+      }
+      if (!seen.has(e.blockerId)) {
+        seen.add(e.blockerId);
+        frontier.push(e.blockerId);
+      }
+    }
+    hops += 1;
+  }
+  return blocker;
+}
+
+/**
+ * The blockers of a task that are not finished, by the owner's vocabulary.
+ * Empty means the task may move to a terminal status.
+ */
+async function openBlockers(taskId: string, ownerId: string) {
+  const terminal = await terminalStatusNames(ownerId);
+  const rows = await prisma.taskDependency.findMany({
+    where: { blockedId: taskId, blocker: notTerminal(terminal) },
+    select: { blocker: { select: { id: true, title: true } } },
+  });
+  return rows.map((r) => r.blocker);
+}
+
+function blockedError(blockers: Array<{ id: string; title: string }>) {
+  const n = blockers.length;
+  return new AppError(
+    409,
+    'TASK_BLOCKED',
+    `Blocked by ${n} unfinished ${n === 1 ? 'task' : 'tasks'}: ${blockers.map((b) => b.title).join(', ')}`,
+    { blockers }
+  );
 }
 
 export const taskService = {
@@ -240,6 +349,11 @@ export const taskService = {
       where.parentId = query.parentId;
     } else if (query.topLevel === 'true') {
       where.parentId = null;
+    }
+    if (query.blocked === 'true' || query.blocked === 'false') {
+      // "Blocked" is relative to what this account calls finished.
+      const open = { blocker: notTerminal(await terminalStatusNames(userId)) };
+      where.blockedBy = query.blocked === 'true' ? { some: open } : { none: open };
     }
     if (query.dueBefore || query.dueAfter) {
       where.dueDate = {};
@@ -305,6 +419,8 @@ export const taskService = {
           include: { labels: { include: { label: true } }, customer: true, checklist: { select: { isDone: true } } },
           orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
         },
+        blockedBy: { select: { blocker: DEPENDENCY_END }, orderBy: { createdAt: 'asc' } },
+        blocks: { select: { blocked: DEPENDENCY_END }, orderBy: { createdAt: 'asc' } },
         mailToTask: {
           include: {
             email: {
@@ -317,10 +433,13 @@ export const taskService = {
     if (!task) {
       throw new AppError(404, 'TASK_NOT_FOUND', 'Task not found');
     }
-    const [decorated] = await withSubtaskProgress(userId, [formatTask(task)]);
+    const { blockedBy, blocks, ...row } = task;
+    const [decorated] = await withSubtaskProgress(userId, [formatTask(row)]);
     return {
       ...decorated,
       subtasks: await withSubtaskProgress(userId, task.subtasks.map(formatTask)),
+      blockedBy: blockedBy.map((d) => d.blocker),
+      blocks: blocks.map((d) => d.blocked),
     };
   },
 
@@ -680,7 +799,25 @@ export const taskService = {
       }
     }
 
-    const { labelIds, customerId, parentId, ...taskData } = data;
+    const { labelIds, customerId, parentId, force, ...taskData } = data;
+
+    /**
+     * The dependency gate. Moving to a terminal status while a blocker is
+     * unfinished is refused with a 409 that names the blockers, unless the
+     * caller says `force` — which the UI offers as an explicit "complete
+     * anyway", and which is recorded on the audit row.
+     */
+    let forced = false;
+    if (taskData.status !== undefined && taskData.status !== existing.status) {
+      const terminal = await terminalStatusNames(existing.userId);
+      if (isTerminalStatus(taskData.status, terminal)) {
+        const open = await openBlockers(id, existing.userId);
+        if (open.length > 0) {
+          if (!force) throw blockedError(open);
+          forced = true;
+        }
+      }
+    }
 
     const updateData: any = {
       ...taskData,
@@ -751,7 +888,7 @@ export const taskService = {
       action: 'TASK_UPDATED',
       entityType: 'task',
       entityId: id,
-      details: describeTaskChanges(existing, task, data),
+      details: { ...describeTaskChanges(existing, task, data), ...(forced ? { forced: true } : {}) },
     });
 
     const [updated] = await withSubtaskProgress(userId, [formatTask(task)]);
@@ -770,6 +907,25 @@ export const taskService = {
         throw new AppError(404, 'TASK_NOT_FOUND', 'Task not found');
       }
     }
+    /**
+     * Same gate as `update`, for a drag into a finished column. There is no
+     * `force` on a drag — the board rolls back and says why, and finishing
+     * a blocked task deliberately is done from its panel.
+     */
+    const terminal = await terminalStatusNames(userId);
+    const finishing = data.items.filter((item) => isTerminalStatus(item.status, terminal)).map((item) => item.id);
+    if (finishing.length > 0) {
+      const blocked = await prisma.taskDependency.findMany({
+        where: {
+          blockedId: { in: finishing },
+          blocked: notTerminal(terminal),
+          blocker: notTerminal(terminal),
+        },
+        select: { blocker: { select: { id: true, title: true } } },
+      });
+      if (blocked.length > 0) throw blockedError(blocked.map((b) => b.blocker));
+    }
+
     const operations = data.items.map((item) =>
       prisma.task.update({
         where: { id: item.id, userId },
@@ -937,6 +1093,36 @@ export const taskService = {
 
     const [assigned] = await withSubtaskProgress(userId, [formatTask(task)]);
     return assigned;
+  },
+
+  // ─── Dependencies ─────────────────────────────────────────────────────────
+
+  async addDependency(userId: string, taskId: string, blockerId: string) {
+    if (!(await canAccessTask(taskId, userId))) {
+      throw new AppError(404, 'TASK_NOT_FOUND', 'Task not found');
+    }
+    const task = await prisma.task.findUniqueOrThrow({ where: { id: taskId }, select: { userId: true } });
+    const blocker = await assertDependencyAllowed(task.userId, taskId, blockerId);
+    // Idempotent: the pair is the primary key, and "already there" is not an error.
+    await prisma.taskDependency.upsert({
+      where: { blockerId_blockedId: { blockerId, blockedId: taskId } },
+      create: { blockerId, blockedId: taskId },
+      update: {},
+    });
+    auditService.log({ userId, action: 'TASK_DEPENDENCY_ADDED', entityType: 'task', entityId: taskId, details: { blockerId, blocker: blocker.title } });
+    return this.findById(userId, taskId);
+  },
+
+  async removeDependency(userId: string, taskId: string, blockerId: string) {
+    if (!(await canAccessTask(taskId, userId))) {
+      throw new AppError(404, 'TASK_NOT_FOUND', 'Task not found');
+    }
+    const { count } = await prisma.taskDependency.deleteMany({ where: { blockedId: taskId, blockerId } });
+    if (count === 0) {
+      throw new AppError(404, 'DEPENDENCY_NOT_FOUND', 'Dependency not found');
+    }
+    auditService.log({ userId, action: 'TASK_DEPENDENCY_REMOVED', entityType: 'task', entityId: taskId, details: { blockerId } });
+    return this.findById(userId, taskId);
   },
 
   // ─── Checklist ────────────────────────────────────────────────────────────

@@ -86,6 +86,9 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     subtaskDoneCount: 0,
     checklistCount: 0,
     checklistDoneCount: 0,
+    blockedByCount: 0,
+    openBlockerCount: 0,
+    blocksCount: 0,
     ...overrides,
   };
 }

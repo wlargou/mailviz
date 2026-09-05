@@ -74,6 +74,13 @@ export type TaskActivityEntry =
       editedAt: string | null;
     };
 
+/** The other end of a dependency. */
+export interface TaskRef {
+  id: string;
+  title: string;
+  status: TaskStatus;
+}
+
 /** One line on a task's checklist. */
 export interface ChecklistItem {
   id: string;
@@ -110,10 +117,20 @@ export interface Task {
   subtaskDoneCount: number;
   checklistCount: number;
   checklistDoneCount: number;
+  /** Tasks this one waits on. */
+  blockedByCount: number;
+  /** Of those, the ones not yet finished — what "blocked" means. */
+  openBlockerCount: number;
+  /** Tasks waiting on this one. */
+  blocksCount: number;
   /** Only on `GET /tasks/:id`. */
   subtasks?: Task[];
   /** Only on `GET /tasks/:id`. */
   checklist?: ChecklistItem[];
+  /** Only on `GET /tasks/:id`. */
+  blockedBy?: TaskRef[];
+  /** Only on `GET /tasks/:id`. */
+  blocks?: TaskRef[];
   mailToTask?: {
     id: string;
     conversionNote: string | null;
@@ -149,7 +166,10 @@ export interface CreateTaskInput {
   parentId?: string | null;
 }
 
-export interface UpdateTaskInput extends Partial<CreateTaskInput> {}
+export interface UpdateTaskInput extends Partial<CreateTaskInput> {
+  /** Finish a task whose blockers are still open. */
+  force?: boolean;
+}
 
 export interface ReorderItem {
   id: string;

@@ -28,6 +28,21 @@
     color: var(--cds-text-secondary);
   }
 
+  &__state {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  &__subheading {
+    @include type.type-style('label-01');
+    margin: $spacing-03 0 $spacing-02;
+    color: var(--cds-text-secondary);
+  }
+
+  &__notice {
+    margin-bottom: $spacing-04;
+  }
+
   &__progress {
     margin-bottom: $spacing-04;
   }

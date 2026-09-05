@@ -42,6 +42,8 @@ export type AuditAction =
   | 'TASK_COMMENTED'
   | 'TASK_COMMENT_EDITED'
   | 'TASK_COMMENT_DELETED'
+  | 'TASK_DEPENDENCY_ADDED'
+  | 'TASK_DEPENDENCY_REMOVED'
   // Deal actions
   | 'DEAL_CREATED'
   | 'DEAL_UPDATED'

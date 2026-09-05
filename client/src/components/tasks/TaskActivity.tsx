@@ -21,6 +21,12 @@ interface TaskActivityProps {
   users: MentionableUser[];
   /** To show a status change as its label, not its name. */
   statuses: TaskStatusConfig[];
+  /**
+   * Bumped by the panel whenever one of its sections writes — a subtask
+   * ticked, a blocker added — so the timeline shows the event without a
+   * reopen. The task's own `updatedAt` does not move for those.
+   */
+  version?: number;
 }
 
 /** What a user is called in an @mention: their name, or the local part of their email. */
@@ -57,7 +63,7 @@ function mentionAtCaret(text: string, caret: number): { start: number; query: st
  * the name and the mention goes with it, so the server never notifies
  * someone the comment no longer addresses.
  */
-export function TaskActivity({ taskId, ownerId, users, statuses }: TaskActivityProps) {
+export function TaskActivity({ taskId, ownerId, users, statuses, version = 0 }: TaskActivityProps) {
   const me = useAuthStore((s) => s.user?.id);
   const addNotification = useUIStore((s) => s.addNotification);
   const [entries, setEntries] = useState<TaskActivityEntry[] | null>(null);
@@ -101,6 +107,14 @@ export function TaskActivity({ taskId, ownerId, users, statuses }: TaskActivityP
     mentioned.current.clear();
     void load();
   }, [load]);
+
+  // A section wrote: re-read in place, keeping the draft and the list.
+  const seenVersion = useRef(version);
+  useEffect(() => {
+    if (seenVersion.current === version) return;
+    seenVersion.current = version;
+    void load();
+  }, [version, load]);
 
   const statusLabel = useCallback(
     (name: unknown) => statuses.find((s) => s.name === name)?.label ?? String(name ?? ''),
@@ -403,6 +417,10 @@ export function describeEvent(
       if (d.added) return <>added a checklist item: “{String(d.added)}”</>;
       if (d.removed) return 'removed a checklist item';
       return 'updated a checklist item';
+    case 'TASK_DEPENDENCY_ADDED':
+      return d.blocker ? <>marked this as blocked by <strong>{decodeEntities(String(d.blocker))}</strong></> : 'added a blocker';
+    case 'TASK_DEPENDENCY_REMOVED':
+      return 'removed a blocker';
     case 'TASK_UPDATED': {
       const changes = Array.isArray(d.changes) ? (d.changes as string[]) : [];
       const parts: React.ReactNode[] = [];

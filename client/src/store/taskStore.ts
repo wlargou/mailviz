@@ -11,6 +11,8 @@ interface TaskFilters {
   overdue?: boolean;
   /** Restrict to tasks the user does not own ('shared') or does own ('owned'). */
   ownership?: TaskOwnership;
+  /** 'true' = only tasks with an unfinished blocker; 'false' = only tasks without one. */
+  blocked?: string;
   sortBy: string;
   sortOrder: string;
 }
@@ -87,6 +89,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       if (filters.search) params.search = filters.search;
       if (filters.labelId) params.labelId = filters.labelId;
       if (filters.ownership) params.ownership = filters.ownership;
+      if (filters.blocked) params.blocked = filters.blocked;
       if (filters.overdue) {
         params.dueBefore = new Date().toISOString();
         // Exclude completed tasks for overdue filter

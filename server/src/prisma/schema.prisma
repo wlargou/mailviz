@@ -45,6 +45,10 @@ model Task {
   shares     TaskShare[]
   checklist  TaskChecklistItem[]
   comments   TaskComment[]
+  /// Dependencies this task is the blocker of (it must finish first).
+  blocks     TaskDependency[]    @relation("TaskBlocks")
+  /// Dependencies this task is blocked by.
+  blockedBy  TaskDependency[]    @relation("TaskBlockedBy")
   parent     Task?        @relation("TaskSubtasks", fields: [parentId], references: [id], onDelete: Cascade)
   subtasks   Task[]       @relation("TaskSubtasks")
   customer   Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
@@ -59,6 +63,21 @@ model Task {
   @@index([assignedToId])
   @@index([parentId])
   @@map("tasks")
+}
+
+/// "blocker must finish before blocked can". Both rows belong to the same
+/// account and the graph is kept acyclic — enforced in `taskService`.
+model TaskDependency {
+  blockerId String   @map("blocker_id")
+  blockedId String   @map("blocked_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  blocker Task @relation("TaskBlocks", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked Task @relation("TaskBlockedBy", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@id([blockerId, blockedId])
+  @@index([blockedId])
+  @@map("task_dependencies")
 }
 
 /// A comment on a task. `mentions` holds the ids of the users named with @ in

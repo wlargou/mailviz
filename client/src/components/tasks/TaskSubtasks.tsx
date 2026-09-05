@@ -6,6 +6,7 @@ import { tasksApi } from '../../api/tasks';
 import { useUIStore } from '../../store/uiStore';
 import { useTaskStore } from '../../store/taskStore';
 import { decodeEntities } from '../../utils/text';
+import { apiErrorMessage } from '../../utils/apiError';
 import type { Task, TaskStatusConfig } from '../../types/task';
 
 interface TaskSubtasksProps {
@@ -64,8 +65,8 @@ export function TaskSubtasks({ task, statuses, onOpenTask, onChanged }: TaskSubt
       await tasksApi.update(sub.id, { status: nowDone ? doneStatus : openStatus });
       taskChanged();
       await onChanged();
-    } catch {
-      addNotification({ kind: 'error', title: 'Failed to update subtask' });
+    } catch (err) {
+      addNotification({ kind: 'error', title: 'Failed to update subtask', subtitle: apiErrorMessage(err, '') });
     }
   };
 

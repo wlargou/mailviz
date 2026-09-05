@@ -58,6 +58,12 @@ const priorityItems = [
   { id: 'URGENT', text: 'Urgent' },
 ];
 
+const blockedItems = [
+  { id: '', text: 'All Tasks' },
+  { id: 'true', text: 'Blocked' },
+  { id: 'false', text: 'Not blocked' },
+];
+
 const ownershipItems = [
   { id: '', text: 'All Tasks' },
   { id: 'shared', text: 'Shared with me' },
@@ -136,7 +142,8 @@ export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreat
     (filters.status ? 1 : 0) +
     (filters.priority ? 1 : 0) +
     (filters.labelId ? 1 : 0) +
-    (filters.ownership ? 1 : 0);
+    (filters.ownership ? 1 : 0) +
+    (filters.blocked ? 1 : 0);
 
   const handleSearchChange = useCallback((e: TableToolbarSearchChangeEvent) => {
     const val = toolbarSearchValue(e);
@@ -238,6 +245,16 @@ export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreat
                     itemToString={(item: { id: string; text: string } | null) => item?.text || ''}
                     selectedItem={labelItems.find((l) => l.id === (filters.labelId || '')) || labelItems[0]}
                     onChange={({ selectedItem }: { selectedItem: { id: string; text: string } | null }) => setFilter('labelId', selectedItem?.id || undefined)}
+                    size="sm"
+                  />
+                  <Dropdown
+                    id="filter-blocked"
+                    titleText="Dependencies"
+                    label="All Tasks"
+                    items={blockedItems}
+                    itemToString={(item: { id: string; text: string } | null) => item?.text || ''}
+                    selectedItem={blockedItems.find((b) => b.id === (filters.blocked || '')) || blockedItems[0]}
+                    onChange={({ selectedItem }: { selectedItem: { id: string; text: string } | null }) => setFilter('blocked', selectedItem?.id || undefined)}
                     size="sm"
                   />
                   <Dropdown
