@@ -7,6 +7,7 @@ import {
   DatePickerInput,
   MultiSelect,
   InlineNotification,
+  ActionableNotification,
   SkeletonText,
   Button,
   Slider,
@@ -22,6 +23,8 @@ import { CompanyComboBox } from '../shared/CompanyComboBox';
 import { TaskSubtasks } from './TaskSubtasks';
 import { TaskChecklist } from './TaskChecklist';
 import { TaskActivity } from './TaskActivity';
+import { TaskDependencies } from './TaskDependencies';
+import { apiError } from '../../utils/apiError';
 import { TaskParentCrumb } from './TaskProgressTags';
 import { useUIStore } from '../../store/uiStore';
 import type { Task, Label, TaskPriority, TaskStatus, TaskStatusConfig } from '../../types/task';
@@ -118,6 +121,11 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, onOpenTask, 
   const [statusConfigs, setStatusConfigs] = useState<TaskStatusConfig[]>([]);
   const [loading, setLoading] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  /**
+   * The server refused to finish this task because a blocker is open. Kept
+   * so the panel can offer "Complete anyway", which resends with `force`.
+   */
+  const [blockedBy, setBlockedBy] = useState<{ message: string; blockers: Array<{ id: string; title: string }> } | null>(null);
   const [taskShares, setTaskShares] = useState<any[]>([]);
   const addNotification = useUIStore((s) => s.addNotification);
 
@@ -144,11 +152,13 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, onOpenTask, 
    * user may be mid-edit in. The loading effect below clears everything and
    * seeds again, which is right for opening a task and wrong here.
    */
+  const [sectionVersion, setSectionVersion] = useState(0);
   const reloadTask = useCallback(async () => {
     if (!taskId) return;
     try {
       const { data: res } = await tasksApi.getById(taskId);
       setTask((current) => (current && current.id === res.data.id ? res.data : current));
+      setSectionVersion((v) => v + 1);
     } catch { /* the sections keep what they have; the next open reloads */ }
   }, [taskId]);
 
@@ -255,9 +265,10 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, onOpenTask, 
     return () => { cancelled = true; };
   }, [open, taskId, retry]);
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (force = false) => {
     if (!task || !title.trim()) return;
     setLoading(true);
+    setBlockedBy(null);
     try {
       // Assignment deliberately does NOT go through the generic update. Only
       // PATCH /tasks/:id/assign creates the notification and emits the
@@ -298,7 +309,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, onOpenTask, 
 
       // An empty PATCH is a no-op the server would still audit as a change.
       if (Object.keys(patch).length > 0) {
-        await tasksApi.update(task.id, patch);
+        await tasksApi.update(task.id, force ? { ...patch, force: true } : patch);
       }
 
       if (assignmentChanged) {
@@ -309,7 +320,15 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, onOpenTask, 
       taskChanged();
       onUpdated();
       onClose();
-    } catch {
+    } catch (err) {
+      const refusal = apiError(err);
+      if (refusal.status === 409 && refusal.code === 'TASK_BLOCKED') {
+        // Not a failure: a rule, with a way past it. Shown in the panel,
+        // where the decision is made, rather than as a toast that vanishes.
+        const details = refusal.details as { blockers?: Array<{ id: string; title: string }> } | undefined;
+        setBlockedBy({ message: refusal.message ?? 'This task is blocked', blockers: details?.blockers ?? [] });
+        return;
+      }
       addNotification({ kind: 'error', title: 'Failed to update task' });
     } finally {
       setLoading(false);
@@ -328,7 +347,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, onOpenTask, 
       actions={[
         {
           label: loading ? 'Saving...' : 'Save',
-          onClick: handleSubmit,
+          onClick: () => void handleSubmit(),
           kind: 'primary' as const,
           // Stable footer while the task loads — a Save that appears late
           // moves everything under the cursor.
@@ -360,6 +379,19 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, onOpenTask, 
 
       {task && (
       <div className="modal-form">
+        {blockedBy && (
+          <ActionableNotification
+            inline
+            lowContrast
+            kind="warning"
+            className="task-section__notice"
+            title="Still blocked"
+            subtitle={blockedBy.message}
+            actionButtonLabel="Complete anyway"
+            onActionButtonClick={() => void handleSubmit(true)}
+            onClose={() => { setBlockedBy(null); return false; }}
+          />
+        )}
         {task.parent && (
           <div className="task-detail-panel__crumb">
             <TaskParentCrumb
@@ -473,7 +505,8 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, onOpenTask, 
           <TaskSubtasks task={task} statuses={statusConfigs} onOpenTask={onOpenTask} onChanged={reloadTask} />
         )}
         <TaskChecklist taskId={task.id} items={task.checklist ?? []} onChanged={reloadTask} />
-        <TaskActivity taskId={task.id} ownerId={task.userId} users={users} statuses={statusConfigs} />
+        <TaskDependencies task={task} statuses={statusConfigs} onOpenTask={onOpenTask} onChanged={reloadTask} />
+        <TaskActivity taskId={task.id} ownerId={task.userId} users={users} statuses={statusConfigs} version={sectionVersion} />
         {task.mailToTask?.email && (
           <div className="modal-form__source-email">
             <p className="modal-form__label" style={{ fontSize: '0.75rem', color: 'var(--cds-text-secondary)', marginBottom: '0.25rem' }}>Created from email</p>

@@ -9,6 +9,7 @@ import {
   updateChecklistItemSchema,
   createCommentSchema,
   updateCommentSchema,
+  addDependencySchema,
 } from '../validators/taskValidator.js';
 
 const router = Router();
@@ -33,5 +34,7 @@ router.get('/:id/activity', taskController.getActivity);
 router.post('/:id/comments', validate(createCommentSchema), taskController.addComment);
 router.patch('/:id/comments/:commentId', validate(updateCommentSchema), taskController.updateComment);
 router.delete('/:id/comments/:commentId', taskController.deleteComment);
+router.post('/:id/dependencies', validate(addDependencySchema), taskController.addDependency);
+router.delete('/:id/dependencies/:blockerId', taskController.removeDependency);
 
 export { router as taskRoutes };

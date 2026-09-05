@@ -1,5 +1,5 @@
 import { Tag } from '@carbon/react';
-import { ListChecked, TreeViewAlt } from '@carbon/icons-react';
+import { ListChecked, Locked, TreeViewAlt } from '@carbon/icons-react';
 import type { Task } from '../../types/task';
 
 /**
@@ -14,13 +14,20 @@ import type { Task } from '../../types/task';
  * The icon is a child, not `renderIcon`: Carbon's Tag drops `renderIcon`
  * entirely at `size="sm"`, and the small size is the right one for a row.
  */
-export function TaskProgressTags({ task }: { task: Pick<Task, 'subtaskCount' | 'subtaskDoneCount' | 'checklistCount' | 'checklistDoneCount'> }) {
+export function TaskProgressTags({ task }: { task: Pick<Task, 'subtaskCount' | 'subtaskDoneCount' | 'checklistCount' | 'checklistDoneCount' | 'openBlockerCount'> }) {
   const subtasks = task.subtaskCount ?? 0;
   const checklist = task.checklistCount ?? 0;
-  if (subtasks === 0 && checklist === 0) return null;
+  const blockers = task.openBlockerCount ?? 0;
+  if (subtasks === 0 && checklist === 0 && blockers === 0) return null;
 
   return (
     <span className="task-progress-tags">
+      {blockers > 0 && (
+        <Tag size="sm" type="red" title={`Blocked by ${blockers} unfinished ${blockers === 1 ? 'task' : 'tasks'}`}>
+          <Locked size={12} className="task-progress-tags__icon" aria-hidden="true" />
+          Blocked
+        </Tag>
+      )}
       {subtasks > 0 && (
         <Tag
           size="sm"

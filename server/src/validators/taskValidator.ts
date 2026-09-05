@@ -14,7 +14,18 @@ export const createTaskSchema = z.object({
   parentId: z.string().uuid().nullable().optional(),
 });
 
-export const updateTaskSchema = createTaskSchema.partial();
+export const updateTaskSchema = createTaskSchema.partial().extend({
+  /**
+   * Finish a task that still has unfinished blockers. Off by default: the
+   * gate is the point of a dependency, and overriding it is a decision the
+   * user takes in the UI, not a default a caller inherits.
+   */
+  force: z.boolean().optional(),
+});
+
+export const addDependencySchema = z.object({
+  blockerId: z.string().uuid(),
+});
 
 export const reorderSchema = z.object({
   items: z.array(

@@ -185,6 +185,24 @@ export const taskController = {
     }
   },
 
+  async addDependency(req: Req, res: Response, next: NextFunction) {
+    try {
+      const task = await taskService.addDependency(req.user!.id, req.params.id, req.body.blockerId);
+      res.status(201).json({ data: task });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async removeDependency(req: Req, res: Response, next: NextFunction) {
+    try {
+      const task = await taskService.removeDependency(req.user!.id, req.params.id, req.params.blockerId);
+      res.json({ data: task });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async assignTask(req: Req, res: Response, next: NextFunction) {
     try {
       const { assignedToId } = req.body;

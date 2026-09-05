@@ -1519,3 +1519,37 @@ describe('/api/v1/tasks — activity and comments', () => {
     expect((await prisma.taskComment.findUniqueOrThrow({ where: { id: comment.id } })).body).toBe('BobsSecretComment');
   });
 });
+
+describe('/api/v1/tasks — dependencies', () => {
+  it('finishing a blocked task is a 409 that names the blockers; force gets past it', async () => {
+    const { alice } = await createTwoUsers();
+    await seedTaskStatuses(alice.id);
+    const cookie = authFor(alice.id);
+    const design = await createTask(alice.id, { title: 'Design' });
+    const build = await createTask(alice.id, { title: 'Build' });
+
+    const added = await request(app).post(`/api/v1/tasks/${build.id}/dependencies`).set('Cookie', cookie).send({ blockerId: design.id });
+    expect(added.status).toBe(201);
+    expect(added.body.data.blockedBy).toEqual([{ id: design.id, title: 'Design', status: 'TODO' }]);
+
+    const refused = await request(app).patch(`/api/v1/tasks/${build.id}`).set('Cookie', cookie).send({ status: 'DONE' });
+    expect(refused.status).toBe(409);
+    expect(refused.body.error).toMatchObject({ code: 'TASK_BLOCKED', details: { blockers: [{ id: design.id, title: 'Design' }] } });
+    expect(refused.body.error.message).toContain('Design');
+
+    const forced = await request(app).patch(`/api/v1/tasks/${build.id}`).set('Cookie', cookie).send({ status: 'DONE', force: true });
+    expect(forced.status).toBe(200);
+    expect(forced.body.data.status).toBe('DONE');
+  });
+
+  it('another account\'s task cannot be named as a blocker', async () => {
+    const { alice, bob } = await createTwoUsers();
+    const mine = await createTask(alice.id);
+    const bobs = await createTask(bob.id, { title: 'BobsSecretTask' });
+
+    const res = await request(app).post(`/api/v1/tasks/${mine.id}/dependencies`).set('Cookie', authFor(alice.id)).send({ blockerId: bobs.id });
+    expect(res.status).toBe(404);
+    expect(JSON.stringify(res.body)).not.toContain('BobsSecretTask');
+    expect(await prisma.taskDependency.count()).toBe(0);
+  });
+});

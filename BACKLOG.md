@@ -567,8 +567,21 @@ what the previous one adds:
   no attachments on comments, no live refresh of an open timeline when someone
   else comments (the `task:commented` socket event is emitted, nothing
   subscribes yet).
-- [ ] **T3 Dependencies** — `task_dependencies` (blocker, blocked); a blocked
-  task cannot reach a terminal status without an override.
+- [x] **T3 Dependencies** (1.5.0). `task_dependencies` keyed on
+  (blocker, blocked), cascade from both ends. Rules in the service: no
+  self-dependency, the blocker must be owned by the blocked task's account (a
+  share recipient may wire the owner's tasks together but not their own in),
+  and the graph stays acyclic — a bounded breadth-first walk over "is blocked
+  by" from the proposed blocker. The gate: `update` to a terminal status
+  with an open blocker is a 409 `TASK_BLOCKED` naming the blockers, unless
+  `force: true`, which the panel offers as "Complete anyway" and the audit row
+  records as `forced`. `reorder` has no force — the board rolls the card back
+  and shows the server's message. Rows carry `blockedByCount`,
+  `openBlockerCount`, `blocksCount`; a red "Blocked" tag appears wherever the
+  progress tags do; the list gains a Dependencies filter (`?blocked=`). Not
+  done: no Gantt or critical path; "blocks" is read-only from the blocked
+  task's side by design; the subtask checkbox on a blocked subtask shows the
+  refusal but has no "anyway" — open the subtask's own panel for that.
 - [ ] **T4 Recurring tasks** — reuse the calendar RRULE presets; completing an
   occurrence spawns the next.
 - [ ] **T5 Start dates, reminders and a My Day view.**

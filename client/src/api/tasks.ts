@@ -100,6 +100,14 @@ export const tasksApi = {
     return api.delete(`/tasks/${taskId}/checklist/${itemId}`);
   },
 
+  // Dependencies
+  addDependency(taskId: string, blockerId: string) {
+    return api.post<ApiResponse<Task>>(`/tasks/${taskId}/dependencies`, { blockerId });
+  },
+  removeDependency(taskId: string, blockerId: string) {
+    return api.delete<ApiResponse<Task>>(`/tasks/${taskId}/dependencies/${blockerId}`);
+  },
+
   // Activity and comments
   getActivity(taskId: string) {
     return api.get<{ data: TaskActivityEntry[] }>(`/tasks/${taskId}/activity`);
