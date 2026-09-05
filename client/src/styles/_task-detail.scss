@@ -373,3 +373,12 @@
     padding: $spacing-04 0;
   }
 }
+
+// "Previous occurrence · Next occurrence" under the Repeat field.
+.task-occurrences {
+  margin-top: $spacing-02;
+
+  &__link {
+    font: inherit;
+  }
+}

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { TASK_RRULE_PATTERN } from '../utils/recurrence.js';
 
 export const createTaskSchema = z.object({
   title: z.string().min(1).max(255),
@@ -12,6 +13,12 @@ export const createTaskSchema = z.object({
   estimatedMinutes: z.number().int().min(0).nullable().optional(),
   /** Makes the task a subtask of another. `null` detaches it. */
   parentId: z.string().uuid().nullable().optional(),
+  /**
+   * One RRULE line, from the shared presets. Finishing the task creates the
+   * next occurrence from it; that needs a due date to advance, which the
+   * service checks against the row (a PATCH may carry one without the other).
+   */
+  recurrence: z.string().regex(TASK_RRULE_PATTERN, 'Must be a supported RRULE').nullable().optional(),
 });
 
 export const updateTaskSchema = createTaskSchema.partial().extend({

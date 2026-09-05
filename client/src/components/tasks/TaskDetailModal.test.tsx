@@ -77,6 +77,8 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     blockedByCount: 0,
     openBlockerCount: 0,
     blocksCount: 0,
+    recurrence: null,
+    recurrenceNextId: null,
     ...overrides,
   } as Task;
 }
@@ -352,3 +354,55 @@ describe('TaskDetailModal', () => {
   });
 });
 
+describe('TaskDetailModal — repeat', () => {
+  beforeEach(() => {
+    vi.mocked(tasksApi.getById).mockReset();
+    vi.mocked(tasksApi.update).mockReset();
+    vi.mocked(tasksApi.update).mockResolvedValue(axiosOk({ data: makeTask() }));
+    useTaskStore.setState({ tasksVersion: 0 });
+  });
+
+  it('a preset is re-derived from the due date and sent as one RRULE line', async () => {
+    vi.mocked(tasksApi.getById).mockResolvedValue(
+      axiosOk({ data: makeTask({ dueDate: '2026-09-07T09:00:00.000Z', recurrence: null }) })
+    );
+    render(<TaskDetailModal taskId="task-1" open onClose={vi.fn()} onUpdated={vi.fn()} labels={LABELS} />);
+
+    const repeat = await screen.findByRole('combobox', { name: /Repeat/ });
+    await userEvent.click(repeat);
+    await userEvent.click(await screen.findByRole('option', { name: 'Weekly on Monday' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(tasksApi.update).toHaveBeenCalledWith('task-1', { recurrence: 'RRULE:FREQ=WEEKLY;BYDAY=MO' }));
+  });
+
+  it('an existing preset that was not touched is not re-sent', async () => {
+    vi.mocked(tasksApi.getById).mockResolvedValue(
+      axiosOk({ data: makeTask({ dueDate: '2026-09-07T09:00:00.000Z', recurrence: 'RRULE:FREQ=WEEKLY;BYDAY=MO' }) })
+    );
+    render(<TaskDetailModal taskId="task-1" open onClose={vi.fn()} onUpdated={vi.fn()} labels={LABELS} />);
+
+    await screen.findByRole('combobox', { name: /Repeat/ });
+    await userEvent.clear(screen.getByLabelText('Title'));
+    await userEvent.type(screen.getByLabelText('Title'), 'Renamed');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(tasksApi.update).toHaveBeenCalledWith('task-1', { title: 'Renamed' }));
+  });
+
+  it('a rule outside the presets is shown read-only and never rewritten', async () => {
+    vi.mocked(tasksApi.getById).mockResolvedValue(
+      axiosOk({ data: makeTask({ dueDate: '2026-09-07T09:00:00.000Z', recurrence: 'RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=MO' }) })
+    );
+    render(<TaskDetailModal taskId="task-1" open onClose={vi.fn()} onUpdated={vi.fn()} labels={LABELS} />);
+
+    const locked = (await screen.findByLabelText('Repeat')) as HTMLInputElement;
+    expect(locked.readOnly).toBe(true);
+    expect(locked.value).toBe('RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=MO');
+    await userEvent.clear(screen.getByLabelText('Title'));
+    await userEvent.type(screen.getByLabelText('Title'), 'Renamed');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(tasksApi.update).toHaveBeenCalledWith('task-1', { title: 'Renamed' }));
+  });
+});

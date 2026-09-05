@@ -406,6 +406,7 @@ export function describeEvent(
 
   switch (action) {
     case 'TASK_CREATED':
+      if (d.previousId) return 'created this task as the next occurrence of a repeating task';
       return d.parentId ? 'created this subtask' : 'created this task';
     case 'TASK_ASSIGNED':
       return to.assignedTo ? <>assigned this to <strong>{String(to.assignedTo)}</strong></> : 'unassigned this';

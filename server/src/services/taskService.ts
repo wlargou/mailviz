@@ -11,6 +11,7 @@ import {
 import { parsePagination, paginationMeta } from '../utils/pagination.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { getSharedTaskIds, canAccessTask, isTaskOwner } from '../utils/accessControl.js';
+import { nextOccurrence } from '../utils/recurrence.js';
 import { wsEmitToUsers, wsEmitToUser } from '../websocket.js';
 import { auditService } from './auditService.js';
 import { notificationService } from './notificationService.js';
@@ -424,6 +425,8 @@ export const taskService = {
         },
         blockedBy: { select: { blocker: DEPENDENCY_END }, orderBy: { createdAt: 'asc' } },
         blocks: { select: { blocked: DEPENDENCY_END }, orderBy: { createdAt: 'asc' } },
+        recurrenceNext: { select: { id: true, title: true, dueDate: true, status: true } },
+        recurrencePrevious: { select: { id: true, title: true, dueDate: true } },
         mailToTask: {
           include: {
             email: {
@@ -721,6 +724,10 @@ export const taskService = {
     const { labelIds, assignedToId, parentId, ...taskData } = data;
     let { customerId } = data;
 
+    if (taskData.recurrence && !taskData.dueDate) {
+      throw new AppError(400, 'RECURRENCE_NEEDS_DUE_DATE', 'A repeating task needs a due date to repeat from');
+    }
+
     if (parentId) {
       const parent = await assertParentAllowed(userId, null, parentId);
       // A subtask belongs to its parent's company unless told otherwise. It is
@@ -803,6 +810,14 @@ export const taskService = {
     }
 
     const { labelIds, customerId, parentId, force, ...taskData } = data;
+
+    // The rule needs a date to advance from — whichever of the two this PATCH
+    // leaves in place.
+    const nextRecurrence = taskData.recurrence !== undefined ? taskData.recurrence : existing.recurrence;
+    const nextDueDate = taskData.dueDate !== undefined ? taskData.dueDate : existing.dueDate;
+    if (nextRecurrence && !nextDueDate) {
+      throw new AppError(400, 'RECURRENCE_NEEDS_DUE_DATE', 'A repeating task needs a due date to repeat from');
+    }
 
     /**
      * The dependency gate. Moving to a terminal status while a blocker is
@@ -894,6 +909,10 @@ export const taskService = {
       details: { ...describeTaskChanges(existing, task, data), ...(forced ? { forced: true } : {}) },
     });
 
+    if (taskData.status !== undefined && taskData.status !== existing.status) {
+      await spawnNextOccurrences(userId, [id]);
+    }
+
     const [updated] = await withSubtaskProgress(userId, [formatTask(task)]);
     return updated;
   },
@@ -936,6 +955,7 @@ export const taskService = {
       })
     );
     await prisma.$transaction(operations);
+    if (finishing.length > 0) await spawnNextOccurrences(userId, finishing);
     return { success: true };
   },
 
@@ -1184,6 +1204,101 @@ export const taskService = {
     return { success: true };
   },
 };
+
+/**
+ * Create the next occurrence of every repeating task among `ids` that has
+ * just reached a terminal status.
+ *
+ * Called after the status write, never inside it: the write is the user's
+ * action and must land whatever happens here. Each spawn is its own
+ * transaction, and the claim on `recurrenceNextId` — an `updateMany` that
+ * matches only while it is still null — is what makes it happen once. Two
+ * completions racing both create a candidate; the loser's claim matches
+ * nothing and its candidate is removed. The unique index on the column is
+ * the backstop.
+ *
+ * What carries over: title, description, priority, estimate, company,
+ * assignee, labels, parent, the rule itself — and the checklist, unticked,
+ * because a repeating task's steps repeat with it. Dependencies do not: they
+ * were about this occurrence.
+ */
+async function spawnNextOccurrences(userId: string, ids: string[]) {
+  const rows = await prisma.task.findMany({
+    where: { id: { in: ids }, recurrence: { not: null }, recurrenceNextId: null, dueDate: { not: null } },
+    include: { labels: { select: { labelId: true } }, checklist: { orderBy: { position: 'asc' } } },
+  });
+  if (rows.length === 0) return;
+  const terminalByOwner = new Map<string, string[]>();
+
+  for (const row of rows) {
+    let terminal = terminalByOwner.get(row.userId);
+    if (!terminal) {
+      terminal = await terminalStatusNames(row.userId);
+      terminalByOwner.set(row.userId, terminal);
+    }
+    if (!isTerminalStatus(row.status, terminal)) continue;
+
+    const nextDue = nextOccurrence(row.recurrence!, row.dueDate!);
+    if (!nextDue) continue;
+
+    // The account's first unfinished status, in its own order.
+    const opening = await prisma.taskStatus.findFirst({
+      where: { userId: row.userId, isTerminal: false },
+      orderBy: { position: 'asc' },
+      select: { name: true },
+    });
+    const status = opening?.name ?? 'TODO';
+    const maxPos = await prisma.task.findFirst({
+      where: { userId: row.userId, status },
+      orderBy: { position: 'desc' },
+      select: { position: true },
+    });
+
+    const created = await prisma.$transaction(async (tx) => {
+      const next = await tx.task.create({
+        data: {
+          userId: row.userId,
+          title: row.title,
+          description: row.description,
+          priority: row.priority,
+          estimatedMinutes: row.estimatedMinutes,
+          customerId: row.customerId,
+          assignedToId: row.assignedToId,
+          parentId: row.parentId,
+          recurrence: row.recurrence,
+          status,
+          position: (maxPos?.position ?? 0) + 1000,
+          dueDate: nextDue,
+          labels: row.labels.length ? { create: row.labels.map((l) => ({ labelId: l.labelId })) } : undefined,
+          checklist: row.checklist.length
+            ? { create: row.checklist.map((c) => ({ text: c.text, position: c.position })) }
+            : undefined,
+        },
+        select: { id: true },
+      });
+      const claim = await tx.task.updateMany({
+        where: { id: row.id, recurrenceNextId: null },
+        data: { recurrenceNextId: next.id },
+      });
+      if (claim.count === 0) {
+        // Somebody else finished this occurrence first and already spawned.
+        await tx.task.delete({ where: { id: next.id } });
+        return null;
+      }
+      return next.id;
+    });
+
+    if (created) {
+      auditService.log({
+        userId,
+        action: 'TASK_CREATED',
+        entityType: 'task',
+        entityId: created,
+        details: { title: row.title, status, recurrence: row.recurrence, previousId: row.id, dueDate: nextDue.toISOString() },
+      });
+    }
+  }
+}
 
 /** A user as the timeline names them; null for "nobody". */
 async function userLabel(id: string | null): Promise<string | null> {

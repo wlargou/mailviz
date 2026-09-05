@@ -109,6 +109,14 @@ export interface Task {
   updatedAt: string;
   labels: Label[];
   customer: TaskCustomer | null;
+  /** An RRULE line; finishing the task creates the next occurrence. */
+  recurrence: string | null;
+  /** The occurrence created when this one was finished, if any. */
+  recurrenceNextId: string | null;
+  /** Only on `GET /tasks/:id`. */
+  recurrenceNext?: { id: string; title: string; dueDate: string | null; status: TaskStatus } | null;
+  /** Only on `GET /tasks/:id`. */
+  recurrencePrevious?: { id: string; title: string; dueDate: string | null } | null;
   /** Set when this task is a subtask. Two levels only. */
   parentId: string | null;
   parent: { id: string; title: string } | null;
@@ -164,6 +172,7 @@ export interface CreateTaskInput {
   assignedToId?: string | null;
   estimatedMinutes?: number | null;
   parentId?: string | null;
+  recurrence?: string | null;
 }
 
 export interface UpdateTaskInput extends Partial<CreateTaskInput> {

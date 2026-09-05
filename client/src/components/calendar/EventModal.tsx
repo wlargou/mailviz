@@ -25,6 +25,13 @@ import type {
   ReminderMethod,
 } from '../../types/calendar';
 import type { Contact } from '../../types/customer';
+import {
+  buildRecurrenceRules,
+  buildRecurrenceOptions,
+  parseRecurrencePreset,
+  type RecurrencePresetId,
+  type RecurrenceOption,
+} from '../../utils/recurrence';
 import { format } from 'date-fns';
 
 const EVENT_COLORS = [
@@ -55,90 +62,9 @@ const DURATION_OPTIONS = [
 ];
 
 // ─── Recurrence ───────────────────────────────────
-// We offer a fixed set of presets rather than a full RRULE builder. Anything
-// outside these presets is shown read-only so an existing rule is never
-// silently rewritten into something simpler than what the user set elsewhere.
-type RecurrencePresetId = 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly';
-
-interface RecurrenceOption {
-  id: RecurrencePresetId;
-  label: string;
-}
-
-const WEEKDAY_CODES = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'] as const;
-
-/** Build the RFC 5545 lines Google expects for a preset, anchored on the start date. */
-function buildRecurrenceRules(presetId: RecurrencePresetId, start: Date): string[] {
-  switch (presetId) {
-    case 'daily':
-      return ['RRULE:FREQ=DAILY'];
-    case 'weekly':
-      return [`RRULE:FREQ=WEEKLY;BYDAY=${WEEKDAY_CODES[start.getDay()]}`];
-    case 'monthly':
-      return [`RRULE:FREQ=MONTHLY;BYMONTHDAY=${start.getDate()}`];
-    case 'yearly':
-      return ['RRULE:FREQ=YEARLY'];
-    case 'none':
-    default:
-      return [];
-  }
-}
-
-function buildRecurrenceOptions(start: Date): RecurrenceOption[] {
-  return [
-    { id: 'none', label: 'Does not repeat' },
-    { id: 'daily', label: 'Daily' },
-    { id: 'weekly', label: `Weekly on ${format(start, 'EEEE')}` },
-    { id: 'monthly', label: `Monthly on day ${start.getDate()}` },
-    { id: 'yearly', label: `Yearly on ${format(start, 'MMMM d')}` },
-  ];
-}
-
-/**
- * Map an existing recurrence back onto a preset, or null when the rule is
- * richer than our presets (INTERVAL, COUNT, UNTIL, multiple BYDAYs, EXDATEs…).
- */
-function parseRecurrencePreset(rules: string[], start: Date): RecurrencePresetId | null {
-  if (rules.length === 0) return 'none';
-  if (rules.length > 1) return null;
-
-  const rule = rules[0].trim().toUpperCase();
-  if (!rule.startsWith('RRULE:')) return null;
-
-  const params = new Map<string, string>();
-  for (const part of rule.slice('RRULE:'.length).split(';')) {
-    if (!part) continue;
-    const idx = part.indexOf('=');
-    if (idx <= 0) return null;
-    params.set(part.slice(0, idx), part.slice(idx + 1));
-  }
-
-  const freq = params.get('FREQ');
-  if (!freq) return null;
-
-  // Only the qualifier our own presets emit is representable.
-  const qualifier = freq === 'WEEKLY' ? 'BYDAY' : freq === 'MONTHLY' ? 'BYMONTHDAY' : null;
-  for (const key of params.keys()) {
-    if (key !== 'FREQ' && key !== qualifier) return null;
-  }
-
-  switch (freq) {
-    case 'DAILY':
-      return 'daily';
-    case 'WEEKLY': {
-      const byDay = params.get('BYDAY');
-      return !byDay || byDay === WEEKDAY_CODES[start.getDay()] ? 'weekly' : null;
-    }
-    case 'MONTHLY': {
-      const byMonthDay = params.get('BYMONTHDAY');
-      return !byMonthDay || byMonthDay === String(start.getDate()) ? 'monthly' : null;
-    }
-    case 'YEARLY':
-      return 'yearly';
-    default:
-      return null;
-  }
-}
+// The presets live in utils/recurrence.ts, shared with tasks. Anything
+// outside them is shown read-only so an existing rule is never silently
+// rewritten into something simpler than what the user set elsewhere.
 
 // ─── Reminders & visibility ───────────────────────
 // Google caps an event at 5 reminder overrides, each at most 4 weeks (40320

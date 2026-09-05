@@ -25,6 +25,8 @@ import { TaskChecklist } from './TaskChecklist';
 import { TaskActivity } from './TaskActivity';
 import { TaskDependencies } from './TaskDependencies';
 import { apiError } from '../../utils/apiError';
+import { buildRecurrenceOptions, buildRecurrenceRules, parseRecurrencePreset, type RecurrencePresetId } from '../../utils/recurrence';
+import { format } from 'date-fns';
 import { TaskParentCrumb } from './TaskProgressTags';
 import { useUIStore } from '../../store/uiStore';
 import type { Task, Label, TaskPriority, TaskStatus, TaskStatusConfig } from '../../types/task';
@@ -115,6 +117,13 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, onOpenTask, 
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [assignedToId, setAssignedToId] = useState<string | null>(null);
   const [effortIndex, setEffortIndex] = useState(0);
+  /**
+   * The repeat preset, anchored on the due date. `locked` holds a rule the
+   * presets cannot express (set through the API), shown read-only rather
+   * than flattened by a save that never touched it.
+   */
+  const [recurrencePreset, setRecurrencePreset] = useState<RecurrencePresetId>('none');
+  const [lockedRecurrence, setLockedRecurrence] = useState<string | null>(null);
   const [users, setUsers] = useState<Array<{ id: string; name: string | null; email: string }>>([]);
   const [statusItems, setStatusItems] = useState<{ id: string; text: string }[]>([]);
   // The full rows too: the subtask checkboxes need to know which are terminal.
@@ -231,7 +240,12 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, onOpenTask, 
         setCustomerId(fresh.customerId);
         setAssignedToId(fresh.assignedToId || null);
         setEffortIndex(minutesToStepIndex(fresh.estimatedMinutes));
+        const anchor = fresh.dueDate ? new Date(fresh.dueDate) : new Date();
+        const preset = parseRecurrencePreset(fresh.recurrence ? [fresh.recurrence] : [], anchor);
+        setRecurrencePreset(preset ?? 'none');
+        setLockedRecurrence(preset === null ? fresh.recurrence : null);
         baselineRef.current = {
+          recurrence: fresh.recurrence ?? null,
           title: decodeEntities(fresh.title).trim(),
           description: decodeEntities(fresh.description).trim(),
           status: fresh.status,
@@ -303,6 +317,12 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, onOpenTask, 
       if (dueDate !== base.dueDate) patch.dueDate = dueDate;
       if (customerId !== base.customerId) patch.customerId = customerId;
       if (nextEstimate !== base.estimatedMinutes) patch.estimatedMinutes = nextEstimate;
+      // A locked rule is never rewritten; a preset is re-derived from the
+      // due date on every save, so moving the date moves the weekday with it.
+      if (!lockedRecurrence) {
+        const nextRecurrence = dueDate ? buildRecurrenceRules(recurrencePreset, new Date(dueDate))[0] ?? null : null;
+        if (nextRecurrence !== base.recurrence) patch.recurrence = nextRecurrence;
+      }
       if (!sameIdSet(selectedLabels, (base.labelIds as string[]) ?? [])) {
         patch.labelIds = selectedLabels;
       }
@@ -454,6 +474,44 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, onOpenTask, 
             placeholder="mm/dd/yyyy"
           />
         </DatePicker>
+        {lockedRecurrence ? (
+          <TextInput id="edit-task-recurrence-locked" labelText="Repeat" value={lockedRecurrence} readOnly helperText="Set outside the presets; shown as is." />
+        ) : (
+          <Dropdown
+            id="edit-task-recurrence"
+            titleText="Repeat"
+            label="Does not repeat"
+            helperText={dueDate ? undefined : 'Set a due date to repeat from'}
+            disabled={!dueDate}
+            items={buildRecurrenceOptions(dueDate ? new Date(dueDate) : new Date())}
+            itemToString={(item) => item?.label || ''}
+            selectedItem={buildRecurrenceOptions(dueDate ? new Date(dueDate) : new Date()).find((o) => o.id === (dueDate ? recurrencePreset : 'none'))}
+            onChange={({ selectedItem }) => {
+              if (selectedItem) setRecurrencePreset(selectedItem.id);
+            }}
+          />
+        )}
+        {(task.recurrencePrevious || task.recurrenceNext) && (
+          <p className="modal-form__helper task-occurrences">
+            {task.recurrencePrevious && (
+              <>
+                Previous occurrence:{' '}
+                <button type="button" className="task-parent-crumb--link task-occurrences__link" onClick={() => onOpenTask?.(task.recurrencePrevious!.id)} disabled={!onOpenTask}>
+                  {task.recurrencePrevious.dueDate ? format(new Date(task.recurrencePrevious.dueDate), 'MMM d, yyyy') : 'undated'}
+                </button>
+              </>
+            )}
+            {task.recurrencePrevious && task.recurrenceNext && ' · '}
+            {task.recurrenceNext && (
+              <>
+                Next occurrence:{' '}
+                <button type="button" className="task-parent-crumb--link task-occurrences__link" onClick={() => onOpenTask?.(task.recurrenceNext!.id)} disabled={!onOpenTask}>
+                  {task.recurrenceNext.dueDate ? format(new Date(task.recurrenceNext.dueDate), 'MMM d, yyyy') : 'undated'}
+                </button>
+              </>
+            )}
+          </p>
+        )}
         <CompanyComboBox
           id="edit-task-customer"
           titleText="Company"
