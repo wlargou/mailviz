@@ -26,6 +26,8 @@ import { TaskActivity } from './TaskActivity';
 import { TaskDependencies } from './TaskDependencies';
 import { TaskLinks } from './TaskLinks';
 import { TaskTime } from './TaskTime';
+import { SaveAsTemplateModal } from './SaveAsTemplateModal';
+import { TemplateIcon } from './TemplateIcon';
 import { apiError } from '../../utils/apiError';
 import { buildRecurrenceOptions, buildRecurrenceRules, parseRecurrencePreset, type RecurrencePresetId } from '../../utils/recurrence';
 import { format } from 'date-fns';
@@ -137,6 +139,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, onOpenTask, 
   const [statusConfigs, setStatusConfigs] = useState<TaskStatusConfig[]>([]);
   const [loading, setLoading] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
   /**
    * The server refused to finish this task because a blocker is open. Kept
    * so the panel can offer "Complete anyway", which resends with `force`.
@@ -673,8 +676,23 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, onOpenTask, 
           >
             Share task
           </Button>
+          <Button kind="tertiary" size="sm" renderIcon={TemplateIcon} onClick={() => setSaveTemplateOpen(true)} style={{ marginLeft: '0.5rem' }}>
+            Save as template
+          </Button>
         </div>
       </div>
+      )}
+
+      {/* Mounted only while open: Carbon's Modal renders its fields hidden
+          otherwise, and a hidden input seeded with the title is a second
+          "Renew the contract" for anything reading the form by value. */}
+      {task && saveTemplateOpen && (
+        <SaveAsTemplateModal
+          open={saveTemplateOpen}
+          taskId={task.id}
+          suggestedName={decodeEntities(task.title)}
+          onClose={() => setSaveTemplateOpen(false)}
+        />
       )}
 
       <ShareDialog

@@ -1,5 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Tabs, TabList, Tab, TabPanels, TabPanel } from '@carbon/react';
+import { Tabs, TabList, Tab, TabPanels, TabPanel, Button } from '@carbon/react';
+import { TemplateIcon } from './TemplateIcon';
+import { ApplyTemplateModal } from './ApplyTemplateModal';
 import { useSearchParams } from 'react-router-dom';
 import { TaskListView } from './TaskListView';
 import { TaskByCompanyView } from './TaskByCompanyView';
@@ -21,6 +23,7 @@ export function TasksPage() {
 
   const [labels, setLabels] = useState<Label[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
+  const [applyOpen, setApplyOpen] = useState(false);
   // An id, not the object. Handing the panel a row captured at click time
   // is what let it re-seed stale values and save them back.
   const [editTaskId, setEditTaskId] = useState<string | null>(null);
@@ -105,6 +108,9 @@ export function TasksPage() {
           <h1>Tasks</h1>
           <p className="page-header__subtitle">Manage and track all your tasks</p>
         </div>
+        <Button kind="tertiary" renderIcon={TemplateIcon} onClick={() => setApplyOpen(true)}>
+          From template
+        </Button>
       </div>
 
           <Tabs>
@@ -137,6 +143,8 @@ export function TasksPage() {
               </TabPanel>
             </TabPanels>
           </Tabs>
+
+      <ApplyTemplateModal open={applyOpen} onClose={() => setApplyOpen(false)} />
 
       <TaskCreateModal
         open={createOpen}

@@ -1611,3 +1611,35 @@ describe('/api/v1/tasks — time', () => {
     expect(detail.body.data.timeEntries).toHaveLength(2);
   });
 });
+
+describe('/api/v1/task-templates', () => {
+  it('creates a template, applies it, and keeps accounts apart', async () => {
+    const { alice, bob } = await createTwoUsers();
+    await seedTaskStatuses(alice.id);
+    const cookie = authFor(alice.id);
+
+    const invalid = await request(app).post('/api/v1/task-templates').set('Cookie', cookie).send({ name: 'x', items: [] });
+    expect(invalid.status).toBe(400);
+
+    const created = await request(app)
+      .post('/api/v1/task-templates')
+      .set('Cookie', cookie)
+      .send({ name: 'Onboarding', items: [{ title: 'Kickoff', dueOffsetDays: 0, subtasks: [{ title: 'Book room' }] }] });
+    expect(created.status).toBe(201);
+    expect(created.body.data.taskCount).toBe(2);
+
+    const foreign = await request(app).get(`/api/v1/task-templates/${created.body.data.id}`).set('Cookie', authFor(bob.id));
+    expect(foreign.status).toBe(404);
+    const foreignApply = await request(app).post(`/api/v1/task-templates/${created.body.data.id}/instantiate`).set('Cookie', authFor(bob.id)).send({});
+    expect(foreignApply.status).toBe(404);
+
+    const applied = await request(app)
+      .post(`/api/v1/task-templates/${created.body.data.id}/instantiate`)
+      .set('Cookie', cookie)
+      .send({ anchorDate: '2026-09-14T09:00:00.000Z' });
+    expect(applied.status).toBe(201);
+    expect(applied.body.data.created).toBe(2);
+    expect(applied.body.data.tasks[0]).toMatchObject({ title: 'Kickoff', subtaskCount: 1, dueDate: '2026-09-14T09:00:00.000Z' });
+    expect(await prisma.task.count({ where: { userId: alice.id } })).toBe(2);
+  });
+});

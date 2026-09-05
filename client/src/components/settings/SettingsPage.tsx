@@ -49,6 +49,7 @@ import { useSearchParams } from 'react-router-dom';
 import { authApi, type AccountDeletionSummary } from '../../api/auth';
 import { TiptapEditor } from '../mail/TiptapEditor';
 import { TemplateSettings } from './TemplateSettings';
+import { TaskTemplateSettings } from './TaskTemplateSettings';
 import { OnboardingSettings } from './OnboardingSettings';
 import { taskStatusesApi } from '../../api/taskStatuses';
 import { companyCategoriesApi } from '../../api/companyCategories';
@@ -999,6 +1000,13 @@ export function SettingsPage() {
                   if (label) handleDeleteLabel(label);
                 }}
               />
+            </SettingsSection>
+
+            <SettingsSection
+              title="Task templates"
+              description="Saved trees of tasks — subtasks, checklists, labels and the spacing of their due dates — applied from the Tasks page against a company and a day. Author one by opening a task and choosing “Save as template”."
+            >
+              <TaskTemplateSettings />
             </SettingsSection>
           </Tile>
 

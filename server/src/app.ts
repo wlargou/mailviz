@@ -12,6 +12,7 @@ import { TRUSTED_PROXIES } from './config/trustedProxies.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requireAuth } from './middleware/auth.js';
 import { taskRoutes } from './routes/tasks.js';
+import { taskTemplateRoutes } from './routes/taskTemplates.js';
 import { labelRoutes } from './routes/labels.js';
 import { customerRoutes } from './routes/customers.js';
 import { contactRoutes } from './routes/contacts.js';
@@ -138,6 +139,7 @@ app.use('/api/v1/auth', authRoutes);
 
 // Protected routes — require authentication
 app.use('/api/v1/tasks', requireAuth, taskRoutes);
+app.use('/api/v1/task-templates', requireAuth, taskTemplateRoutes);
 app.use('/api/v1/labels', requireAuth, labelRoutes);
 app.use('/api/v1/customers', requireAuth, customerRoutes);
 app.use('/api/v1/contacts', requireAuth, contactRoutes);
