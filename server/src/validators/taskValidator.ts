@@ -34,6 +34,14 @@ export const updateTaskSchema = createTaskSchema.partial().extend({
   force: z.boolean().optional(),
 });
 
+export const TASK_LINK_TYPES = ['contact', 'deal', 'event'] as const;
+export type TaskLinkType = (typeof TASK_LINK_TYPES)[number];
+
+export const addLinkSchema = z.object({
+  entityType: z.enum(TASK_LINK_TYPES),
+  entityId: z.string().uuid(),
+});
+
 export const addDependencySchema = z.object({
   blockerId: z.string().uuid(),
 });
