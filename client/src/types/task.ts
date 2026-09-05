@@ -99,6 +99,11 @@ export interface Task {
   status: TaskStatus;
   priority: TaskPriority;
   dueDate: string | null;
+  /** When work can begin. */
+  startDate: string | null;
+  /** When a reminder notification fires. */
+  remindAt: string | null;
+  reminderSentAt: string | null;
   position: number;
   customerId: string | null;
   assignedToId: string | null;
@@ -153,6 +158,14 @@ export interface Task {
   } | null;
 }
 
+/** The four buckets of the My Day view. */
+export interface MyDay {
+  overdue: Task[];
+  dueToday: Task[];
+  startingToday: Task[];
+  upcoming: Task[];
+}
+
 export interface TaskSummary {
   total: number;
   completed: number;
@@ -167,6 +180,8 @@ export interface CreateTaskInput {
   status?: TaskStatus;
   priority?: TaskPriority;
   dueDate?: string | null;
+  startDate?: string | null;
+  remindAt?: string | null;
   labelIds?: string[];
   customerId?: string | null;
   assignedToId?: string | null;

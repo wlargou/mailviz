@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { SideNav, SideNavItems, SideNavLink, Tag } from '@carbon/react';
-import { Dashboard, TaskComplete, UserMultiple, Events, Calendar, Email, Settings, Partnership, Activity } from '@carbon/icons-react';
+import { Dashboard, TaskComplete, UserMultiple, Events, Calendar, Email, Settings, Partnership, Activity, Sunrise } from '@carbon/icons-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useUIStore } from '../../store/uiStore';
 import { dashboardApi, type NavCounts } from '../../api/dashboard';
@@ -63,6 +63,13 @@ export function AppSideNav() {
           onClick={() => navigate('/')}
         >
           Dashboard
+        </SideNavLink>
+        <SideNavLink
+          renderIcon={Sunrise}
+          isActive={location.pathname === '/my-day'}
+          onClick={() => navigate('/my-day')}
+        >
+          My Day
         </SideNavLink>
         <SideNavLink
           renderIcon={TaskComplete}

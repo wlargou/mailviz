@@ -7,6 +7,10 @@ export const createTaskSchema = z.object({
   status: z.string().trim().min(1).max(100).optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
   dueDate: z.string().datetime().nullable().optional(),
+  /** When work can begin. Never after the due date — the service checks the pair. */
+  startDate: z.string().datetime().nullable().optional(),
+  /** When to raise a reminder notification. Fires once. */
+  remindAt: z.string().datetime().nullable().optional(),
   labelIds: z.array(z.string().uuid()).optional(),
   customerId: z.string().uuid().nullable().optional(),
   assignedToId: z.string().uuid().nullable().optional(),
