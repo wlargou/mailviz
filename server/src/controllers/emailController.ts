@@ -210,6 +210,23 @@ export const emailController = {
     }
   },
 
+  async attachToTask(req: Req, res: Response, next: NextFunction) {
+    try {
+      const link = await emailService.attachToTask(req.params.id, req.body.taskId, req.body.note, req.user!.id);
+      res.status(201).json({ data: link });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async detachFromTask(req: Req, res: Response, next: NextFunction) {
+    try {
+      res.json({ data: await emailService.detachFromTask(req.params.id, req.params.taskId, req.user!.id) });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async convertToTask(req: Req, res: Response, next: NextFunction) {
     try {
       const task = await emailService.convertToTask(req.params.id, req.body, req.user!.id);

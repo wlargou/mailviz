@@ -25,7 +25,7 @@ import {
   UNCATEGORIZED_CUSTOMER_ID,
   type EmailQueryParams,
 } from '../utils/emailHelpers.js';
-import { getSharedThreadIds, canAccessThread } from '../utils/accessControl.js';
+import { canAccessTask, getSharedThreadIds, canAccessThread } from '../utils/accessControl.js';
 import { auditService } from './auditService.js';
 import { notificationService } from './notificationService.js';
 import { snoozeService } from './snoozeService.js';
@@ -944,7 +944,7 @@ export const emailService = {
       include: {
         attachments: true,
         customer: { select: { id: true, name: true, domain: true, logoUrl: true, isVip: true, isInternal: true } },
-        mailToTask: { include: { task: true } },
+        taskLinks: { include: { task: true } },
       },
     });
 
@@ -962,7 +962,7 @@ export const emailService = {
       include: {
         attachments: true,
         customer: { select: { id: true, name: true, domain: true, logoUrl: true, isVip: true, isInternal: true } },
-        mailToTask: { include: { task: true } },
+        taskLinks: { include: { task: true } },
       },
     });
 
@@ -979,7 +979,7 @@ export const emailService = {
         include: {
           attachments: true,
           customer: { select: { id: true, name: true, domain: true, logoUrl: true, isVip: true, isInternal: true } },
-          mailToTask: { include: { task: true } },
+          taskLinks: { include: { task: true } },
         },
       });
       if (candidate?.threadId && await canAccessThread(candidate.threadId, userId)) {
@@ -1369,10 +1369,8 @@ export const emailService = {
     const email = await prisma.email.findFirst({ where: { id: emailId, userId } });
     if (!email) throw Object.assign(new Error('Email not found'), { status: 404 });
 
-    // Check if already converted
-    const existing = await prisma.mailToTask.findUnique({ where: { emailId } });
-    if (existing) throw Object.assign(new Error('Email already converted to task'), { status: 409 });
-
+    // An email may produce more than one task since 1.12 — a thread with
+    // three asks in it is three tasks — so there is no "already converted".
     const task = await prisma.task.create({
       data: {
         // Where Gmail's text stops being a mirror of Gmail and becomes our
@@ -1399,6 +1397,41 @@ export const emailService = {
     auditService.log({ userId, action: 'EMAIL_CONVERTED_TO_TASK', entityType: 'email', entityId: emailId, details: { taskTitle: data.title || email.subject, taskId: task.id, subject: email.subject } });
 
     return task;
+  },
+
+  /**
+   * Attach an email to a task that already exists — the other half of
+   * convert-to-task. The email must be the caller's (or in a thread shared
+   * with them) and the task reachable; the pair is unique, so attaching the
+   * same message twice is one link.
+   */
+  async attachToTask(emailId: string, taskId: string, note: string | undefined, userId: string) {
+    const email = await prisma.email.findFirst({ where: { id: emailId }, select: { id: true, userId: true, threadId: true, subject: true } });
+    if (!email) throw Object.assign(new Error('Email not found'), { status: 404 });
+    if (email.userId !== userId) {
+      const shared = email.threadId ? await canAccessThread(email.threadId, userId) : false;
+      if (!shared) throw Object.assign(new Error('Email not found'), { status: 404 });
+    }
+    if (!(await canAccessTask(taskId, userId))) {
+      throw Object.assign(new Error('Task not found'), { status: 404 });
+    }
+    const link = await prisma.mailToTask.upsert({
+      where: { emailId_taskId: { emailId, taskId } },
+      create: { emailId, taskId, conversionNote: note || null },
+      update: note ? { conversionNote: note } : {},
+    });
+    auditService.log({ userId, action: 'EMAIL_ATTACHED_TO_TASK', entityType: 'email', entityId: emailId, details: { taskId, subject: email.subject } });
+    return link;
+  },
+
+  async detachFromTask(emailId: string, taskId: string, userId: string) {
+    if (!(await canAccessTask(taskId, userId))) {
+      throw Object.assign(new Error('Task not found'), { status: 404 });
+    }
+    const { count } = await prisma.mailToTask.deleteMany({ where: { emailId, taskId } });
+    if (count === 0) throw Object.assign(new Error('Link not found'), { status: 404 });
+    auditService.log({ userId, action: 'EMAIL_DETACHED_FROM_TASK', entityType: 'task', entityId: taskId, details: { emailId } });
+    return { success: true };
   },
 
   async getUnreadCount(userId: string) {

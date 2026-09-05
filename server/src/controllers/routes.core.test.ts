@@ -897,7 +897,7 @@ describe('/api/v1/emails mutations', () => {
     expect(await prisma.mailToTask.count()).toBe(0);
   });
 
-  it('POST /:id/convert-to-task creates a task owned by the caller, once', async () => {
+  it('POST /:id/convert-to-task creates a task owned by the caller — and can again', async () => {
     const { alice } = await createTwoUsers();
     const email = await createEmail(alice.id, { subject: 'Follow up with Acme' });
 
@@ -912,13 +912,16 @@ describe('/api/v1/emails mutations', () => {
       userId: alice.id,
     });
 
-    // The MailToTask row carries a unique on emailId; a second conversion is a
-    // 409, not a 500 from the constraint.
+    // Since 1.12 the link is many-to-many: a thread with three asks in it is
+    // three tasks, so a second conversion is a second task, not a 409.
     const again = await call('POST', `/api/v1/emails/${email.id}/convert-to-task`, {
       as: alice.id,
       body: {},
     });
-    expect(again.status).toBe(409);
+    expect(again.status).toBe(201);
+    const idOf = (res: { body: unknown }) => (res.body as { data: { id: string } }).data.id;
+    expect(idOf(again)).not.toBe(idOf(created));
+    expect(await prisma.mailToTask.count({ where: { emailId: email.id } })).toBe(2);
   });
 
   it('POST /:id/convert-to-task decodes the Gmail text into the task', async () => {

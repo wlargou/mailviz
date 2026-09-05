@@ -265,7 +265,7 @@ describe('TaskByCompanyView', () => {
     // This assertion used to be the opposite, and the old contract was the bug:
     // a view passing its own copy upward is how the edit panel came to re-seed
     // stale values and save them back over newer ones. It also handed over the
-    // wrong SHAPE — this endpoint includes `mailToTask`, the list endpoint does
+    // wrong SHAPE — this endpoint includes `emailLinks`, the list endpoint does
     // not, so what the panel received depended on which tab you opened it from.
     // The panel fetches by id now, so an id is all a view may pass.
     const user = userEvent.setup();
@@ -423,7 +423,7 @@ describe('TaskByCompanyView — the task row', () => {
     makeTask({
       title: 'Renewal',
       description: 'Morpheus license renewal terms forwarded for review.',
-      mailToTask: {
+      emailLinks: [{
         id: 'm1',
         conversionNote: null,
         email: {
@@ -433,8 +433,10 @@ describe('TaskByCompanyView — the task row', () => {
           fromName: 'Ilham Bennani',
           threadId: 'thread-9',
           receivedAt: '2026-08-24T09:00:00.000Z',
+          isArchived: false,
         },
-      },
+        createdAt: '2026-08-24T09:05:00.000Z',
+      }],
       ...overrides,
     } as Partial<Task>);
 

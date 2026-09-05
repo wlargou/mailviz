@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render as rtlRender, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import type { ReactElement } from 'react';
+
+// The section navigates to Mail for a reply, so it needs a router around it.
+const render = (ui: ReactElement) => rtlRender(<MemoryRouter>{ui}</MemoryRouter>);
 import userEvent from '@testing-library/user-event';
 import { AxiosHeaders, type AxiosResponse } from 'axios';
 import { tasksApi } from '../../api/tasks';

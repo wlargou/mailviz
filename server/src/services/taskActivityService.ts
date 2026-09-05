@@ -28,7 +28,7 @@ export const taskActivityService = {
       throw new AppError(404, 'TASK_NOT_FOUND', 'Task not found');
     }
 
-    const [events, comments] = await Promise.all([
+    const [events, comments, replies] = await Promise.all([
       prisma.auditLog.findMany({
         where: { entityType: 'task', entityId: taskId },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
@@ -47,6 +47,7 @@ export const taskActivityService = {
         take: ACTIVITY_LIMIT,
         include: COMMENT_INCLUDE,
       }),
+      repliesOnLinkedThreads(taskId),
     ]);
 
     // Comment rows already have their own audit entry (TASK_COMMENTED); the
@@ -73,6 +74,7 @@ export const taskActivityService = {
         mentions: c.mentions,
         editedAt: c.editedAt,
       })),
+      ...replies,
     ].sort((a, b) => b.at.getTime() - a.at.getTime() || (a.id < b.id ? 1 : -1));
 
     return { data: entries };
@@ -139,6 +141,48 @@ export const taskActivityService = {
     return { success: true };
   },
 };
+
+/**
+ * Mail that arrived on a linked thread after the link was made — the replies
+ * to the message a task was born from. Shown on the timeline as their own
+ * kind, with the sender as the actor, so "Sam replied" sits between "moved
+ * to In progress" and a comment without anyone opening Mail.
+ */
+async function repliesOnLinkedThreads(taskId: string) {
+  const links = await prisma.mailToTask.findMany({
+    where: { taskId },
+    select: { emailId: true, createdAt: true, email: { select: { threadId: true, userId: true } } },
+  });
+  if (links.length === 0) return [];
+  const earliestByThread = new Map<string, { since: Date; userId: string }>();
+  for (const l of links) {
+    if (!l.email.threadId) continue;
+    const seen = earliestByThread.get(l.email.threadId);
+    if (!seen || l.createdAt < seen.since) earliestByThread.set(l.email.threadId, { since: l.createdAt, userId: l.email.userId });
+  }
+  if (earliestByThread.size === 0) return [];
+  const linkedIds = new Set(links.map((l) => l.emailId));
+  const emails = await prisma.email.findMany({
+    where: {
+      OR: [...earliestByThread].map(([threadId, { since, userId }]) => ({ threadId, userId, receivedAt: { gt: since } })),
+    },
+    orderBy: { receivedAt: 'desc' },
+    take: ACTIVITY_LIMIT,
+    select: { id: true, threadId: true, subject: true, from: true, fromName: true, snippet: true, receivedAt: true, isRead: true },
+  });
+  return emails
+    .filter((e) => !linkedIds.has(e.id))
+    .map((e) => ({
+      kind: 'email' as const,
+      id: e.id,
+      at: e.receivedAt,
+      actor: { id: e.from, name: e.fromName, email: e.from, avatarUrl: null },
+      subject: e.subject,
+      snippet: e.snippet,
+      threadId: e.threadId,
+      isRead: e.isRead,
+    }));
+}
 
 /**
  * The mention list, reduced to real users other than the author.

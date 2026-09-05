@@ -72,6 +72,14 @@ export const emailsApi = {
     return api.post('/emails/batch/trash', { ids });
   },
 
+  /** Attach this email to a task that already exists. */
+  attachToTask(emailId: string, taskId: string, note?: string) {
+    return api.post(`/emails/${emailId}/attach-to-task`, { taskId, note });
+  },
+  detachFromTask(emailId: string, taskId: string) {
+    return api.delete(`/emails/${emailId}/attach-to-task/${taskId}`);
+  },
+
   convertToTask(id: string, data: ConvertToTaskInput) {
     return api.post<ApiResponse<Task>>(`/emails/${id}/convert-to-task`, data);
   },

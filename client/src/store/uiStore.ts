@@ -7,6 +7,8 @@ interface Notification {
   kind: 'success' | 'error' | 'info' | 'warning';
   title: string;
   subtitle?: string;
+  /** An offer the toast can carry: "Archive the thread". */
+  action?: { label: string; onClick: () => void };
 }
 
 interface UIState {

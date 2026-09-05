@@ -470,12 +470,13 @@ export const taskService = {
           orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
           take: 100,
         },
-        mailToTask: {
+        emailLinks: {
           include: {
             email: {
-              select: { id: true, subject: true, from: true, fromName: true, threadId: true, receivedAt: true },
+              select: { id: true, subject: true, from: true, fromName: true, threadId: true, receivedAt: true, isArchived: true },
             },
           },
+          orderBy: { createdAt: 'asc' },
         },
       },
     });
@@ -580,13 +581,11 @@ export const taskService = {
          * with a title alone. `threadId` is what makes "Open email" able to go
          * anywhere; without it the link would have nothing to navigate to.
          */
-        mailToTask: {
+        emailLinks: {
           select: {
             id: true,
             conversionNote: true,
-            // Matches the shape `Task.mailToTask` already declares on the
-            // client. Selecting a narrower one here would make that type a lie
-            // for this endpoint alone, which is worse than two extra columns.
+            createdAt: true,
             email: {
               select: {
                 id: true,
@@ -595,9 +594,13 @@ export const taskService = {
                 fromName: true,
                 threadId: true,
                 receivedAt: true,
+                isArchived: true,
               },
             },
           },
+          orderBy: { createdAt: 'asc' },
+          // The row shows the first one; the panel shows them all.
+          take: 1,
         },
       },
       // Deterministic within a group: soonest due first, undated last, then a

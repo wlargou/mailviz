@@ -72,6 +72,17 @@ export type TaskActivityEntry =
       body: string;
       mentions: string[];
       editedAt: string | null;
+    }
+  | {
+      /** A reply on a linked thread; the actor is the sender. */
+      kind: 'email';
+      id: string;
+      at: string;
+      actor: TaskActor;
+      subject: string;
+      snippet: string | null;
+      threadId: string | null;
+      isRead: boolean;
     };
 
 export type TaskLinkType = 'contact' | 'deal' | 'event';
@@ -104,6 +115,22 @@ export interface TaskRef {
   id: string;
   title: string;
   status: TaskStatus;
+}
+
+/** An email a task was made from, or attached to later. */
+export interface EmailLink {
+  id: string;
+  conversionNote: string | null;
+  createdAt: string;
+  email: {
+    id: string;
+    subject: string;
+    from: string;
+    fromName: string | null;
+    threadId: string | null;
+    receivedAt: string;
+    isArchived: boolean;
+  };
 }
 
 /** One line on a task's checklist. */
@@ -179,18 +206,11 @@ export interface Task {
   blockedBy?: TaskRef[];
   /** Only on `GET /tasks/:id`. */
   blocks?: TaskRef[];
-  mailToTask?: {
-    id: string;
-    conversionNote: string | null;
-    email: {
-      id: string;
-      subject: string;
-      from: string;
-      fromName: string | null;
-      threadId: string | null;
-      receivedAt: string;
-    };
-  } | null;
+  /**
+   * The emails this task was made from or attached to. List rows carry at
+   * most the first; `GET /tasks/:id` carries them all.
+   */
+  emailLinks?: EmailLink[];
 }
 
 /** What a batch action did: how many rows changed, and which it left alone and why. */

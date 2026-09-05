@@ -26,6 +26,8 @@ import { TaskActivity } from './TaskActivity';
 import { TaskDependencies } from './TaskDependencies';
 import { TaskLinks } from './TaskLinks';
 import { TaskTime } from './TaskTime';
+import { TaskEmails } from './TaskEmails';
+import { emailsApi } from '../../api/emails';
 import { SaveAsTemplateModal } from './SaveAsTemplateModal';
 import { TemplateIcon } from './TemplateIcon';
 import { apiError } from '../../utils/apiError';
@@ -295,6 +297,30 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, onOpenTask, 
     return () => { cancelled = true; };
   }, [open, taskId, retry]);
 
+  /**
+   * Closing a task that came from mail usually means the thread is done too.
+   * Offer, do not act: the thread may still be live for someone else's ask.
+   */
+  const offerToArchive = (newStatus: string | undefined) => {
+    if (!task || !newStatus) return;
+    const finished = statusConfigs.some((s) => s.name === newStatus && s.isTerminal);
+    const inInbox = (task.emailLinks ?? []).filter((l) => !l.email.isArchived);
+    if (!finished || inInbox.length === 0) return;
+    addNotification({
+      kind: 'info',
+      title: `Archive the ${inInbox.length === 1 ? 'linked email' : `${inInbox.length} linked emails`}?`,
+      subtitle: inInbox.length === 1 ? decodeEntities(inInbox[0]!.email.subject) : 'The threads this task was made from.',
+      action: {
+        label: 'Archive',
+        onClick: () => {
+          void emailsApi.batchArchive(inInbox.map((l) => l.email.id)).catch(() => {
+            addNotification({ kind: 'error', title: 'Could not archive the emails' });
+          });
+        },
+      },
+    });
+  };
+
   const handleSubmit = async (force = false) => {
     if (!task || !title.trim()) return;
     setLoading(true);
@@ -358,6 +384,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, onOpenTask, 
       }
 
       addNotification({ kind: 'success', title: 'Task updated' });
+      offerToArchive(patch.status as string | undefined);
       taskChanged();
       onUpdated();
       onClose();
@@ -620,46 +647,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, onOpenTask, 
         <TaskLinks task={task} onChanged={reloadTask} />
         <TaskTime task={task} onChanged={reloadTask} />
         <TaskActivity taskId={task.id} ownerId={task.userId} users={users} statuses={statusConfigs} version={sectionVersion} />
-        {task.mailToTask?.email && (
-          <div className="modal-form__source-email">
-            <p className="modal-form__label" style={{ fontSize: '0.75rem', color: 'var(--cds-text-secondary)', marginBottom: '0.25rem' }}>Created from email</p>
-            <div
-              role="button"
-              tabIndex={0}
-              className="modal-form__email-link"
-              onClick={() => {
-                onClose();
-                // Navigate to mail page — the thread will be visible
-                window.location.href = '/mail';
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  onClose();
-                  window.location.href = '/mail';
-                }
-              }}
-              style={{
-                padding: '0.5rem 0.75rem',
-                background: 'var(--cds-layer-02)',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                borderLeft: '3px solid var(--cds-link-primary)',
-              }}
-            >
-              <div style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--cds-text-primary)' }}>
-                {decodeEntities(task.mailToTask.email.subject)}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--cds-text-secondary)', marginTop: '0.125rem' }}>
-                From: {decodeEntities(task.mailToTask.email.fromName || task.mailToTask.email.from)}
-              </div>
-              {task.mailToTask.conversionNote && (
-                <div style={{ fontSize: '0.75rem', color: 'var(--cds-text-secondary)', marginTop: '0.25rem', fontStyle: 'italic' }}>
-                  Note: {task.mailToTask.conversionNote}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        <TaskEmails task={task} onChanged={reloadTask} />
         <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid var(--cds-border-subtle)' }}>
           <Button
             kind="tertiary"
