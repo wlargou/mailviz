@@ -552,8 +552,21 @@ what the previous one adds:
   does not move its subtasks (they are their own cards, with a breadcrumb),
   and checklist items cannot be renamed or reordered from the UI yet — the
   endpoint accepts `text`, the UI just has no control for it.
-- [ ] **T2 Activity history and comments** — a per-task timeline from the
-  audit log, plus `task_comments` with @mentions that notify.
+- [x] **T2 Activity history and comments** (1.4.0). `GET /tasks/:id/activity`
+  reads the audit log sideways — every row about the task, whoever wrote it —
+  gated by the task's access rather than by the caller's own rows, and merges
+  in `task_comments`. `TASK_UPDATED` now records `from` / `to` values, so the
+  timeline reads "moved this from To do to Done" rather than "changed: status"
+  (older rows degrade to the change names). Comments are plain text; the
+  client resolves `@Name` to ids as they are picked and sends only those still
+  in the text. Mentioned users get `TASK_MENTIONED`, the owner and assignee
+  get `TASK_COMMENTED` unless they wrote it or were mentioned — nobody twice.
+  Author-only edit; author or owner delete. A task notification now deep-links
+  to `/tasks?task=<id>`, which opens the panel. Not done: the Activity page
+  still shows only the caller's own rows (unchanged, by design); no reactions,
+  no attachments on comments, no live refresh of an open timeline when someone
+  else comments (the `task:commented` socket event is emitted, nothing
+  subscribes yet).
 - [ ] **T3 Dependencies** — `task_dependencies` (blocker, blocked); a blocked
   task cannot reach a terminal status without an override.
 - [ ] **T4 Recurring tasks** — reuse the calendar RRULE presets; completing an

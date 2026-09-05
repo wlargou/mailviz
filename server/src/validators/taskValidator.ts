@@ -41,8 +41,20 @@ export const updateChecklistItemSchema = z
     message: 'Nothing to update',
   });
 
+/**
+ * A comment. `mentions` are user ids the client resolved from the @names in
+ * the body; the server checks they are real users and drops the author.
+ */
+export const createCommentSchema = z.object({
+  body: z.string().trim().min(1).max(5000),
+  mentions: z.array(z.string().uuid()).max(20).optional(),
+});
+
+export const updateCommentSchema = createCommentSchema;
+
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;
 export type UpdateTaskInput = z.infer<typeof updateTaskSchema>;
 export type ReorderInput = z.infer<typeof reorderSchema>;
 export type CreateChecklistItemInput = z.infer<typeof createChecklistItemSchema>;
 export type UpdateChecklistItemInput = z.infer<typeof updateChecklistItemSchema>;
+export type CommentInput = z.infer<typeof createCommentSchema>;

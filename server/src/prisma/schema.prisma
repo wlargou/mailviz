@@ -44,6 +44,7 @@ model Task {
   mailToTask MailToTask?
   shares     TaskShare[]
   checklist  TaskChecklistItem[]
+  comments   TaskComment[]
   parent     Task?        @relation("TaskSubtasks", fields: [parentId], references: [id], onDelete: Cascade)
   subtasks   Task[]       @relation("TaskSubtasks")
   customer   Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
@@ -58,6 +59,27 @@ model Task {
   @@index([assignedToId])
   @@index([parentId])
   @@map("tasks")
+}
+
+/// A comment on a task. `mentions` holds the ids of the users named with @ in
+/// the body, as the client resolved them — the body itself is plain text.
+model TaskComment {
+  id        String    @id @default(uuid())
+  taskId    String    @map("task_id")
+  userId    String    @map("user_id")
+  body      String    @db.Text
+  mentions  String[]  @default([])
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  /// Set on the first edit; the UI shows "edited" from it.
+  editedAt  DateTime? @map("edited_at")
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation("TaskCommentAuthor", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
+  @@index([userId])
+  @@map("task_comments")
 }
 
 /// A line on a task's checklist — for the steps that do not deserve a task
@@ -271,6 +293,7 @@ model User {
   taskSharesSent      TaskShare[]        @relation("TaskSharesSent")
   taskSharesReceived  TaskShare[]        @relation("TaskSharesReceived")
   taskAssignments     Task[]             @relation("TaskAssignments")
+  taskComments        TaskComment[]      @relation("TaskCommentAuthor")
   scheduledEmails     ScheduledEmail[]
   emailDrafts         EmailDraft[]
   auditLogs           AuditLog[]
@@ -637,6 +660,8 @@ model AuditLog {
   @@index([entityType])
   @@index([createdAt])
   @@index([userId, createdAt])
+  /// Serves the per-entity timeline (a task's activity), which reads across users.
+  @@index([entityType, entityId, createdAt])
   @@map("audit_logs")
 }
 

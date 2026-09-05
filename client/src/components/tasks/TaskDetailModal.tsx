@@ -21,6 +21,7 @@ import { ShareDialog } from '../shared/ShareDialog';
 import { CompanyComboBox } from '../shared/CompanyComboBox';
 import { TaskSubtasks } from './TaskSubtasks';
 import { TaskChecklist } from './TaskChecklist';
+import { TaskActivity } from './TaskActivity';
 import { TaskParentCrumb } from './TaskProgressTags';
 import { useUIStore } from '../../store/uiStore';
 import type { Task, Label, TaskPriority, TaskStatus, TaskStatusConfig } from '../../types/task';
@@ -472,6 +473,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, onOpenTask, 
           <TaskSubtasks task={task} statuses={statusConfigs} onOpenTask={onOpenTask} onChanged={reloadTask} />
         )}
         <TaskChecklist taskId={task.id} items={task.checklist ?? []} onChanged={reloadTask} />
+        <TaskActivity taskId={task.id} ownerId={task.userId} users={users} statuses={statusConfigs} />
         {task.mailToTask?.email && (
           <div className="modal-form__source-email">
             <p className="modal-form__label" style={{ fontSize: '0.75rem', color: 'var(--cds-text-secondary)', marginBottom: '0.25rem' }}>Created from email</p>
