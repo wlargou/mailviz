@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { Task, TaskSummary, CreateTaskInput, UpdateTaskInput, ReorderItem } from '../types/task';
+import type { Task, TaskSummary, CreateTaskInput, UpdateTaskInput, ReorderItem, ChecklistItem } from '../types/task';
 import type { ApiResponse } from '../types/api';
 
 /** How the By Company view orders its groups. Mirrors the server's whitelist. */
@@ -87,5 +87,16 @@ export const tasksApi = {
   // Assignment
   assignTask(id: string, assignedToId: string | null) {
     return api.patch(`/tasks/${id}/assign`, { assignedToId });
+  },
+
+  // Checklist
+  addChecklistItem(taskId: string, text: string) {
+    return api.post<ApiResponse<ChecklistItem>>(`/tasks/${taskId}/checklist`, { text });
+  },
+  updateChecklistItem(taskId: string, itemId: string, data: { text?: string; isDone?: boolean }) {
+    return api.patch<ApiResponse<ChecklistItem>>(`/tasks/${taskId}/checklist/${itemId}`, data);
+  },
+  deleteChecklistItem(taskId: string, itemId: string) {
+    return api.delete(`/tasks/${taskId}/checklist/${itemId}`);
   },
 };

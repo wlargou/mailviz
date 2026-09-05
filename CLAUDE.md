@@ -95,6 +95,7 @@ npm run build --workspace=server  # esbuild → server/dist/
 - **Global search**: `GET /api/v1/search?q=` queries emails, tasks, events, customers, contacts, deals in parallel (4 results each)
 - **Batch API pattern**: `POST /batch/{action}` with `{ ids: string[] }` body. Resolves thread IDs from email IDs, acts on all emails in threads.
 - **Optimistic UI**: For bulk/single email actions, update state immediately, then fire API call. Revert state on failure.
+- **Carbon `Tag` ignores `renderIcon` at `size="sm"`.** The icon slot is only rendered for `md` and `lg`. For a small tag with an icon, put the icon in the children (see `TaskProgressTags`).
 - **Carbon Checkbox click issues**: Carbon's `Checkbox` component captures clicks via internal `<label>`. Workaround: use native `<input type="checkbox">` in a wrapper div with its own click handler and `stopPropagation`.
 
 ## Gotchas & Lessons Learned

@@ -1,7 +1,13 @@
 import { Prisma } from '../lib/prismaClient.js';
 import { prisma } from '../lib/prisma.js';
 import { terminalStatusNames, notTerminal, isTerminalStatus } from '../utils/taskStatus.js';
-import { CreateTaskInput, UpdateTaskInput, ReorderInput } from '../validators/taskValidator.js';
+import {
+  CreateTaskInput,
+  UpdateTaskInput,
+  ReorderInput,
+  CreateChecklistItemInput,
+  UpdateChecklistItemInput,
+} from '../validators/taskValidator.js';
 import { parsePagination, paginationMeta } from '../utils/pagination.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { getSharedTaskIds, canAccessTask, isTaskOwner } from '../utils/accessControl.js';
@@ -18,6 +24,10 @@ interface TaskQueryParams {
   customerId?: string;
   dueBefore?: string;
   dueAfter?: string;
+  /** Only the subtasks of this task. */
+  parentId?: string;
+  /** 'true' = leave subtasks out; they are reached through their parent. */
+  topLevel?: string;
   /** 'shared' = only rows this user does not own, 'owned' = only rows they own. */
   ownership?: string;
   sortBy?: string;
@@ -91,6 +101,84 @@ async function assertReferencesOwnedBy(
   }
 }
 
+/**
+ * What every task row carries besides its own columns.
+ *
+ * `parent` is the one-line breadcrumb a subtask shows in a list; `checklist`
+ * is selected as bare flags so the counts can be derived without a second
+ * query. Subtask counts cannot come from an include — "done" depends on the
+ * account's terminal statuses — so `withSubtaskProgress` adds them afterwards.
+ */
+const TASK_INCLUDE = {
+  labels: { include: { label: true } },
+  customer: true,
+  parent: { select: { id: true, title: true } },
+  checklist: { select: { isDone: true } },
+} as const;
+
+/**
+ * The two-level rule, checked before a task is attached to a parent.
+ *
+ * A parent must be owned by the same account as the task (a foreign key alone
+ * accepts any account's id, and `findById` would then echo another account's
+ * title back through `parent`), must not be a subtask itself, and — when the
+ * task being moved already has subtasks — the move is refused, because it
+ * would make three levels. Self-parenting is caught before any of that.
+ */
+async function assertParentAllowed(ownerId: string, taskId: string | null, parentId: string) {
+  if (taskId && taskId === parentId) {
+    throw new AppError(400, 'INVALID_PARENT', 'A task cannot be its own subtask');
+  }
+  const parent = await prisma.task.findFirst({
+    where: { id: parentId, userId: ownerId },
+    select: { id: true, parentId: true, customerId: true },
+  });
+  if (!parent) {
+    throw new AppError(404, 'TASK_NOT_FOUND', 'Parent task not found');
+  }
+  if (parent.parentId) {
+    throw new AppError(400, 'INVALID_PARENT', 'A subtask cannot have subtasks of its own');
+  }
+  if (taskId) {
+    const children = await prisma.task.count({ where: { parentId: taskId } });
+    if (children > 0) {
+      throw new AppError(400, 'INVALID_PARENT', 'A task with subtasks cannot become a subtask');
+    }
+  }
+  return parent;
+}
+
+/**
+ * Attach `subtaskCount` / `subtaskDoneCount` to formatted tasks.
+ *
+ * One query for every parent in the page rather than a count per row. "Done"
+ * is whatever the CALLER's account calls terminal — the same choice
+ * `findGroupedByCompany` makes for shared tasks, so a board and a list never
+ * disagree about the same row.
+ */
+async function withSubtaskProgress<T extends { id: string }>(userId: string, tasks: T[]) {
+  if (tasks.length === 0) return tasks as Array<T & { subtaskCount: number; subtaskDoneCount: number }>;
+  const [children, terminal] = await Promise.all([
+    prisma.task.findMany({
+      where: { parentId: { in: tasks.map((t) => t.id) } },
+      select: { parentId: true, status: true },
+    }),
+    terminalStatusNames(userId),
+  ]);
+  const counts = new Map<string, { total: number; done: number }>();
+  for (const child of children) {
+    const key = child.parentId!;
+    const entry = counts.get(key) ?? { total: 0, done: 0 };
+    entry.total += 1;
+    if (isTerminalStatus(child.status, terminal)) entry.done += 1;
+    counts.set(key, entry);
+  }
+  return tasks.map((t) => {
+    const c = counts.get(t.id);
+    return { ...t, subtaskCount: c?.total ?? 0, subtaskDoneCount: c?.done ?? 0 };
+  });
+}
+
 export const taskService = {
   async findAll(userId: string, query: TaskQueryParams) {
     const pagination = parsePagination(query);
@@ -148,6 +236,11 @@ export const taskService = {
     if (query.customerId) {
       where.customerId = query.customerId;
     }
+    if (query.parentId) {
+      where.parentId = query.parentId;
+    } else if (query.topLevel === 'true') {
+      where.parentId = null;
+    }
     if (query.dueBefore || query.dueAfter) {
       where.dueDate = {};
       if (query.dueBefore) where.dueDate.lte = new Date(query.dueBefore);
@@ -186,13 +279,13 @@ export const taskService = {
         orderBy,
         skip: pagination.skip,
         take: pagination.limit,
-        include: { labels: { include: { label: true } }, customer: true },
+        include: TASK_INCLUDE,
       }),
       prisma.task.count({ where }),
     ]);
 
     return {
-      data: tasks.map(formatTask),
+      data: await withSubtaskProgress(userId, tasks.map(formatTask)),
       meta: paginationMeta(total, pagination),
     };
   },
@@ -205,8 +298,13 @@ export const taskService = {
     const task = await prisma.task.findUnique({
       where: { id },
       include: {
-        labels: { include: { label: true } },
-        customer: true,
+        ...TASK_INCLUDE,
+        // The full items here, not the bare flags the list rows carry.
+        checklist: { orderBy: [{ position: 'asc' }, { createdAt: 'asc' }] },
+        subtasks: {
+          include: { labels: { include: { label: true } }, customer: true, checklist: { select: { isDone: true } } },
+          orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
+        },
         mailToTask: {
           include: {
             email: {
@@ -219,7 +317,11 @@ export const taskService = {
     if (!task) {
       throw new AppError(404, 'TASK_NOT_FOUND', 'Task not found');
     }
-    return formatTask(task);
+    const [decorated] = await withSubtaskProgress(userId, [formatTask(task)]);
+    return {
+      ...decorated,
+      subtasks: await withSubtaskProgress(userId, task.subtasks.map(formatTask)),
+    };
   },
 
   /**
@@ -293,6 +395,8 @@ export const taskService = {
       include: {
         customer: { select: { id: true, name: true, domain: true, logoUrl: true } },
         labels: { include: { label: true } },
+        parent: { select: { id: true, title: true } },
+        checklist: { select: { isDone: true } },
         assignedTo: { select: { id: true, name: true, email: true, avatarUrl: true } },
         /**
          * The email this task was made from, if any.
@@ -330,6 +434,9 @@ export const taskService = {
 
     const truncated = tasks.length > TASKS_BY_COMPANY_CAP;
     const visible = truncated ? tasks.slice(0, TASKS_BY_COMPANY_CAP) : tasks;
+    const progress = new Map(
+      (await withSubtaskProgress(userId, visible.map((t) => ({ id: t.id })))).map((p) => [p.id, p])
+    );
 
     const now = new Date();
     type Group = {
@@ -428,7 +535,7 @@ export const taskService = {
          * caught it because no account has ever had a label. Seeding a starter
          * set is precisely what would have surfaced it.
          */
-        tasks: g.tasks.map(formatTask),
+        tasks: g.tasks.map((t) => ({ ...formatTask(t), ...progress.get(t.id) })),
       })),
       meta: {
         totalTasks: visible.length,
@@ -489,7 +596,16 @@ export const taskService = {
 
   async create(userId: string, data: CreateTaskInput) {
     await assertReferencesOwnedBy(userId, data);
-    const { labelIds, customerId, assignedToId, ...taskData } = data;
+    const { labelIds, assignedToId, parentId, ...taskData } = data;
+    let { customerId } = data;
+
+    if (parentId) {
+      const parent = await assertParentAllowed(userId, null, parentId);
+      // A subtask belongs to its parent's company unless told otherwise. It is
+      // the same work, and a subtask filed under "no company" would drop out
+      // of every per-company view its parent appears in.
+      if (customerId === undefined) customerId = parent.customerId;
+    }
 
     // Get max position for the status column
     const maxPos = await prisma.task.findFirst({
@@ -508,16 +624,18 @@ export const taskService = {
         position,
         customerId: customerId || null,
         assignedToId: assignedToId || null,
+        parentId: parentId || null,
         labels: labelIds?.length
           ? { create: labelIds.map((labelId) => ({ labelId })) }
           : undefined,
       } as any,
-      include: { labels: { include: { label: true } }, customer: true },
+      include: TASK_INCLUDE,
     });
 
-    auditService.log({ userId, action: 'TASK_CREATED', entityType: 'task', entityId: task.id, details: { title: data.title, status: data.status, priority: data.priority } });
+    auditService.log({ userId, action: 'TASK_CREATED', entityType: 'task', entityId: task.id, details: { title: data.title, status: data.status, priority: data.priority, parentId: parentId ?? undefined } });
 
-    return formatTask(task);
+    const [created] = await withSubtaskProgress(userId, [formatTask(task)]);
+    return created;
   },
 
   async update(userId: string, id: string, data: UpdateTaskInput) {
@@ -562,11 +680,16 @@ export const taskService = {
       }
     }
 
-    const { labelIds, customerId, ...taskData } = data;
+    const { labelIds, customerId, parentId, ...taskData } = data;
 
     const updateData: any = {
       ...taskData,
     };
+
+    if (parentId !== undefined && parentId !== existing.parentId) {
+      if (parentId) await assertParentAllowed(existing.userId, id, parentId);
+      updateData.parentId = parentId;
+    }
 
     if (taskData.dueDate !== undefined) {
       updateData.dueDate = taskData.dueDate ? new Date(taskData.dueDate) : null;
@@ -619,13 +742,14 @@ export const taskService = {
         // recipient may edit, and the row is still the owner's.
         where: { id, userId: existing.userId },
         data: updateData,
-        include: { labels: { include: { label: true } }, customer: true },
+        include: TASK_INCLUDE,
       });
     });
 
     auditService.log({ userId, action: 'TASK_UPDATED', entityType: 'task', entityId: id, details: { changes: Object.keys(data) } });
 
-    return formatTask(task);
+    const [updated] = await withSubtaskProgress(userId, [formatTask(task)]);
+    return updated;
   },
 
   async reorder(userId: string, data: ReorderInput) {
@@ -655,9 +779,20 @@ export const taskService = {
     if (!owner) {
       throw new AppError(404, 'TASK_NOT_FOUND', 'Task not found');
     }
-    const existing = await prisma.task.findUnique({ where: { id }, select: { title: true } });
+    const existing = await prisma.task.findUnique({
+      where: { id },
+      select: { title: true, _count: { select: { subtasks: true } } },
+    });
+    // Subtasks go with the parent (ON DELETE CASCADE); recorded so the audit
+    // trail says how many, since the rows themselves leave no trace.
     await prisma.task.delete({ where: { id } });
-    auditService.log({ userId, action: 'TASK_DELETED', entityType: 'task', entityId: id, details: { title: existing?.title } });
+    auditService.log({
+      userId,
+      action: 'TASK_DELETED',
+      entityType: 'task',
+      entityId: id,
+      details: { title: existing?.title, subtasksDeleted: existing?._count.subtasks ?? 0 },
+    });
     return { success: true };
   },
 
@@ -753,7 +888,7 @@ export const taskService = {
     const task = await prisma.task.update({
       where: { id: taskId, userId },
       data: { assignedToId },
-      include: { labels: { include: { label: true } }, customer: true },
+      include: TASK_INCLUDE,
     });
 
     // Notify the assignee if assigned to someone else
@@ -781,14 +916,85 @@ export const taskService = {
       });
     }
 
-    return formatTask(task);
+    const [assigned] = await withSubtaskProgress(userId, [formatTask(task)]);
+    return assigned;
+  },
+
+  // ─── Checklist ────────────────────────────────────────────────────────────
+  //
+  // Access, not ownership: anyone who can open the task can tick a line on it,
+  // which is what a checklist on a shared task is for. Every write names both
+  // the item and the task, so an item id from another task — or another
+  // account — is a 404 rather than an edit.
+
+  async addChecklistItem(userId: string, taskId: string, data: CreateChecklistItemInput) {
+    if (!(await canAccessTask(taskId, userId))) {
+      throw new AppError(404, 'TASK_NOT_FOUND', 'Task not found');
+    }
+    const last = await prisma.taskChecklistItem.findFirst({
+      where: { taskId },
+      orderBy: { position: 'desc' },
+      select: { position: true },
+    });
+    const item = await prisma.taskChecklistItem.create({
+      data: { taskId, text: data.text, position: (last?.position ?? 0) + 1000 },
+    });
+    auditService.log({ userId, action: 'TASK_CHECKLIST_UPDATED', entityType: 'task', entityId: taskId, details: { added: item.text } });
+    return item;
+  },
+
+  async updateChecklistItem(userId: string, taskId: string, itemId: string, data: UpdateChecklistItemInput) {
+    if (!(await canAccessTask(taskId, userId))) {
+      throw new AppError(404, 'TASK_NOT_FOUND', 'Task not found');
+    }
+    const existing = await prisma.taskChecklistItem.findFirst({ where: { id: itemId, taskId } });
+    if (!existing) {
+      throw new AppError(404, 'CHECKLIST_ITEM_NOT_FOUND', 'Checklist item not found');
+    }
+    const item = await prisma.taskChecklistItem.update({
+      where: { id: itemId, taskId },
+      data: {
+        ...(data.text !== undefined ? { text: data.text } : {}),
+        ...(data.isDone !== undefined
+          ? { isDone: data.isDone, completedAt: data.isDone ? new Date() : null }
+          : {}),
+      },
+    });
+    auditService.log({ userId, action: 'TASK_CHECKLIST_UPDATED', entityType: 'task', entityId: taskId, details: { itemId, changes: Object.keys(data) } });
+    return item;
+  },
+
+  async deleteChecklistItem(userId: string, taskId: string, itemId: string) {
+    if (!(await canAccessTask(taskId, userId))) {
+      throw new AppError(404, 'TASK_NOT_FOUND', 'Task not found');
+    }
+    const { count } = await prisma.taskChecklistItem.deleteMany({ where: { id: itemId, taskId } });
+    if (count === 0) {
+      throw new AppError(404, 'CHECKLIST_ITEM_NOT_FOUND', 'Checklist item not found');
+    }
+    auditService.log({ userId, action: 'TASK_CHECKLIST_UPDATED', entityType: 'task', entityId: taskId, details: { removed: itemId } });
+    return { success: true };
   },
 };
 
+/**
+ * Shape a Prisma row into what the client's `Task` type declares.
+ *
+ * `checklist` arrives either as bare `{ isDone }` flags (list rows) or as full
+ * items (`findById`). Both produce the counts; only the full items are kept
+ * as `checklist`, so a list row does not carry an array of booleans the
+ * client has no use for.
+ */
 function formatTask(task: any) {
+  const items: Array<{ isDone: boolean; id?: string }> = task.checklist ?? [];
+  const { checklist, ...rest } = task;
   return {
-    ...task,
+    ...rest,
     labels: task.labels?.map((tl: any) => tl.label) || [],
     customer: task.customer || null,
+    parent: task.parent ?? null,
+    checklistCount: items.length,
+    checklistDoneCount: items.filter((i) => i.isDone).length,
+    ...(items.length > 0 && items[0].id !== undefined ? { checklist } : {}),
   };
 }

@@ -10,6 +10,8 @@ interface ConfirmDeleteModalProps {
    * and deals — it previously hardcoded "Delete Task" for all of them.
    */
   entityLabel: string;
+  /** An extra sentence about what goes with it, e.g. "Its 3 subtasks will be deleted too." */
+  consequence?: string;
   onClose: () => void;
   onConfirm: () => void;
 }
@@ -18,6 +20,7 @@ export function ConfirmDeleteModal({
   open,
   title,
   entityLabel,
+  consequence,
   onClose,
   onConfirm,
 }: ConfirmDeleteModalProps) {
@@ -34,6 +37,7 @@ export function ConfirmDeleteModal({
       <p>
         Are you sure you want to delete <strong>"{title}"</strong>? This action cannot be undone.
       </p>
+      {consequence && <p>{consequence}</p>}
     </Modal>
   );
 }

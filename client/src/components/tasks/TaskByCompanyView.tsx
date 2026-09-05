@@ -32,6 +32,7 @@ import { TableFilterFlyout } from '../shared/TableFilterFlyout';
 import { TaskStatusTag } from '../shared/TaskStatusTag';
 import { PriorityBadge } from '../shared/PriorityBadge';
 import { LabelTag } from '../shared/LabelTag';
+import { TaskProgressTags, TaskParentCrumb } from './TaskProgressTags';
 import { toolbarSearchValue, type TableToolbarSearchChangeEvent } from '../../utils/carbonSearch';
 import { decodeEntities } from '../../utils/text';
 import type { Label, Task } from '../../types/task';
@@ -535,14 +536,23 @@ export function TaskByCompanyView({ labels, onEdit, onDelete, onCreateNew }: Tas
                                       aria-label="Created from an email"
                                     />
                                   )}
-                                  <button
-                                    type="button"
-                                    className="task-by-company__title"
-                                    title={decodeEntities(task.title)}
-                                    onClick={() => onEdit(task.id)}
-                                  >
-                                    {decodeEntities(task.title)}
-                                  </button>
+                                  <span className="task-title-stack">
+                                    {task.parent && (
+                                      <TaskParentCrumb
+                                        parent={{ ...task.parent, title: decodeEntities(task.parent.title) }}
+                                        onOpen={onEdit}
+                                      />
+                                    )}
+                                    <button
+                                      type="button"
+                                      className="task-by-company__title"
+                                      title={decodeEntities(task.title)}
+                                      onClick={() => onEdit(task.id)}
+                                    >
+                                      {decodeEntities(task.title)}
+                                    </button>
+                                  </span>
+                                  <TaskProgressTags task={task} />
                                 </span>
                               </TableCell>
                               <TableCell className="task-by-company__col-status">

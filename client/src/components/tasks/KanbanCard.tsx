@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 import { PriorityBadge } from '../shared/PriorityBadge';
 import { LabelTag } from '../shared/LabelTag';
 import { SharedBadge } from '../shared/SharedBadge';
+import { TaskProgressTags, TaskParentCrumb } from './TaskProgressTags';
 import type { Task } from '../../types/task';
 import { decodeEntities } from '../../utils/text';
 
@@ -36,9 +37,17 @@ export function KanbanCard({ task, onClick }: KanbanCardProps) {
         className={`kanban-card kanban-card--${task.priority.toLowerCase()} ${isDragging ? 'dragging' : ''}`}
         onClick={() => onClick(task.id)}
       >
+        {task.parent && (
+          <div className="card-parent">
+            <TaskParentCrumb parent={{ ...task.parent, title: decodeEntities(task.parent.title) }} />
+          </div>
+        )}
         <div className="card-title">{decodeEntities(task.title)}</div>
         <div className="card-badges">
           <SharedBadge ownerId={task.userId} />
+        </div>
+        <div className="card-progress">
+          <TaskProgressTags task={task} />
         </div>
         <div className="card-meta">
           <PriorityBadge priority={task.priority} />

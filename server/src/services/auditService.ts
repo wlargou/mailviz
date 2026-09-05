@@ -38,6 +38,7 @@ export type AuditAction =
   | 'TASK_DELETED'
   | 'TASK_SHARED'
   | 'TASK_ASSIGNED'
+  | 'TASK_CHECKLIST_UPDATED'
   // Deal actions
   | 'DEAL_CREATED'
   | 'DEAL_UPDATED'
