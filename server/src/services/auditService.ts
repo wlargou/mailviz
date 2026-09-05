@@ -48,6 +48,10 @@ export type AuditAction =
   | 'TASK_LINK_REMOVED'
   | 'TASK_TIME_LOGGED'
   | 'TASK_TIME_DELETED'
+  | 'TASK_TEMPLATE_CREATED'
+  | 'TASK_TEMPLATE_UPDATED'
+  | 'TASK_TEMPLATE_DELETED'
+  | 'TASK_TEMPLATE_APPLIED'
   // Deal actions
   | 'DEAL_CREATED'
   | 'DEAL_UPDATED'
@@ -83,7 +87,7 @@ export type AuditAction =
   | 'ONBOARDING_COMPLETED'
   | 'ONBOARDING_SKIPPED';
 
-export type EntityType = 'email' | 'task' | 'deal' | 'event' | 'company' | 'contact' | 'label' | 'auth' | 'scheduled_email' | 'email_draft' | 'email_template';
+export type EntityType = 'email' | 'task' | 'task_template' | 'deal' | 'event' | 'company' | 'contact' | 'label' | 'auth' | 'scheduled_email' | 'email_draft' | 'email_template';
 
 /**
  * Anything that can write an audit row — the shared client or a transaction

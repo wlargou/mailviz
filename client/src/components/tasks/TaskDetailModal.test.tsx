@@ -182,7 +182,7 @@ describe('TaskDetailModal', () => {
     // form of the same assertion: if the field had inherited the previous
     // task's two labels, they would differ from this task's empty set, and the
     // save would write them onto a task that never had any.
-    await user.click(screen.getByRole('button', { name: /Save/i }));
+    await user.click(screen.getByRole('button', { name: /^Save$/ }));
     await waitFor(() => expect(onUpdated).toHaveBeenCalled());
     expect(tasksApi.update).not.toHaveBeenCalled();
   });
@@ -253,7 +253,7 @@ describe('TaskDetailModal', () => {
       const field = await screen.findByDisplayValue('Original');
       await user.clear(field);
       await user.type(field, to);
-      await user.click(screen.getByRole('button', { name: /Save/i }));
+      await user.click(screen.getByRole('button', { name: /^Save$/ }));
       await waitFor(() => expect(tasksApi.update).toHaveBeenCalled());
       return vi.mocked(tasksApi.update).mock.calls[0][1];
     }
@@ -277,7 +277,7 @@ describe('TaskDetailModal', () => {
       renderPanel('task-1');
 
       await screen.findByDisplayValue('Renew A & B');
-      await user.click(screen.getByRole('button', { name: /Save/i }));
+      await user.click(screen.getByRole('button', { name: /^Save$/ }));
 
       await waitFor(() => expect(tasksApi.update).not.toHaveBeenCalled());
     });
@@ -307,7 +307,7 @@ describe('TaskDetailModal', () => {
 
       const box = await screen.findByDisplayValue('Some body text');
       await user.clear(box);
-      await user.click(screen.getByRole('button', { name: /Save/i }));
+      await user.click(screen.getByRole('button', { name: /^Save$/ }));
 
       await waitFor(() => expect(tasksApi.update).toHaveBeenCalled());
       expect(vi.mocked(tasksApi.update).mock.calls[0][1]).toEqual({ description: '' });
@@ -343,7 +343,7 @@ describe('TaskDetailModal', () => {
       await user.click(screen.getByRole('combobox', { name: /Labels/i }));
       await user.click(await screen.findByRole('option', { name: 'Billing' }));
       await user.keyboard('{Escape}');
-      await user.click(screen.getByRole('button', { name: /Save/i }));
+      await user.click(screen.getByRole('button', { name: /^Save$/ }));
 
       await waitFor(() => expect(tasksApi.update).toHaveBeenCalled());
       expect(vi.mocked(tasksApi.update).mock.calls[0][1]).toEqual({ labelIds: [] });
@@ -358,7 +358,7 @@ describe('TaskDetailModal', () => {
       );
 
       await screen.findByDisplayValue('Original');
-      await user.click(screen.getByRole('button', { name: /Save/i }));
+      await user.click(screen.getByRole('button', { name: /^Save$/ }));
 
       // Still closes and still reports success — an empty PATCH would be
       // audited as a change to every field.

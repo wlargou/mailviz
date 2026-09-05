@@ -638,8 +638,20 @@ what the previous one adds:
   exists for a header chip. Not done: no header chip yet (a timer left
   running is visible only when its task is reopened), no reports or export,
   no editing an entry's minutes (delete and re-log).
-- [ ] **T8 Task templates and blueprints** — a saved tree with relative due
-  dates, instantiated against a company or deal.
+- [x] **T8 Task templates and blueprints** (1.10.0). `task_templates`
+  holds the tree as JSON (two levels, like tasks; due dates as day offsets
+  from an anchor; labels checked against the account on save). A template
+  is authored from a task — "Save as template" in the panel keeps its
+  subtasks, checklist, labels, priority, estimate and the spacing of its due
+  dates, with a share recipient's copy dropping labels they do not own — and
+  applied from the Tasks page against a day and a company, optionally with
+  links every created top-level task carries. The rows are created in one
+  transaction, so a template never half-applies; the next occurrence status
+  is the account's first non-terminal one. Settings → Workspace lists the
+  templates for renaming and retiring. Not done: no tree editor in the UI
+  (re-save the task to change the shape; the API accepts a full `items`
+  PATCH), no template sharing between accounts, no "apply from this deal"
+  button on the Deals page.
 - [ ] **T9 Saved views and table batch actions** — the `TableBatchActions`
   gap above, closed on Tasks first.
 - [ ] **T10 Email-to-task, second generation** — `MailToTask` becomes

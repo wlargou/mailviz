@@ -38,6 +38,7 @@ A full-stack CRM with deep Gmail and Google Calendar integration. Manage custome
 - **Start dates and reminders** — a start date that cannot pass the due date, and a reminder preset (the morning of, the day before, a week before) that raises a notification once
 - **My Day** — a page of what to do today: overdue, due today, starting today, and the week ahead, computed in your timezone, each task finishable in place
 - **Links to contacts, deals and events** — attach a task to any of the three from one search box; a contact's page and an event's panel list the tasks attached to them
+- **Task templates** — save a task's shape (subtasks, checklist, labels, priority, estimate, and the spacing of its due dates) and apply it against a company and a day; "New partner onboarding" becomes one click
 - **Time tracking** — a timer per person (one at a time, across tasks) and manual logs with a note; the total is drawn against the estimate, and a company page sums the time across its tasks
 - **Recurring tasks** — the same Daily / Weekly / Monthly / Yearly presets the calendar uses, anchored on the due date. Finishing an occurrence creates the next one with the due date advanced, the checklist unticked and everything else carried over; a task finished late is rescheduled after today, not into the past
 - **Activity and comments** — every change anyone made to a task, with before and after values, interleaved with comments. `@mention` a colleague to notify them; the owner and assignee hear about other people's comments. A notification opens the task's panel directly
@@ -279,6 +280,7 @@ All endpoints are prefixed with `/api/v1`. Every group except `auth` sits behind
 |----------|-------|-------|
 | Auth | `/auth` | Google OAuth login/callback, `/me`, logout, connect/disconnect, users list, signature, timezone, `/account/summary` + `DELETE /account` |
 | Emails | `/emails` | Threads, actions, compose/reply/forward, attachments, drafts, scheduled send, sharing, `/review-summary` |
+| Task templates | `/task-templates` | CRUD, `/from-task`, `/:id/instantiate` |
 | Snooze | `/snooze` | Follow-up reminders on threads |
 | Templates | `/templates` | Email templates, `/variables`, `/:id/render` |
 | Onboarding | `/onboarding` | Status, seed statuses/labels, complete, reset |

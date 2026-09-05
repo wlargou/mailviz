@@ -27,7 +27,7 @@ import {
   Tile,
   UnorderedList,
 } from '@carbon/react';
-import { Add, Calendar, Checkmark, Draggable, Edit, Email, Enterprise, Misuse, Partnership, Pen, Renew, Tag as TagIcon, TaskComplete, TrashCan, WarningAlt } from '@carbon/icons-react';
+import { Add, Calendar, Checkmark, Draggable, Edit, Email, Enterprise, Misuse, Partnership, Pen, Renew, Tag as TagIcon, TaskComplete, TrashCan, WarningAlt, Template } from '@carbon/icons-react';
 import {
   DndContext,
   KeyboardSensor,
@@ -49,6 +49,7 @@ import { useSearchParams } from 'react-router-dom';
 import { authApi, type AccountDeletionSummary } from '../../api/auth';
 import { TiptapEditor } from '../mail/TiptapEditor';
 import { TemplateSettings } from './TemplateSettings';
+import { TaskTemplateSettings } from './TaskTemplateSettings';
 import { OnboardingSettings } from './OnboardingSettings';
 import { taskStatusesApi } from '../../api/taskStatuses';
 import { companyCategoriesApi } from '../../api/companyCategories';
@@ -999,6 +1000,14 @@ export function SettingsPage() {
                   if (label) handleDeleteLabel(label);
                 }}
               />
+            </SettingsSection>
+
+            <SettingsSection
+              icon={<Template size={20} />}
+              title="Task templates"
+              description="Saved trees of tasks — subtasks, checklists, labels and the spacing of their due dates — applied from the Tasks page against a company and a day. Author one by opening a task and choosing “Save as template”."
+            >
+              <TaskTemplateSettings />
             </SettingsSection>
           </Tile>
 

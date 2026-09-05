@@ -85,6 +85,29 @@ model Task {
   @@map("tasks")
 }
 
+/// A saved tree of tasks — a blueprint — instantiated against a company, a
+/// deal, a contact or an event with due dates relative to an anchor day.
+/// `items` is the tree as JSON (see validators/taskTemplateValidator.ts);
+/// there is no per-item table because a template is edited and applied as a
+/// whole, never queried by its parts.
+model TaskTemplate {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  name        String   @db.VarChar(120)
+  description String?  @db.VarChar(500)
+  items       Json     @db.JsonB
+  usageCount  Int      @default(0) @map("usage_count")
+  lastUsedAt  DateTime? @map("last_used_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user User @relation("TaskTemplates", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@map("task_templates")
+}
+
 /// Time spent on a task. A running timer is an entry with no `endedAt`; a
 /// person has at most one running at a time, across all tasks (service rule).
 /// `minutes` is written when the entry ends, or directly for a manual log.
@@ -373,6 +396,7 @@ model User {
   taskAssignments     Task[]             @relation("TaskAssignments")
   taskComments        TaskComment[]      @relation("TaskCommentAuthor")
   taskTimeEntries     TaskTimeEntry[]    @relation("TaskTimeEntries")
+  taskTemplates       TaskTemplate[]     @relation("TaskTemplates")
   scheduledEmails     ScheduledEmail[]
   emailDrafts         EmailDraft[]
   auditLogs           AuditLog[]
