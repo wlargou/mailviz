@@ -109,6 +109,25 @@
 .modal-form__row {
   display: flex;
   gap: $spacing-05;
+
+  // Each cell is a flex child sized 1:1 by the callers (`flex: 1`), but a
+  // flex item's default `min-width: auto` lets a fixed-width control inside
+  // it — Carbon's single DatePicker input is 18rem — win over the split, and
+  // the other cell is pushed past the container. Seen in the task panel's
+  // Start Date / Reminder row, where the Reminder dropdown ran into the
+  // gutter. Let the cells shrink, and let the date input fill its cell.
+  > * {
+    min-width: 0;
+  }
+
+  // Four classes deep because Carbon sets the 18rem with three
+  // (`.cds--date-picker.cds--date-picker--single .cds--date-picker__input`),
+  // and as `inline-size` — a bare `width` on a shorter selector loses.
+  .cds--date-picker,
+  .cds--date-picker-container,
+  .cds--date-picker.cds--date-picker--single .cds--date-picker__input {
+    inline-size: 100%;
+  }
 }
 
 .modal-form__label {

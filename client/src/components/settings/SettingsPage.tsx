@@ -1001,7 +1001,9 @@ export function SettingsPage() {
                 }}
               />
             </SettingsSection>
+          </Tile>
 
+          <Tile className="settings-tile">
             <SettingsSection
               icon={<Template size={20} />}
               title="Task templates"
