@@ -47,6 +47,9 @@ export function LinkedTasks({ entityType, entityId, onCount, size = 'md' }: Link
 
   if (tasks === null) return <SkeletonText paragraph lineCount={3} />;
   if (tasks.length === 0) {
+    // Inside a panel (sm) a full empty state is a box of nothing between the
+    // event and its footer; one muted line says the same.
+    if (size === 'sm') return <p className="linked-tasks__empty">No tasks linked to this {entityType} yet.</p>;
     return <EmptyState size={size} title="No tasks" description={`Tasks linked to this ${entityType} will appear here.`} />;
   }
 

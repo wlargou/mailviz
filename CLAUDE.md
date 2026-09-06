@@ -91,7 +91,7 @@ npm run build --workspace=server  # esbuild → server/dist/
   - `TearsheetNarrow` — medium complexity that may obscure the page. e.g. CustomerCreateModal, ContactModal.
   - `Tearsheet` (wide) — complex or interactive flows. e.g. MailComposeModal, EventModal. Pass `selectorsFloatingMenus` for anything appending to `<body>` (flatpickr), or the focus-wrap steals focus.
 - **Tearsheet vs SidePanel gutters**: SidePanel supplies its own body gutters (`.create-side-panel__form-item`); Tearsheet hands the body full width and content owns its gutters (`.tearsheet-form__item`, which carries `padding-inline`).
-- **Modals inside SidePanel**: Carbon's `Modal` renders inline, and a `position: fixed` element inside a fixed/transformed SidePanel resolves against the wrong containing block. Use `createPortal(modal, document.body)`. Tearsheets don't need this — `TearsheetShell` self-portals.
+- **Modals inside SidePanel**: Carbon's `Modal` renders inline, and a `position: fixed` element inside a fixed/transformed SidePanel resolves against the wrong containing block. Use `createPortal(modal, document.body)`. Tearsheets don't need this — `TearsheetShell` self-portals. `SaveAsTemplateModal` shipped without the portal: the backdrop dimmed the panel alone and the dialog was off-screen — every modal opened from inside a SidePanel needs it.
 - **Global search**: `GET /api/v1/search?q=` queries emails, tasks, events, customers, contacts, deals in parallel (4 results each)
 - **Batch API pattern**: `POST /batch/{action}` with `{ ids: string[] }` body. Resolves thread IDs from email IDs, acts on all emails in threads.
 - **Optimistic UI**: For bulk/single email actions, update state immediately, then fire API call. Revert state on failure.
@@ -99,6 +99,7 @@ npm run build --workspace=server  # esbuild → server/dist/
 - **Carbon `ComboBox` has no `hideLabel`**; use `titleText` and accept the label. Its `onChange` hands `selectedItem` as `T | null | undefined`, so type the handler's parameter optional.
 - **Carbon `Modal` renders its content while closed** (hidden, not unmounted). A form inside a closed Modal is still in the DOM: a `TextInput` seeded with the task title is a second "display value" for a test, and a primary button labelled "Save" collides with the page's own. Mount the Modal only while open when its fields mirror something on the page.
 - **`git stash` without `-u` leaves new files behind.** Hopping to another branch and `git add -A`-ing there commits them into that branch. Stash with `-u` before switching, and note that `git stash pop` refuses to restore an untracked file that now exists as a tracked one — `git checkout HEAD -- <file>` and `git stash drop` is the way out.
+- **Column widths set by `nth-child` shift when a column is added.** `.tasks-table` sized its columns by position, so the selection column added in 1.12 became column 1 and inherited the Title's 40% while every other column moved one over. When you add a column (selection, expand, actions), re-index every positional width rule for that table, and check it in the browser at full width, not in a scaled screenshot.
 - **Carbon Checkbox click issues**: Carbon's `Checkbox` component captures clicks via internal `<label>`. Workaround: use native `<input type="checkbox">` in a wrapper div with its own click handler and `stopPropagation`.
 
 ## Gotchas & Lessons Learned

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Modal, TextArea, TextInput } from '@carbon/react';
 import { taskTemplatesApi } from '../../api/taskTemplates';
 import { useUIStore } from '../../store/uiStore';
@@ -47,7 +48,10 @@ export function SaveAsTemplateModal({ open, taskId, suggestedName, onClose }: Sa
     }
   };
 
-  return (
+  // Portalled: this opens from inside the SidePanel, whose transform makes a
+  // `position: fixed` modal resolve against the panel — the backdrop dimmed
+  // the panel alone and the dialog itself was off-screen.
+  return createPortal(
     <Modal
       open={open}
       size="sm"
@@ -75,6 +79,7 @@ export function SaveAsTemplateModal({ open, taskId, suggestedName, onClose }: Sa
           maxLength={500}
         />
       </div>
-    </Modal>
+    </Modal>,
+    document.body
   );
 }

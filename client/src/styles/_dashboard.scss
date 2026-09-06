@@ -433,14 +433,19 @@ td.table-cell--center .cds--tag {
   th:nth-child(3), td:nth-child(3) { width: 30%; }
 }
 
-// Tasks table: Title 40% | Status 10% | Priority 10% | Due Date 15% | Customer 15% | Labels 10%
+// Tasks table. The first column is the selection checkbox (since 1.12) and the
+// last the row actions; both are sized as narrow percentages rather than rem so
+// they behave like the rest under a fixed layout (see _tasks-by-company.scss).
+// Select 4% | Title 36% | Status 10% | Priority 10% | Due 13% | Company 13% | Labels 10% | Actions 4%
 .tasks-table {
-  th:nth-child(1), td:nth-child(1) { width: 40%; }
-  th:nth-child(2), td:nth-child(2) { width: 10%; }
+  th:nth-child(1), td:nth-child(1) { width: 4%; }
+  th:nth-child(2), td:nth-child(2) { width: 36%; }
   th:nth-child(3), td:nth-child(3) { width: 10%; }
-  th:nth-child(4), td:nth-child(4) { width: 15%; }
-  th:nth-child(5), td:nth-child(5) { width: 15%; }
-  th:nth-child(6), td:nth-child(6) { width: 10%; }
+  th:nth-child(4), td:nth-child(4) { width: 10%; }
+  th:nth-child(5), td:nth-child(5) { width: 13%; }
+  th:nth-child(6), td:nth-child(6) { width: 13%; }
+  th:nth-child(7), td:nth-child(7) { width: 10%; }
+  th:nth-child(8), td:nth-child(8) { width: 4%; }
 }
 
 .contact-copy-btn {

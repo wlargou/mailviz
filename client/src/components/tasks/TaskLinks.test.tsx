@@ -139,11 +139,20 @@ describe('LinkedTasks', () => {
     expect(onCount).toHaveBeenCalledWith(2);
   });
 
-  it('shows an empty state when nothing is linked', async () => {
+  it('shows an empty state when nothing is linked — one line in a panel, a full one on a page', async () => {
     vi.mocked(tasksApi.getLinkedTo).mockResolvedValue(axiosOk({ data: [] }));
-    render(
+    const { unmount } = render(
       <MemoryRouter>
         <LinkedTasks entityType="event" entityId="ev-1" size="sm" />
+      </MemoryRouter>
+    );
+    expect(await screen.findByText('No tasks linked to this event yet.')).toBeInTheDocument();
+    expect(screen.queryByText('No tasks')).toBeNull();
+    unmount();
+
+    render(
+      <MemoryRouter>
+        <LinkedTasks entityType="contact" entityId="c-1" />
       </MemoryRouter>
     );
     expect(await screen.findByText('No tasks')).toBeInTheDocument();

@@ -315,12 +315,6 @@ export function EventDetailModal({ event, open, onClose, onEdit, onDelete, onRes
             )}
           </div>
 
-          {/* Tasks attached to this event — the action items it produced. */}
-          <div className="event-detail__tasks">
-            <h5 className="event-detail__tasks-title">Tasks</h5>
-            <LinkedTasks entityType="event" entityId={event.id} size="sm" />
-          </div>
-
           {/* Action bar: join + RSVP */}
           {(event.conferenceLink || canRespond) && (
             <div className="event-detail__action-bar">
@@ -452,6 +446,15 @@ export function EventDetailModal({ event, open, onClose, onEdit, onDelete, onRes
               </div>
             </div>
           )}
+
+          {/* Tasks attached to this event — the action items it produced.
+              After the description and the guest list: what the meeting is
+              about comes before what came out of it, and most events have
+              produced nothing, so the empty line stays out of the way. */}
+          <div className="event-detail__tasks">
+            <h5 className="event-detail__tasks-title">Tasks</h5>
+            <LinkedTasks entityType="event" entityId={event.id} size="sm" />
+          </div>
 
           {/* Footer: synced label + actions */}
           <div className="event-detail__footer">

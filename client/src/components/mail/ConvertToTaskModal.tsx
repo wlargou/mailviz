@@ -168,10 +168,13 @@ export function ConvertToTaskModal({ email, open, onClose, onConverted }: Conver
       </>
       )}
       <div className="create-side-panel__form-item" style={{ display: 'flex', gap: '1rem' }}>
-        <div>
-          <p style={{ fontSize: '0.75rem', color: 'var(--cds-text-secondary)', marginBottom: '0.25rem' }}>Status</p>
-          <Tag type="blue" size="md">To Do</Tag>
-        </div>
+        {/* The status is the new task's; an existing task keeps its own. */}
+        {mode === 'new' && (
+          <div>
+            <p style={{ fontSize: '0.75rem', color: 'var(--cds-text-secondary)', marginBottom: '0.25rem' }}>Status</p>
+            <Tag type="blue" size="md">To Do</Tag>
+          </div>
+        )}
         {email.customer && (
           <div>
             <p style={{ fontSize: '0.75rem', color: 'var(--cds-text-secondary)', marginBottom: '0.25rem' }}>Customer</p>

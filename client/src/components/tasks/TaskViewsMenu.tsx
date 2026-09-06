@@ -14,6 +14,33 @@ import type { TaskView } from '../../types/task';
  * replaces the current filters; "Save view" keeps the current ones. The
  * store owns the filters, so this is a thin menu over it.
  */
+const FILTER_WORDS: Record<string, (v: string | boolean) => string> = {
+  search: (v) => `matching “${String(v)}”`,
+  status: (v) => `status ${String(v).replace(/_/g, ' ').toLowerCase()}`,
+  priority: (v) => `${String(v).toLowerCase()} priority`,
+  labelId: () => 'one label',
+  overdue: () => 'overdue',
+  ownership: (v) => (v === 'shared' ? 'shared with me' : 'mine'),
+  blocked: (v) => (v === 'true' ? 'blocked' : 'not blocked'),
+};
+
+const SORT_WORDS: Record<string, string> = {
+  createdAt: 'date added',
+  dueDate: 'due date',
+  priority: 'priority',
+  status: 'status',
+  title: 'title',
+  updatedAt: 'last change',
+};
+
+/** What the view will bring back, in words rather than query keys. */
+export function describeView(filters: Record<string, string | boolean>, sortBy: string, sortOrder: string): string {
+  const parts = Object.entries(filters).map(([k, v]) => (FILTER_WORDS[k] ?? ((x: string | boolean) => `${k} ${String(x)}`))(v));
+  const what = parts.length ? `Keeps tasks ${parts.join(', ')}` : 'Keeps every task';
+  const order = sortOrder === 'asc' ? 'ascending' : 'descending';
+  return `${what}, sorted by ${SORT_WORDS[sortBy] ?? sortBy} ${order}.`;
+}
+
 export function TaskViewsMenu() {
   const addNotification = useUIStore((s) => s.addNotification);
   const filters = useTaskStore((s) => s.filters);
@@ -104,9 +131,7 @@ export function TaskViewsMenu() {
           }}
           maxLength={80}
         />
-        <p className="modal-form__helper">
-          Keeps: {Object.entries(activeFilters).map(([k, v]) => `${k}=${String(v)}`).join(', ') || 'no filters'}; sorted by {sortBy} {sortOrder}.
-        </p>
+        <p className="modal-form__helper">{describeView(activeFilters, sortBy, sortOrder)}</p>
       </Modal>
     </>
   );
