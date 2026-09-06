@@ -165,20 +165,19 @@ export function DealCreateModal({ open, onClose, onCreated, editDeal }: DealCrea
         }}
         className="create-side-panel__form-item"
       />
-      <DatePicker
-        datePickerType="single"
-        value={expiryDate ? new Date(expiryDate) : undefined}
-        onChange={([date]: Date[]) => {
-          setExpiryDate(date ? date.toISOString() : null);
-        }}
-      >
-        <DatePickerInput
-          id="deal-expiry"
-          labelText="Expiry Date"
-          placeholder="mm/dd/yyyy"
-          className="create-side-panel__form-item"
-        />
-      </DatePicker>
+      {/* The wrapper carries the form-item spacing: on the input itself the
+          class sizes the field, not the row, and Products sat flush under it. */}
+      <div className="create-side-panel__form-item">
+        <DatePicker
+          datePickerType="single"
+          value={expiryDate ? new Date(expiryDate) : undefined}
+          onChange={([date]: Date[]) => {
+            setExpiryDate(date ? date.toISOString() : null);
+          }}
+        >
+          <DatePickerInput id="deal-expiry" labelText="Expiry Date" placeholder="mm/dd/yyyy" />
+        </DatePicker>
+      </div>
       <TextArea
         id="deal-products"
         labelText="Products"

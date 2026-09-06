@@ -322,7 +322,10 @@
 }
 
 .dashboard-item__badge {
-  flex-shrink: 0;
+  // Wide enough for the longest priority word so every title starts on the
+  // same line; "Medium" rows used to push their titles a few px right of
+  // "Low" and "High" rows.
+  flex: 0 0 4.75rem;
   padding-top: 2px;
 }
 

@@ -113,6 +113,23 @@ const actionLabels: Record<string, string> = {
   GOOGLE_DISCONNECTED: 'Google Disconnected',
   USER_LOGIN: 'Login',
   USER_LOGOUT: 'Logout',
+  EMAIL_SCHEDULE_UPDATED: 'Schedule Updated',
+  EMAIL_DRAFT_SAVED: 'Draft Saved',
+  EMAIL_DRAFT_DELETED: 'Draft Deleted',
+  EMAIL_DRAFT_SENT: 'Draft Sent',
+  EMAIL_SNOOZED: 'Email Snoozed',
+  EMAIL_UNSNOOZED: 'Email Unsnoozed',
+  EMAIL_FOLLOW_UP_SET: 'Follow-up Set',
+  EMAIL_FOLLOW_UP_CLEARED: 'Follow-up Cleared',
+  CONTACT_MERGED: 'Contacts Merged',
+  TEMPLATE_CREATED: 'Email Template Created',
+  TEMPLATE_UPDATED: 'Email Template Updated',
+  TEMPLATE_DELETED: 'Email Template Deleted',
+  LABEL_CREATED: 'Label Created',
+  LABEL_UPDATED: 'Label Updated',
+  LABEL_DELETED: 'Label Deleted',
+  ONBOARDING_COMPLETED: 'Setup Completed',
+  ONBOARDING_SKIPPED: 'Setup Skipped',
 };
 
 const actionColors: Record<string, string> = {
@@ -150,7 +167,7 @@ const entityTypeItems = [
   { id: 'scheduled_email', text: 'Scheduled Email' },
 ];
 
-function getSummary(entry: AuditLogEntry): string {
+export function getSummary(entry: AuditLogEntry): string {
   const d = entry.details as Record<string, unknown> | null;
   if (!d) return '—';
 
@@ -159,11 +176,22 @@ function getSummary(entry: AuditLogEntry): string {
   if (d.subject) parts.push(`"${decodeEntities(String(d.subject)).slice(0, 60)}"`);
   if (d.title) parts.push(`"${decodeEntities(String(d.title)).slice(0, 60)}"`);
   if (d.name) parts.push(String(d.name));
-  if (d.to) {
+  // An email's `to`/`from` are addresses; a task update's are the before and
+  // after values keyed by field, which read as "[object Object]" through
+  // String(). Those are rendered with the change list below.
+  const isMap = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+  if (d.to && !isMap(d.to)) {
     const to = Array.isArray(d.to) ? d.to.join(', ') : String(d.to);
     parts.push(`→ ${to.slice(0, 60)}`);
   }
-  if (d.from) parts.push(`from ${String(d.from).slice(0, 40)}`);
+  if (d.from && !isMap(d.from)) parts.push(`from ${String(d.from).slice(0, 40)}`);
+  // The 1.12 task actions.
+  if (d.blocker) parts.push(`blocked by "${decodeEntities(String(d.blocker)).slice(0, 60)}"`);
+  if (d.label && d.linkType) parts.push(`${String(d.linkType)}: ${decodeEntities(String(d.label)).slice(0, 60)}`);
+  if (d.added) parts.push(`added "${decodeEntities(String(d.added)).slice(0, 60)}"`);
+  if (typeof d.minutes === 'number') parts.push(`${d.minutes} min${d.timer ? ' (timer)' : ''}`);
+  if (Array.isArray(d.mentions) && d.mentions.length) parts.push(`${d.mentions.length} mentioned`);
+  if (d.status && !d.changes) parts.push(`→ ${String(d.status)}`);
   if (d.count) parts.push(`${d.count} items`);
   if (d.response) parts.push(`Response: ${d.response}`);
   if (d.assignedToId) parts.push(`Assigned to: ${String(d.assignedToId).slice(0, 8)}…`);
@@ -175,7 +203,20 @@ function getSummary(entry: AuditLogEntry): string {
   }
   if (d.changes) {
     const changes = d.changes as string[];
-    parts.push(`Changed: ${changes.join(', ')}`);
+    const from = isMap(d.from) ? d.from : {};
+    const to = isMap(d.to) ? d.to : {};
+    const show = (v: unknown) => {
+      if (v === null || v === undefined || v === '') return '—';
+      const str = String(v);
+      // Dates arrive as ISO strings; nobody reads a Z-suffixed timestamp.
+      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(str) && !Number.isNaN(Date.parse(str))) return format(new Date(str), 'MMM d, yyyy h:mm a');
+      return str.slice(0, 30);
+    };
+    parts.push(
+      changes
+        .map((k) => (k in from || k in to ? `${k}: ${show(from[k])} → ${show(to[k])}` : k))
+        .join(', ')
+    );
   }
 
   return parts.join(' · ') || '—';
