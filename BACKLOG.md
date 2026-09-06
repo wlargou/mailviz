@@ -680,6 +680,55 @@ what the previous one adds:
   opens on the inbox), no "unread replies" badge on the task row, no
   automatic re-open of a finished task when a reply arrives.
 
+### Visual sweeps after 1.12 — PRs #38 and #39
+
+The ten features were each "verified" from half-scale screenshots of the part
+being changed, and production shipped with the Tasks list's selection
+checkbox taking 40% of the table — the new column had shifted every
+positional `nth-child` width rule by one. Two sweeps followed, both at
+1600px with full-scale zooms of every surface, widths measured with
+`getBoundingClientRect` where a control looked off, in g100 and g10:
+
+- [x] **#38, the task surfaces** (1.12.1). Besides the column widths: "Save
+  as template" opened from the edit panel dimmed the panel and showed no
+  dialog (a Modal inside the SidePanel without `createPortal`); the Start
+  Date / Reminder row overflowed the gutter (Carbon's single DatePicker is a
+  fixed 18rem and the flex cell would not shrink); "Add a blocker" sat at
+  two-thirds width; the Time row wrapped onto three lines; Settings' Task
+  templates shared the Labels tile; the event panel led with an empty "No
+  tasks" box above Join and RSVP. Also: the save-view helper reads in words,
+  and the convert dialog no longer shows a "To Do" status when attaching to
+  an existing task.
+- [x] **#39, every other page** (1.12.2). Activity Log printed task updates
+  as "→ [object Object] · from [object Object]" (the 1.12 before/after maps
+  through `String()`), had no summary for the new task actions and no label
+  for seventeen actions the server records; the mail thread's company tag
+  was `position: fixed` onto the panel's close button; the event dialog's
+  date rows (18rem date, time pushed to the edge, Duration a gutter short);
+  the deal form's Expiry Date with no spacing under it; Recent Tasks titles
+  misaligned by the priority word's width.
+
+Both are CLAUDE.md gotchas now (positional widths shift when a column is
+added; every modal opened from inside a SidePanel needs the portal), and the
+rule is in the working preferences: verified means the whole surface was
+walked at full scale, not that a screenshot was taken.
+
+Seen on the walk and left alone:
+
+- [ ] **The SidePanel "Close" tooltip shows on open**, in every panel — the
+  close button takes focus on mount. Re-checked in both sweeps; still there.
+- [ ] **Week view's overlapping events** truncate to a few characters when
+  four share a slot; legible only by the tooltip. Month view has "+N more";
+  week view has nothing equivalent.
+- [ ] **The Companies list's Category column is blank for most rows** —
+  data, not a bug (most companies were harvested from mail and never
+  categorised), but a column that is empty for 900 of 1,000 rows earns its
+  width badly. A "—" or hiding the column until a category exists would do.
+- [ ] **The first click after a route change is swallowed** by something
+  that steals focus on mount — a real click, not just automation. Noticed on
+  Settings tabs, the Compose button and calendar events; worth one look at
+  what focuses itself on page load.
+
 ## Decisions waiting on a person
 
 None of these is blocked on code. One line either way closes each.

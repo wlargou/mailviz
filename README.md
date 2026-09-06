@@ -351,8 +351,10 @@ never survived a clone and rotted unnoticed.
 
 It is ordered by cost-to-value. Phases 1 (backend built, UI missing), 3 (product gaps) and 4 (testing)
 are complete. Phase 2 has one item left: Gmail push. The September 2026 correctness campaign
-(PRs #1–#24) and the loose ends it recorded are listed there too, along with the decisions that are
-waiting on a human rather than on code.
+(PRs #1–#24) and the loose ends it recorded are listed there too, as are the ten task-management
+features (PRs #27–#36, 1.3 → 1.12) and the two visual sweeps that followed them (PRs #38 and #39, every
+surface walked at full scale after a column-width bug reached production), along with the decisions
+that are waiting on a human rather than on code.
 
 Two design documents survive in [`docs/plans/`](docs/plans/), because they hold detail a backlog line
 cannot: [`live-email-sync.md`](docs/plans/live-email-sync.md) (the Pub/Sub design behind item 2.1) and
@@ -376,8 +378,8 @@ custom recurrence builder is acceptable). The Carbon audit that used to live in
   for mail that syncs in.
 - **A pending calendar push stops retrying after 24 hours** and waits for a human. It stays
   protected and badged; whether that is the right window is an open decision.
-- **The Carbon SidePanel close-button tooltip on mount** — a fix was reverted in March and the
-  behaviour has not been re-checked since.
+- **The Carbon SidePanel close-button tooltip on mount** — a fix was reverted in March; re-checked
+  in the September 2026 sweeps and it still shows in every panel.
 - See `BACKLOG.md` for the Carbon and quality debt (inline styles, native `title=` tooltips, no
   table batch actions, thread-row markup in three copies).
 
