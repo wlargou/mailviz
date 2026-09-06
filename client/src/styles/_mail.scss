@@ -717,12 +717,11 @@
   gap: $spacing-05;
 }
 
-// Position company tag in SidePanel header area (top-right)
-.mail-page__side-panel .thread-detail__company {
-  position: fixed;
-  top: 0.75rem;
-  right: 3rem;
-  z-index: 8001;
+// The company tag stays in the panel's flow, first thing under the title.
+// It used to be `position: fixed` into the header's top-right corner, where
+// it sat on the SidePanel's close button and under its tooltip.
+.thread-detail__company {
+  display: flex;
 }
 
 .thread-detail__messages {

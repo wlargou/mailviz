@@ -982,13 +982,32 @@
 }
 
 // Event modal (create/edit side panel)
+// Date + time, or Duration + End time. Flex rather than a two-track grid:
+// when the second control is absent (all-day, or no custom end) an empty
+// `auto` track still kept its gap, so Duration ended a gutter short of the
+// fields above it. The date input is Carbon's fixed 18rem unless told to fill.
 .event-modal__date-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
+  display: flex;
   gap: $spacing-05;
-  align-items: end;
+  align-items: flex-end;
+
+  > * {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  // The containers too: 100% of a shrink-wrapped container is the input's
+  // own intrinsic width, which is exactly what it was.
+  .cds--date-picker,
+  .cds--date-picker-container,
+  .cds--date-picker-input__wrapper,
+  .cds--date-picker-input__wrapper > span,
+  .cds--date-picker.cds--date-picker--single .cds--date-picker__input {
+    inline-size: 100%;
+  }
 
   .cds--time-picker {
+    flex: 0 0 auto;
     min-width: 10rem;
   }
 }
