@@ -1671,3 +1671,27 @@ describe('/api/v1/tasks — batch and views', () => {
     expect(gone.status).toBe(204);
   });
 });
+
+describe('/api/v1/emails — attach to task', () => {
+  it('attaches and detaches an email, refusing another account\'s email', async () => {
+    const { alice, bob } = await createTwoUsers();
+    const cookie = authFor(alice.id);
+    const task = await createTask(alice.id, { title: 'Reply' });
+    const mine = await createEmail(alice.id, { subject: 'Mine', threadId: 'thr-a' });
+    const bobs = await createEmail(bob.id, { subject: 'BobsSecretMail', threadId: 'thr-b' });
+
+    const cross = await request(app).post(`/api/v1/emails/${bobs.id}/attach-to-task`).set('Cookie', cookie).send({ taskId: task.id });
+    expect(cross.status).toBe(404);
+    expect(JSON.stringify(cross.body)).not.toContain('BobsSecretMail');
+
+    const ok = await request(app).post(`/api/v1/emails/${mine.id}/attach-to-task`).set('Cookie', cookie).send({ taskId: task.id, note: 'the ask' });
+    expect(ok.status).toBe(201);
+    const detail = await request(app).get(`/api/v1/tasks/${task.id}`).set('Cookie', cookie);
+    expect(detail.body.data.emailLinks).toHaveLength(1);
+    expect(detail.body.data.emailLinks[0]).toMatchObject({ conversionNote: 'the ask', email: { subject: 'Mine' } });
+
+    const gone = await request(app).delete(`/api/v1/emails/${mine.id}/attach-to-task/${task.id}`).set('Cookie', cookie);
+    expect(gone.status).toBe(200);
+    expect(await prisma.mailToTask.count()).toBe(0);
+  });
+});

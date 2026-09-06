@@ -666,8 +666,19 @@ what the previous one adds:
   the By Company tab is the one grouping and stays), no view sharing, no
   default view per account, and the Customers, Contacts and Deals tables
   still have no batch actions.
-- [ ] **T10 Email-to-task, second generation** — `MailToTask` becomes
-  one-to-many; replies on a linked thread surface on the task.
+- [x] **T10 Email-to-task, second generation** (1.12.0). `mail_to_tasks`
+  is many-to-many: the two single-column uniques that made it one-to-one
+  are dropped (as indexes — see the CLAUDE.md gotcha), the pair stays
+  unique. An email may be converted more than once (the old 409 is gone)
+  and attached to an existing task (`POST /emails/:id/attach-to-task`,
+  the convert modal's "Existing task" mode, the panel's Emails section);
+  attaching needs the email — own, or in a shared thread — and the task.
+  Mail that arrives on a linked thread after the link was made shows on
+  the task's timeline as "Sam replied on the linked thread". Finishing a
+  task from the panel offers, on a toast, to archive its linked emails that
+  are still in the inbox. Not done: no thread deep link from the task (Mail
+  opens on the inbox), no "unread replies" badge on the task row, no
+  automatic re-open of a finished task when a reply arrives.
 
 ## Decisions waiting on a person
 

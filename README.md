@@ -20,7 +20,7 @@ A full-stack CRM with deep Gmail and Google Calendar integration. Manage custome
 - **Templates** — reusable bodies with `{{variables}}` (contact, company, today…), inserted at the cursor; compose refuses to send while any variable is unfilled
 - **Snooze / follow-up** — hide a thread until a chosen time; it returns unread at its real date. State lives in `email_reminders`, never on the email row
 - **Mail Review** — a guided catch-up flow for a chosen period: pick a date range, review a per-company summary, then work through the mail company by company, paged per company
-- **Email-to-task** — turn any email into a tracked task
+- **Email-to-task** — turn any email into a tracked task, or attach it to one that exists; a task can cite several emails and an email can feed several tasks. Replies on a linked thread show up on the task's timeline, and finishing the task offers to archive the thread
 - **Search & filtering** — folder (Inbox/Sent/Starred/Archived/Trash/Drafts/Snoozed/Scheduled), sender, date range, customer, read status, attachments
 - **Smart linking** — email is auto-linked to customers and contacts by sender domain. Outbound mail files under the counterparty, mailing lists never become companies, and multi-part public suffixes (`co.uk`, `co.ma`) are understood
 

@@ -31,7 +31,8 @@ export interface EmailMessage {
   customerId: string | null;
   customer: { id: string; name: string; domain: string | null; logoUrl: string | null; isVip?: boolean; isInternal?: boolean } | null;
   attachments: EmailAttachment[];
-  mailToTask?: { id: string; task: { id: string; title: string; status: string } } | null;
+  /** Tasks this email was made into or attached to. */
+  taskLinks?: Array<{ id: string; task: { id: string; title: string; status: string } }>;
   syncedAt: string | null;
   createdAt: string;
 }

@@ -3,7 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { emailController } from '../controllers/emailController.js';
 import { draftController } from '../controllers/draftController.js';
 import { validate } from '../middleware/validate.js';
-import { convertToTaskSchema } from '../validators/emailValidator.js';
+import { convertToTaskSchema, attachToTaskSchema } from '../validators/emailValidator.js';
 import { sendEmailSchema, replyEmailSchema, forwardEmailSchema, scheduleEmailSchema, updateScheduledEmailSchema } from '../validators/composeValidator.js';
 import { saveDraftSchema, sendDraftSchema } from '../validators/draftValidator.js';
 
@@ -78,5 +78,7 @@ router.patch('/:id/untrash', emailController.untrash);
 router.post('/:id/reply', validate(replyEmailSchema), emailController.replyToEmail);
 router.post('/:id/forward', validate(forwardEmailSchema), emailController.forwardEmail);
 router.post('/:id/convert-to-task', validate(convertToTaskSchema), emailController.convertToTask);
+router.post('/:id/attach-to-task', validate(attachToTaskSchema), emailController.attachToTask);
+router.delete('/:id/attach-to-task/:taskId', emailController.detachFromTask);
 
 export { router as emailRoutes };

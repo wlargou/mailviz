@@ -68,6 +68,8 @@ const actionLabels: Record<string, string> = {
   EMAIL_SHARED: 'Email Shared',
   EMAIL_UNSHARED: 'Email Unshared',
   EMAIL_CONVERTED_TO_TASK: 'Email → Task',
+  EMAIL_ATTACHED_TO_TASK: 'Email Attached to Task',
+  EMAIL_DETACHED_FROM_TASK: 'Email Detached from Task',
   TASK_CREATED: 'Task Created',
   TASK_UPDATED: 'Task Updated',
   TASK_DELETED: 'Task Deleted',

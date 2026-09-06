@@ -266,7 +266,7 @@ export function TaskByCompanyView({ labels, onEdit, onDelete, onCreateNew }: Tas
   };
 
   const openEmail = (task: Task) => {
-    const threadId = task.mailToTask?.email.threadId;
+    const threadId = task.emailLinks?.[0]?.email.threadId;
     if (threadId) navigate(`/mail?thread=${encodeURIComponent(threadId)}`);
   };
 
@@ -506,7 +506,7 @@ export function TaskByCompanyView({ labels, onEdit, onDelete, onCreateNew }: Tas
                       {companyOpen && group.tasks.map((task) => {
                         const taskOpen = openTasks.has(task.id);
                         const overdue = isOverdue(task);
-                        const sourceEmail = task.mailToTask?.email ?? null;
+                        const sourceEmail = task.emailLinks?.[0]?.email ?? null;
 
                         return (
                           <Fragment key={task.id}>

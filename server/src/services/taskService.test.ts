@@ -1442,11 +1442,11 @@ describe('taskService.findGroupedByCompany — fields for the By Company view', 
     const result = await taskService.findGroupedByCompany(alice.id);
 
     const row = result.data[0].tasks[0] as unknown as {
-      mailToTask: { email: { threadId: string | null; from: string } } | null;
+      emailLinks: Array<{ email: { threadId: string | null; from: string } }>;
     };
-    expect(row.mailToTask?.email.from).toBe('ilham@acme.test');
+    expect(row.emailLinks[0]?.email.from).toBe('ilham@acme.test');
     // Without the thread id "Open email" has nothing to navigate to.
-    expect(row.mailToTask?.email.threadId).toBe('thread-9');
+    expect(row.emailLinks[0]?.email.threadId).toBe('thread-9');
   });
 
   it('returns labels flat, not as join rows', async () => {
@@ -1480,7 +1480,7 @@ describe('taskService.findGroupedByCompany — fields for the By Company view', 
     expect(labels[0]).not.toHaveProperty('labelId');
   });
 
-  it('leaves mailToTask null for a task nobody made from mail', async () => {
+  it('leaves emailLinks empty for a task nobody made from mail', async () => {
     const { alice } = await createTwoUsers();
     await seedTaskStatuses(alice.id);
     const acme = await company(alice.id, 'Acme');
@@ -1488,7 +1488,7 @@ describe('taskService.findGroupedByCompany — fields for the By Company view', 
 
     const result = await taskService.findGroupedByCompany(alice.id);
 
-    expect((result.data[0].tasks[0] as unknown as { mailToTask: unknown }).mailToTask).toBeNull();
+    expect((result.data[0].tasks[0] as unknown as { emailLinks: unknown[] }).emailLinks).toEqual([]);
   });
 
   it('reports the soonest upcoming due date per company', async () => {

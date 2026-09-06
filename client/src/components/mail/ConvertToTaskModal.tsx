@@ -6,8 +6,13 @@ import {
   Dropdown,
   Tag,
   Modal,
+  ContentSwitcher,
+  Switch,
+  ComboBox,
 } from '@carbon/react';
+import { useEffect, useRef } from 'react';
 import { emailsApi } from '../../api/emails';
+import { tasksApi } from '../../api/tasks';
 import { useUIStore } from '../../store/uiStore';
 import type { EmailMessage } from '../../types/email';
 import { decodeEntities } from '../../utils/text';
@@ -34,8 +39,52 @@ export function ConvertToTaskModal({ email, open, onClose, onConverted }: Conver
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const addNotification = useUIStore((s) => s.addNotification);
+  /**
+   * Two ways in: a new task from this email, or attaching it to one that
+   * already exists — a reply to a request that is already being worked on
+   * belongs on that task, not on a second one.
+   */
+  const [mode, setMode] = useState<'new' | 'existing'>('new');
+  const [existing, setExisting] = useState<{ id: string; text: string } | null>(null);
+  const [candidates, setCandidates] = useState<Array<{ id: string; text: string }>>([]);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      setMode('new');
+      setExisting(null);
+      setCandidates([]);
+    }
+  }, [open]);
+
+  const searchTasks = (query: string) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const { data: res } = await tasksApi.getAll({ search: query, limit: '10', sortBy: 'updatedAt', sortOrder: 'desc' });
+        setCandidates(res.data.map((t) => ({ id: t.id, text: decodeEntities(t.title) })));
+      } catch {
+        setCandidates([]);
+      }
+    }, 300);
+  };
 
   const handleSubmit = async () => {
+    if (mode === 'existing') {
+      if (!existing) return;
+      setSubmitting(true);
+      try {
+        await emailsApi.attachToTask(email.id, existing.id, notes.trim() || undefined);
+        addNotification({ kind: 'success', title: 'Email attached to task', subtitle: existing.text });
+        taskChanged();
+        onConverted();
+      } catch {
+        addNotification({ kind: 'error', title: 'Failed to attach the email' });
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
     if (!title.trim()) return;
     setSubmitting(true);
     try {
@@ -47,9 +96,8 @@ export function ConvertToTaskModal({ email, open, onClose, onConverted }: Conver
       addNotification({ kind: 'success', title: 'Task created from email' });
       taskChanged();
       onConverted();
-    } catch (err: any) {
-      const msg = err?.response?.status === 409 ? 'Email already converted to task' : 'Failed to create task';
-      addNotification({ kind: 'error', title: msg });
+    } catch {
+      addNotification({ kind: 'error', title: 'Failed to create task' });
     } finally {
       setSubmitting(false);
     }
@@ -61,16 +109,41 @@ export function ConvertToTaskModal({ email, open, onClose, onConverted }: Conver
       onRequestClose={onClose}
       onRequestSubmit={handleSubmit}
       onSecondarySubmit={onClose}
-      modalHeading="Convert Email to Task"
-      modalLabel="Create a task linked to this email"
+      modalHeading={mode === 'new' ? 'Convert Email to Task' : 'Attach Email to Task'}
+      modalLabel={mode === 'new' ? 'Create a task linked to this email' : 'Add this email to a task that already exists'}
       size="sm"
-      primaryButtonText="Create Task"
+      primaryButtonText={mode === 'new' ? 'Create Task' : 'Attach'}
       secondaryButtonText="Cancel"
-      primaryButtonDisabled={!title.trim() || submitting}
+      primaryButtonDisabled={submitting || (mode === 'new' ? !title.trim() : !existing)}
       loadingStatus={submitting ? 'active' : 'inactive'}
       loadingDescription="Creating task..."
       selectorPrimaryFocus="#convert-task-title"
     >
+      <ContentSwitcher
+        size="sm"
+        selectedIndex={mode === 'new' ? 0 : 1}
+        onChange={({ index }: { index?: number }) => setMode(index === 1 ? 'existing' : 'new')}
+        className="create-side-panel__form-item"
+      >
+        <Switch name="new" text="New task" />
+        <Switch name="existing" text="Existing task" />
+      </ContentSwitcher>
+      {mode === 'existing' && (
+        <div className="create-side-panel__form-item">
+          <ComboBox
+            id="convert-task-existing"
+            titleText="Task"
+            placeholder="Search a task…"
+            items={candidates}
+            itemToString={(item: { id: string; text: string } | null) => item?.text ?? ''}
+            onInputChange={(text: string) => searchTasks(text)}
+            onChange={({ selectedItem }: { selectedItem?: { id: string; text: string } | null }) => setExisting(selectedItem ?? null)}
+            selectedItem={existing}
+          />
+        </div>
+      )}
+      {mode === 'new' && (
+      <>
       <TextInput
         id="convert-task-title"
         labelText="Task title"
@@ -92,6 +165,8 @@ export function ConvertToTaskModal({ email, open, onClose, onConverted }: Conver
         }}
         className="create-side-panel__form-item"
       />
+      </>
+      )}
       <div className="create-side-panel__form-item" style={{ display: 'flex', gap: '1rem' }}>
         <div>
           <p style={{ fontSize: '0.75rem', color: 'var(--cds-text-secondary)', marginBottom: '0.25rem' }}>Status</p>

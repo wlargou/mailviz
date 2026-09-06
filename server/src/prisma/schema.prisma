@@ -54,7 +54,9 @@ model Task {
   updatedAt      DateTime     @updatedAt @map("updated_at")
 
   labels     TaskLabel[]
-  mailToTask MailToTask?
+  /// The emails this task was made from or attached to. Several: a thread
+  /// can produce more than one task, and a task can cite several messages.
+  emailLinks MailToTask[]
   shares     TaskShare[]
   checklist  TaskChecklistItem[]
   comments   TaskComment[]
@@ -538,7 +540,8 @@ model Email {
   userId     String    @map("user_id")
   customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
   user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  mailToTask      MailToTask?
+  /// The tasks this email was made into or attached to.
+  taskLinks       MailToTask[]
   attachments     EmailAttachment[]
   scheduledReplies ScheduledEmail[]
 
@@ -568,16 +571,22 @@ model EmailAttachment {
   @@map("email_attachments")
 }
 
+/// A task's tie to an email: the message it was made from, or one attached
+/// later. Many-to-many since 1.12 — the two single-column uniques that made
+/// it one-to-one are gone.
 model MailToTask {
   id             String   @id @default(uuid())
-  emailId        String   @unique @map("email_id")
-  taskId         String   @unique @map("task_id")
+  emailId        String   @map("email_id")
+  taskId         String   @map("task_id")
   conversionNote String?  @db.Text @map("conversion_note")
   createdAt      DateTime @default(now()) @map("created_at")
 
   email Email @relation(fields: [emailId], references: [id], onDelete: Cascade)
   task  Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
+  @@unique([emailId, taskId])
+  @@index([taskId])
+  @@index([emailId])
   @@map("mail_to_tasks")
 }
 

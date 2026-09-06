@@ -3,6 +3,7 @@ import { Button, InlineLoading, Tag, TextArea } from '@carbon/react';
 import { Edit, Send, TrashCan } from '@carbon/icons-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { tasksApi } from '../../api/tasks';
+import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { useUIStore } from '../../store/uiStore';
 import { decodeEntities } from '../../utils/text';
@@ -64,6 +65,7 @@ function mentionAtCaret(text: string, caret: number): { start: number; query: st
  * someone the comment no longer addresses.
  */
 export function TaskActivity({ taskId, ownerId, users, statuses, version = 0 }: TaskActivityProps) {
+  const navigate = useNavigate();
   const me = useAuthStore((s) => s.user?.id);
   const addNotification = useUIStore((s) => s.addNotification);
   const [entries, setEntries] = useState<TaskActivityEntry[] | null>(null);
@@ -315,7 +317,20 @@ export function TaskActivity({ taskId, ownerId, users, statuses, version = 0 }: 
                   {entry.actor.avatarUrl ? <img src={entry.actor.avatarUrl} alt="" /> : initials(entry.actor)}
                 </span>
                 <div className="task-activity__body">
-                  {entry.kind === 'comment' ? (
+                  {entry.kind === 'email' ? (
+                    <>
+                      <div className="task-activity__meta">
+                        <strong>{who}</strong> replied on the linked thread
+                        <time dateTime={entry.at} title={format(new Date(entry.at), 'PPpp')}>{when}</time>
+                      </div>
+                      <p className="task-activity__text">
+                        <button type="button" className="task-parent-crumb--link task-activity__mail-link" onClick={() => navigate('/mail')} title="Open in Mail">
+                          {decodeEntities(entry.subject)}
+                        </button>
+                        {entry.snippet && <span className="task-section__meta"> — {decodeEntities(entry.snippet).slice(0, 140)}</span>}
+                      </p>
+                    </>
+                  ) : entry.kind === 'comment' ? (
                     <>
                       <div className="task-activity__meta">
                         <strong>{who}</strong>
