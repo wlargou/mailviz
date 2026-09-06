@@ -701,7 +701,9 @@ None of these is blocked on code. One line either way closes each.
 
 ## Operational loose ends
 
-- [ ] **`railway ssh node /app/server/dist/scripts/backfillAll.js --apply` has
-  never been run against production.** Only the `decodeTaskEntities` step has,
-  by hand. Forgetting it once made the contact filters look broken. The dry run
-  writes nothing; every step is idempotent.
+- [x] **`railway ssh node /app/server/dist/scripts/backfillAll.js --apply` run
+  against production on 2026-09-06** (1.12.0.0). Dry run first, then apply:
+  1 junk customer found and kept (it holds no mail; the script does not
+  remove customers with contacts), 0 emails re-filed, 0 contact kinds
+  changed, 16 contact engagement rows updated, 0 task titles decoded. Every
+  step is idempotent, so re-running after a future sync is safe.
