@@ -34,6 +34,7 @@ import { apiError } from '../../utils/apiError';
 import { buildRecurrenceOptions, buildRecurrenceRules, parseRecurrencePreset, type RecurrencePresetId } from '../../utils/recurrence';
 import { format } from 'date-fns';
 import { REMINDER_OPTIONS, reminderFor, reminderPreset, type ReminderPresetId } from '../../utils/reminders';
+import { EFFORT_STEPS, effortLabel, minutesToStepIndex, stepIndexToMinutes } from '../../utils/effort';
 import { TaskParentCrumb } from './TaskProgressTags';
 import { useUIStore } from '../../store/uiStore';
 import type { Task, Label, TaskPriority, TaskStatus, TaskStatusConfig } from '../../types/task';
@@ -46,24 +47,6 @@ const priorityItems = [
   { id: 'HIGH', text: 'High' },
   { id: 'URGENT', text: 'Urgent' },
 ];
-
-// Discrete effort values in minutes
-const EFFORT_STEPS = [0, 5, 10, 15, 30, 60, 120, 240, 480];
-const EFFORT_LABELS: Record<number, string> = {
-  0: 'None', 5: '5 min', 10: '10 min', 15: '15 min',
-  30: '30 min', 60: '1 hour', 120: '2 hours', 240: '4 hours', 480: '1 day',
-};
-
-function minutesToStepIndex(minutes: number | null): number {
-  if (!minutes) return 0;
-  const idx = EFFORT_STEPS.indexOf(minutes);
-  return idx >= 0 ? idx : 0;
-}
-
-function stepIndexToMinutes(index: number): number | null {
-  const val = EFFORT_STEPS[index] ?? 0;
-  return val === 0 ? null : val;
-}
 
 /**
  * Same labels, regardless of order.
@@ -613,7 +596,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, onOpenTask, 
         <div className="modal-form__effort">
           <Slider
             id="edit-task-effort"
-            labelText={`Estimated effort: ${EFFORT_LABELS[EFFORT_STEPS[effortIndex]] || 'None'}`}
+            labelText={`Estimated effort: ${effortLabel(effortIndex)}`}
             min={0}
             max={EFFORT_STEPS.length - 1}
             step={1}
