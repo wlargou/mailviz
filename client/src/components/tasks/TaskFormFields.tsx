@@ -66,6 +66,27 @@ export function taskFormToInput(v: TaskFormValues): Omit<CreateTaskInput, 'title
   };
 }
 
+export interface StatusItem {
+  id: string;
+  text: string;
+  isTerminal?: boolean;
+}
+
+/**
+ * The status a new task starts in. Statuses are the user's own rows, so
+ * there is no name to hard-code — `'TODO'` matched nothing for a user whose
+ * first column is `TO_DO`, and the dropdown sat on its placeholder. The
+ * first non-terminal status in the user's order, falling back to the first.
+ */
+export function defaultStatus(items: StatusItem[], current: TaskStatus): TaskStatus {
+  if (items.some((s) => s.id === current)) return current;
+  return (items.find((s) => !s.isTerminal) ?? items[0])?.id ?? current;
+}
+
+export function toStatusItems(rows: { name: string; label: string; isTerminal?: boolean }[]): StatusItem[] {
+  return rows.map((s) => ({ id: s.name, text: s.label, isTerminal: s.isTerminal }));
+}
+
 const priorityItems: { id: TaskPriority; text: string }[] = [
   { id: 'LOW', text: 'Low' },
   { id: 'MEDIUM', text: 'Medium' },
@@ -89,7 +110,7 @@ interface TaskFormFieldsProps {
   itemClassName: string;
   values: TaskFormValues;
   onChange: (patch: Partial<TaskFormValues>) => void;
-  statusItems: { id: string; text: string }[];
+  statusItems: StatusItem[];
   labels: Label[];
 }
 
@@ -132,30 +153,27 @@ export function TaskFormFields({ idPrefix, itemClassName, values, onChange, stat
         }}
         className={itemClassName}
       />
-      <DatePicker
-        datePickerType="single"
-        value={dueDate ? new Date(dueDate) : undefined}
-        onChange={([date]: Date[]) => onChange({ dueDate: date ? date.toISOString() : null })}
-      >
-        <DatePickerInput
-          id={`${idPrefix}-due-date`}
-          labelText="Due Date"
-          placeholder="mm/dd/yyyy"
-          className={itemClassName}
-        />
-      </DatePicker>
-      <DatePicker
-        datePickerType="single"
-        value={startDate ? new Date(startDate) : undefined}
-        onChange={([date]: Date[]) => onChange({ startDate: date ? date.toISOString() : null })}
-      >
-        <DatePickerInput
-          id={`${idPrefix}-start-date`}
-          labelText="Start Date"
-          placeholder="mm/dd/yyyy"
-          className={itemClassName}
-        />
-      </DatePicker>
+      {/* The class goes on a wrapper, not on DatePickerInput: Carbon puts
+          it on the inner input container, so a gutter class would inset the
+          input and leave the label flush against the panel edge. */}
+      <div className={itemClassName}>
+        <DatePicker
+          datePickerType="single"
+          value={dueDate ? new Date(dueDate) : undefined}
+          onChange={([date]: Date[]) => onChange({ dueDate: date ? date.toISOString() : null })}
+        >
+          <DatePickerInput id={`${idPrefix}-due-date`} labelText="Due Date" placeholder="mm/dd/yyyy" />
+        </DatePicker>
+      </div>
+      <div className={itemClassName}>
+        <DatePicker
+          datePickerType="single"
+          value={startDate ? new Date(startDate) : undefined}
+          onChange={([date]: Date[]) => onChange({ startDate: date ? date.toISOString() : null })}
+        >
+          <DatePickerInput id={`${idPrefix}-start-date`} labelText="Start Date" placeholder="mm/dd/yyyy" />
+        </DatePicker>
+      </div>
       <Dropdown
         id={`${idPrefix}-reminder`}
         titleText="Reminder"
@@ -216,6 +234,7 @@ export function TaskFormFields({ idPrefix, itemClassName, values, onChange, stat
           step={1}
           value={effortIndex}
           onChange={({ value }: { value: number }) => onChange({ effortIndex: value })}
+          formatLabel={(value: number) => effortLabel(value)}
           hideTextInput
         />
       </div>

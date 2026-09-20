@@ -1,3 +1,4 @@
+import type { CreateTaskInput } from './task';
 export interface EmailAttachment {
   id: string;
   emailId: string;
@@ -171,8 +172,11 @@ export interface EmailReminder {
   createdAt: string;
 }
 
-export interface ConvertToTaskInput {
-  title?: string;
-  priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+/**
+ * Every task field, plus the conversion note. The server builds its schema
+ * from the task one for the same reason this type does: the convert form
+ * used to be a three-field subset and fell behind the task form.
+ */
+export interface ConvertToTaskInput extends Partial<Omit<CreateTaskInput, 'parentId'>> {
   notes?: string;
 }

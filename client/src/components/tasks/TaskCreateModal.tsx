@@ -4,9 +4,9 @@ import { SidePanel } from '@carbon/ibm-products';
 import { tasksApi } from '../../api/tasks';
 import { taskStatusesApi } from '../../api/taskStatuses';
 import { useUIStore } from '../../store/uiStore';
-import type { Label, TaskStatusConfig } from '../../types/task';
+import type { Label } from '../../types/task';
 import { useTaskStore } from '../../store/taskStore';
-import { EMPTY_TASK_FORM, TaskFormFields, taskFormToInput, type TaskFormValues } from './TaskFormFields';
+import { EMPTY_TASK_FORM, TaskFormFields, defaultStatus, taskFormToInput, toStatusItems, type StatusItem, type TaskFormValues } from './TaskFormFields';
 
 interface TaskCreateModalProps {
   open: boolean;
@@ -19,14 +19,16 @@ export function TaskCreateModal({ open, onClose, onCreated, labels }: TaskCreate
   const taskChanged = useTaskStore((s) => s.taskChanged);
   const [title, setTitle] = useState('');
   const [form, setForm] = useState<TaskFormValues>(EMPTY_TASK_FORM);
-  const [statusItems, setStatusItems] = useState<{ id: string; text: string }[]>([]);
+  const [statusItems, setStatusItems] = useState<StatusItem[]>([]);
   const [loading, setLoading] = useState(false);
   const addNotification = useUIStore((s) => s.addNotification);
 
   const fetchStatuses = useCallback(async () => {
     try {
       const { data: res } = await taskStatusesApi.getAll();
-      setStatusItems(res.data.map((s: TaskStatusConfig) => ({ id: s.name, text: s.label })));
+      const items = toStatusItems(res.data);
+      setStatusItems(items);
+      setForm((prev) => ({ ...prev, status: defaultStatus(items, prev.status) }));
     } catch { /* ignore */ }
   }, []);
 

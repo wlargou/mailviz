@@ -602,6 +602,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, onOpenTask, 
             step={1}
             value={effortIndex}
             onChange={({ value }: { value: number }) => setEffortIndex(value)}
+            formatLabel={(value: number) => effortLabel(value)}
             hideTextInput
           />
         </div>
