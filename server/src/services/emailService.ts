@@ -31,6 +31,8 @@ import { notificationService } from './notificationService.js';
 import { snoozeService } from './snoozeService.js';
 import { mergeEngagement } from '../utils/contactEngagement.js';
 import { decodeEntities, decodeThenEscape } from '../utils/htmlEntities.js';
+import { taskService } from './taskService.js';
+import type { ConvertToTaskInput } from '../validators/emailValidator.js';
 
 /**
  * The single definition of how Gmail's labels map onto our boolean columns.
@@ -1365,32 +1367,39 @@ export const emailService = {
     return { count: threadIds.length };
   },
 
-  async convertToTask(emailId: string, data: { title?: string; priority?: string; notes?: string }, userId: string) {
+  async convertToTask(emailId: string, data: ConvertToTaskInput, userId: string) {
     const email = await prisma.email.findFirst({ where: { id: emailId, userId } });
     if (!email) throw Object.assign(new Error('Email not found'), { status: 404 });
 
+    const { notes, ...taskInput } = data;
+
     // An email may produce more than one task since 1.12 — a thread with
     // three asks in it is three tasks — so there is no "already converted".
-    const task = await prisma.task.create({
-      data: {
-        // Where Gmail's text stops being a mirror of Gmail and becomes our
-        // row. `data.title` is NOT decoded — the client sends it already
-        // decoded, and a title someone deliberately typed as `&amp;` is theirs
-        // to keep. Only the fallback, which any API caller omitting a title
-        // still reaches.
-        title: data.title || decodeEntities(email.subject),
-        description: decodeEntities(email.snippet) || null,
-        priority: (data.priority as any) || 'MEDIUM',
-        customerId: email.customerId,
-        userId,
-      },
+    //
+    // Through `taskService.create`, not a raw insert. The raw insert this
+    // replaced skipped everything the real path does: label linking, the
+    // ownership check on labels/company/assignee, the start-before-due check,
+    // the recurrence-needs-a-due-date check, and the Kanban position. Widening
+    // the accepted fields without routing through the service would have
+    // meant re-implementing all of that here, one drift at a time.
+    const task = await taskService.create(userId, {
+      ...taskInput,
+      // Where Gmail's text stops being a mirror of Gmail and becomes our row.
+      // `data.title` is NOT decoded — the client sends it already decoded, and
+      // a title someone deliberately typed as `&amp;` is theirs to keep. Only
+      // the fallbacks, which any API caller omitting them still reaches.
+      title: data.title || decodeEntities(email.subject),
+      description: data.description ?? (decodeEntities(email.snippet) || undefined),
+      // The email's company unless the caller chose one — including choosing
+      // none: `null` is an explicit answer and must not be overridden.
+      customerId: data.customerId === undefined ? email.customerId : data.customerId,
     });
 
     await prisma.mailToTask.create({
       data: {
         emailId,
         taskId: task.id,
-        conversionNote: data.notes || null,
+        conversionNote: notes || null,
       },
     });
 
