@@ -61,6 +61,7 @@ npm run build --workspace=server  # esbuild → server/dist/
 - **Shared Prisma**: Single instance in `lib/prisma.ts` — import from there, never `new PrismaClient()`.
 - **Gmail helper**: `lib/gmail.ts` exports `getGmailClient()` — use instead of manual oauth2Client + google.gmail pattern. It is also the rate-limit choke point (see Key Patterns).
 - **Real-time**: `websocket.ts` broadcasts events (`wsEmit`): `emails:synced`, `email:updated`, `email:sent`, `sync:status`, `sync:progress`, `calendar:synced`, `calendar:sync:status`.
+- **RFP register** (`services/rfpService.ts`, `services/rfpStorage.ts`): tenders plus their dossiers. The only place the app stores file bytes — Gmail attachments are streamed on demand and never kept. Uploads stream through multer to `RFP_STORAGE_DIR` under `<userId>/<uuid>.<ext>`, extension from a mime whitelist; the uploaded filename is kept only as a label because it is user input that may contain a path.
 - **Background jobs** (all node-cron, started in `index.ts`): `emailSyncScheduler` (`SYNC_INTERVAL_SECONDS`, default 60s), `calendarSyncScheduler` (`CALENDAR_SYNC_INTERVAL_SECONDS`, default 120s), `scheduledSendScheduler` (30s), `notificationScheduler` (5min).
 - **Build**: esbuild with `bundle: false` (required for Prisma), ESM format, Node 22 target.
 
@@ -144,6 +145,7 @@ Copy `.env.example` to **both** `.env` and `server/.env` — only `server/.env` 
 - `JWT_SECRET`, `JWT_REFRESH_SECRET` (deterministic dev fallbacks — set in production)
 - `TOKEN_ENCRYPTION_KEY` (hex, 32 bytes — encrypts Google tokens at rest; **unset = plaintext storage**, it falls back silently)
 - `ALLOWED_EMAILS` (comma-separated whitelist, empty = open access)
+- `RFP_STORAGE_DIR` — where tender documents are written. **On Railway this must be a mounted volume**; an unmounted path is rebuilt on every deploy and loses every document silently, because uploads keep succeeding. Empty locally = `<server cwd>/uploads/rfp`.
 - Sync: `SYNC_INTERVAL_SECONDS`, `EMAIL_SYNC_ENABLED`, `CALENDAR_SYNC_ENABLED`, `CALENDAR_SYNC_INTERVAL_SECONDS`, `EMAIL_SYNC_MONTHS`, `CALENDAR_SYNC_PAST_MONTHS`, `CALENDAR_SYNC_FUTURE_MONTHS`, `SYNC_CATCHUP_DAYS` (bounds the catch-up when Gmail rejects the history token, default 7)
 - Gmail throttling: `GMAIL_MAX_CONCURRENT` (5), `GMAIL_MIN_TIME_MS` (50), `GMAIL_MAX_RETRIES` (5), `GMAIL_RETRY_BASE_MS` (1000), `GMAIL_RETRY_MAX_MS` (32000)
 - Tests: `TEST_DATABASE_URL` / `TEST_DATABASE_BASE_URL` — see `server/src/test/README.md`
@@ -189,6 +191,8 @@ comes back by accident. `releasedAt` is the BUILD time, substituted by esbuild;
 process start would relabel every container restart as a release.
 
 ## Deployment (Railway)
+
+**A volume is required since 1.15.** RFP documents are the only bytes this app keeps on disk. Attach a Railway volume, mount it (e.g. `/data`), and set `RFP_STORAGE_DIR=/data/rfp`. Without it uploads appear to work and vanish at the next deploy.
 
 Configured via `nixpacks.toml` + `railway.json`. Node 22 via nixPkgs. Build: `npm ci` → client vite build → server `prisma generate` + esbuild. Start: `cd server && npx prisma migrate deploy && node dist/index.js`. Healthcheck: `/api/health`.
 

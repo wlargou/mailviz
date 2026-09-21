@@ -17,6 +17,7 @@ import { ReviewPage } from './components/mail/review/ReviewPage';
 import { SettingsPage } from './components/settings/SettingsPage';
 import { NotFoundPage } from './components/shared/NotFoundPage';
 import { DealsPage } from './components/deals/DealsPage';
+import { RfpsPage } from './components/rfps/RfpsPage';
 import { ActivityLogPage } from './components/audit/ActivityLogPage';
 
 /**
@@ -80,6 +81,7 @@ export function App() {
             <Route path="/contacts/duplicates" element={<ContactDuplicatesPage />} />
             <Route path="/contacts/:id" element={<ContactDetailPage />} />
             <Route path="/deals" element={<DealsPage />} />
+            <Route path="/rfps" element={<RfpsPage />} />
             <Route path="/calendar" element={<CalendarPage />} />
             <Route path="/mail" element={<MailPage />} />
             <Route path="/mail/review" element={<ReviewPage />} />
