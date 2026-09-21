@@ -42,6 +42,7 @@ const draftLimiter = rateLimit({
 router.get('/', emailController.findAllThreads);
 router.get('/review-summary', emailController.getReviewSummary);
 router.get('/unread-count', emailController.getUnreadCount);
+router.get('/category-counts', emailController.getCategoryCounts);
 router.get('/sync-status', emailController.getSyncStatus);
 router.post('/send', sendLimiter, validate(sendEmailSchema), emailController.sendEmail);
 router.post('/schedule', sendLimiter, validate(scheduleEmailSchema), emailController.scheduleEmail);

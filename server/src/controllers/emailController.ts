@@ -7,8 +7,8 @@ import { isSyncInProgressFor, runManualSync } from '../jobs/emailSyncScheduler.j
 export const emailController = {
   async findAllThreads(req: Req, res: Response, next: NextFunction) {
     try {
-      const { search, customerId, contactEmail, isRead, hasAttachment, folder, from, to, subject, dateAfter, dateBefore, page, limit } = req.query as Record<string, string>;
-      const result = await emailService.findAllThreads({ search, customerId, contactEmail, isRead, hasAttachment, folder, from, to, subject, dateAfter, dateBefore, page, limit }, req.user!.id);
+      const { search, customerId, contactEmail, isRead, hasAttachment, folder, category, from, to, subject, dateAfter, dateBefore, page, limit } = req.query as Record<string, string>;
+      const result = await emailService.findAllThreads({ search, customerId, contactEmail, isRead, hasAttachment, folder, category, from, to, subject, dateAfter, dateBefore, page, limit }, req.user!.id);
       res.json(result);
     } catch (err) {
       next(err);
@@ -245,6 +245,14 @@ export const emailController = {
       }
       const result = await emailService.getReviewSummary(dateAfter, dateBefore, req.user!.id);
       res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async getCategoryCounts(req: Req, res: Response, next: NextFunction) {
+    try {
+      res.json({ data: await emailService.categoryCounts(req.user!.id) });
     } catch (err) {
       next(err);
     }

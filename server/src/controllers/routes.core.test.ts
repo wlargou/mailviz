@@ -241,6 +241,8 @@ const PROTECTED_ROUTES: Array<[method: string, path: string]> = [
   ['GET', '/api/v1/auth/signature'],
   ['PUT', '/api/v1/auth/signature'],
   ['PUT', '/api/v1/auth/timezone'],
+  ['PUT', '/api/v1/auth/mail-categories'],
+  ['GET', '/api/v1/emails/category-counts'],
   // emails — reads
   ['GET', '/api/v1/emails'],
   ['GET', '/api/v1/emails/review-summary'],
@@ -492,6 +494,7 @@ describe('/api/v1/auth', () => {
       name: alice.name,
       avatarUrl: null,
       timezone: null,
+      mailCategoryTabs: ['social', 'promotions', 'updates', 'forums'],
     });
 
     const asBob = await call('GET', '/api/v1/auth/me', { as: bob.id });
@@ -1645,5 +1648,74 @@ describe('PUT /api/v1/auth/timezone', () => {
     await call('PUT', '/api/v1/auth/timezone', { as: alice.id, body: { timezone: 'Europe/Paris' } });
 
     expect((await prisma.user.findUniqueOrThrow({ where: { id: bob.id } })).timezone).toBeNull();
+  });
+});
+
+/**
+ * Which Gmail category tabs the inbox shows. Primary is not in the list and
+ * cannot be sent; the stored value is normalised to the app's fixed order
+ * with duplicates dropped, so the tabs render the same whatever the client
+ * sent. The id comes from the session, never the body.
+ */
+describe('PUT /api/v1/auth/mail-categories', () => {
+  it('stores a normalised subset for the caller and /me reflects it', async () => {
+    const { alice, bob } = await createTwoUsers();
+
+    const res = await call('PUT', '/api/v1/auth/mail-categories', {
+      as: alice.id,
+      body: { tabs: ['forums', 'social', 'social'] },
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ mailCategoryTabs: ['social', 'forums'] });
+    const me = await call('GET', '/api/v1/auth/me', { as: alice.id });
+    expect((me.body.data as { mailCategoryTabs: string[] }).mailCategoryTabs).toEqual(['social', 'forums']);
+    const bobRow = await prisma.user.findUniqueOrThrow({ where: { id: bob.id } });
+    expect(bobRow.mailCategoryTabs).toEqual(['social', 'promotions', 'updates', 'forums']);
+  });
+
+  it('accepts an empty list (Primary only) and rejects anything that is not a category', async () => {
+    const { alice } = await createTwoUsers();
+
+    expect((await call('PUT', '/api/v1/auth/mail-categories', { as: alice.id, body: { tabs: [] } })).status).toBe(200);
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: alice.id } })).mailCategoryTabs).toEqual([]);
+
+    for (const tabs of [['primary'], ['spam'], 'social', undefined]) {
+      const res = await call('PUT', '/api/v1/auth/mail-categories', { as: alice.id, body: { tabs } });
+      expect(res.status).toBe(400);
+    }
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: alice.id } })).mailCategoryTabs).toEqual([]);
+  });
+});
+
+describe('GET /api/v1/emails?category=', () => {
+  it('filters the inbox by Gmail category through the route, not only the service', async () => {
+    // The controller hands the service an explicit list of query keys. A key
+    // the service understands but the controller does not pass is silently a
+    // no-op — which is exactly what happened to `category` on first wiring.
+    const { alice } = await createTwoUsers();
+    await createEmail(alice.id, { threadId: 'a-social', labelIds: ['INBOX', 'CATEGORY_SOCIAL'] });
+    await createEmail(alice.id, { threadId: 'a-plain', labelIds: ['INBOX'] });
+
+    const social = await call('GET', '/api/v1/emails?folder=inbox&category=social', { as: alice.id });
+    expect(social.status).toBe(200);
+    expect(rows(social).map((t) => (t as { threadId: string }).threadId)).toEqual(['a-social']);
+
+    const primary = await call('GET', '/api/v1/emails?folder=inbox&category=primary', { as: alice.id });
+    expect(rows(primary).map((t) => (t as { threadId: string }).threadId)).toEqual(['a-plain']);
+  });
+});
+
+describe('GET /api/v1/emails/category-counts', () => {
+  it('returns the five categories, counting only the caller\'s unread inbox threads', async () => {
+    const { alice, bob } = await createTwoUsers();
+    await createEmail(alice.id, { threadId: 'a-promo', isRead: false, labelIds: ['INBOX', 'CATEGORY_PROMOTIONS'] });
+    await createEmail(alice.id, { threadId: 'a-plain', isRead: false, labelIds: ['INBOX'] });
+    await createEmail(bob.id, { threadId: 'b-promo', isRead: false, labelIds: ['INBOX', 'CATEGORY_PROMOTIONS'] });
+
+    const res = await call('GET', '/api/v1/emails/category-counts', { as: alice.id });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ primary: 1, social: 0, promotions: 1, updates: 0, forums: 0 });
   });
 });

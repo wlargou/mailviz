@@ -604,3 +604,62 @@ describe('emailService — folder membership and unread counts', () => {
     expect(sent.data[0].unreadCount).toBeLessThanOrEqual(sent.data[0].messageCount);
   });
 });
+
+/**
+ * Gmail's inbox categories.
+ *
+ * Gmail classifies; the app filters on the labels it assigned. Primary is
+ * everything Gmail did not sort into the four others — which includes mail
+ * with no category label at all, so nothing falls out of the default view.
+ * The counts use the same filter as the list, restricted to unread inbox
+ * threads, so a tab's number is the bold rows behind it.
+ */
+describe('emailService — Gmail categories', () => {
+  const inbox = (...labels: string[]) => ['INBOX', ...labels];
+
+  it('filters the inbox by category, with Primary as "not sorted elsewhere"', async () => {
+    const { alice } = await createTwoUsers();
+    await createEmail(alice.id, { threadId: 't-personal', subject: 'Personal', labelIds: inbox('CATEGORY_PERSONAL') });
+    await createEmail(alice.id, { threadId: 't-none', subject: 'Unlabelled', labelIds: inbox() });
+    await createEmail(alice.id, { threadId: 't-social', subject: 'Social', labelIds: inbox('CATEGORY_SOCIAL') });
+    await createEmail(alice.id, { threadId: 't-promo', subject: 'Promo', labelIds: inbox('CATEGORY_PROMOTIONS') });
+    await createEmail(alice.id, { threadId: 't-updates', subject: 'Update', labelIds: inbox('CATEGORY_UPDATES') });
+    await createEmail(alice.id, { threadId: 't-forums', subject: 'Forum', labelIds: inbox('CATEGORY_FORUMS') });
+
+    const threadsFor = async (category: string) =>
+      (await emailService.findAllThreads({ folder: 'inbox', category }, alice.id)).data.map((t) => t.threadId).sort();
+
+    expect(await threadsFor('primary')).toEqual(['t-none', 't-personal']);
+    expect(await threadsFor('social')).toEqual(['t-social']);
+    expect(await threadsFor('promotions')).toEqual(['t-promo']);
+    expect(await threadsFor('updates')).toEqual(['t-updates']);
+    expect(await threadsFor('forums')).toEqual(['t-forums']);
+    // Not a category: ignored, like an unknown folder, rather than a 500.
+    expect(await threadsFor('spam')).toHaveLength(6);
+  });
+
+  it('counts unread inbox threads per category — the caller\'s and shared, not read, trashed or archived', async () => {
+    const { alice, bob } = await createTwoUsers();
+    // Two unread messages in one thread: one thread, not two.
+    await createEmail(alice.id, { threadId: 't-social', isRead: false, labelIds: inbox('CATEGORY_SOCIAL') });
+    await createEmail(alice.id, { threadId: 't-social', isRead: false, labelIds: inbox('CATEGORY_SOCIAL') });
+    await createEmail(alice.id, { threadId: 't-personal', isRead: false, labelIds: inbox('CATEGORY_PERSONAL') });
+    await createEmail(alice.id, { threadId: 't-none', isRead: false, labelIds: inbox() });
+    // Excluded: read; trashed; archived (no INBOX label).
+    await createEmail(alice.id, { threadId: 't-promo-read', isRead: true, labelIds: inbox('CATEGORY_PROMOTIONS') });
+    await createEmail(alice.id, { threadId: 't-updates-trash', isRead: false, isTrashed: true, labelIds: inbox('CATEGORY_UPDATES') });
+    await createEmail(alice.id, { threadId: 't-forums-archived', isRead: false, labelIds: ['CATEGORY_FORUMS'] });
+    // Bob's unread social mail is his — unless he shares the thread.
+    await createEmail(bob.id, { threadId: 'bob-social', isRead: false, labelIds: inbox('CATEGORY_SOCIAL') });
+    await createEmail(bob.id, { threadId: 'bob-shared-updates', isRead: false, labelIds: inbox('CATEGORY_UPDATES') });
+    await shareThreadWith('bob-shared-updates', bob.id, alice.id);
+
+    expect(await emailService.categoryCounts(alice.id)).toEqual({
+      primary: 2,
+      social: 1,
+      promotions: 0,
+      updates: 1,
+      forums: 0,
+    });
+  });
+});

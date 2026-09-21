@@ -31,7 +31,7 @@ export const authController = {
         where: { id: userId },
         // `timezone` so the client can tell whether the zone it detects is
         // already stored, and skip the write on every page load.
-        select: { id: true, email: true, name: true, avatarUrl: true, timezone: true },
+        select: { id: true, email: true, name: true, avatarUrl: true, timezone: true, mailCategoryTabs: true },
       });
       if (!user) {
         res.status(401).json({ error: { code: 'UNAUTHORIZED' } });
@@ -290,6 +290,17 @@ export const authController = {
       const { timezone } = req.body as { timezone: string };
       await prisma.user.update({ where: { id: req.user!.id }, data: { timezone } });
       res.json({ data: { timezone } });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  /** Which Gmail category tabs the inbox shows beside Primary. */
+  async updateMailCategoryTabs(req: Req, res: Response, next: NextFunction) {
+    try {
+      const { tabs } = req.body as { tabs: string[] };
+      await prisma.user.update({ where: { id: req.user!.id }, data: { mailCategoryTabs: tabs } });
+      res.json({ data: { mailCategoryTabs: tabs } });
     } catch (err) {
       next(err);
     }
