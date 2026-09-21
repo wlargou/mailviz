@@ -246,3 +246,38 @@ export async function seedTaskStatuses(userId: string) {
   });
   return userId;
 }
+
+/**
+ * A tender in the register. `reference` is unique per account, so it gets a
+ * sequence rather than a fixed value — two RFPs in one test are the norm.
+ */
+export async function createRfp(
+  userId: string,
+  overrides: Partial<{
+    name: string;
+    reference: string;
+    deadlineAt: Date;
+    submissionFormat: string;
+    portalUrl: string | null;
+    isGoe: boolean;
+    budget: number | null;
+    status: string;
+    notes: string | null;
+  }> = {}
+) {
+  const id = uniq();
+  return prisma.rfp.create({
+    data: {
+      userId,
+      name: overrides.name ?? `Tender ${id}`,
+      reference: overrides.reference ?? `AO/${id}/2026`,
+      deadlineAt: overrides.deadlineAt ?? new Date('2026-12-01T10:00:00.000Z'),
+      submissionFormat: overrides.submissionFormat ?? 'PORTAL',
+      ...(overrides.portalUrl !== undefined ? { portalUrl: overrides.portalUrl } : {}),
+      ...(overrides.isGoe !== undefined ? { isGoe: overrides.isGoe } : {}),
+      ...(overrides.budget !== undefined ? { budget: overrides.budget } : {}),
+      ...(overrides.status !== undefined ? { status: overrides.status } : {}),
+      ...(overrides.notes !== undefined ? { notes: overrides.notes } : {}),
+    },
+  });
+}

@@ -1,0 +1,166 @@
+@use '@carbon/react/scss/type' as type;
+@use '@carbon/react/scss/spacing' as *;
+
+// ─── RFP REGISTER ────────────────────────────────
+.rfp-deadline {
+  display: inline-flex;
+  align-items: baseline;
+  gap: $spacing-03;
+  white-space: nowrap;
+}
+
+.rfp-deadline__time {
+  @include type.type-style('label-01');
+  color: var(--cds-text-secondary);
+}
+
+// The deadline is the only urgent thing on this page. A finished tender is
+// never urgent, whatever its date says — see `deadlineTone`.
+.rfp-deadline--overdue {
+  color: var(--cds-text-error);
+  font-weight: 600;
+
+  .rfp-deadline__time {
+    color: var(--cds-text-error);
+  }
+}
+
+.rfp-deadline--soon {
+  color: var(--cds-support-warning);
+  font-weight: 600;
+
+  .rfp-deadline__time {
+    color: var(--cds-support-warning);
+  }
+}
+
+.rfp-name-cell {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--cds-link-primary);
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--cds-focus);
+    outline-offset: 2px;
+  }
+}
+
+.rfp-reference {
+  @include type.type-style('code-01');
+  color: var(--cds-text-secondary);
+}
+
+.rfp-format-cell,
+.rfp-doc-count {
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-02;
+  white-space: nowrap;
+}
+
+.rfp-muted {
+  color: var(--cds-text-secondary);
+}
+
+// ─── RFP FORM ────────────────────────────────────
+.rfp-form__row {
+  display: flex;
+  gap: $spacing-05;
+
+  // A flex item's default `min-width: auto` lets Carbon's fixed 18rem date
+  // input win over the split and push the time picker into the gutter.
+  > * {
+    min-width: 0;
+  }
+
+  .cds--date-picker,
+  .cds--date-picker-container,
+  .cds--date-picker.cds--date-picker--single .cds--date-picker__input {
+    inline-size: 100%;
+  }
+}
+
+.rfp-form__section-label {
+  @include type.type-style('label-01');
+  color: var(--cds-text-secondary);
+  margin: 0 0 $spacing-03;
+}
+
+// ─── RFP DOCUMENTS ───────────────────────────────
+.rfp-documents__controls {
+  display: flex;
+  align-items: flex-end;
+  gap: $spacing-04;
+  margin-bottom: $spacing-04;
+}
+
+.rfp-documents__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.rfp-documents__item {
+  display: flex;
+  align-items: center;
+  gap: $spacing-03;
+  padding: $spacing-03 0;
+  border-bottom: 1px solid var(--cds-border-subtle);
+}
+
+.rfp-documents__item--pending {
+  opacity: 0.75;
+}
+
+// A <button> now — it opens the preview — styled as the label it replaced.
+.rfp-documents__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  color: var(--cds-link-primary);
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--cds-focus);
+    outline-offset: 2px;
+  }
+}
+
+.rfp-documents__size,
+.rfp-documents__pending-hint,
+.rfp-documents__empty {
+  @include type.type-style('label-01');
+  color: var(--cds-text-secondary);
+}
+
+.rfp-documents__download {
+  display: inline-flex;
+  align-items: center;
+  padding: $spacing-02;
+  color: var(--cds-link-primary);
+}
+
+.rfp-documents__error {
+  @include type.type-style('label-01');
+  color: var(--cds-text-error);
+  margin: 0 0 $spacing-03;
+}

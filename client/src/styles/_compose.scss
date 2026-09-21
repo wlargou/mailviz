@@ -4,29 +4,80 @@
 @use '@carbon/react/scss/spacing' as *;
 
 // ─── ATTACHMENT PREVIEW MODAL ────────────────────
+// A document viewer, so it takes nearly the whole window: these are 40-page
+// tenders and multi-sheet costings, and Carbon's `lg` modal showed about a
+// third of a page at a time.
+.attachment-preview-modal {
+  .cds--modal-container {
+    inline-size: 95vw;
+    max-inline-size: 95vw;
+    block-size: 94vh;
+    max-block-size: 94vh;
+  }
+
+  // Carbon's content box scrolls by default; here the viewer inside it owns
+  // the scrolling, so the box just gives its height away.
+  .cds--modal-content {
+    block-size: 100%;
+    margin-block-end: 0;
+    padding-block-end: $spacing-05;
+    overflow: hidden;
+  }
+}
+
 .attachment-preview {
   display: flex;
   flex-direction: column;
-  gap: $spacing-05;
+  gap: $spacing-04;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+// The frame and the arrows sit on one row, so the arrows stay reachable
+// without scrolling whatever the document does.
+.attachment-preview__stage {
+  display: flex;
+  align-items: stretch;
+  gap: $spacing-03;
+  flex: 1;
+  min-block-size: 0;
+}
+
+.attachment-preview__body {
+  flex: 1;
+  min-inline-size: 0;
+  min-block-size: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.attachment-preview__nav {
+  align-self: center;
+  flex: 0 0 auto;
 }
 
 .attachment-preview__image {
   display: flex;
   justify-content: center;
-  max-height: 60vh;
+  align-items: center;
+  flex: 1;
+  min-block-size: 0;
   overflow: auto;
 
   img {
     max-width: 100%;
-    height: auto;
+    max-height: 100%;
     object-fit: contain;
   }
 }
 
 .attachment-preview__pdf {
+  flex: 1;
+  min-block-size: 0;
+
   iframe {
     width: 100%;
-    height: 60vh;
+    height: 100%;
     border: none;
   }
 }
@@ -63,15 +114,47 @@
 }
 
 // ─── SPREADSHEET PREVIEW ─────────────────────────
+.spreadsheet-preview {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-block-size: 0;
+
+  .cds--tabs {
+    flex: 0 0 auto;
+  }
+
+  .cds--tab-content {
+    flex: 1;
+    min-block-size: 0;
+    display: flex;
+    flex-direction: column;
+    padding-inline: 0;
+
+    // `display: flex` above beats the user-agent `[hidden] { display: none }`,
+    // so without this every sheet rendered at once, stacked — the inactive
+    // panels reappeared the moment the panel was given a flex layout.
+    &[hidden] {
+      display: none;
+    }
+  }
+}
+
 .spreadsheet-preview__scroll {
   border: 1px solid var(--cds-border-subtle);
+  flex: 1;
+  min-block-size: 0;
+  display: flex;
+  flex-direction: column;
 
   // Carbon's Table wraps the <table> in `.cds--data-table-content` with
   // `overflow: auto`. That wrapper has to be the bounded scroller: with the
   // bound on this outer box instead, the outer box scrolled and the sticky
   // header pinned itself to the inner wrapper, which never moved.
   .cds--data-table-content {
-    max-height: 60vh;
+    flex: 1;
+    min-block-size: 0;
+    max-block-size: none;
     overflow: auto;
   }
 

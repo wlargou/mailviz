@@ -31,6 +31,7 @@ vi.mock('../../api/emails', () => ({
     toggleStar: vi.fn().mockResolvedValue({}),
     archive: vi.fn(), unarchive: vi.fn(), trash: vi.fn(), untrash: vi.fn(),
     getAttachmentUrl: (emailId: string, attachmentId: string) => `/api/v1/emails/${emailId}/attachments/${attachmentId}`,
+    getAttachmentInlineUrl: (emailId: string, attachmentId: string) => `/api/v1/emails/${emailId}/attachments/${attachmentId}?inline=true`,
   },
 }));
 
@@ -55,9 +56,9 @@ vi.mock('../../store/uiStore', () => ({
 }));
 
 vi.mock('./ConvertToTaskModal', () => ({ ConvertToTaskModal: () => null }));
-vi.mock('./AttachmentPreviewModal', () => ({
-  AttachmentPreviewModal: ({ open, attachment }: { open: boolean; attachment: { filename: string } | null }) =>
-    open && attachment ? <div data-testid="attachment-preview">{attachment.filename}</div> : null,
+vi.mock('../shared/AttachmentPreviewModal', () => ({
+  AttachmentPreviewModal: ({ open, items, index }: { open: boolean; items: Array<{ file: { filename: string } }>; index: number }) =>
+    open && items[index] ? <div data-testid="attachment-preview">{items[index].file.filename}</div> : null,
 }));
 vi.mock('./MailComposeModal', () => ({ MailComposeModal: () => null }));
 vi.mock('../shared/ShareDialog', () => ({ ShareDialog: () => null }));
