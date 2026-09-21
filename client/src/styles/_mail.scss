@@ -959,6 +959,16 @@
   cursor: pointer;
   text-decoration: none;
   color: inherit;
+  // A <button> now (it opens the preview), styled as the link it replaced.
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+
+  &:focus-visible {
+    outline: 2px solid var(--cds-focus);
+    outline-offset: -2px;
+  }
 
   &:hover {
     background: color.change(colors.$purple-50, $alpha: 0.2);

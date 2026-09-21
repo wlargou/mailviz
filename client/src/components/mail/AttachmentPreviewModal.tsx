@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { Modal, Button } from '@carbon/react';
 import { Download } from '@carbon/icons-react';
 import { emailsApi } from '../../api/emails';
@@ -35,7 +36,11 @@ export function AttachmentPreviewModal({ attachment, emailId, open, onClose }: A
       );
     }
 
-    if (fileInfo.category === 'pdf') {
+    // PDF and plain text both render in a frame — the browser draws either
+    // from the inline URL. Plain text was marked previewable with no branch
+    // here, so it landed on the "cannot be previewed" message below inside a
+    // passive modal that offered no way to download it.
+    if (fileInfo.category === 'pdf' || (fileInfo.previewable && fileInfo.category === 'document')) {
       return (
         <div className="attachment-preview__pdf">
           <iframe src={inlineUrl} title={decodeEntities(attachment.filename)} />
@@ -59,7 +64,11 @@ export function AttachmentPreviewModal({ attachment, emailId, open, onClose }: A
     );
   };
 
-  return (
+  // Portaled: the thread renders inside a Carbon SidePanel, and a
+  // `position: fixed` modal inside a fixed, transformed panel resolves
+  // against the panel, not the viewport — the dialog opened offset to the
+  // right with its Download button past the edge of the screen.
+  return createPortal(
     <Modal
       open={open}
       onRequestClose={onClose}
@@ -80,6 +89,7 @@ export function AttachmentPreviewModal({ attachment, emailId, open, onClose }: A
           </div>
         )}
       </div>
-    </Modal>
+    </Modal>,
+    document.body,
   );
 }
