@@ -4,7 +4,7 @@ import { taskService } from './taskService.js';
 import { taskActivityService } from './taskActivityService.js';
 import { auditService } from './auditService.js';
 import { prisma } from '../lib/prisma.js';
-import { createTwoUsers, createUser, createTask, createEmail, shareThreadWith, shareTaskWith } from '../test/factories.js';
+import { createTwoUsers, createUser, createTask, createEmail, createCustomer, shareThreadWith, shareTaskWith } from '../test/factories.js';
 
 /**
  * Email ↔ task, many-to-many.
@@ -79,5 +79,89 @@ describe('emailService — task links', () => {
     const mails = data.filter((e) => e.kind === 'email');
     expect(mails.map((e) => e.id)).toEqual([reply.id]);
     expect(mails[0]).toMatchObject({ actor: { email: 'sam@acme.test' }, threadId: 'thr-q' });
+  });
+
+  /**
+   * The convert form carries every task field. These run through
+   * `taskService.create`, which is the only way labels get linked and the
+   * only place the ownership and date-order rules live — the previous raw
+   * insert had none of them, so a body with `labelIds` was silently a task
+   * with no labels.
+   */
+  describe('convert — the full task form', () => {
+    it('links labels, keeps the estimate and dates, and reads the description back', async () => {
+      const { alice } = await createTwoUsers();
+      const label = await prisma.label.create({ data: { userId: alice.id, name: 'Sales', color: '#0f62fe' } });
+      const email = await createEmail(alice.id, { subject: 'Quote', snippet: 'Please send the quote' });
+
+      const task = await emailService.convertToTask(email.id, {
+        description: 'Typed instead',
+        status: 'IN_PROGRESS',
+        priority: 'HIGH',
+        dueDate: '2026-10-01T09:00:00.000Z',
+        startDate: '2026-09-28T09:00:00.000Z',
+        remindAt: '2026-09-30T09:00:00.000Z',
+        labelIds: [label.id],
+        estimatedMinutes: 30,
+        recurrence: 'RRULE:FREQ=WEEKLY',
+        notes: 'From the thread',
+      }, alice.id);
+
+      const stored = await prisma.task.findUniqueOrThrow({ where: { id: task.id }, include: { labels: true } });
+      expect(stored).toMatchObject({
+        title: 'Quote',
+        description: 'Typed instead',
+        status: 'IN_PROGRESS',
+        priority: 'HIGH',
+        estimatedMinutes: 30,
+        recurrence: 'RRULE:FREQ=WEEKLY',
+        dueDate: new Date('2026-10-01T09:00:00.000Z'),
+        startDate: new Date('2026-09-28T09:00:00.000Z'),
+        remindAt: new Date('2026-09-30T09:00:00.000Z'),
+      });
+      expect(stored.labels.map((l) => l.labelId)).toEqual([label.id]);
+      expect(await prisma.mailToTask.findFirst({ where: { taskId: task.id } })).toMatchObject({ emailId: email.id, conversionNote: 'From the thread' });
+    });
+
+    it('falls back to the email\'s snippet for the description only when none was typed', async () => {
+      const { alice } = await createTwoUsers();
+      const email = await createEmail(alice.id, { subject: 'Quote', snippet: 'Tom &amp; Jerry' });
+
+      const fallback = await emailService.convertToTask(email.id, {}, alice.id);
+      expect(fallback.description).toBe('Tom & Jerry');
+
+      const typed = await emailService.convertToTask(email.id, { description: '' }, alice.id);
+      // Not the snippet: an empty box is an answer, the same as in the task form.
+      expect(typed.description).toBeNull();
+    });
+
+    it('defaults the company to the email\'s, but an explicit choice wins — including "none"', async () => {
+      const { alice } = await createTwoUsers();
+      const acme = await createCustomer(alice.id, { name: 'Acme' });
+      const globex = await createCustomer(alice.id, { name: 'Globex' });
+      const email = await createEmail(alice.id, { customerId: acme.id });
+
+      expect((await emailService.convertToTask(email.id, {}, alice.id)).customerId).toBe(acme.id);
+      expect((await emailService.convertToTask(email.id, { customerId: globex.id }, alice.id)).customerId).toBe(globex.id);
+      expect((await emailService.convertToTask(email.id, { customerId: null }, alice.id)).customerId).toBeNull();
+    });
+
+    it('enforces the task rules: a stranger\'s label or company, a start after the due date, a repeat without a due date', async () => {
+      const { alice, bob } = await createTwoUsers();
+      const email = await createEmail(alice.id);
+      const bobsLabel = await prisma.label.create({ data: { userId: bob.id, name: 'Private', color: '#000000' } });
+      const bobsCustomer = await createCustomer(bob.id);
+
+      await expect(emailService.convertToTask(email.id, { labelIds: [bobsLabel.id] }, alice.id)).rejects.toMatchObject({ statusCode: 404, code: 'LABEL_NOT_FOUND' });
+      await expect(emailService.convertToTask(email.id, { customerId: bobsCustomer.id }, alice.id)).rejects.toMatchObject({ statusCode: 404, code: 'CUSTOMER_NOT_FOUND' });
+      await expect(emailService.convertToTask(email.id, {
+        startDate: '2026-10-02T09:00:00.000Z', dueDate: '2026-10-01T09:00:00.000Z',
+      }, alice.id)).rejects.toMatchObject({ statusCode: 400, code: 'START_AFTER_DUE' });
+      await expect(emailService.convertToTask(email.id, { recurrence: 'RRULE:FREQ=WEEKLY' }, alice.id)).rejects.toMatchObject({ statusCode: 400, code: 'RECURRENCE_NEEDS_DUE_DATE' });
+
+      // Every refusal happened before anything was written: no half-made task, no dangling link.
+      expect(await prisma.task.count({ where: { userId: alice.id } })).toBe(0);
+      expect(await prisma.mailToTask.count()).toBe(0);
+    });
   });
 });

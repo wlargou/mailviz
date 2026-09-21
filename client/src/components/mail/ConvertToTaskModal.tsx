@@ -1,22 +1,16 @@
-import { useState } from 'react';
-import { createPortal } from 'react-dom';
-import {
-  TextInput,
-  TextArea,
-  Dropdown,
-  Tag,
-  Modal,
-  ContentSwitcher,
-  Switch,
-  ComboBox,
-} from '@carbon/react';
-import { useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { TextInput, TextArea, ContentSwitcher, Switch, ComboBox } from '@carbon/react';
+import { TearsheetNarrow } from '@carbon/ibm-products';
 import { emailsApi } from '../../api/emails';
 import { tasksApi } from '../../api/tasks';
+import { taskStatusesApi } from '../../api/taskStatuses';
+import { labelsApi } from '../../api/labels';
 import { useUIStore } from '../../store/uiStore';
 import type { EmailMessage } from '../../types/email';
+import type { Label } from '../../types/task';
 import { decodeEntities } from '../../utils/text';
 import { useTaskStore } from '../../store/taskStore';
+import { EMPTY_TASK_FORM, TaskFormFields, defaultStatus, taskFormToInput, toStatusItems, type StatusItem, type TaskFormValues } from '../tasks/TaskFormFields';
 
 interface ConvertToTaskModalProps {
   email: EmailMessage;
@@ -25,18 +19,32 @@ interface ConvertToTaskModalProps {
   onConverted: () => void;
 }
 
-const priorityItems = [
-  { id: 'LOW', text: 'Low' },
-  { id: 'MEDIUM', text: 'Medium' },
-  { id: 'HIGH', text: 'High' },
-  { id: 'URGENT', text: 'Urgent' },
-];
+/**
+ * What the form starts from: the email's own subject, snippet and company.
+ * Every one of them is editable — the email is a suggestion, not the task.
+ */
+function seedFrom(email: EmailMessage): TaskFormValues {
+  return {
+    ...EMPTY_TASK_FORM,
+    description: decodeEntities(email.snippet ?? ''),
+    customerId: email.customer?.id ?? null,
+  };
+}
 
+/**
+ * A TearsheetNarrow, not the `Modal sm` this used to be: with the full task
+ * form inside it is past what a small modal holds, and it may obscure the
+ * page — the reader of the email has already decided to act on it. The
+ * date pickers append to `<body>`, so they are named as floating menus or
+ * the tearsheet's focus wrap steals the calendar's clicks.
+ */
 export function ConvertToTaskModal({ email, open, onClose, onConverted }: ConvertToTaskModalProps) {
   const taskChanged = useTaskStore((s) => s.taskChanged);
-  const [title, setTitle] = useState(decodeEntities(email.subject));
-  const [priority, setPriority] = useState('MEDIUM');
+  const [title, setTitle] = useState(() => decodeEntities(email.subject));
+  const [form, setForm] = useState<TaskFormValues>(() => seedFrom(email));
   const [notes, setNotes] = useState('');
+  const [statusItems, setStatusItems] = useState<StatusItem[]>([]);
+  const [labels, setLabels] = useState<Label[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const addNotification = useUIStore((s) => s.addNotification);
   /**
@@ -49,13 +57,26 @@ export function ConvertToTaskModal({ email, open, onClose, onConverted }: Conver
   const [candidates, setCandidates] = useState<Array<{ id: string; text: string }>>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Reseed on every open: the same modal instance serves one email after
+  // another, and a due date picked for the last one must not carry over.
   useEffect(() => {
-    if (!open) {
-      setMode('new');
-      setExisting(null);
-      setCandidates([]);
-    }
-  }, [open]);
+    if (!open) return;
+    setMode('new');
+    setExisting(null);
+    setCandidates([]);
+    setTitle(decodeEntities(email.subject));
+    setForm(seedFrom(email));
+    setNotes('');
+    (async () => {
+      try {
+        const [{ data: statuses }, { data: labelRes }] = await Promise.all([taskStatusesApi.getAll(), labelsApi.getAll()]);
+        const items = toStatusItems(statuses.data);
+        setStatusItems(items);
+        setForm((prev) => ({ ...prev, status: defaultStatus(items, prev.status) }));
+        setLabels(labelRes.data);
+      } catch { /* the form still works without the option lists */ }
+    })();
+  }, [open, email]);
 
   const searchTasks = (query: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -90,10 +111,10 @@ export function ConvertToTaskModal({ email, open, onClose, onConverted }: Conver
     try {
       await emailsApi.convertToTask(email.id, {
         title: title.trim(),
-        priority: priority as any,
+        ...taskFormToInput(form),
         notes: notes.trim() || undefined,
       });
-      addNotification({ kind: 'success', title: 'Task created from email' });
+      addNotification({ kind: 'success', title: 'Task created from email', subtitle: title.trim() });
       taskChanged();
       onConverted();
     } catch {
@@ -103,33 +124,43 @@ export function ConvertToTaskModal({ email, open, onClose, onConverted }: Conver
     }
   };
 
-  return createPortal(
-    <Modal
+  return (
+    <TearsheetNarrow
       open={open}
-      onRequestClose={onClose}
-      onRequestSubmit={handleSubmit}
-      onSecondarySubmit={onClose}
-      modalHeading={mode === 'new' ? 'Convert Email to Task' : 'Attach Email to Task'}
-      modalLabel={mode === 'new' ? 'Create a task linked to this email' : 'Add this email to a task that already exists'}
-      size="sm"
-      primaryButtonText={mode === 'new' ? 'Create Task' : 'Attach'}
-      secondaryButtonText="Cancel"
-      primaryButtonDisabled={submitting || (mode === 'new' ? !title.trim() : !existing)}
-      loadingStatus={submitting ? 'active' : 'inactive'}
-      loadingDescription="Creating task..."
+      onClose={onClose}
+      title={mode === 'new' ? 'Convert Email to Task' : 'Attach Email to Task'}
+      label="Mail"
+      description={mode === 'new' ? 'Create a task linked to this email' : 'Add this email to a task that already exists'}
+      hasCloseIcon
       selectorPrimaryFocus="#convert-task-title"
+      selectorsFloatingMenus={['.cds--date-picker__calendar']}
+      actions={[
+        {
+          label: mode === 'new' ? 'Create Task' : 'Attach',
+          onClick: handleSubmit,
+          kind: 'primary' as const,
+          disabled: submitting || (mode === 'new' ? !title.trim() : !existing),
+          loading: submitting,
+        },
+        {
+          label: 'Cancel',
+          onClick: onClose,
+          kind: 'secondary' as const,
+        },
+      ]}
     >
-      <ContentSwitcher
-        size="sm"
-        selectedIndex={mode === 'new' ? 0 : 1}
-        onChange={({ index }: { index?: number }) => setMode(index === 1 ? 'existing' : 'new')}
-        className="create-side-panel__form-item"
-      >
-        <Switch name="new" text="New task" />
-        <Switch name="existing" text="Existing task" />
-      </ContentSwitcher>
+      <div className="tearsheet-form__item">
+        <ContentSwitcher
+          size="sm"
+          selectedIndex={mode === 'new' ? 0 : 1}
+          onChange={({ index }: { index?: number }) => setMode(index === 1 ? 'existing' : 'new')}
+        >
+          <Switch name="new" text="New task" />
+          <Switch name="existing" text="Existing task" />
+        </ContentSwitcher>
+      </div>
       {mode === 'existing' && (
-        <div className="create-side-panel__form-item">
+        <div className="tearsheet-form__item">
           <ComboBox
             id="convert-task-existing"
             titleText="Task"
@@ -143,55 +174,36 @@ export function ConvertToTaskModal({ email, open, onClose, onConverted }: Conver
         </div>
       )}
       {mode === 'new' && (
-      <>
-      <TextInput
-        id="convert-task-title"
-        labelText="Task title"
-        value={title}
-        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTitle(e.target.value)}
-        invalid={open && title.length > 0 && !title.trim()}
-        invalidText="Title is required"
-        className="create-side-panel__form-item"
-      />
-      <Dropdown
-        id="convert-task-priority"
-        titleText="Priority"
-        label="Priority"
-        items={priorityItems}
-        itemToString={(item: { id: string; text: string } | null) => item?.text || ''}
-        selectedItem={priorityItems.find((p) => p.id === priority) || priorityItems[1]}
-        onChange={({ selectedItem }: { selectedItem: { id: string; text: string } | null }) => {
-          setPriority(selectedItem?.id || 'MEDIUM');
-        }}
-        className="create-side-panel__form-item"
-      />
-      </>
+        <>
+          <TextInput
+            id="convert-task-title"
+            labelText="Task title"
+            value={title}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTitle(e.target.value)}
+            invalid={open && title.length > 0 && !title.trim()}
+            invalidText="Title is required"
+            className="tearsheet-form__item"
+          />
+          <TaskFormFields
+            idPrefix="convert-task"
+            itemClassName="tearsheet-form__item"
+            values={form}
+            onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
+            statusItems={statusItems}
+            labels={labels}
+          />
+        </>
       )}
-      <div className="create-side-panel__form-item" style={{ display: 'flex', gap: '1rem' }}>
-        {/* The status is the new task's; an existing task keeps its own. */}
-        {mode === 'new' && (
-          <div>
-            <p style={{ fontSize: '0.75rem', color: 'var(--cds-text-secondary)', marginBottom: '0.25rem' }}>Status</p>
-            <Tag type="blue" size="md">To Do</Tag>
-          </div>
-        )}
-        {email.customer && (
-          <div>
-            <p style={{ fontSize: '0.75rem', color: 'var(--cds-text-secondary)', marginBottom: '0.25rem' }}>Customer</p>
-            <Tag type="teal" size="md">{email.customer.name}</Tag>
-          </div>
-        )}
-      </div>
       <TextArea
         id="convert-task-notes"
         labelText="Notes"
+        helperText="Kept on the link between the email and the task, not on the task itself"
         value={notes}
         onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNotes(e.target.value)}
-        placeholder="Additional context..."
+        placeholder="Why this email became a task..."
         rows={3}
-        className="create-side-panel__form-item"
+        className="tearsheet-form__item"
       />
-    </Modal>,
-    document.body,
+    </TearsheetNarrow>
   );
 }
