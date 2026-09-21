@@ -195,6 +195,35 @@
   }
 }
 
+// Gmail's category tabs, under the folder switcher when the Inbox is open.
+.mail-category-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: $spacing-03;
+  margin-bottom: $spacing-04;
+
+  .cds--tabs {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+.mail-category-tabs__count {
+  @include type.type-style('label-01');
+  display: inline-block;
+  min-width: 1.25rem;
+  margin-left: $spacing-03;
+  padding: 0 $spacing-02;
+  border-radius: 0.625rem;
+  text-align: center;
+  color: var(--cds-text-inverse);
+  background: var(--cds-background-inverse);
+}
+
+.mail-categories__hint {
+  margin-bottom: $spacing-05;
+}
+
 // --- Mail Search Bar ---
 .mail-search {
   position: relative;

@@ -26,6 +26,9 @@ import { useAuthStore } from '../../store/authStore';
 import { useEmailWebSocket } from '../../hooks/useEmailWebSocket';
 import { EmptyState } from '../shared/EmptyState';
 import { ThreadDetail } from './ThreadDetail';
+import { MailCategoryTabs } from './MailCategoryTabs';
+import { MailCategoriesModal } from './MailCategoriesModal';
+import { isMailCategory, visibleCategories, type CategoryCounts, type MailCategory } from '../../utils/mailCategories';
 import { MailSearchBar } from './MailSearchBar';
 import { MailComposeModal } from './MailComposeModal';
 import { ConvertToTaskModal } from './ConvertToTaskModal';
@@ -45,7 +48,9 @@ const defaultFilters: MailFilters = {
   customerIds: [],
   isRead: null,
   hasAttachment: false,
-  folder: null,
+  // The Inbox, not All: Gmail's model, where the inbox is the Primary tab
+  // and the other categories sit beside it. `?folder=all` still opens All.
+  folder: 'inbox',
 };
 
 /** A row in the Scheduled folder. */
@@ -74,10 +79,18 @@ export function MailPage() {
     const search = searchParams.get('search');
     if (isRead !== null) initial.isRead = isRead;
     if (hasAttachment === 'true') initial.hasAttachment = true;
-    if (folder) initial.folder = folder;
+    if (folder) initial.folder = folder === 'all' ? null : folder;
     if (search) initial.search = search;
     return initial;
   });
+  // Gmail's inbox tab. Only sent with the Inbox folder; the other folders
+  // have no tabs (Gmail categorises the inbox, not Sent or Trash).
+  const [category, setCategory] = useState<MailCategory>(() => {
+    const fromUrl = searchParams.get('category');
+    return isMailCategory(fromUrl) ? fromUrl : 'primary';
+  });
+  const [categoryCounts, setCategoryCounts] = useState<CategoryCounts | null>(null);
+  const [categoriesModalOpen, setCategoriesModalOpen] = useState(false);
   /**
    * `?thread=<id>` opens that conversation directly.
    *
@@ -177,15 +190,24 @@ export function MailPage() {
       if (filters.isRead !== null) params.isRead = filters.isRead;
       if (filters.hasAttachment) params.hasAttachment = 'true';
       if (filters.folder) params.folder = filters.folder;
+      if (filters.folder === 'inbox') params.category = category;
       const { data: response } = await emailsApi.getThreads(params);
       setThreads(response.data);
       setMeta(response.meta || null);
+      // Refreshed with the list rather than on its own schedule: every path
+      // that changes what is unread (a sync, a read, a bulk action) already
+      // refetches the list, and the tab numbers must move with it.
+      if (filters.folder === 'inbox') {
+        emailsApi.getCategoryCounts()
+          .then(({ data: counts }) => setCategoryCounts(counts.data))
+          .catch(() => { /* a stale badge is not worth a toast */ });
+      }
     } catch {
       if (!silent) addNotification({ kind: 'error', title: 'Failed to load emails' });
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [page, pageSize, filters, addNotification]);
+  }, [page, pageSize, filters, category, addNotification]);
 
   const fetchReminders = useCallback(async () => {
     try {
@@ -400,6 +422,19 @@ export function MailPage() {
     setFilters((prev) => ({ ...prev, folder }));
     setPage(1);
   };
+
+  const handleCategoryChange = (next: MailCategory) => {
+    setCategory(next);
+    setPage(1);
+  };
+
+  // The tabs the user chose to show. Hiding the one that is open falls back
+  // to Primary rather than leaving the list on a tab that no longer exists.
+  const categories = visibleCategories(currentUser?.mailCategoryTabs);
+  useEffect(() => {
+    if (!categories.includes(category)) setCategory('primary');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.mailCategoryTabs]);
 
   const handleSync = async () => {
     setSyncing(true);
@@ -731,6 +766,16 @@ export function MailPage() {
             <Switch name="scheduled" text="Scheduled" />
           </ContentSwitcher>
         </div>
+
+        {filters.folder === 'inbox' && (
+          <MailCategoryTabs
+            categories={categories}
+            selected={category}
+            counts={categoryCounts}
+            onSelect={handleCategoryChange}
+            onCustomize={() => setCategoriesModalOpen(true)}
+          />
+        )}
 
         <div className="mail-page__search-wrapper">
           <MailSearchBar
@@ -1126,6 +1171,8 @@ export function MailPage() {
         onClose={() => setSnoozeTarget(null)}
         onSubmit={submitReminder}
       />
+
+      <MailCategoriesModal open={categoriesModalOpen} onClose={() => setCategoriesModalOpen(false)} />
 
       {convertEmail && (
         <ConvertToTaskModal

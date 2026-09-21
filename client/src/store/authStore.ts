@@ -13,6 +13,8 @@ interface User {
    * for the sharing picker without other people's timezones on it.
    */
   timezone?: string | null;
+  /** Gmail category tabs shown beside Primary — see utils/mailCategories.ts. */
+  mailCategoryTabs?: string[];
 }
 
 /**
@@ -51,6 +53,8 @@ interface AuthState {
   fetchUser: () => Promise<void>;
   logout: () => Promise<void>;
   clearAuth: () => void;
+  /** Merge a preference the user just saved, without a round trip to /auth/me. */
+  updateUser: (patch: Partial<User>) => void;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -88,5 +92,9 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   clearAuth: () => {
     set({ user: null, isAuthenticated: false, isLoading: false });
+  },
+
+  updateUser: (patch) => {
+    set((state) => (state.user ? { user: { ...state.user, ...patch } } : {}));
   },
 }));

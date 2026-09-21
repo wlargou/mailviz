@@ -1,11 +1,17 @@
 import { api } from './client';
 import type { EmailThread, EmailMessage, ConvertToTaskInput, ReviewSummary, EmailReminder, ReminderKind } from '../types/email';
 import type { ApiResponse } from '../types/api';
+import type { CategoryCounts } from '../utils/mailCategories';
 import type { Task } from '../types/task';
 
 export const emailsApi = {
   getThreads(params?: Record<string, string>) {
     return api.get<ApiResponse<EmailThread[]>>('/emails', { params });
+  },
+
+  /** Unread threads per Gmail category in the inbox, for the tabs. */
+  getCategoryCounts() {
+    return api.get<ApiResponse<CategoryCounts>>('/emails/category-counts');
   },
 
   getThread(threadId: string) {

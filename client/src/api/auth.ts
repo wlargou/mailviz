@@ -75,6 +75,10 @@ export const authApi = {
   /** Report the browser's IANA timezone; every day boundary is computed from it. */
   updateTimezone: (timezone: string) =>
     api.put('/auth/timezone', { timezone }),
+
+  /** Which Gmail category tabs the inbox shows beside Primary. */
+  updateMailCategoryTabs: (tabs: string[]) =>
+    api.put<{ data: { mailCategoryTabs: string[] } }>('/auth/mail-categories', { tabs }),
 };
 
 /** What the running server reports about itself. Public — no session needed. */
