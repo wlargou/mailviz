@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Dropdown, FileUploaderButton, Button, Tag, InlineLoading } from '@carbon/react';
 import { Download, TrashCan } from '@carbon/icons-react';
 import { rfpsApi } from '../../api/rfps';
+import { AttachmentPreviewModal } from '../shared/AttachmentPreviewModal';
 import { formatFileSize, getFileTypeInfo } from '../../utils/fileTypes';
 import { RFP_DOCUMENT_KINDS, RFP_DOCUMENT_KIND_LABELS, type RfpDocument, type RfpDocumentKind } from '../../types/rfp';
 
@@ -38,6 +39,8 @@ export function RfpDocuments({ rfpId, documents, pending, onPendingChange, onUpl
   const [kind, setKind] = useState<RfpDocumentKind>('RFP');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The whole dossier, so the arrows step RC → CPS → Avis → annexes.
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -112,13 +115,18 @@ export function RfpDocuments({ rfpId, documents, pending, onPendingChange, onUpl
       )}
 
       <ul className="rfp-documents__list">
-        {documents.map((doc) => {
+        {documents.map((doc, i) => {
           const Icon = getFileTypeInfo(doc.mimeType, doc.filename).icon;
           return (
             <li key={doc.id} className="rfp-documents__item">
               <Icon size={16} />
               <Tag type="cool-gray" size="sm">{RFP_DOCUMENT_KIND_LABELS[doc.kind]}</Tag>
-              <span className="rfp-documents__name">{doc.filename}</span>
+              {/* Opens the preview, as every other attachment in the app does
+                  — a tender dossier is PDFs and spreadsheets, which is
+                  exactly what it renders. Download stays on the icon. */}
+              <button type="button" className="rfp-documents__name" onClick={() => setPreviewIndex(i)}>
+                {doc.filename}
+              </button>
               <span className="rfp-documents__size">{formatFileSize(doc.size)}</span>
               <a
                 className="rfp-documents__download"
@@ -158,6 +166,18 @@ export function RfpDocuments({ rfpId, documents, pending, onPendingChange, onUpl
           </li>
         ))}
       </ul>
+
+      <AttachmentPreviewModal
+        open={previewIndex !== null}
+        items={documents.map((d) => ({
+          file: d,
+          inlineUrl: rfpsApi.documentInlineUrl(d.rfpId, d.id),
+          downloadUrl: rfpsApi.documentUrl(d.rfpId, d.id),
+        }))}
+        index={previewIndex ?? 0}
+        onIndexChange={setPreviewIndex}
+        onClose={() => setPreviewIndex(null)}
+      />
     </div>
   );
 }

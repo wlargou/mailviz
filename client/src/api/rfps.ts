@@ -48,4 +48,9 @@ export const rfpsApi = {
   documentUrl(rfpId: string, documentId: string) {
     return `/api/v1/rfps/${rfpId}/documents/${documentId}`;
   },
+
+  /** The same bytes with `Content-Disposition: inline`, for the preview. */
+  documentInlineUrl(rfpId: string, documentId: string) {
+    return `/api/v1/rfps/${rfpId}/documents/${documentId}?inline=true`;
+  },
 };

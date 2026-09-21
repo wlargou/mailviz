@@ -15,7 +15,7 @@ import { emailsApi } from '../../api/emails';
 import { useUIStore } from '../../store/uiStore';
 import { EmptyState } from '../shared/EmptyState';
 import { ConvertToTaskModal } from './ConvertToTaskModal';
-import { AttachmentPreviewModal } from './AttachmentPreviewModal';
+import { AttachmentPreviewModal } from '../shared/AttachmentPreviewModal';
 import { MailComposeModal } from './MailComposeModal';
 import { ShareDialog } from '../shared/ShareDialog';
 import { getFileTypeInfo, formatFileSize as formatSize } from '../../utils/fileTypes';
@@ -42,7 +42,12 @@ export function ThreadDetail({ threadId, onEmailAction }: ThreadDetailProps) {
   const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
   const [loadingBodies, setLoadingBodies] = useState<Set<string>>(new Set());
   const [convertEmail, setConvertEmail] = useState<EmailMessage | null>(null);
-  const [previewAttachment, setPreviewAttachment] = useState<{ attachment: EmailAttachment; emailId: string } | null>(null);
+  /**
+   * The preview opens on one attachment but steps through the message's
+   * whole set — a tender arrives as an RC, a CPS and three annexes on one
+   * mail, and reading them meant closing and reopening between each.
+   */
+  const [preview, setPreview] = useState<{ emailId: string; attachments: EmailAttachment[]; index: number } | null>(null);
   const [composeState, setComposeState] = useState<{ mode: ComposeMode; email: EmailMessage } | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [threadShares, setThreadShares] = useState<Array<{ id: string; createdAt: string; sharedWith: { id: string; name: string | null; email: string; avatarUrl: string | null } }>>([]);
@@ -479,7 +484,7 @@ export function ThreadDetail({ threadId, onEmailAction }: ThreadDetailProps) {
                             <button
                               type="button"
                               className="attachment-chip__clickable"
-                              onClick={() => setPreviewAttachment({ attachment: att, emailId: msg.id })}
+                              onClick={() => setPreview({ emailId: msg.id, attachments: msg.attachments, index: msg.attachments.findIndex((a) => a.id === att.id) })}
                             >
                               <FileIcon size={16} />
                               <span className="attachment-chip__name">{decodeEntities(att.filename)}</span>
@@ -536,10 +541,15 @@ export function ThreadDetail({ threadId, onEmailAction }: ThreadDetailProps) {
       )}
 
       <AttachmentPreviewModal
-        open={!!previewAttachment}
-        attachment={previewAttachment?.attachment || null}
-        emailId={previewAttachment?.emailId || ''}
-        onClose={() => setPreviewAttachment(null)}
+        open={!!preview}
+        items={(preview?.attachments ?? []).map((att) => ({
+          file: att,
+          inlineUrl: emailsApi.getAttachmentInlineUrl(preview!.emailId, att.id),
+          downloadUrl: emailsApi.getAttachmentUrl(preview!.emailId, att.id),
+        }))}
+        index={preview?.index ?? 0}
+        onIndexChange={(index) => setPreview((p) => (p ? { ...p, index } : p))}
+        onClose={() => setPreview(null)}
       />
 
       <MailComposeModal

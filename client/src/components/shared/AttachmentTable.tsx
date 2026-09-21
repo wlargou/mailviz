@@ -16,7 +16,7 @@ import {
 } from '@carbon/react';
 import { Download } from '@carbon/icons-react';
 import { format } from 'date-fns';
-import { AttachmentPreviewModal } from '../mail/AttachmentPreviewModal';
+import { AttachmentPreviewModal } from './AttachmentPreviewModal';
 import { EmptyState } from './EmptyState';
 import { emailsApi } from '../../api/emails';
 import { getFileTypeInfo, formatFileSize } from '../../utils/fileTypes';
@@ -39,7 +39,8 @@ const headers = [
 ];
 
 export function AttachmentTable({ attachments, emptyDescription = 'No attachments found' }: AttachmentTableProps) {
-  const [previewAttachment, setPreviewAttachment] = useState<AttachmentWithEmail | null>(null);
+  // The page on screen is what the arrows step through.
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
@@ -192,7 +193,7 @@ export function AttachmentTable({ attachments, emptyDescription = 'No attachment
                       <TableCell>
                         <span
                           className="attachment-table__filename"
-                          onClick={() => setPreviewAttachment(attachment)}
+                          onClick={() => setPreviewIndex(idx)}
                         >
                           <Icon size={16} />
                           {attachment.filename}
@@ -235,17 +236,15 @@ export function AttachmentTable({ attachments, emptyDescription = 'No attachment
       )}
 
       <AttachmentPreviewModal
-        open={!!previewAttachment}
-        attachment={previewAttachment ? {
-          id: previewAttachment.id,
-          emailId: previewAttachment.emailId,
-          gmailAttachmentId: previewAttachment.gmailAttachmentId,
-          filename: previewAttachment.filename,
-          mimeType: previewAttachment.mimeType,
-          size: previewAttachment.size,
-        } : null}
-        emailId={previewAttachment?.emailId || ''}
-        onClose={() => setPreviewAttachment(null)}
+        open={previewIndex !== null}
+        items={paginated.map((a) => ({
+          file: a,
+          inlineUrl: emailsApi.getAttachmentInlineUrl(a.emailId, a.id),
+          downloadUrl: emailsApi.getAttachmentUrl(a.emailId, a.id),
+        }))}
+        index={previewIndex ?? 0}
+        onIndexChange={setPreviewIndex}
+        onClose={() => setPreviewIndex(null)}
       />
     </>
   );
