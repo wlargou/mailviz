@@ -30,6 +30,7 @@ vi.mock('../../api/emails', () => ({
     markAsUnread: vi.fn().mockResolvedValue({}),
     toggleStar: vi.fn().mockResolvedValue({}),
     archive: vi.fn(), unarchive: vi.fn(), trash: vi.fn(), untrash: vi.fn(),
+    getAttachmentUrl: (emailId: string, attachmentId: string) => `/api/v1/emails/${emailId}/attachments/${attachmentId}`,
   },
 }));
 
@@ -54,7 +55,10 @@ vi.mock('../../store/uiStore', () => ({
 }));
 
 vi.mock('./ConvertToTaskModal', () => ({ ConvertToTaskModal: () => null }));
-vi.mock('./AttachmentPreviewModal', () => ({ AttachmentPreviewModal: () => null }));
+vi.mock('./AttachmentPreviewModal', () => ({
+  AttachmentPreviewModal: ({ open, attachment }: { open: boolean; attachment: { filename: string } | null }) =>
+    open && attachment ? <div data-testid="attachment-preview">{attachment.filename}</div> : null,
+}));
 vi.mock('./MailComposeModal', () => ({ MailComposeModal: () => null }));
 vi.mock('../shared/ShareDialog', () => ({ ShareDialog: () => null }));
 
@@ -153,5 +157,29 @@ describe('ThreadDetail — keyboard operability', () => {
 
     // A div with an onClick satisfies a click test and fails this one.
     expect(await screen.findByRole('button', { name: /click to reply/i })).toBeInTheDocument();
+  });
+});
+
+describe('ThreadDetail — attachments', () => {
+  it('opens the preview for a file that cannot be rendered, instead of downloading it', async () => {
+    // Word, Excel and the rest used to be bare download links here while the
+    // company and contact tables opened the preview (with its download
+    // prompt) for every file. Same click, same result, on every page.
+    const user = userEvent.setup();
+    const withDocx = message('a', { attachments: [{ id: 'att-1', emailId: 'a', gmailAttachmentId: 'g1', filename: 'Proposal.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', size: 2048 }] });
+    vi.mocked(emailsApi.getThread).mockResolvedValue({ data: { data: [withDocx] } } as never);
+    // The expanded message is re-fetched in full; that copy is what renders.
+    vi.mocked(emailsApi.getMessage).mockResolvedValue({ data: { data: withDocx } } as never);
+    renderThread();
+
+    const chip = await screen.findByRole('button', { name: /Proposal\.docx/ });
+    expect(chip).not.toHaveAttribute('href');
+    expect(screen.queryByTestId('attachment-preview')).toBeNull();
+
+    await user.click(chip);
+
+    expect(screen.getByTestId('attachment-preview')).toHaveTextContent('Proposal.docx');
+    // The explicit download stays on the icon beside the name.
+    expect(screen.getByTitle('Download')).toHaveAttribute('href', '/api/v1/emails/a/attachments/att-1');
   });
 });

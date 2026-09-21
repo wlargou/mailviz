@@ -467,30 +467,24 @@ export function ThreadDetail({ threadId, onEmailAction }: ThreadDetailProps) {
                   {msg.attachments.length > 0 && (
                     <div className="message-bubble__attachments">
                       {msg.attachments.map((att) => {
-                        const fileInfo = getFileTypeInfo(att.mimeType, att.filename);
-                        const FileIcon = fileInfo.icon;
+                        const FileIcon = getFileTypeInfo(att.mimeType, att.filename).icon;
                         return (
                           <div key={att.id} className="attachment-chip">
-                            {fileInfo.previewable ? (
-                              <span
-                                className="attachment-chip__clickable"
-                                onClick={() => setPreviewAttachment({ attachment: att, emailId: msg.id })}
-                              >
-                                <FileIcon size={16} />
-                                <span className="attachment-chip__name">{decodeEntities(att.filename)}</span>
-                                <span className="attachment-chip__size">{formatSize(att.size)}</span>
-                              </span>
-                            ) : (
-                              <a
-                                className="attachment-chip__clickable"
-                                href={emailsApi.getAttachmentUrl(msg.id, att.id)}
-                                download={decodeEntities(att.filename)}
-                              >
-                                <FileIcon size={16} />
-                                <span className="attachment-chip__name">{decodeEntities(att.filename)}</span>
-                                <span className="attachment-chip__size">{formatSize(att.size)}</span>
-                              </a>
-                            )}
+                            {/* Every file opens the preview, as the company and
+                                contact attachment tables do; the modal shows the
+                                file or a download prompt. A Word or Excel chip
+                                used to be a bare download link here, so the same
+                                click did different things on different pages.
+                                Explicit download stays on the icon beside it. */}
+                            <button
+                              type="button"
+                              className="attachment-chip__clickable"
+                              onClick={() => setPreviewAttachment({ attachment: att, emailId: msg.id })}
+                            >
+                              <FileIcon size={16} />
+                              <span className="attachment-chip__name">{decodeEntities(att.filename)}</span>
+                              <span className="attachment-chip__size">{formatSize(att.size)}</span>
+                            </button>
                             <a
                               className="attachment-chip__download"
                               href={emailsApi.getAttachmentUrl(msg.id, att.id)}
