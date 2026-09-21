@@ -1,4 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import request from 'supertest';
 import type { Test } from 'supertest';
 import { app } from '../app.js';
@@ -12,6 +15,7 @@ import {
   createTask,
   createDeal,
   createDealPartner,
+  createRfp,
   createEmail,
   shareDealWith,
   shareTaskWith,
@@ -195,6 +199,15 @@ const PROTECTED_ROUTES: Array<[HttpMethod, string]> = [
   ['patch', `/api/v1/contacts/${PLACEHOLDER_ID}/vip`],
   ['patch', `/api/v1/contacts/${PLACEHOLDER_ID}`],
   ['delete', `/api/v1/contacts/${PLACEHOLDER_ID}`],
+
+  ['get', '/api/v1/rfps'],
+  ['get', `/api/v1/rfps/${PLACEHOLDER_ID}`],
+  ['post', '/api/v1/rfps'],
+  ['patch', `/api/v1/rfps/${PLACEHOLDER_ID}`],
+  ['delete', `/api/v1/rfps/${PLACEHOLDER_ID}`],
+  ['post', `/api/v1/rfps/${PLACEHOLDER_ID}/documents`],
+  ['get', `/api/v1/rfps/${PLACEHOLDER_ID}/documents/${PLACEHOLDER_ID}`],
+  ['delete', `/api/v1/rfps/${PLACEHOLDER_ID}/documents/${PLACEHOLDER_ID}`],
 
   ['get', '/api/v1/customers'],
   ['get', `/api/v1/customers/${PLACEHOLDER_ID}`],
@@ -1693,5 +1706,171 @@ describe('/api/v1/emails — attach to task', () => {
     const gone = await request(app).delete(`/api/v1/emails/${mine.id}/attach-to-task/${task.id}`).set('Cookie', cookie);
     expect(gone.status).toBe(200);
     expect(await prisma.mailToTask.count()).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// RFPs
+// ---------------------------------------------------------------------------
+
+interface RfpRow extends IdRow {
+  name: string;
+  reference: string;
+  budget: number | null;
+  documents: Array<{ id: string; filename: string; kind: string }>;
+}
+
+/**
+ * The register over HTTP.
+ *
+ * Documents are the first bytes this app stores on disk, so the upload path
+ * is the part only an HTTP test can reach: multer runs as middleware, before
+ * the controller, and its refusals (wrong type, too large) have to arrive as
+ * 400s rather than the 500 an unhandled `MulterError` would produce.
+ */
+describe('/api/v1/rfps', () => {
+  let storageDir: string;
+
+  beforeAll(async () => {
+    storageDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'mailviz-rfp-routes-'));
+    process.env.RFP_STORAGE_DIR = storageDir;
+  });
+
+  afterAll(async () => {
+    delete process.env.RFP_STORAGE_DIR;
+    await fs.promises.rm(storageDir, { recursive: true, force: true });
+  });
+
+  const body = {
+    name: 'Refonte de la plateforme matérielle AIX',
+    reference: '70/AOO/BKAM/2026',
+    deadlineAt: '2026-09-09T10:00:00.000Z',
+    submissionFormat: 'PORTAL',
+  };
+
+  it('creates, lists, reads, updates and deletes a tender for its owner', async () => {
+    const { alice } = await createTwoUsers();
+    const cookie = authFor(alice.id);
+
+    const created = await request(app).post('/api/v1/rfps').set('Cookie', cookie).send({ ...body, isGoe: true, budget: 12500000.5 });
+    expect(created.status).toBe(201);
+    const rfp = (created.body as ItemBody<RfpRow>).data;
+    expect(rfp.reference).toBe('70/AOO/BKAM/2026');
+    // A number through the envelope, not the string a Decimal serialises to.
+    expect(rfp.budget).toBe(12500000.5);
+    expect(rfp.documents).toEqual([]);
+
+    const list = await request(app).get('/api/v1/rfps').set('Cookie', cookie);
+    expect(list.status).toBe(200);
+    expect(ids((list.body as ListBody<RfpRow>).data)).toEqual([rfp.id]);
+    expect((list.body as ListBody<RfpRow>).meta.total).toBe(1);
+
+    const patched = await request(app).patch(`/api/v1/rfps/${rfp.id}`).set('Cookie', cookie).send({ status: 'SUBMITTED' });
+    expect(patched.status).toBe(200);
+    expect((patched.body as ItemBody<RfpRow & { status: string }>).data.status).toBe('SUBMITTED');
+
+    expect((await request(app).delete(`/api/v1/rfps/${rfp.id}`).set('Cookie', cookie)).status).toBe(204);
+    expect(await prisma.rfp.count({ where: { userId: alice.id } })).toBe(0);
+  });
+
+  it('answers 409 on a reference this account already uses, and 400 on a javascript: portal', async () => {
+    const { alice } = await createTwoUsers();
+    const cookie = authFor(alice.id);
+    await request(app).post('/api/v1/rfps').set('Cookie', cookie).send(body);
+
+    const dup = await request(app).post('/api/v1/rfps').set('Cookie', cookie).send({ ...body, name: 'Same reference' });
+    expect(dup.status).toBe(409);
+    expect((dup.body as ErrorBody).error.code).toBe('RFP_REFERENCE_TAKEN');
+
+    const bad = await request(app).post('/api/v1/rfps').set('Cookie', cookie).send({ ...body, reference: 'OTHER/1', portalUrl: 'javascript:alert(1)' });
+    expect(bad.status).toBe(400);
+    expect(await prisma.rfp.count({ where: { userId: alice.id } })).toBe(1);
+  });
+
+  it('refuses every :id route for another account and never leaks the row', async () => {
+    const { alice, bob } = await createTwoUsers();
+    const cookie = authFor(alice.id);
+    const bobs = await createRfp(bob.id, { name: 'BobsSecretTender', reference: 'BOB/1/2026' });
+
+    const read = await request(app).get(`/api/v1/rfps/${bobs.id}`).set('Cookie', cookie);
+    expect(read.status).toBe(404);
+    expect(JSON.stringify(read.body)).not.toContain('BobsSecretTender');
+
+    expect((await request(app).patch(`/api/v1/rfps/${bobs.id}`).set('Cookie', cookie).send({ name: 'Hijacked' })).status).toBe(404);
+    expect((await request(app).delete(`/api/v1/rfps/${bobs.id}`).set('Cookie', cookie)).status).toBe(404);
+    expect((await prisma.rfp.findUniqueOrThrow({ where: { id: bobs.id } })).name).toBe('BobsSecretTender');
+  });
+
+  it('uploads a document, serves the bytes back, and deletes both row and file', async () => {
+    const { alice } = await createTwoUsers();
+    const cookie = authFor(alice.id);
+    const rfp = await createRfp(alice.id);
+
+    const uploaded = await request(app)
+      .post(`/api/v1/rfps/${rfp.id}/documents`)
+      .set('Cookie', cookie)
+      .field('kind', 'AVIS')
+      .attach('file', Buffer.from('%PDF-1.4 avis'), { filename: 'Avis AO 70.pdf', contentType: 'application/pdf' });
+
+    expect(uploaded.status).toBe(201);
+    const doc = (uploaded.body as ItemBody<{ id: string; filename: string; kind: string; storageKey: string }>).data;
+    expect(doc.filename).toBe('Avis AO 70.pdf');
+    expect(doc.kind).toBe('AVIS');
+    // The bytes landed under the account, under a name we generated — never
+    // the uploaded one, which is user input that may contain a path.
+    expect(doc.storageKey.startsWith(`${alice.id}/`)).toBe(true);
+    expect(path.basename(doc.storageKey)).not.toContain('Avis');
+    expect(fs.existsSync(path.join(storageDir, doc.storageKey))).toBe(true);
+
+    const download = await request(app).get(`/api/v1/rfps/${rfp.id}/documents/${doc.id}`).set('Cookie', cookie);
+    expect(download.status).toBe(200);
+    expect(download.headers['content-type']).toContain('application/pdf');
+    expect(download.headers['content-disposition']).toBe('attachment; filename="Avis AO 70.pdf"');
+    expect(download.body.toString()).toBe('%PDF-1.4 avis');
+
+    expect((await request(app).delete(`/api/v1/rfps/${rfp.id}/documents/${doc.id}`).set('Cookie', cookie)).status).toBe(204);
+    expect(fs.existsSync(path.join(storageDir, doc.storageKey))).toBe(false);
+  });
+
+  it('rejects a file type that is not a tender document, as a 400 rather than a 500', async () => {
+    const { alice } = await createTwoUsers();
+    const cookie = authFor(alice.id);
+    const rfp = await createRfp(alice.id);
+
+    const res = await request(app)
+      .post(`/api/v1/rfps/${rfp.id}/documents`)
+      .set('Cookie', cookie)
+      .attach('file', Buffer.from('#!/bin/sh\nrm -rf /'), { filename: 'run.sh', contentType: 'application/x-sh' });
+
+    expect(res.status).toBe(400);
+    expect((res.body as ErrorBody).error.code).toBe('UNSUPPORTED_FILE_TYPE');
+    expect(await prisma.rfpDocument.count()).toBe(0);
+  });
+
+  it('will not let one account upload to, download from or delete another account\'s dossier', async () => {
+    const { alice, bob } = await createTwoUsers();
+    const aliceCookie = authFor(alice.id);
+    const bobCookie = authFor(bob.id);
+    const bobsRfp = await createRfp(bob.id, { reference: 'BOB/2/2026' });
+
+    const bobsDoc = await request(app)
+      .post(`/api/v1/rfps/${bobsRfp.id}/documents`)
+      .set('Cookie', bobCookie)
+      .attach('file', Buffer.from('%PDF confidential'), { filename: 'CPS.pdf', contentType: 'application/pdf' });
+    expect(bobsDoc.status).toBe(201);
+    const docId = (bobsDoc.body as ItemBody<IdRow>).data.id;
+
+    const intrusion = await request(app)
+      .post(`/api/v1/rfps/${bobsRfp.id}/documents`)
+      .set('Cookie', aliceCookie)
+      .attach('file', Buffer.from('%PDF mine'), { filename: 'mine.pdf', contentType: 'application/pdf' });
+    expect(intrusion.status).toBe(404);
+
+    const stolen = await request(app).get(`/api/v1/rfps/${bobsRfp.id}/documents/${docId}`).set('Cookie', aliceCookie);
+    expect(stolen.status).toBe(404);
+    expect(stolen.text).not.toContain('confidential');
+
+    expect((await request(app).delete(`/api/v1/rfps/${bobsRfp.id}/documents/${docId}`).set('Cookie', aliceCookie)).status).toBe(404);
+    expect(await prisma.rfpDocument.count({ where: { rfpId: bobsRfp.id } })).toBe(1);
   });
 });

@@ -16,6 +16,11 @@ export const env = {
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || '',
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET || '',
   GOOGLE_REDIRECT_URI: process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3002/api/v1/auth/google/callback',
+  // Where RFP tender documents are stored. On Railway this MUST point at a
+  // mounted volume: a container's own filesystem is rebuilt on every deploy,
+  // so an unmounted path loses every uploaded document at the next push while
+  // uploads keep appearing to work. See services/rfpStorage.ts.
+  RFP_STORAGE_DIR: process.env.RFP_STORAGE_DIR || '',
   SYNC_INTERVAL_SECONDS: parseInt(process.env.SYNC_INTERVAL_SECONDS || '60', 10),
   EMAIL_SYNC_ENABLED: process.env.EMAIL_SYNC_ENABLED !== 'false',
   CALENDAR_SYNC_ENABLED: process.env.CALENDAR_SYNC_ENABLED !== 'false',

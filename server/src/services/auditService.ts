@@ -32,6 +32,12 @@ export type AuditAction =
   | 'EMAIL_DRAFT_SENT'
   | 'EMAIL_SNOOZED'
   | 'EMAIL_UNSNOOZED'
+  // RFP register
+  | 'RFP_CREATED'
+  | 'RFP_UPDATED'
+  | 'RFP_DELETED'
+  | 'RFP_DOCUMENT_ADDED'
+  | 'RFP_DOCUMENT_REMOVED'
   | 'EMAIL_FOLLOW_UP_SET'
   | 'EMAIL_FOLLOW_UP_CLEARED'
   // Task actions
@@ -95,7 +101,7 @@ export type AuditAction =
   | 'ONBOARDING_COMPLETED'
   | 'ONBOARDING_SKIPPED';
 
-export type EntityType = 'email' | 'task' | 'task_template' | 'deal' | 'event' | 'company' | 'contact' | 'label' | 'auth' | 'scheduled_email' | 'email_draft' | 'email_template';
+export type EntityType = 'email' | 'task' | 'task_template' | 'deal' | 'event' | 'company' | 'contact' | 'label' | 'auth' | 'scheduled_email' | 'email_draft' | 'email_template' | 'rfp';
 
 /**
  * Anything that can write an audit row — the shared client or a transaction
