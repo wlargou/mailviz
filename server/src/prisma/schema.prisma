@@ -396,6 +396,10 @@ model User {
 
   /// IANA zone, e.g. "Europe/Paris". Null means UTC — see utils/timezone.ts.
   timezone   String?  @db.VarChar(64)
+  /// Which Gmail category tabs the inbox shows besides Primary, in the app's
+  /// fixed order. Values are the app's ids (social, promotions, updates,
+  /// forums), not Gmail's label names — see utils/mailCategories.ts.
+  mailCategoryTabs String[] @default(["social", "promotions", "updates", "forums"]) @map("mail_category_tabs")
 
   createdAt DateTime    @default(now()) @map("created_at")
   updatedAt DateTime    @updatedAt @map("updated_at")
@@ -554,6 +558,9 @@ model Email {
   @@index([isRead])
   @@index([from])
   @@index([userId])
+  /// GIN: the inbox and the Gmail category tabs filter on this array with
+  /// `@>` / `&&`, which a btree cannot serve.
+  @@index([labelIds], type: Gin)
   @@map("emails")
 }
 

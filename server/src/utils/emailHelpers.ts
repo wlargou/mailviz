@@ -184,6 +184,8 @@ export interface EmailQueryParams {
   isRead?: string;
   hasAttachment?: string;
   folder?: string;
+  /** A Gmail inbox category: primary, social, promotions, updates, forums. */
+  category?: string;
   from?: string;
   to?: string;
   subject?: string;

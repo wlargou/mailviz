@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { OPTIONAL_MAIL_CATEGORIES } from '../utils/mailCategories.js';
 
 /**
  * Deleting an account is irreversible and cascades across every table the
@@ -40,4 +41,17 @@ export const updateTimezoneSchema = z.object({
         return false;
       }
     }, 'Not a recognised IANA timezone'),
+});
+
+/**
+ * Which Gmail category tabs to show beside Primary. Primary is not in the
+ * list because it cannot be hidden. Order is the app's, not the caller's:
+ * the tabs always render in the fixed order, so a duplicate or a reordering
+ * in the body is normalised away rather than stored.
+ */
+export const updateMailCategoryTabsSchema = z.object({
+  tabs: z
+    .array(z.enum(OPTIONAL_MAIL_CATEGORIES))
+    .max(OPTIONAL_MAIL_CATEGORIES.length)
+    .transform((tabs) => OPTIONAL_MAIL_CATEGORIES.filter((c) => tabs.includes(c))),
 });

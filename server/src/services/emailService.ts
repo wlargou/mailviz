@@ -29,6 +29,7 @@ import { canAccessTask, getSharedThreadIds, canAccessThread } from '../utils/acc
 import { auditService } from './auditService.js';
 import { notificationService } from './notificationService.js';
 import { snoozeService } from './snoozeService.js';
+import { categoryFilter, isMailCategory, MAIL_CATEGORIES, type MailCategory } from '../utils/mailCategories.js';
 import { mergeEngagement } from '../utils/contactEngagement.js';
 import { decodeEntities, decodeThenEscape } from '../utils/htmlEntities.js';
 import { taskService } from './taskService.js';
@@ -714,6 +715,35 @@ export const emailService = {
     return { customersCreated, contactsCreated };
   },
 
+  /**
+   * Unread threads per Gmail category, for the inbox tabs.
+   *
+   * The same conditions the inbox list applies — ownership plus shares, not
+   * trashed, snoozed threads hidden — restricted to unread, so a tab's number
+   * is the count of bold rows behind it. Five small group-bys rather than one
+   * raw query: the list's where-clause is built across a dozen branches and
+   * this reuses two of them verbatim instead of restating them in SQL.
+   */
+  async categoryCounts(userId: string): Promise<Record<MailCategory, number>> {
+    const sharedThreadIds = await getSharedThreadIds(userId);
+    const ownershipFilter: Prisma.EmailWhereInput = sharedThreadIds.length > 0
+      ? { OR: [{ userId }, { threadId: { in: sharedThreadIds } }] }
+      : { userId };
+    const snoozedThreadIds = await snoozeService.snoozedThreadIds(userId);
+    const base: Prisma.EmailWhereInput[] = [ownershipFilter];
+    if (snoozedThreadIds.length > 0) {
+      base.push({ OR: [{ threadId: null }, { threadId: { notIn: snoozedThreadIds } }] });
+    }
+    const counts = await Promise.all(MAIL_CATEGORIES.map(async (category) => {
+      const groups = await prisma.email.groupBy({
+        by: ['threadId'],
+        where: { AND: [...base, categoryFilter(category)], isRead: false, isTrashed: false, labelIds: { has: 'INBOX' } },
+      });
+      return [category, groups.filter((g) => g.threadId !== null).length] as const;
+    }));
+    return Object.fromEntries(counts) as Record<MailCategory, number>;
+  },
+
   async findAllThreads(query: EmailQueryParams, userId: string) {
     const pagination = parsePagination(query);
 
@@ -781,6 +811,9 @@ export const emailService = {
 
     if (query.folder === 'inbox') where.labelIds = { has: 'INBOX' };
     if (query.folder === 'sent') where.labelIds = { has: 'SENT' };
+    // Gmail's inbox tabs. Pushed onto AND rather than assigned to
+    // `where.labelIds`, which the inbox branch above already owns.
+    if (isMailCategory(query.category)) andFilters.push(categoryFilter(query.category));
     if (query.folder === 'starred') where.isStarred = true;
     if (query.folder === 'archived') where.isArchived = true;
     if (query.folder === 'trash') where.isTrashed = true;

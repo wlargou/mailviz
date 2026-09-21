@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { authController } from '../controllers/authController.js';
 import { requireAuth } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
-import { deleteAccountSchema, updateTimezoneSchema } from '../validators/accountValidator.js';
+import { deleteAccountSchema, updateTimezoneSchema, updateMailCategoryTabsSchema } from '../validators/accountValidator.js';
 
 const router = Router();
 
@@ -32,6 +32,7 @@ router.get('/users', requireAuth, authController.listUsers);
 
 // Timezone — detected by the client, used for every day and week boundary.
 router.put('/timezone', requireAuth, validate(updateTimezoneSchema), authController.updateTimezone);
+router.put('/mail-categories', requireAuth, validate(updateMailCategoryTabsSchema), authController.updateMailCategoryTabs);
 
 // Email signature
 router.get('/signature', requireAuth, authController.getSignature);
