@@ -5,6 +5,10 @@ import { emailsApi } from '../../api/emails';
 import { getFileTypeInfo, formatFileSize } from '../../utils/fileTypes';
 import type { EmailAttachment } from '../../types/email';
 import { decodeEntities } from '../../utils/text';
+import { SpreadsheetPreview } from './SpreadsheetPreview';
+
+/** Past this the whole file would be parsed in the tab; the download is the better tool. */
+const MAX_SPREADSHEET_BYTES = 10 * 1024 * 1024;
 
 interface AttachmentPreviewModalProps {
   attachment: EmailAttachment | null;
@@ -48,7 +52,11 @@ export function AttachmentPreviewModal({ attachment, emailId, open, onClose }: A
       );
     }
 
-    // Non-previewable: show file info + download prompt
+    if (fileInfo.category === 'spreadsheet' && attachment.size <= MAX_SPREADSHEET_BYTES) {
+      return <SpreadsheetPreview url={inlineUrl} />;
+    }
+
+    // Non-previewable, or too big to parse in the tab: file info + download prompt
     const Icon = fileInfo.icon;
     return (
       <div className="attachment-preview__fallback">
@@ -58,7 +66,9 @@ export function AttachmentPreviewModal({ attachment, emailId, open, onClose }: A
           {fileInfo.label} · {formatFileSize(attachment.size)}
         </p>
         <p className="attachment-preview__hint">
-          This file type cannot be previewed. Download to open it.
+          {fileInfo.category === 'spreadsheet'
+            ? 'Too large to preview here. Download to open it.'
+            : 'This file type cannot be previewed. Download to open it.'}
         </p>
       </div>
     );
