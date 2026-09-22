@@ -45,6 +45,11 @@ export const createRfpSchema = z.object({
  */
 export const updateRfpSchema = createRfpSchema.partial();
 
+/** Recipients of a share. Ids only — the server resolves the people. */
+export const shareRfpSchema = z.object({
+  userIds: z.array(z.string().uuid()).min(1).max(50),
+});
+
 export const createRfpDocumentSchema = z.object({
   kind: rfpDocumentKindSchema.optional(),
 });

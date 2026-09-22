@@ -205,6 +205,9 @@ const PROTECTED_ROUTES: Array<[HttpMethod, string]> = [
   ['post', '/api/v1/rfps'],
   ['patch', `/api/v1/rfps/${PLACEHOLDER_ID}`],
   ['delete', `/api/v1/rfps/${PLACEHOLDER_ID}`],
+  ['post', `/api/v1/rfps/${PLACEHOLDER_ID}/share`],
+  ['delete', `/api/v1/rfps/${PLACEHOLDER_ID}/shares/${PLACEHOLDER_ID}`],
+  ['get', `/api/v1/rfps/${PLACEHOLDER_ID}/shares`],
   ['post', `/api/v1/rfps/${PLACEHOLDER_ID}/documents`],
   ['get', `/api/v1/rfps/${PLACEHOLDER_ID}/documents/${PLACEHOLDER_ID}`],
   ['delete', `/api/v1/rfps/${PLACEHOLDER_ID}/documents/${PLACEHOLDER_ID}`],
@@ -1872,5 +1875,65 @@ describe('/api/v1/rfps', () => {
 
     expect((await request(app).delete(`/api/v1/rfps/${bobsRfp.id}/documents/${docId}`).set('Cookie', aliceCookie)).status).toBe(404);
     expect(await prisma.rfpDocument.count({ where: { rfpId: bobsRfp.id } })).toBe(1);
+  });
+});
+
+describe('/api/v1/rfps — sharing', () => {
+  it('shares a tender, and the recipient sees it and its dossier over HTTP', async () => {
+    const { alice, bob } = await createTwoUsers();
+    const aliceCookie = authFor(alice.id);
+    const bobCookie = authFor(bob.id);
+    const rfp = await createRfp(alice.id, { name: 'Refonte AIX', reference: 'SHARE/1/2026' });
+
+    const before = await request(app).get('/api/v1/rfps').set('Cookie', bobCookie);
+    expect((before.body as ListBody<RfpRow>).data).toHaveLength(0);
+
+    const shared = await request(app).post(`/api/v1/rfps/${rfp.id}/share`).set('Cookie', aliceCookie).send({ userIds: [bob.id] });
+    expect(shared.status).toBe(200);
+
+    const after = await request(app).get('/api/v1/rfps').set('Cookie', bobCookie);
+    expect(ids((after.body as ListBody<RfpRow>).data)).toEqual([rfp.id]);
+    expect((await request(app).get(`/api/v1/rfps/${rfp.id}`).set('Cookie', bobCookie)).status).toBe(200);
+
+    // The owner can see who it went to; the recipient cannot manage it.
+    const shares = await request(app).get(`/api/v1/rfps/${rfp.id}/shares`).set('Cookie', aliceCookie);
+    expect(shares.status).toBe(200);
+    expect((shares.body as ListBody<ShareRow>).data.map((r) => r.sharedWith.email)).toEqual([bob.email]);
+    expect((await request(app).get(`/api/v1/rfps/${rfp.id}/shares`).set('Cookie', bobCookie)).status).toBe(404);
+    expect((await request(app).delete(`/api/v1/rfps/${rfp.id}`).set('Cookie', bobCookie)).status).toBe(404);
+
+    // Withdrawing it takes it back out of his register.
+    expect((await request(app).delete(`/api/v1/rfps/${rfp.id}/shares/${bob.id}`).set('Cookie', aliceCookie)).status).toBe(200);
+    const gone = await request(app).get('/api/v1/rfps').set('Cookie', bobCookie);
+    expect((gone.body as ListBody<RfpRow>).data).toHaveLength(0);
+  });
+
+  it('refuses a share from someone who does not own the tender', async () => {
+    const { alice, bob } = await createTwoUsers();
+    const stranger = await createUser();
+    const rfp = await createRfp(alice.id, { reference: 'SHARE/2/2026' });
+
+    const res = await request(app)
+      .post(`/api/v1/rfps/${rfp.id}/share`)
+      .set('Cookie', authFor(stranger.id))
+      .send({ userIds: [bob.id] });
+
+    expect(res.status).toBe(404);
+    expect(await prisma.rfpShare.count()).toBe(0);
+  });
+
+  it('validates the recipients rather than writing whatever arrives', async () => {
+    const { alice } = await createTwoUsers();
+    const cookie = authFor(alice.id);
+    const rfp = await createRfp(alice.id, { reference: 'SHARE/3/2026' });
+
+    for (const body of [{ userIds: [] }, { userIds: ['not-a-uuid'] }, { userIds: 'someone' }, {}]) {
+      const res = await request(app).post(`/api/v1/rfps/${rfp.id}/share`).set('Cookie', cookie).send(body);
+      expect(res.status).toBe(400);
+    }
+    // Well-formed but nobody: a 404, not a silent success.
+    const ghost = await request(app).post(`/api/v1/rfps/${rfp.id}/share`).set('Cookie', cookie).send({ userIds: [PLACEHOLDER_ID] });
+    expect(ghost.status).toBe(404);
+    expect(await prisma.rfpShare.count()).toBe(0);
   });
 });

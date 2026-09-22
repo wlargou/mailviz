@@ -11,12 +11,14 @@ import userEvent from '@testing-library/user-event';
 import { AxiosHeaders, type AxiosResponse } from 'axios';
 import { RfpsPage, deadlineTone } from './RfpsPage';
 import { rfpsApi } from '../../api/rfps';
+import { useAuthStore } from '../../store/authStore';
 import type { Rfp } from '../../types/rfp';
 
 vi.mock('../../api/rfps', () => ({
   rfpsApi: {
     getAll: vi.fn(), getById: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn(),
     uploadDocument: vi.fn(), deleteDocument: vi.fn(),
+    shareRfp: vi.fn(), unshareRfp: vi.fn(), getRfpShares: vi.fn(),
     documentUrl: (r: string, d: string) => `/api/v1/rfps/${r}/documents/${d}`,
     documentInlineUrl: (r: string, d: string) => `/api/v1/rfps/${r}/documents/${d}?inline=true`,
   },
@@ -52,6 +54,7 @@ function makeRfp(overrides: Partial<Rfp> = {}): Rfp {
     status: 'OPEN',
     notes: null,
     userId: 'me',
+    user: { id: 'me', name: 'Me', email: 'me@test' },
     createdAt: '',
     updatedAt: '',
     documents: [],
@@ -78,6 +81,7 @@ function serve(rfps: Rfp[]) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  useAuthStore.setState({ user: { id: 'me', email: 'me@test', name: 'Me', avatarUrl: null } });
 });
 
 /**
@@ -212,5 +216,65 @@ describe('RfpsPage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Delete' }));
     await waitFor(() => expect(rfpsApi.delete).toHaveBeenCalledWith('r1'));
+  });
+});
+
+/**
+ * Sharing, from the register's side.
+ *
+ * A tender someone else owns is marked, and the two things that are the
+ * owner's — sharing it onward and deleting it — are not offered on it. The
+ * server refuses them anyway; not drawing the buttons is what stops a
+ * colleague from finding out by clicking.
+ */
+describe('RfpsPage — shared tenders', () => {
+  it('badges a tender owned by someone else and withholds the owner-only actions', async () => {
+    serve([makeRfp({ userId: 'colleague', user: { id: 'colleague', name: 'Sam', email: 'sam@test' } })]);
+    renderPage();
+
+    const row = (await screen.findByText('70/AOO/BKAM/2026')).closest('tr')!;
+    expect(within(row).getByText('Shared')).toBeInTheDocument();
+    expect(within(row).getByRole('button', { name: /Edit / })).toBeInTheDocument();
+    expect(within(row).queryByRole('button', { name: /Share / })).toBeNull();
+    expect(within(row).queryByRole('button', { name: /Delete / })).toBeNull();
+  });
+
+  it('offers sharing and deleting on your own, without a badge', async () => {
+    serve([makeRfp()]);
+    renderPage();
+
+    const row = (await screen.findByText('70/AOO/BKAM/2026')).closest('tr')!;
+    expect(within(row).queryByText('Shared')).toBeNull();
+    expect(within(row).getByRole('button', { name: /Share / })).toBeInTheDocument();
+    expect(within(row).getByRole('button', { name: /Delete / })).toBeInTheDocument();
+  });
+
+  it('opens the share dialog on the current recipients', async () => {
+    serve([makeRfp()]);
+    vi.mocked(rfpsApi.getRfpShares).mockResolvedValue(
+      axiosOk({ data: [{ id: 's1', createdAt: '', sharedWith: { id: 'u2', name: 'Sam', email: 'sam@test', avatarUrl: null } }] }) as never
+    );
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: /Share Refonte/ }));
+
+    await waitFor(() => expect(rfpsApi.getRfpShares).toHaveBeenCalledWith('r1'));
+    // The dialog shows a recipient's name when they have one, their email
+    // otherwise — what matters here is that the existing share is listed.
+    expect(await screen.findByText('Sam')).toBeInTheDocument();
+  });
+
+  it('asks the server for only what was shared with me', async () => {
+    serve([makeRfp()]);
+    const user = userEvent.setup();
+    renderPage();
+
+    await waitFor(() => expect(rfpsApi.getAll).toHaveBeenCalled());
+    await user.click(screen.getByRole('button', { name: 'Filter' }));
+    await user.click(screen.getByRole('combobox', { name: /Ownership/i }));
+    await user.click(await screen.findByRole('option', { name: 'Shared with me' }));
+
+    await waitFor(() => expect(vi.mocked(rfpsApi.getAll).mock.calls.at(-1)![0]!.ownership).toBe('shared'));
   });
 });

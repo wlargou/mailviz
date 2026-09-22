@@ -82,7 +82,9 @@ export interface Rfp {
   budget: number | null;
   status: RfpStatus;
   notes: string | null;
+  /** The owner. Anything the signed-in user sees but does not own is shared. */
   userId: string;
+  user?: { id: string; name: string | null; email: string };
   createdAt: string;
   updatedAt: string;
   documents: RfpDocument[];
