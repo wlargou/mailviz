@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+
+const navigateSpy = vi.fn();
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
+  return { ...actual, useNavigate: () => navigateSpy };
+});
 import userEvent from '@testing-library/user-event';
 import { AxiosHeaders, type AxiosResponse } from 'axios';
 import { RfpsPage, deadlineTone } from './RfpsPage';
@@ -35,6 +42,8 @@ function makeRfp(overrides: Partial<Rfp> = {}): Rfp {
     id: 'r1',
     name: 'Refonte de la plateforme matérielle AIX',
     reference: '70/AOO/BKAM/2026',
+    customerId: 'c1',
+    customer: { id: 'c1', name: 'Bank Al-Maghrib', logoUrl: null },
     deadlineAt: '2026-12-09T10:00:00.000Z',
     submissionFormat: 'PORTAL',
     portalUrl: 'https://portailachats.bankalmaghrib.ma/',
@@ -54,6 +63,14 @@ const DOCS = [
   { id: 'd1', rfpId: 'r1', kind: 'RFP' as const, filename: 'RC.pdf', mimeType: 'application/pdf', size: 10, createdAt: '' },
   { id: 'd2', rfpId: 'r1', kind: 'AVIS' as const, filename: 'Avis.pdf', mimeType: 'application/pdf', size: 10, createdAt: '' },
 ];
+
+function renderPage() {
+  return render(
+    <MemoryRouter>
+      <RfpsPage />
+    </MemoryRouter>
+  );
+}
 
 function serve(rfps: Rfp[]) {
   vi.mocked(rfpsApi.getAll).mockResolvedValue(axiosOk({ data: rfps, meta: { page: 1, limit: 20, total: rfps.length, totalPages: 1 } }) as never);
@@ -90,13 +107,16 @@ describe('deadlineTone', () => {
 describe('RfpsPage', () => {
   it('shows every field of the register for a row', async () => {
     serve([makeRfp({ documents: [{ id: 'd1', rfpId: 'r1', kind: 'RFP', filename: 'CPS.pdf', mimeType: 'application/pdf', size: 1024, createdAt: '' }] })]);
-    render(<RfpsPage />);
+    renderPage();
 
     // By the reference: the tender's name appears on the row button and again
     // inside each action button's description.
     const row = (await screen.findByText('70/AOO/BKAM/2026')).closest('tr')!;
     expect(within(row).getByRole('button', { name: 'Refonte de la plateforme matérielle AIX' })).toBeInTheDocument();
     expect(within(row).getByText('9 Dec 2026')).toBeInTheDocument();
+    // The buying organisation — a tender is recognised by who it is from at
+    // least as often as by its reference.
+    expect(within(row).getByText('Bank Al-Maghrib')).toBeInTheDocument();
     expect(within(row).getByText('Portal')).toBeInTheDocument();
     expect(within(row).getByText('GOE')).toBeInTheDocument();
     expect(within(row).getByText(/12[\s  ]?500[\s  ]?000 DH/)).toBeInTheDocument();
@@ -106,9 +126,27 @@ describe('RfpsPage', () => {
     expect(within(row).getByRole('button', { name: /Open the buyer's portal/ })).toBeInTheDocument();
   });
 
+  it('opens the company from the row', async () => {
+    serve([makeRfp()]);
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByText('Bank Al-Maghrib'));
+
+    expect(navigateSpy).toHaveBeenCalledWith('/customers/c1');
+  });
+
+  it('shows a dash when a tender has no company', async () => {
+    serve([makeRfp({ customerId: null, customer: null })]);
+    renderPage();
+
+    const row = (await screen.findByText('70/AOO/BKAM/2026')).closest('tr')!;
+    expect(within(row).queryByText('Bank Al-Maghrib')).toBeNull();
+  });
+
   it('shows no budget for a private buyer — only public ones publish an estimate', async () => {
     serve([makeRfp({ isGoe: false, budget: null, submissionFormat: 'PAPER', portalUrl: null })]);
-    render(<RfpsPage />);
+    renderPage();
 
     const row = (await screen.findByText('70/AOO/BKAM/2026')).closest('tr')!;
     expect(within(row).getByText('Paper')).toBeInTheDocument();
@@ -119,7 +157,7 @@ describe('RfpsPage', () => {
   it('opens on live tenders only, and an explicit status replaces that scope', async () => {
     serve([makeRfp()]);
     const user = userEvent.setup();
-    render(<RfpsPage />);
+    renderPage();
 
     await waitFor(() => expect(rfpsApi.getAll).toHaveBeenCalled());
     expect(vi.mocked(rfpsApi.getAll).mock.calls[0][0]).toMatchObject({ scope: 'open', sortBy: 'deadlineAt', sortOrder: 'asc' });
@@ -142,7 +180,7 @@ describe('RfpsPage', () => {
     // used to mean opening the edit panel and scrolling to the bottom.
     serve([makeRfp({ documents: DOCS })]);
     const user = userEvent.setup();
-    render(<RfpsPage />);
+    renderPage();
 
     const count = await screen.findByRole('button', { name: /Preview 2 documents/ });
     expect(screen.queryByTestId('preview')).toBeNull();
@@ -157,7 +195,7 @@ describe('RfpsPage', () => {
 
   it('offers nothing to open when a tender has no documents', async () => {
     serve([makeRfp({ documents: [] })]);
-    render(<RfpsPage />);
+    renderPage();
 
     await screen.findByText('70/AOO/BKAM/2026');
     expect(screen.queryByRole('button', { name: /Preview/ })).toBeNull();
@@ -167,7 +205,7 @@ describe('RfpsPage', () => {
     serve([makeRfp({ documents: DOCS })]);
     vi.mocked(rfpsApi.delete).mockResolvedValue(axiosOk({}) as never);
     const user = userEvent.setup();
-    render(<RfpsPage />);
+    renderPage();
 
     await user.click(await screen.findByRole('button', { name: /Delete Refonte/ }));
     expect(await screen.findByText(/Its 2 documents will be deleted too/)).toBeInTheDocument();

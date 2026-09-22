@@ -27,6 +27,9 @@ export const createRfpSchema = z.object({
     .optional()
     .nullable()
     .or(z.literal('')),
+  /// The buying company. A plain foreign key into a user-scoped table, so
+  /// the service checks it belongs to the caller — see rfpService.
+  customerId: z.string().uuid().nullable().optional(),
   isGoe: z.boolean().optional(),
   /// In MAD. Bounded below at zero and above at what `Decimal(14,2)` holds.
   budget: z.number().min(0).max(999999999999.99).optional().nullable(),

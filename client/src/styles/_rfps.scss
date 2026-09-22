@@ -138,6 +138,12 @@
   margin: 0 0 $spacing-03;
 }
 
+.rfp-form__section-hint {
+  @include type.type-style('label-01');
+  color: var(--cds-text-secondary);
+  margin: $spacing-03 0 0;
+}
+
 // ─── RFP DOCUMENTS ───────────────────────────────
 .rfp-documents__controls {
   display: flex;

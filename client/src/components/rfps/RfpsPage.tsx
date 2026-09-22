@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   DataTable,
   Table,
@@ -48,6 +49,7 @@ import { useTableSort } from '../../hooks/useTableSort';
 const headers = [
   { key: 'deadline', header: 'Deadline', sortField: 'deadlineAt' },
   { key: 'name', header: 'RFP', sortField: 'name' },
+  { key: 'company', header: 'Company' },
   { key: 'reference', header: 'Reference', sortField: 'reference' },
   { key: 'format', header: 'Format' },
   { key: 'goe', header: 'GOE' },
@@ -109,6 +111,7 @@ export function RfpsPage() {
    */
   const [previewRfp, setPreviewRfp] = useState<{ rfp: Rfp; index: number } | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const navigate = useNavigate();
   const addNotification = useUIStore((s) => s.addNotification);
 
   useEffect(() => {
@@ -295,6 +298,18 @@ export function RfpsPage() {
                               <button type="button" className="rfp-name-cell" onClick={() => openEdit(rfp)}>
                                 {rfp.name}
                               </button>
+                            </TableCell>
+                            <TableCell>
+                              {rfp.customer ? (
+                                <span
+                                  className="customer-name-cell"
+                                  onClick={() => navigate(`/customers/${rfp.customer!.id}`)}
+                                >
+                                  {rfp.customer.name}
+                                </span>
+                              ) : (
+                                <span className="rfp-muted">—</span>
+                              )}
                             </TableCell>
                             <TableCell><span className="rfp-reference">{rfp.reference}</span></TableCell>
                             <TableCell>
