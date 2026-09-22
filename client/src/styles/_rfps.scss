@@ -66,11 +66,55 @@
   white-space: nowrap;
 }
 
+// A <button> now — it opens the dossier — styled as the count it replaced.
+.rfp-doc-count {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--cds-link-primary);
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--cds-focus);
+    outline-offset: 2px;
+  }
+}
+
 .rfp-muted {
   color: var(--cds-text-secondary);
 }
 
 // ─── RFP FORM ────────────────────────────────────
+// Two columns in the wide tearsheet: the short identity fields pair up and
+// the ones that need room span both. One column below 42rem, where two would
+// be narrower than the controls themselves.
+.rfp-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: $spacing-05 $spacing-07;
+  padding-inline: $spacing-07;
+  align-items: start;
+
+  @media (max-width: 42rem) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.rfp-form__field {
+  // The grid owns the spacing; the fields used to carry their own margin.
+  margin-bottom: 0;
+  min-inline-size: 0;
+}
+
+.rfp-form__field--full {
+  grid-column: 1 / -1;
+}
+
 .rfp-form__row {
   display: flex;
   gap: $spacing-05;
@@ -94,12 +138,25 @@
   margin: 0 0 $spacing-03;
 }
 
+.rfp-form__section-hint {
+  @include type.type-style('label-01');
+  color: var(--cds-text-secondary);
+  margin: $spacing-03 0 0;
+}
+
 // ─── RFP DOCUMENTS ───────────────────────────────
 .rfp-documents__controls {
   display: flex;
   align-items: flex-end;
   gap: $spacing-04;
   margin-bottom: $spacing-04;
+
+  // Wide enough for the longest option. As a bare flex item the dropdown
+  // shrank to its trigger and Carbon truncated the menu text — "Complément"
+  // read "Co…".
+  .cds--dropdown__wrapper {
+    flex: 0 0 14rem;
+  }
 }
 
 .rfp-documents__list {

@@ -90,6 +90,9 @@ export function RfpDocuments({ rfpId, documents, pending, onPendingChange, onUpl
             if (selectedItem) setKind(selectedItem.id);
           }}
           size="sm"
+          // The dossier sits at the bottom of the form, so a menu that only
+          // ever opened downwards was cut off by the tearsheet's button bar.
+          autoAlign
         />
         <FileUploaderButton
           labelText="Add file"

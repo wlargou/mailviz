@@ -283,6 +283,7 @@ model Customer {
   calendarEvents CalendarEventCustomer[]
   emails         Email[]
   deals          Deal[]
+  rfps            Rfp[]
 
   @@unique([userId, domain])
   @@index([categoryId])
@@ -974,18 +975,24 @@ model Rfp {
   budget Decimal? @db.Decimal(14, 2)
   status String   @default("OPEN") @db.VarChar(20)
   notes  String?  @db.Text
-  userId String   @map("user_id")
+  /// The buying organisation, when it is one of ours. Nullable and
+  /// `SetNull`: deleting a company must not take its tenders with it —
+  /// the tender still happened.
+  customerId String? @map("customer_id")
+  userId     String  @map("user_id")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  customer  Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
   documents RfpDocument[]
 
   /// Per account, never globally: two accounts may both track 27/2026/DGI.
   @@unique([userId, reference])
   @@index([userId, deadlineAt])
   @@index([userId, status])
+  @@index([customerId])
   @@map("rfps")
 }
 

@@ -1,34 +1,18 @@
 import { useState, useEffect } from 'react';
-import {
-  TextInput,
-  TextArea,
-  Dropdown,
-  DatePicker,
-  DatePickerInput,
-  TimePicker,
-  Toggle,
-  NumberInput,
-} from '@carbon/react';
-import { TearsheetNarrow } from '@carbon/ibm-products';
+import { Tearsheet, CreateTearsheet, CreateTearsheetStep } from '@carbon/ibm-products';
 import { isAxiosError } from 'axios';
 import { rfpsApi } from '../../api/rfps';
 import { useUIStore } from '../../store/uiStore';
 import { RfpDocuments, type PendingDocument } from './RfpDocuments';
 import {
-  RFP_STATUSES,
-  RFP_STATUS_LABELS,
-  RFP_SUBMISSION_FORMATS,
-  RFP_SUBMISSION_FORMAT_LABELS,
-  type Rfp,
-  type RfpStatus,
-  type RfpSubmissionFormat,
-} from '../../types/rfp';
-
-const statusItems = RFP_STATUSES.map((id) => ({ id, text: RFP_STATUS_LABELS[id] }));
-const formatItems = RFP_SUBMISSION_FORMATS.map((id) => ({ id, text: RFP_SUBMISSION_FORMAT_LABELS[id] }));
-
-/** `HH:mm`, the shape `TimePicker` produces and the only one we accept. */
-const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+  EMPTY_RFP_FORM,
+  RfpBudgetFields,
+  RfpDeadlineFields,
+  RfpIdentityFields,
+  TIME_PATTERN,
+  type RfpFormValues,
+} from './RfpFormFields';
+import type { Rfp } from '../../types/rfp';
 
 /**
  * A day and a wall-clock time as an instant.
@@ -50,6 +34,14 @@ function timeOf(iso: string): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
+/**
+ * `CreateTearsheet` renders a `TearsheetShell` and spreads its extra props
+ * onto it, so the date picker's calendar can still be named as a floating
+ * menu — the prop is simply missing from the published types. Without it the
+ * focus wrap swallows every click on the calendar.
+ */
+const FLOATING_MENUS = { selectorsFloatingMenus: ['.cds--date-picker__calendar'] } as Record<string, unknown>;
+
 interface RfpFormPanelProps {
   open: boolean;
   /** Absent for a new tender; present to edit an existing one. */
@@ -61,28 +53,27 @@ interface RfpFormPanelProps {
 /**
  * Create or edit one tender.
  *
- * A `TearsheetNarrow` per the container rubric: medium complexity, and it may
- * obscure the table it was opened from — nothing on the page needs to stay
- * readable while it is filled in. The date picker appends its calendar to
- * `<body>`, so it is named as a floating menu or the focus wrap swallows the
- * clicks on it.
+ * Creating runs through a four-step `CreateTearsheet` — tender, deadline,
+ * budget, documents — which is the shape the register is growing into: the
+ * questions deadline joins step two, the qualification thresholds join step
+ * three, and the response checklist becomes a fifth.
+ *
+ * Editing stays a single `Tearsheet` with every field on one screen. Walking
+ * four steps to move a status from Working to Submitted would be worse than
+ * the form it replaced, and `EditTearsheet` — the multi-step edit
+ * counterpart — is disabled by default in this version of
+ * `@carbon/ibm-products` (`pkg.component.EditTearsheet === false`), so using
+ * it would mean opting into an unreleased component.
  */
 export function RfpFormPanel({ open, rfp, onClose, onSaved }: RfpFormPanelProps) {
   const addNotification = useUIStore((s) => s.addNotification);
-  const [name, setName] = useState('');
-  const [reference, setReference] = useState('');
-  const [deadlineDate, setDeadlineDate] = useState<Date | null>(null);
-  const [deadlineTime, setDeadlineTime] = useState('10:00');
-  const [submissionFormat, setSubmissionFormat] = useState<RfpSubmissionFormat>('PORTAL');
-  const [portalUrl, setPortalUrl] = useState('');
-  const [isGoe, setIsGoe] = useState(false);
-  const [budget, setBudget] = useState('');
-  const [status, setStatus] = useState<RfpStatus>('OPEN');
-  const [notes, setNotes] = useState('');
+  const [values, setValues] = useState<RfpFormValues>(EMPTY_RFP_FORM);
   const [pending, setPending] = useState<PendingDocument[]>([]);
   const [documents, setDocuments] = useState<Rfp['documents']>([]);
   const [saving, setSaving] = useState(false);
   const [referenceError, setReferenceError] = useState<string | null>(null);
+
+  const patch = (next: Partial<RfpFormValues>) => setValues((prev) => ({ ...prev, ...next }));
 
   // Seed when it opens, and only then: the table refetches in the background
   // and a new object identity for the same tender would otherwise wipe out
@@ -92,34 +83,29 @@ export function RfpFormPanel({ open, rfp, onClose, onSaved }: RfpFormPanelProps)
     setReferenceError(null);
     setPending([]);
     if (rfp) {
-      setName(rfp.name);
-      setReference(rfp.reference);
-      setDeadlineDate(new Date(rfp.deadlineAt));
-      setDeadlineTime(timeOf(rfp.deadlineAt));
-      setSubmissionFormat(rfp.submissionFormat);
-      setPortalUrl(rfp.portalUrl ?? '');
-      setIsGoe(rfp.isGoe);
-      setBudget(rfp.budget === null ? '' : String(rfp.budget));
-      setStatus(rfp.status);
-      setNotes(rfp.notes ?? '');
+      setValues({
+        name: rfp.name,
+        reference: rfp.reference,
+        customerId: rfp.customerId,
+        status: rfp.status,
+        deadlineDate: new Date(rfp.deadlineAt),
+        deadlineTime: timeOf(rfp.deadlineAt),
+        submissionFormat: rfp.submissionFormat,
+        portalUrl: rfp.portalUrl ?? '',
+        isGoe: rfp.isGoe,
+        budget: rfp.budget === null ? '' : String(rfp.budget),
+        notes: rfp.notes ?? '',
+      });
       setDocuments(rfp.documents);
     } else {
-      setName('');
-      setReference('');
-      setDeadlineDate(null);
-      setDeadlineTime('10:00');
-      setSubmissionFormat('PORTAL');
-      setPortalUrl('');
-      setIsGoe(false);
-      setBudget('');
-      setStatus('OPEN');
-      setNotes('');
+      setValues(EMPTY_RFP_FORM);
       setDocuments([]);
     }
   }, [open, rfp]);
 
-  const deadlineIso = toDeadlineIso(deadlineDate, deadlineTime);
-  const canSave = Boolean(name.trim() && reference.trim() && deadlineIso) && !saving;
+  const deadlineIso = toDeadlineIso(values.deadlineDate, values.deadlineTime);
+  const identityDone = Boolean(values.name.trim() && values.reference.trim());
+  const canSave = identityDone && Boolean(deadlineIso) && !saving;
 
   const refreshDocuments = async (id: string) => {
     try {
@@ -136,23 +122,23 @@ export function RfpFormPanel({ open, rfp, onClose, onSaved }: RfpFormPanelProps)
     setSaving(true);
     setReferenceError(null);
     const body = {
-      name: name.trim(),
-      reference: reference.trim(),
+      name: values.name.trim(),
+      reference: values.reference.trim(),
+      customerId: values.customerId,
       deadlineAt: deadlineIso,
-      submissionFormat,
+      submissionFormat: values.submissionFormat,
       // Only meaningful for a portal submission; cleared otherwise so a
       // format change does not leave a stale link behind.
-      portalUrl: submissionFormat === 'PORTAL' ? portalUrl.trim() || null : null,
-      isGoe,
-      budget: isGoe && budget.trim() !== '' ? Number(budget) : null,
-      status,
-      notes: notes.trim() || null,
+      portalUrl: values.submissionFormat === 'PORTAL' ? values.portalUrl.trim() || null : null,
+      isGoe: values.isGoe,
+      budget: values.isGoe && values.budget.trim() !== '' ? Number(values.budget) : null,
+      status: values.status,
+      notes: values.notes.trim() || null,
     };
+
     let id: string;
     try {
-      id = rfp
-        ? (await rfpsApi.update(rfp.id, body)).data.data.id
-        : (await rfpsApi.create(body)).data.data.id;
+      id = rfp ? (await rfpsApi.update(rfp.id, body)).data.data.id : (await rfpsApi.create(body)).data.data.id;
     } catch (err) {
       if (isAxiosError(err) && err.response?.status === 409) {
         setReferenceError('An RFP with this reference already exists');
@@ -192,144 +178,114 @@ export function RfpFormPanel({ open, rfp, onClose, onSaved }: RfpFormPanelProps)
     onClose();
   };
 
+  const groupProps = {
+    values,
+    patch,
+    referenceError,
+    onReferenceChange: () => setReferenceError(null),
+  };
+
+  const documentsSection = (idPrefix: string) => (
+    <div className="rfp-form__field rfp-form__field--full">
+      <RfpDocuments
+        rfpId={rfp?.id}
+        documents={documents}
+        pending={pending}
+        onPendingChange={setPending}
+        onUploaded={() => rfp && refreshDocuments(rfp.id)}
+      />
+      <p className="rfp-form__section-hint" id={`${idPrefix}-documents-hint`}>
+        The RC, the CPS, the Avis and any annexes. A tender's dossier is often
+        several files, and one file is sometimes several documents.
+      </p>
+    </div>
+  );
+
+  // ── Editing: one screen, because changing a status is not a wizard ───────
+  if (rfp) {
+    return (
+      <Tearsheet
+        open={open}
+        onClose={onClose}
+        title="Edit RFP"
+        label="RFPs"
+        description={rfp.reference}
+        hasCloseIcon
+        selectorPrimaryFocus="#rfp-edit-name"
+        selectorsFloatingMenus={['.cds--date-picker__calendar']}
+        actions={[
+          { label: 'Save', onClick: handleSubmit, kind: 'primary' as const, disabled: !canSave, loading: saving },
+          { label: 'Cancel', onClick: onClose, kind: 'secondary' as const },
+        ]}
+      >
+        <div className="rfp-form">
+          <RfpIdentityFields {...groupProps} idPrefix="rfp-edit" />
+          <RfpDeadlineFields {...groupProps} idPrefix="rfp-edit" />
+          <RfpBudgetFields {...groupProps} idPrefix="rfp-edit" />
+          <p className="rfp-form__section-label rfp-form__field--full">Documents</p>
+          {documentsSection('rfp-edit')}
+        </div>
+      </Tearsheet>
+    );
+  }
+
+  // ── Creating: the four steps the register is growing into ───────────────
   return (
-    <TearsheetNarrow
+    <CreateTearsheet
+      {...FLOATING_MENUS}
       open={open}
       onClose={onClose}
-      title={rfp ? 'Edit RFP' : 'New RFP'}
+      title="New RFP"
       label="RFPs"
-      description={rfp ? rfp.reference : 'Register a tender and its dossier'}
-      hasCloseIcon
-      selectorPrimaryFocus="#rfp-name"
-      selectorsFloatingMenus={['.cds--date-picker__calendar']}
-      actions={[
-        { label: rfp ? 'Save' : 'Create', onClick: handleSubmit, kind: 'primary' as const, disabled: !canSave, loading: saving },
-        { label: 'Cancel', onClick: onClose, kind: 'secondary' as const },
-      ]}
+      description="Register a tender and its dossier"
+      selectorPrimaryFocus="#rfp-new-name"
+      backButtonText="Back"
+      cancelButtonText="Cancel"
+      nextButtonText="Next"
+      submitButtonText="Create RFP"
+      onRequestSubmit={handleSubmit}
     >
-      <TextInput
-        id="rfp-name"
-        labelText="RFP name"
-        placeholder="Refonte de la plateforme matérielle AIX"
-        value={name}
-        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
-        className="tearsheet-form__item"
-      />
-      <TextInput
-        id="rfp-reference"
-        labelText="Reference"
-        placeholder="70/AOO/BKAM/2026"
-        value={reference}
-        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-          setReference(e.target.value);
-          setReferenceError(null);
-        }}
-        invalid={Boolean(referenceError)}
-        invalidText={referenceError ?? ''}
-        className="tearsheet-form__item"
-      />
-
-      <div className="tearsheet-form__item rfp-form__row">
-        <DatePicker
-          datePickerType="single"
-          value={deadlineDate ? [deadlineDate] : []}
-          onChange={(dates: Date[]) => setDeadlineDate(dates[0] ?? null)}
-        >
-          <DatePickerInput id="rfp-deadline-date" labelText="Submission deadline" placeholder="mm/dd/yyyy" />
-        </DatePicker>
-        <TimePicker
-          id="rfp-deadline-time"
-          labelText="Time"
-          value={deadlineTime}
-          invalid={!TIME_PATTERN.test(deadlineTime)}
-          invalidText="Use HH:MM"
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDeadlineTime(e.target.value)}
-        />
-      </div>
-
-      <Dropdown
-        id="rfp-format"
-        titleText="Submission format"
-        label="Select format"
-        items={formatItems}
-        itemToString={(item) => item?.text || ''}
-        selectedItem={formatItems.find((f) => f.id === submissionFormat) ?? null}
-        onChange={({ selectedItem }) => {
-          if (selectedItem) setSubmissionFormat(selectedItem.id);
-        }}
-        className="tearsheet-form__item"
-      />
-      {submissionFormat === 'PORTAL' && (
-        <TextInput
-          id="rfp-portal-url"
-          labelText="Portal"
-          // Every buyer runs its own, so the format alone does not say where
-          // the offer goes.
-          placeholder="https://portailachats.bankalmaghrib.ma/"
-          helperText="The buyer's own portal — each one is different"
-          value={portalUrl}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPortalUrl(e.target.value)}
-          className="tearsheet-form__item"
-        />
-      )}
-
-      <div className="tearsheet-form__item">
-        <Toggle
-          id="rfp-goe"
-          labelText="Government-Owned Entity"
-          labelA="No"
-          labelB="Yes"
-          toggled={isGoe}
-          onToggle={(checked: boolean) => setIsGoe(checked)}
-        />
-      </div>
-      {isGoe && (
-        <div className="tearsheet-form__item">
-          <NumberInput
-            id="rfp-budget"
-            label="Budget (MAD)"
-            helperText="The published estimate — carried by the Avis, not the RC or the CPS"
-            min={0}
-            step={1000}
-            value={budget === '' ? '' : Number(budget)}
-            hideSteppers
-            onChange={(_e: unknown, state: { value: string | number }) => setBudget(String(state.value ?? ''))}
-          />
+      <CreateTearsheetStep
+        title="Tender"
+        subtitle="Who it is from and what it is called"
+        hasFieldset={false}
+        // Nothing downstream is meaningful without these two, and the
+        // reference is what a duplicate is detected on. `disableSubmit` is
+        // the whole gate — it disables this step's Next button. An `onNext`
+        // that rejects would be belt and braces at the cost of an unhandled
+        // rejection, since the wizard does not catch it.
+        disableSubmit={!identityDone}
+      >
+        <div className="rfp-form">
+          <RfpIdentityFields {...groupProps} idPrefix="rfp-new" />
         </div>
-      )}
+      </CreateTearsheetStep>
 
-      <Dropdown
-        id="rfp-status"
-        titleText="Status"
-        label="Select status"
-        items={statusItems}
-        itemToString={(item) => item?.text || ''}
-        selectedItem={statusItems.find((s) => s.id === status) ?? null}
-        onChange={({ selectedItem }) => {
-          if (selectedItem) setStatus(selectedItem.id);
-        }}
-        className="tearsheet-form__item"
-      />
+      <CreateTearsheetStep
+        title="Deadline & submission"
+        subtitle="When it is due, and how the offer is handed over"
+        hasFieldset={false}
+        disableSubmit={!deadlineIso}
+      >
+        <div className="rfp-form">
+          <RfpDeadlineFields {...groupProps} idPrefix="rfp-new" />
+        </div>
+      </CreateTearsheetStep>
 
-      <TextArea
-        id="rfp-notes"
-        labelText="Notes"
-        placeholder="Lot unique · cautionnement provisoire 630 000 DH · référence ≥ 10 M DH exigée"
-        value={notes}
-        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNotes(e.target.value)}
-        className="tearsheet-form__item"
-      />
+      <CreateTearsheetStep title="Budget" subtitle="What it is worth, if the buyer publishes it" hasFieldset={false}>
+        <div className="rfp-form">
+          <RfpBudgetFields {...groupProps} idPrefix="rfp-new" />
+        </div>
+      </CreateTearsheetStep>
 
-      <div className="tearsheet-form__item">
-        <p className="rfp-form__section-label">Documents</p>
-        <RfpDocuments
-          rfpId={rfp?.id}
-          documents={documents}
-          pending={pending}
-          onPendingChange={setPending}
-          onUploaded={() => rfp && refreshDocuments(rfp.id)}
-        />
-      </div>
-    </TearsheetNarrow>
+      <CreateTearsheetStep
+        title="Documents"
+        subtitle="The dossier — added now or later"
+        hasFieldset={false}
+        disableSubmit={!canSave}
+      >
+        <div className="rfp-form">{documentsSection('rfp-new')}</div>
+      </CreateTearsheetStep>
+    </CreateTearsheet>
   );
 }

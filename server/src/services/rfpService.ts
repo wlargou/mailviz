@@ -11,6 +11,7 @@ const RFP_SORT_FIELDS = ['deadlineAt', 'name', 'reference', 'status', 'budget', 
 
 const rfpIncludes = {
   documents: { orderBy: { createdAt: 'asc' } as const },
+  customer: { select: { id: true, name: true, logoUrl: true } },
 };
 
 type RfpRow = Prisma.RfpGetPayload<{ include: typeof rfpIncludes }>;
@@ -28,6 +29,7 @@ export function formatRfp(rfp: RfpRow) {
 export interface RfpQueryParams {
   search?: string;
   status?: string;
+  customerId?: string;
   isGoe?: string;
   submissionFormat?: string;
   /** 'open' hides the terminal statuses — the register's default view. */
@@ -36,6 +38,20 @@ export interface RfpQueryParams {
   sortOrder?: string;
   page?: string;
   limit?: string;
+}
+
+/**
+ * A tender may only point at a company the same account owns.
+ *
+ * `customerId` arrives in the request body and is a plain foreign key into a
+ * user-scoped table, so the database would accept another account's id
+ * happily — and `rfpIncludes` reads the company back out, which would hand
+ * the caller the name and logo of a company they cannot see.
+ */
+async function assertCustomerOwnedBy(userId: string, customerId?: string | null) {
+  if (!customerId) return;
+  const customer = await prisma.customer.findFirst({ where: { id: customerId, userId }, select: { id: true } });
+  if (!customer) throw new AppError(404, 'CUSTOMER_NOT_FOUND', 'Company not found');
 }
 
 /** The row, or a 404 — never another account's row. */
@@ -53,6 +69,7 @@ function writableFields(data: UpdateRfpInput) {
   if (data.deadlineAt !== undefined) out.deadlineAt = new Date(data.deadlineAt);
   if (data.submissionFormat !== undefined) out.submissionFormat = data.submissionFormat;
   if (data.portalUrl !== undefined) out.portalUrl = data.portalUrl || null;
+  if (data.customerId !== undefined) out.customerId = data.customerId;
   if (data.isGoe !== undefined) out.isGoe = data.isGoe;
   if (data.budget !== undefined) out.budget = data.budget === null ? null : new Prisma.Decimal(data.budget);
   if (data.status !== undefined) out.status = data.status;
@@ -67,6 +84,7 @@ export const rfpService = {
 
     if (query.status) where.status = query.status;
     if (query.submissionFormat) where.submissionFormat = query.submissionFormat;
+    if (query.customerId) where.customerId = query.customerId;
     if (query.isGoe === 'true') where.isGoe = true;
     if (query.isGoe === 'false') where.isGoe = false;
     // The register accumulates for ever; 'open' is what is still live.
@@ -76,6 +94,7 @@ export const rfpService = {
         { name: { contains: query.search, mode: 'insensitive' } },
         { reference: { contains: query.search, mode: 'insensitive' } },
         { notes: { contains: query.search, mode: 'insensitive' } },
+        { customer: { name: { contains: query.search, mode: 'insensitive' } } },
       ];
     }
 
@@ -103,6 +122,7 @@ export const rfpService = {
   },
 
   async create(userId: string, data: CreateRfpInput) {
+    await assertCustomerOwnedBy(userId, data.customerId);
     try {
       const rfp = await prisma.rfp.create({
         data: {
@@ -116,6 +136,7 @@ export const rfpService = {
           budget: data.budget === null || data.budget === undefined ? null : new Prisma.Decimal(data.budget),
           status: data.status ?? 'OPEN',
           notes: data.notes || null,
+          customerId: data.customerId ?? null,
         },
         include: rfpIncludes,
       });
@@ -134,6 +155,7 @@ export const rfpService = {
 
   async update(userId: string, id: string, data: UpdateRfpInput) {
     await ownedRfp(userId, id);
+    await assertCustomerOwnedBy(userId, data.customerId);
     try {
       const rfp = await prisma.rfp.update({ where: { id }, data: writableFields(data), include: rfpIncludes });
       auditService.log({ userId, action: 'RFP_UPDATED', entityType: 'rfp', entityId: id, details: { fields: Object.keys(data) } });

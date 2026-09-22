@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { rfpService } from './rfpService.js';
 import { prisma } from '../lib/prisma.js';
-import { createTwoUsers, createRfp } from '../test/factories.js';
+import { createTwoUsers, createRfp, createCustomer } from '../test/factories.js';
 
 /**
  * The RFP register.
@@ -202,5 +202,58 @@ describe('rfpService — documents', () => {
 
     expect(await prisma.rfpDocument.count({ where: { rfpId: bobsRfp.id } })).toBe(1);
     expect(fs.existsSync(path.join(storageDir, bobsFile.storageKey))).toBe(true);
+  });
+});
+
+describe('rfpService — the buying company', () => {
+  it('links a company, reads it back, and filters on it', async () => {
+    const { alice } = await createTwoUsers();
+    const bkam = await createCustomer(alice.id, { name: 'Bank Al-Maghrib' });
+    const dgi = await createCustomer(alice.id, { name: 'DGI' });
+
+    const rfp = await rfpService.create(alice.id, { ...base, reference: 'C/1', customerId: bkam.id });
+    expect(rfp.customer).toMatchObject({ id: bkam.id, name: 'Bank Al-Maghrib' });
+
+    await rfpService.create(alice.id, { ...base, reference: 'C/2', customerId: dgi.id });
+    await rfpService.create(alice.id, { ...base, reference: 'C/3' });
+
+    const forBkam = await rfpService.findAll(alice.id, { customerId: bkam.id });
+    expect(forBkam.data.map((r) => r.reference)).toEqual(['C/1']);
+    expect((await rfpService.findAll(alice.id, {})).data).toHaveLength(3);
+
+    // The company's name is searchable — it is how a tender is recognised
+    // when its reference means nothing to anyone outside the buyer.
+    const found = await rfpService.findAll(alice.id, { search: 'Maghrib' });
+    expect(found.data.map((r) => r.reference)).toEqual(['C/1']);
+  });
+
+  it("refuses another account's company on create and on update", async () => {
+    const { alice, bob } = await createTwoUsers();
+    const bobsCompany = await createCustomer(bob.id, { name: 'BobsSecretCompany' });
+
+    await expect(rfpService.create(alice.id, { ...base, reference: 'X/1', customerId: bobsCompany.id })).rejects.toMatchObject({
+      statusCode: 404,
+      code: 'CUSTOMER_NOT_FOUND',
+    });
+    expect(await prisma.rfp.count({ where: { userId: alice.id } })).toBe(0);
+
+    const mine = await rfpService.create(alice.id, { ...base, reference: 'X/2' });
+    await expect(rfpService.update(alice.id, mine.id, { customerId: bobsCompany.id })).rejects.toMatchObject({ statusCode: 404 });
+    expect((await rfpService.findById(alice.id, mine.id)).customerId).toBeNull();
+  });
+
+  it('keeps the tender when its company is deleted', async () => {
+    // The tender still happened; only the link to a company we no longer
+    // track goes away.
+    const { alice } = await createTwoUsers();
+    const company = await createCustomer(alice.id, { name: 'Gone' });
+    const rfp = await rfpService.create(alice.id, { ...base, reference: 'D/9', customerId: company.id });
+
+    await prisma.customer.delete({ where: { id: company.id } });
+
+    const after = await rfpService.findById(alice.id, rfp.id);
+    expect(after.customerId).toBeNull();
+    expect(after.customer).toBeNull();
+    expect(after.reference).toBe('D/9');
   });
 });

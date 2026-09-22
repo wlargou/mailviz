@@ -58,10 +58,20 @@ export interface RfpDocument {
   createdAt: string;
 }
 
+/** The buying organisation, as the API returns it alongside a tender. */
+export interface RfpCustomer {
+  id: string;
+  name: string;
+  logoUrl: string | null;
+}
+
 export interface Rfp {
   id: string;
   name: string;
   reference: string;
+  /** The buyer, when it is one of our companies. */
+  customerId: string | null;
+  customer: RfpCustomer | null;
   /** ISO instant — the deadline carries an hour, and the hour is binding. */
   deadlineAt: string;
   submissionFormat: RfpSubmissionFormat;
@@ -81,6 +91,7 @@ export interface Rfp {
 export interface CreateRfpInput {
   name: string;
   reference: string;
+  customerId?: string | null;
   deadlineAt: string;
   submissionFormat: RfpSubmissionFormat;
   portalUrl?: string | null;
