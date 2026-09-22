@@ -9,7 +9,7 @@ import {
   Toggle,
   NumberInput,
 } from '@carbon/react';
-import { TearsheetNarrow } from '@carbon/ibm-products';
+import { Tearsheet } from '@carbon/ibm-products';
 import { isAxiosError } from 'axios';
 import { rfpsApi } from '../../api/rfps';
 import { useUIStore } from '../../store/uiStore';
@@ -61,11 +61,16 @@ interface RfpFormPanelProps {
 /**
  * Create or edit one tender.
  *
- * A `TearsheetNarrow` per the container rubric: medium complexity, and it may
- * obscure the table it was opened from — nothing on the page needs to stay
- * readable while it is filled in. The date picker appends its calendar to
- * `<body>`, so it is named as a floating menu or the focus wrap swallows the
- * clicks on it.
+ * The wide `Tearsheet` per the container rubric: ten fields plus a document
+ * list with uploads is the "complex or interactive" end of it, not the
+ * medium one. It started as a `TearsheetNarrow`, where a single column left
+ * the fields cramped — the document-type dropdown was narrow enough to
+ * truncate "Complément" to "Co…" — while the rest of the screen went unused.
+ *
+ * The body is a two-column grid: the short identity fields pair up, and the
+ * things that need room (the name, the portal URL, the notes, the dossier)
+ * span both. The date picker appends its calendar to `<body>`, so it is
+ * named as a floating menu or the focus wrap swallows the clicks on it.
  */
 export function RfpFormPanel({ open, rfp, onClose, onSaved }: RfpFormPanelProps) {
   const addNotification = useUIStore((s) => s.addNotification);
@@ -193,7 +198,7 @@ export function RfpFormPanel({ open, rfp, onClose, onSaved }: RfpFormPanelProps)
   };
 
   return (
-    <TearsheetNarrow
+    <Tearsheet
       open={open}
       onClose={onClose}
       title={rfp ? 'Edit RFP' : 'New RFP'}
@@ -207,129 +212,131 @@ export function RfpFormPanel({ open, rfp, onClose, onSaved }: RfpFormPanelProps)
         { label: 'Cancel', onClick: onClose, kind: 'secondary' as const },
       ]}
     >
-      <TextInput
-        id="rfp-name"
-        labelText="RFP name"
-        placeholder="Refonte de la plateforme matérielle AIX"
-        value={name}
-        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
-        className="tearsheet-form__item"
-      />
-      <TextInput
-        id="rfp-reference"
-        labelText="Reference"
-        placeholder="70/AOO/BKAM/2026"
-        value={reference}
-        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-          setReference(e.target.value);
-          setReferenceError(null);
-        }}
-        invalid={Boolean(referenceError)}
-        invalidText={referenceError ?? ''}
-        className="tearsheet-form__item"
-      />
-
-      <div className="tearsheet-form__item rfp-form__row">
-        <DatePicker
-          datePickerType="single"
-          value={deadlineDate ? [deadlineDate] : []}
-          onChange={(dates: Date[]) => setDeadlineDate(dates[0] ?? null)}
-        >
-          <DatePickerInput id="rfp-deadline-date" labelText="Submission deadline" placeholder="mm/dd/yyyy" />
-        </DatePicker>
-        <TimePicker
-          id="rfp-deadline-time"
-          labelText="Time"
-          value={deadlineTime}
-          invalid={!TIME_PATTERN.test(deadlineTime)}
-          invalidText="Use HH:MM"
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDeadlineTime(e.target.value)}
-        />
-      </div>
-
-      <Dropdown
-        id="rfp-format"
-        titleText="Submission format"
-        label="Select format"
-        items={formatItems}
-        itemToString={(item) => item?.text || ''}
-        selectedItem={formatItems.find((f) => f.id === submissionFormat) ?? null}
-        onChange={({ selectedItem }) => {
-          if (selectedItem) setSubmissionFormat(selectedItem.id);
-        }}
-        className="tearsheet-form__item"
-      />
-      {submissionFormat === 'PORTAL' && (
+      <div className="rfp-form">
         <TextInput
-          id="rfp-portal-url"
-          labelText="Portal"
-          // Every buyer runs its own, so the format alone does not say where
-          // the offer goes.
-          placeholder="https://portailachats.bankalmaghrib.ma/"
-          helperText="The buyer's own portal — each one is different"
-          value={portalUrl}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPortalUrl(e.target.value)}
-          className="tearsheet-form__item"
+          id="rfp-name"
+          labelText="RFP name"
+          placeholder="Refonte de la plateforme matérielle AIX"
+          value={name}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
+          className="rfp-form__field rfp-form__field--full"
         />
-      )}
+        <TextInput
+          id="rfp-reference"
+          labelText="Reference"
+          placeholder="70/AOO/BKAM/2026"
+          value={reference}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+            setReference(e.target.value);
+            setReferenceError(null);
+          }}
+          invalid={Boolean(referenceError)}
+          invalidText={referenceError ?? ''}
+          className="rfp-form__field"
+        />
 
-      <div className="tearsheet-form__item">
-        <Toggle
-          id="rfp-goe"
-          labelText="Government-Owned Entity"
-          labelA="No"
-          labelB="Yes"
-          toggled={isGoe}
-          onToggle={(checked: boolean) => setIsGoe(checked)}
-        />
-      </div>
-      {isGoe && (
-        <div className="tearsheet-form__item">
-          <NumberInput
-            id="rfp-budget"
-            label="Budget (MAD)"
-            helperText="The published estimate — carried by the Avis, not the RC or the CPS"
-            min={0}
-            step={1000}
-            value={budget === '' ? '' : Number(budget)}
-            hideSteppers
-            onChange={(_e: unknown, state: { value: string | number }) => setBudget(String(state.value ?? ''))}
+        <div className="rfp-form__field rfp-form__row">
+          <DatePicker
+            datePickerType="single"
+            value={deadlineDate ? [deadlineDate] : []}
+            onChange={(dates: Date[]) => setDeadlineDate(dates[0] ?? null)}
+          >
+            <DatePickerInput id="rfp-deadline-date" labelText="Submission deadline" placeholder="mm/dd/yyyy" />
+          </DatePicker>
+          <TimePicker
+            id="rfp-deadline-time"
+            labelText="Time"
+            value={deadlineTime}
+            invalid={!TIME_PATTERN.test(deadlineTime)}
+            invalidText="Use HH:MM"
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDeadlineTime(e.target.value)}
           />
         </div>
-      )}
 
-      <Dropdown
-        id="rfp-status"
-        titleText="Status"
-        label="Select status"
-        items={statusItems}
-        itemToString={(item) => item?.text || ''}
-        selectedItem={statusItems.find((s) => s.id === status) ?? null}
-        onChange={({ selectedItem }) => {
-          if (selectedItem) setStatus(selectedItem.id);
-        }}
-        className="tearsheet-form__item"
-      />
-
-      <TextArea
-        id="rfp-notes"
-        labelText="Notes"
-        placeholder="Lot unique · cautionnement provisoire 630 000 DH · référence ≥ 10 M DH exigée"
-        value={notes}
-        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNotes(e.target.value)}
-        className="tearsheet-form__item"
-      />
-
-      <div className="tearsheet-form__item">
-        <p className="rfp-form__section-label">Documents</p>
-        <RfpDocuments
-          rfpId={rfp?.id}
-          documents={documents}
-          pending={pending}
-          onPendingChange={setPending}
-          onUploaded={() => rfp && refreshDocuments(rfp.id)}
+        <Dropdown
+          id="rfp-format"
+          titleText="Submission format"
+          label="Select format"
+          items={formatItems}
+          itemToString={(item) => item?.text || ''}
+          selectedItem={formatItems.find((f) => f.id === submissionFormat) ?? null}
+          onChange={({ selectedItem }) => {
+            if (selectedItem) setSubmissionFormat(selectedItem.id);
+          }}
+          className="rfp-form__field"
         />
+        {submissionFormat === 'PORTAL' && (
+          <TextInput
+            id="rfp-portal-url"
+            labelText="Portal"
+            // Every buyer runs its own, so the format alone does not say where
+            // the offer goes.
+            placeholder="https://portailachats.bankalmaghrib.ma/"
+            helperText="The buyer's own portal — each one is different"
+            value={portalUrl}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPortalUrl(e.target.value)}
+            className="rfp-form__field rfp-form__field--full"
+          />
+        )}
+
+        <div className="rfp-form__field">
+          <Toggle
+            id="rfp-goe"
+            labelText="Government-Owned Entity"
+            labelA="No"
+            labelB="Yes"
+            toggled={isGoe}
+            onToggle={(checked: boolean) => setIsGoe(checked)}
+          />
+        </div>
+        {isGoe && (
+          <div className="rfp-form__field">
+            <NumberInput
+              id="rfp-budget"
+              label="Budget (MAD)"
+              helperText="The published estimate — carried by the Avis, not the RC or the CPS"
+              min={0}
+              step={1000}
+              value={budget === '' ? '' : Number(budget)}
+              hideSteppers
+              onChange={(_e: unknown, state: { value: string | number }) => setBudget(String(state.value ?? ''))}
+            />
+          </div>
+        )}
+
+        <Dropdown
+          id="rfp-status"
+          titleText="Status"
+          label="Select status"
+          items={statusItems}
+          itemToString={(item) => item?.text || ''}
+          selectedItem={statusItems.find((s) => s.id === status) ?? null}
+          onChange={({ selectedItem }) => {
+            if (selectedItem) setStatus(selectedItem.id);
+          }}
+          className="rfp-form__field"
+        />
+
+        <TextArea
+          id="rfp-notes"
+          labelText="Notes"
+          placeholder="Lot unique · cautionnement provisoire 630 000 DH · référence ≥ 10 M DH exigée"
+          value={notes}
+          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNotes(e.target.value)}
+          className="rfp-form__field rfp-form__field--full"
+        />
+
+        <div className="rfp-form__field">
+          <p className="rfp-form__section-label">Documents</p>
+          <RfpDocuments
+            rfpId={rfp?.id}
+            documents={documents}
+            pending={pending}
+            onPendingChange={setPending}
+            onUploaded={() => rfp && refreshDocuments(rfp.id)}
+          />
+        </div>
       </div>
-    </TearsheetNarrow>
+    </Tearsheet>
   );
 }

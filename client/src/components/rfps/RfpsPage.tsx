@@ -20,6 +20,7 @@ import {
 import { Add, TrashCan, Edit, Launch, Attachment, Document } from '@carbon/icons-react';
 import { format } from 'date-fns';
 import { RfpFormPanel } from './RfpFormPanel';
+import { AttachmentPreviewModal } from '../shared/AttachmentPreviewModal';
 import { ConfirmDeleteModal } from '../shared/ConfirmDeleteModal';
 import { EmptyState } from '../shared/EmptyState';
 import { TableFilterFlyout } from '../shared/TableFilterFlyout';
@@ -101,6 +102,12 @@ export function RfpsPage() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [editRfp, setEditRfp] = useState<Rfp | null>(null);
   const [deleteRfp, setDeleteRfp] = useState<Rfp | null>(null);
+  /**
+   * The dossier, opened straight from the table's document count — the
+   * documents are the reason to open a tender at all, and reaching them
+   * meant opening the edit panel and scrolling to the bottom first.
+   */
+  const [previewRfp, setPreviewRfp] = useState<{ rfp: Rfp; index: number } | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const addNotification = useUIStore((s) => s.addNotification);
 
@@ -314,10 +321,16 @@ export function RfpsPage() {
                             </TableCell>
                             <TableCell>
                               {rfp.documents.length > 0 ? (
-                                <span className="rfp-doc-count" title={rfp.documents.map((d) => d.filename).join(', ')}>
+                                <button
+                                  type="button"
+                                  className="rfp-doc-count"
+                                  title={rfp.documents.map((d) => d.filename).join(', ')}
+                                  aria-label={`Preview ${rfp.documents.length} document${rfp.documents.length === 1 ? '' : 's'} of ${rfp.name}`}
+                                  onClick={() => setPreviewRfp({ rfp, index: 0 })}
+                                >
                                   <Attachment size={16} />
                                   {rfp.documents.length}
-                                </span>
+                                </button>
                               ) : (
                                 <span className="rfp-muted">—</span>
                               )}
@@ -361,6 +374,18 @@ export function RfpsPage() {
           setEditRfp(null);
         }}
         onSaved={fetchRfps}
+      />
+
+      <AttachmentPreviewModal
+        open={previewRfp !== null}
+        items={(previewRfp?.rfp.documents ?? []).map((d) => ({
+          file: d,
+          inlineUrl: rfpsApi.documentInlineUrl(d.rfpId, d.id),
+          downloadUrl: rfpsApi.documentUrl(d.rfpId, d.id),
+        }))}
+        index={previewRfp?.index ?? 0}
+        onIndexChange={(index) => setPreviewRfp((p) => (p ? { ...p, index } : p))}
+        onClose={() => setPreviewRfp(null)}
       />
 
       <ConfirmDeleteModal
