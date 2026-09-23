@@ -1,4 +1,5 @@
 import { Response, NextFunction } from 'express';
+import { isEmailAllowed } from '../utils/allowedEmails.js';
 import type { Req } from "../types/http.js";
 import { syncAccountNow } from '../jobs/emailSyncScheduler.js';
 import { onboardingService } from '../services/onboardingService.js';
@@ -117,15 +118,11 @@ export const authController = {
           return;
         }
 
-        // Check if email is allowed (skip check if ALLOWED_EMAILS is empty — open access)
-        if (env.ALLOWED_EMAILS.length > 0) {
-          const isAllowed = env.ALLOWED_EMAILS.some(
-            (allowed) => allowed.toLowerCase() === result.email!.toLowerCase()
-          );
-          if (!isAllowed) {
-            res.redirect(`${env.CLIENT_URL}/login?error=unauthorized`);
-            return;
-          }
+        // Who may sign in: whole addresses, or a whole domain written
+        // `@powerm.ma`. Empty means open access. See utils/allowedEmails.ts.
+        if (!isEmailAllowed(result.email, env.ALLOWED_EMAILS)) {
+          res.redirect(`${env.CLIENT_URL}/login?error=unauthorized`);
+          return;
         }
 
         // Upsert user
