@@ -93,6 +93,31 @@ export const rfpController = {
     }
   },
 
+  async share(req: Req, res: Response, next: NextFunction) {
+    try {
+      const { userIds } = req.body as { userIds: string[] };
+      res.json({ data: await rfpService.share(req.user!.id, req.params.id, userIds) });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async unshare(req: Req, res: Response, next: NextFunction) {
+    try {
+      res.json({ data: await rfpService.unshare(req.user!.id, req.params.id, req.params.recipientId) });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async getShares(req: Req, res: Response, next: NextFunction) {
+    try {
+      res.json({ data: await rfpService.getShares(req.user!.id, req.params.id) });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async removeDocument(req: Req, res: Response, next: NextFunction) {
     try {
       await rfpService.removeDocument(req.user!.id, req.params.id, req.params.documentId);

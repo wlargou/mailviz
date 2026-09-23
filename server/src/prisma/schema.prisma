@@ -402,6 +402,8 @@ model User {
   /// forums), not Gmail's label names — see utils/mailCategories.ts.
   mailCategoryTabs String[] @default(["social", "promotions", "updates", "forums"]) @map("mail_category_tabs")
   rfps             Rfp[]
+  rfpSharesSent     RfpShare[] @relation("RfpSharesSent")
+  rfpSharesReceived RfpShare[] @relation("RfpSharesReceived")
 
   createdAt DateTime    @default(now()) @map("created_at")
   updatedAt DateTime    @updatedAt @map("updated_at")
@@ -987,6 +989,7 @@ model Rfp {
   user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   customer  Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
   documents RfpDocument[]
+  shares    RfpShare[]
 
   /// Per account, never globally: two accounts may both track 27/2026/DGI.
   @@unique([userId, reference])
@@ -1017,4 +1020,28 @@ model RfpDocument {
 
   @@index([rfpId])
   @@map("rfp_documents")
+}
+
+/// A tender one account has shared with another.
+///
+/// Same shape as `TaskShare` and `DealShare`, and the same rule: the
+/// recipient sees and edits the tender and its dossier, but only the owner
+/// shares it further or deletes it — deleting takes the documents' bytes
+/// with it.
+model RfpShare {
+  id               String   @id @default(uuid())
+  rfpId            String   @map("rfp_id")
+  sharedByUserId   String   @map("shared_by_user_id")
+  sharedWithUserId String   @map("shared_with_user_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  rfp        Rfp  @relation(fields: [rfpId], references: [id], onDelete: Cascade)
+  sharedBy   User @relation("RfpSharesSent", fields: [sharedByUserId], references: [id], onDelete: Cascade)
+  sharedWith User @relation("RfpSharesReceived", fields: [sharedWithUserId], references: [id], onDelete: Cascade)
+
+  @@unique([rfpId, sharedWithUserId])
+  @@index([sharedWithUserId])
+  @@index([sharedByUserId])
+  @@index([rfpId])
+  @@map("rfp_shares")
 }

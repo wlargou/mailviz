@@ -66,3 +66,25 @@ export async function isTaskOwner(taskId: string, userId: string): Promise<boole
   const task = await prisma.task.findFirst({ where: { id: taskId, userId } });
   return !!task;
 }
+
+export async function getSharedRfpIds(userId: string): Promise<string[]> {
+  const shares = await prisma.rfpShare.findMany({
+    where: { sharedWithUserId: userId },
+    select: { rfpId: true },
+  });
+  return [...new Set(shares.map((s) => s.rfpId))];
+}
+
+/** Owner or recipient — who may read a tender and work on its dossier. */
+export async function canAccessRfp(rfpId: string, userId: string): Promise<boolean> {
+  const rfp = await prisma.rfp.findFirst({ where: { id: rfpId, userId }, select: { id: true } });
+  if (rfp) return true;
+  const share = await prisma.rfpShare.findFirst({ where: { rfpId, sharedWithUserId: userId } });
+  return !!share;
+}
+
+/** Owner only — who may share it onward, or delete it and its files. */
+export async function isRfpOwner(rfpId: string, userId: string): Promise<boolean> {
+  const rfp = await prisma.rfp.findFirst({ where: { id: rfpId, userId }, select: { id: true } });
+  return !!rfp;
+}

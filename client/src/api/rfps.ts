@@ -44,6 +44,18 @@ export const rfpsApi = {
     return api.delete(`/rfps/${rfpId}/documents/${documentId}`);
   },
 
+  shareRfp(id: string, userIds: string[]) {
+    return api.post(`/rfps/${id}/share`, { userIds });
+  },
+
+  unshareRfp(id: string, recipientId: string) {
+    return api.delete(`/rfps/${id}/shares/${recipientId}`);
+  },
+
+  getRfpShares(id: string) {
+    return api.get<{ data: Array<{ id: string; createdAt: string; sharedWith: { id: string; name: string | null; email: string; avatarUrl: string | null } }> }>(`/rfps/${id}/shares`);
+  },
+
   /** Served by the API with the session cookie; used as an href. */
   documentUrl(rfpId: string, documentId: string) {
     return `/api/v1/rfps/${rfpId}/documents/${documentId}`;

@@ -3,7 +3,7 @@ import rateLimit from 'express-rate-limit';
 import multer from 'multer';
 import { rfpController } from '../controllers/rfpController.js';
 import { validate } from '../middleware/validate.js';
-import { createRfpSchema, updateRfpSchema } from '../validators/rfpValidator.js';
+import { createRfpSchema, updateRfpSchema, shareRfpSchema } from '../validators/rfpValidator.js';
 import { rfpUpload, MAX_DOCUMENT_BYTES } from '../services/rfpStorage.js';
 import { AppError } from '../middleware/errorHandler.js';
 
@@ -40,6 +40,10 @@ router.get('/:id', rfpController.findById);
 router.post('/', validate(createRfpSchema), rfpController.create);
 router.patch('/:id', validate(updateRfpSchema), rfpController.update);
 router.delete('/:id', rfpController.remove);
+
+router.post('/:id/share', validate(shareRfpSchema), rfpController.share);
+router.delete('/:id/shares/:recipientId', rfpController.unshare);
+router.get('/:id/shares', rfpController.getShares);
 
 router.post('/:id/documents', uploadLimiter, upload, rfpController.addDocument);
 router.get('/:id/documents/:documentId', rfpController.downloadDocument);

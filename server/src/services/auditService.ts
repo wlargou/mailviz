@@ -38,6 +38,8 @@ export type AuditAction =
   | 'RFP_DELETED'
   | 'RFP_DOCUMENT_ADDED'
   | 'RFP_DOCUMENT_REMOVED'
+  | 'RFP_SHARED'
+  | 'RFP_UNSHARED'
   | 'EMAIL_FOLLOW_UP_SET'
   | 'EMAIL_FOLLOW_UP_CLEARED'
   // Task actions

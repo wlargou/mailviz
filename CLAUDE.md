@@ -144,7 +144,7 @@ Copy `.env.example` to **both** `.env` and `server/.env` — only `server/.env` 
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` — the redirect URI is bound to the backend port, so moving the frontend port needs no Google Cloud Console change
 - `JWT_SECRET`, `JWT_REFRESH_SECRET` (deterministic dev fallbacks — set in production)
 - `TOKEN_ENCRYPTION_KEY` (hex, 32 bytes — encrypts Google tokens at rest; **unset = plaintext storage**, it falls back silently)
-- `ALLOWED_EMAILS` (comma-separated whitelist, empty = open access)
+- `ALLOWED_EMAILS` (comma-separated whitelist, empty = open access). Each entry is a whole address, or a whole domain written with its leading `@` — `@powerm.ma` admits everyone at that domain but not at a subdomain of it, and never at a domain that merely ends with it. Matching lives in `utils/allowedEmails.ts` with tests; it is the only thing between a Google account and the data.
 - `RFP_STORAGE_DIR` — where tender documents are written. **On Railway this must be a mounted volume**; an unmounted path is rebuilt on every deploy and loses every document silently, because uploads keep succeeding. Empty locally = `<server cwd>/uploads/rfp`.
 - Sync: `SYNC_INTERVAL_SECONDS`, `EMAIL_SYNC_ENABLED`, `CALENDAR_SYNC_ENABLED`, `CALENDAR_SYNC_INTERVAL_SECONDS`, `EMAIL_SYNC_MONTHS`, `CALENDAR_SYNC_PAST_MONTHS`, `CALENDAR_SYNC_FUTURE_MONTHS`, `SYNC_CATCHUP_DAYS` (bounds the catch-up when Gmail rejects the history token, default 7)
 - Gmail throttling: `GMAIL_MAX_CONCURRENT` (5), `GMAIL_MIN_TIME_MS` (50), `GMAIL_MAX_RETRIES` (5), `GMAIL_RETRY_BASE_MS` (1000), `GMAIL_RETRY_MAX_MS` (32000)

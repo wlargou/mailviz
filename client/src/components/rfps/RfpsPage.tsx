@@ -18,15 +18,18 @@ import {
   Tag,
   Dropdown,
 } from '@carbon/react';
-import { Add, TrashCan, Edit, Launch, Attachment, Document } from '@carbon/icons-react';
+import { Add, TrashCan, Edit, Launch, Attachment, Document, Share } from '@carbon/icons-react';
 import { format } from 'date-fns';
 import { RfpFormPanel } from './RfpFormPanel';
 import { AttachmentPreviewModal } from '../shared/AttachmentPreviewModal';
 import { ConfirmDeleteModal } from '../shared/ConfirmDeleteModal';
 import { EmptyState } from '../shared/EmptyState';
 import { TableFilterFlyout } from '../shared/TableFilterFlyout';
+import { ShareDialog } from '../shared/ShareDialog';
+import { SharedBadge } from '../shared/SharedBadge';
 import { rfpsApi } from '../../api/rfps';
 import { useUIStore } from '../../store/uiStore';
+import { useAuthStore } from '../../store/authStore';
 import type { PaginationMeta } from '../../types/api';
 import {
   formatBudget,
@@ -81,6 +84,13 @@ const scopeItems = [
 ];
 const statusItems = [{ id: '__all__', text: 'All statuses' }, ...RFP_STATUSES.map((id) => ({ id, text: RFP_STATUS_LABELS[id] }))];
 const formatItems = [{ id: '__all__', text: 'All formats' }, ...RFP_SUBMISSION_FORMATS.map((id) => ({ id, text: RFP_SUBMISSION_FORMAT_LABELS[id] }))];
+/** How the tender reached you — the same three the deals list offers. */
+const ownershipItems = [
+  { id: '__all__', text: 'All RFPs' },
+  { id: 'shared', text: 'Shared with me' },
+  { id: 'owned', text: 'Owned by me' },
+];
+
 const goeItems = [
   { id: '__all__', text: 'GOE and private' },
   { id: 'true', text: 'GOE only' },
@@ -110,8 +120,12 @@ export function RfpsPage() {
    * meant opening the edit panel and scrolling to the bottom first.
    */
   const [previewRfp, setPreviewRfp] = useState<{ rfp: Rfp; index: number } | null>(null);
+  const [selectedOwnership, setSelectedOwnership] = useState<string | null>(null);
+  const [shareRfp, setShareRfp] = useState<Rfp | null>(null);
+  const [rfpShares, setRfpShares] = useState<Array<{ id: string; createdAt: string; sharedWith: { id: string; name: string | null; email: string; avatarUrl: string | null } }>>([]);
   const searchRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
+  const currentUserId = useAuthStore((s) => s.user?.id);
   const addNotification = useUIStore((s) => s.addNotification);
 
   useEffect(() => {
@@ -129,6 +143,7 @@ export function RfpsPage() {
       else if (scope === 'open') params.scope = 'open';
       if (selectedFormat) params.submissionFormat = selectedFormat;
       if (selectedGoe) params.isGoe = selectedGoe;
+      if (selectedOwnership) params.ownership = selectedOwnership;
       const { data: res } = await rfpsApi.getAll(params);
       setRfps(res.data);
       setMeta(res.meta || null);
@@ -137,7 +152,7 @@ export function RfpsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, debouncedSearch, scope, selectedStatus, selectedFormat, selectedGoe, addNotification, sortParams.sortBy, sortParams.sortOrder]);
+  }, [page, pageSize, debouncedSearch, scope, selectedStatus, selectedFormat, selectedGoe, selectedOwnership, addNotification, sortParams.sortBy, sortParams.sortOrder]);
 
   useEffect(() => {
     fetchRfps();
@@ -165,7 +180,21 @@ export function RfpsPage() {
     setPanelOpen(true);
   };
 
-  const activeFilterCount = [selectedStatus, selectedFormat, selectedGoe].filter(Boolean).length + (scope === 'open' ? 0 : 1);
+  const fetchShares = useCallback(async (rfpId: string) => {
+    try {
+      const { data: res } = await rfpsApi.getRfpShares(rfpId);
+      setRfpShares(res.data);
+    } catch {
+      setRfpShares([]);
+    }
+  }, []);
+
+  const handleOpenShare = async (rfp: Rfp) => {
+    setShareRfp(rfp);
+    await fetchShares(rfp.id);
+  };
+
+  const activeFilterCount = [selectedStatus, selectedFormat, selectedGoe, selectedOwnership].filter(Boolean).length + (scope === 'open' ? 0 : 1);
   const hasFilters = activeFilterCount > 0 || Boolean(search);
 
   return (
@@ -203,6 +232,7 @@ export function RfpsPage() {
                         setSelectedStatus(null);
                         setSelectedFormat(null);
                         setSelectedGoe(null);
+                        setSelectedOwnership(null);
                         setPage(1);
                       }}
                     >
@@ -241,6 +271,19 @@ export function RfpsPage() {
                         selectedItem={formatItems.find((f) => f.id === (selectedFormat ?? '__all__'))}
                         onChange={({ selectedItem }) => {
                           setSelectedFormat(selectedItem?.id === '__all__' ? null : selectedItem?.id ?? null);
+                          setPage(1);
+                        }}
+                        size="sm"
+                      />
+                      <Dropdown
+                        id="rfp-filter-ownership"
+                        titleText="Ownership"
+                        label="All RFPs"
+                        items={ownershipItems}
+                        itemToString={(item) => item?.text || ''}
+                        selectedItem={ownershipItems.find((o) => o.id === (selectedOwnership ?? '__all__'))}
+                        onChange={({ selectedItem }) => {
+                          setSelectedOwnership(selectedItem?.id === '__all__' ? null : selectedItem?.id ?? null);
                           setPage(1);
                         }}
                         size="sm"
@@ -295,9 +338,12 @@ export function RfpsPage() {
                               </span>
                             </TableCell>
                             <TableCell>
-                              <button type="button" className="rfp-name-cell" onClick={() => openEdit(rfp)}>
-                                {rfp.name}
-                              </button>
+                              <span className="shared-title-cell">
+                                <button type="button" className="rfp-name-cell" onClick={() => openEdit(rfp)}>
+                                  {rfp.name}
+                                </button>
+                                <SharedBadge ownerId={rfp.userId} />
+                              </span>
                             </TableCell>
                             <TableCell>
                               {rfp.customer ? (
@@ -353,7 +399,12 @@ export function RfpsPage() {
                             <TableCell>
                               <div className="table-row-actions">
                                 <Button kind="ghost" size="sm" hasIconOnly renderIcon={Edit} iconDescription={`Edit ${rfp.name}`} onClick={() => openEdit(rfp)} />
-                                <Button kind="ghost" size="sm" hasIconOnly renderIcon={TrashCan} iconDescription={`Delete ${rfp.name}`} onClick={() => setDeleteRfp(rfp)} />
+                                {rfp.userId === currentUserId && (
+                                  <Button kind="ghost" size="sm" hasIconOnly renderIcon={Share} iconDescription={`Share ${rfp.name}`} onClick={() => handleOpenShare(rfp)} />
+                                )}
+                                {rfp.userId === currentUserId && (
+                                  <Button kind="ghost" size="sm" hasIconOnly renderIcon={TrashCan} iconDescription={`Delete ${rfp.name}`} onClick={() => setDeleteRfp(rfp)} />
+                                )}
                               </div>
                             </TableCell>
                           </TableRow>
@@ -402,6 +453,22 @@ export function RfpsPage() {
         onIndexChange={(index) => setPreviewRfp((p) => (p ? { ...p, index } : p))}
         onClose={() => setPreviewRfp(null)}
       />
+
+      {shareRfp && (
+        <ShareDialog
+          open={!!shareRfp}
+          onClose={() => setShareRfp(null)}
+          title={shareRfp.name}
+          currentShares={rfpShares}
+          onShare={async (userIds) => {
+            await rfpsApi.shareRfp(shareRfp.id, userIds);
+          }}
+          onUnshare={async (userId) => {
+            await rfpsApi.unshareRfp(shareRfp.id, userId);
+          }}
+          onRefresh={() => fetchShares(shareRfp.id)}
+        />
+      )}
 
       <ConfirmDeleteModal
         open={Boolean(deleteRfp)}

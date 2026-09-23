@@ -4,6 +4,8 @@ import { AppError } from '../middleware/errorHandler.js';
 import { parsePagination, paginationMeta } from '../utils/pagination.js';
 import { auditService } from './auditService.js';
 import { removeStoredFile } from './rfpStorage.js';
+import { canAccessRfp, getSharedRfpIds, isRfpOwner } from '../utils/accessControl.js';
+import { notificationService } from './notificationService.js';
 import { RFP_TERMINAL_STATUSES, type RfpDocumentKind } from '../utils/rfp.js';
 import type { CreateRfpInput, UpdateRfpInput } from '../validators/rfpValidator.js';
 
@@ -12,6 +14,8 @@ const RFP_SORT_FIELDS = ['deadlineAt', 'name', 'reference', 'status', 'budget', 
 const rfpIncludes = {
   documents: { orderBy: { createdAt: 'asc' } as const },
   customer: { select: { id: true, name: true, logoUrl: true } },
+  // Who owns it, so the list can badge the rows that arrived through a share.
+  user: { select: { id: true, name: true, email: true } },
 };
 
 type RfpRow = Prisma.RfpGetPayload<{ include: typeof rfpIncludes }>;
@@ -34,6 +38,8 @@ export interface RfpQueryParams {
   submissionFormat?: string;
   /** 'open' hides the terminal statuses — the register's default view. */
   scope?: string;
+  /** 'shared' or 'owned' — narrows to how the tender reached the caller. */
+  ownership?: string;
   sortBy?: string;
   sortOrder?: string;
   page?: string;
@@ -54,7 +60,23 @@ async function assertCustomerOwnedBy(userId: string, customerId?: string | null)
   if (!customer) throw new AppError(404, 'CUSTOMER_NOT_FOUND', 'Company not found');
 }
 
-/** The row, or a 404 — never another account's row. */
+/**
+ * The row the caller may read — theirs, or one shared with them.
+ *
+ * A 404 rather than a 403 for everything else: whether a tender exists is
+ * itself something only the people who can see it should learn.
+ */
+async function accessibleRfp(userId: string, id: string) {
+  const rfp = await prisma.rfp.findFirst({ where: { id, userId }, include: rfpIncludes });
+  if (rfp) return rfp;
+  if (await canAccessRfp(id, userId)) {
+    const shared = await prisma.rfp.findFirst({ where: { id }, include: rfpIncludes });
+    if (shared) return shared;
+  }
+  throw new AppError(404, 'RFP_NOT_FOUND', 'RFP not found');
+}
+
+/** The row the caller owns. Sharing onward and deleting are the owner's. */
 async function ownedRfp(userId: string, id: string) {
   const rfp = await prisma.rfp.findFirst({ where: { id, userId }, include: rfpIncludes });
   if (!rfp) throw new AppError(404, 'RFP_NOT_FOUND', 'RFP not found');
@@ -80,11 +102,23 @@ function writableFields(data: UpdateRfpInput) {
 export const rfpService = {
   async findAll(userId: string, query: RfpQueryParams) {
     const pagination = parsePagination(query);
-    const where: Prisma.RfpWhereInput = { userId };
+
+    // Tenders shared with the caller sit alongside their own.
+    //
+    // The ownership filter lives under `AND` so the search branch below,
+    // which assigns `where.OR`, cannot clobber it — the exact shape that
+    // leaked every user's mail in `findAllThreads` once.
+    const sharedIds = await getSharedRfpIds(userId);
+    const ownershipFilter: Prisma.RfpWhereInput =
+      sharedIds.length > 0 ? { OR: [{ userId }, { id: { in: sharedIds } }] } : { userId };
+    const where: Prisma.RfpWhereInput = { AND: [ownershipFilter] };
 
     if (query.status) where.status = query.status;
     if (query.submissionFormat) where.submissionFormat = query.submissionFormat;
     if (query.customerId) where.customerId = query.customerId;
+    // Narrows the ownership filter above; it can never widen it.
+    if (query.ownership === 'shared') where.userId = { not: userId };
+    if (query.ownership === 'owned') where.userId = userId;
     if (query.isGoe === 'true') where.isGoe = true;
     if (query.isGoe === 'false') where.isGoe = false;
     // The register accumulates for ever; 'open' is what is still live.
@@ -118,7 +152,7 @@ export const rfpService = {
   },
 
   async findById(userId: string, id: string) {
-    return formatRfp(await ownedRfp(userId, id));
+    return formatRfp(await accessibleRfp(userId, id));
   },
 
   async create(userId: string, data: CreateRfpInput) {
@@ -154,8 +188,11 @@ export const rfpService = {
   },
 
   async update(userId: string, id: string, data: UpdateRfpInput) {
-    await ownedRfp(userId, id);
-    await assertCustomerOwnedBy(userId, data.customerId);
+    const existing = await accessibleRfp(userId, id);
+    // Against the OWNER, not the caller: a colleague a tender was shared with
+    // must not be able to repoint it at a company of their own, which the
+    // include would then read back out to the owner.
+    await assertCustomerOwnedBy(existing.userId, data.customerId);
     try {
       const rfp = await prisma.rfp.update({ where: { id }, data: writableFields(data), include: rfpIncludes });
       auditService.log({ userId, action: 'RFP_UPDATED', entityType: 'rfp', entityId: id, details: { fields: Object.keys(data) } });
@@ -184,7 +221,8 @@ export const rfpService = {
     file: { filename: string; mimeType: string; size: number; storageKey: string },
     kind: RfpDocumentKind
   ) {
-    await ownedRfp(userId, rfpId);
+    // Whoever may edit the tender may work on its dossier.
+    await accessibleRfp(userId, rfpId);
     const doc = await prisma.rfpDocument.create({
       data: { rfpId, kind, filename: file.filename, mimeType: file.mimeType, size: file.size, storageKey: file.storageKey },
     });
@@ -194,9 +232,79 @@ export const rfpService = {
 
   /** The document row, checked against the caller — used to serve the bytes. */
   async getDocument(userId: string, rfpId: string, documentId: string) {
-    const doc = await prisma.rfpDocument.findFirst({ where: { id: documentId, rfpId, rfp: { userId } } });
+    // The access check is on the tender, not the document: a colleague it was
+    // shared with must be able to read the dossier, which is the point of
+    // sharing a tender at all.
+    await accessibleRfp(userId, rfpId);
+    const doc = await prisma.rfpDocument.findFirst({ where: { id: documentId, rfpId } });
     if (!doc) throw new AppError(404, 'RFP_DOCUMENT_NOT_FOUND', 'Document not found');
     return doc;
+  },
+
+  /**
+   * Share a tender with colleagues.
+   *
+   * The owner's to give: a recipient can read and edit the tender, but not
+   * pass it on, because a chain of shares nobody can see is not something
+   * the owner agreed to.
+   */
+  async share(userId: string, rfpId: string, recipientUserIds: string[]) {
+    if (!(await isRfpOwner(rfpId, userId))) throw new AppError(404, 'RFP_NOT_FOUND', 'RFP not found');
+
+    // Sharing with yourself is a no-op dressed as an action.
+    const validIds = [...new Set(recipientUserIds)].filter((id) => id !== userId);
+    if (validIds.length === 0) throw new AppError(400, 'NO_RECIPIENTS', 'Cannot share with yourself');
+
+    const recipients = await prisma.user.findMany({ where: { id: { in: validIds } }, select: { id: true } });
+    if (recipients.length !== validIds.length) throw new AppError(404, 'USER_NOT_FOUND', 'User not found');
+
+    await prisma.rfpShare.createMany({
+      data: validIds.map((recipientId) => ({ rfpId, sharedByUserId: userId, sharedWithUserId: recipientId })),
+      // Sharing twice is one share, not an error.
+      skipDuplicates: true,
+    });
+
+    const [sharer, rfp] = await Promise.all([
+      prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true } }),
+      prisma.rfp.findUnique({ where: { id: rfpId }, select: { name: true, reference: true } }),
+    ]);
+
+    const { wsEmitToUsers } = await import('../websocket.js');
+    wsEmitToUsers(validIds, 'rfp:shared', {
+      rfpId,
+      sharedBy: { name: sharer?.name, email: sharer?.email },
+      name: rfp?.name,
+    });
+
+    auditService.log({ userId, action: 'RFP_SHARED', entityType: 'rfp', entityId: rfpId, details: { sharedWith: validIds } });
+
+    for (const recipientUserId of validIds) {
+      await notificationService.create(recipientUserId, {
+        type: 'RFP_SHARED',
+        title: `RFP shared: ${rfp?.name ?? rfp?.reference ?? ''}`,
+        message: 'shared an RFP with you',
+        entityType: 'rfp',
+        entityId: rfpId,
+      });
+    }
+
+    return { success: true, sharedWith: validIds.length };
+  },
+
+  /** Withdraw a share. Scoped to the sharer, so only they can take it back. */
+  async unshare(userId: string, rfpId: string, recipientUserId: string) {
+    await prisma.rfpShare.deleteMany({ where: { rfpId, sharedByUserId: userId, sharedWithUserId: recipientUserId } });
+    auditService.log({ userId, action: 'RFP_UNSHARED', entityType: 'rfp', entityId: rfpId, details: { recipientUserId } });
+    return { success: true };
+  },
+
+  async getShares(userId: string, rfpId: string) {
+    if (!(await isRfpOwner(rfpId, userId))) throw new AppError(404, 'RFP_NOT_FOUND', 'RFP not found');
+    return prisma.rfpShare.findMany({
+      where: { rfpId, sharedByUserId: userId },
+      include: { sharedWith: { select: { id: true, name: true, email: true, avatarUrl: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
   },
 
   async removeDocument(userId: string, rfpId: string, documentId: string) {

@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { rfpService } from './rfpService.js';
 import { prisma } from '../lib/prisma.js';
-import { createTwoUsers, createRfp, createCustomer } from '../test/factories.js';
+import { createTwoUsers, createUser, createRfp, createCustomer } from '../test/factories.js';
 
 /**
  * The RFP register.
@@ -255,5 +255,140 @@ describe('rfpService — the buying company', () => {
     expect(after.customerId).toBeNull();
     expect(after.customer).toBeNull();
     expect(after.reference).toBe('D/9');
+  });
+});
+
+/**
+ * Sharing a tender with a colleague.
+ *
+ * The same split as tasks and deals: a recipient works on the tender, the
+ * owner keeps the things that are theirs to keep. Two of those matter here
+ * more than they do for a task — deleting a tender destroys the documents'
+ * bytes, and re-sharing would build a chain the owner never agreed to.
+ */
+describe('rfpService — sharing', () => {
+  it('puts a shared tender in the recipient\'s register, and lets them work on it', async () => {
+    const { alice, bob } = await createTwoUsers();
+    const rfp = await rfpService.create(alice.id, { ...base, reference: 'S/1', name: 'Refonte AIX' });
+    await createRfp(bob.id, { name: 'Bob own tender' });
+
+    // Before: Bob sees only his own.
+    expect((await rfpService.findAll(bob.id, {})).data.map((r) => r.name)).toEqual(['Bob own tender']);
+
+    await rfpService.share(alice.id, rfp.id, [bob.id]);
+
+    const bobsList = await rfpService.findAll(bob.id, {});
+    expect(bobsList.data.map((r) => r.name).sort()).toEqual(['Bob own tender', 'Refonte AIX']);
+    expect(bobsList.meta.total).toBe(2);
+
+    // He can read it and edit it — that is what "the same view" means.
+    expect((await rfpService.findById(bob.id, rfp.id)).name).toBe('Refonte AIX');
+    const edited = await rfpService.update(bob.id, rfp.id, { status: 'WORKING' });
+    expect(edited.status).toBe('WORKING');
+    // And it is still Alice's tender.
+    expect(edited.userId).toBe(alice.id);
+  });
+
+  it('gives the recipient the dossier, including the bytes', async () => {
+    const { alice, bob } = await createTwoUsers();
+    const rfp = await rfpService.create(alice.id, { ...base, reference: 'S/2' });
+    const file = await writeStoredFile(alice.id, 'CPS.pdf');
+    const doc = await rfpService.addDocument(alice.id, rfp.id, file, 'RFP');
+
+    await expect(rfpService.getDocument(bob.id, rfp.id, doc.id)).rejects.toMatchObject({ statusCode: 404 });
+
+    await rfpService.share(alice.id, rfp.id, [bob.id]);
+
+    // Reading the dossier is most of the point of sharing a tender.
+    expect((await rfpService.getDocument(bob.id, rfp.id, doc.id)).filename).toBe('CPS.pdf');
+    const added = await rfpService.addDocument(bob.id, rfp.id, await writeStoredFile(bob.id, 'Annexe.pdf'), 'ANNEXE');
+    expect((await rfpService.findById(alice.id, rfp.id)).documents).toHaveLength(2);
+    await rfpService.removeDocument(bob.id, rfp.id, added.id);
+    expect((await rfpService.findById(alice.id, rfp.id)).documents).toHaveLength(1);
+  });
+
+  it('keeps deleting and re-sharing with the owner', async () => {
+    const { alice, bob } = await createTwoUsers();
+    const carol = await createUser();
+    const rfp = await rfpService.create(alice.id, { ...base, reference: 'S/3' });
+    await rfpService.share(alice.id, rfp.id, [bob.id]);
+
+    // Deleting destroys the documents' bytes — not a recipient's call.
+    await expect(rfpService.remove(bob.id, rfp.id)).rejects.toMatchObject({ statusCode: 404 });
+    // Nor is passing it on, which would build a chain the owner cannot see.
+    await expect(rfpService.share(bob.id, rfp.id, [carol.id])).rejects.toMatchObject({ statusCode: 404 });
+    await expect(rfpService.getShares(bob.id, rfp.id)).rejects.toMatchObject({ statusCode: 404 });
+
+    expect(await prisma.rfp.count({ where: { id: rfp.id } })).toBe(1);
+    expect(await prisma.rfpShare.count({ where: { rfpId: rfp.id } })).toBe(1);
+  });
+
+  it('is idempotent, refuses self-shares and unknown people, and can be withdrawn', async () => {
+    const { alice, bob } = await createTwoUsers();
+    const rfp = await rfpService.create(alice.id, { ...base, reference: 'S/4' });
+
+    await rfpService.share(alice.id, rfp.id, [bob.id]);
+    await rfpService.share(alice.id, rfp.id, [bob.id, bob.id]);
+    expect(await prisma.rfpShare.count({ where: { rfpId: rfp.id } })).toBe(1);
+
+    await expect(rfpService.share(alice.id, rfp.id, [alice.id])).rejects.toMatchObject({ statusCode: 400 });
+    await expect(rfpService.share(alice.id, rfp.id, ['9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d'])).rejects.toMatchObject({ statusCode: 404 });
+
+    const shares = await rfpService.getShares(alice.id, rfp.id);
+    expect(shares.map((s) => s.sharedWith.email)).toEqual([bob.email]);
+
+    await rfpService.unshare(alice.id, rfp.id, bob.id);
+    expect(await prisma.rfpShare.count({ where: { rfpId: rfp.id } })).toBe(0);
+    // And it leaves his register the moment it is withdrawn.
+    expect((await rfpService.findAll(bob.id, {})).data).toHaveLength(0);
+    await expect(rfpService.findById(bob.id, rfp.id)).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('lets only the person who shared it take it back', async () => {
+    // `unshare` is scoped to the sharer, so a recipient calling it removes
+    // nothing — and a third party cannot quietly revoke someone else's
+    // colleague. It answers success either way, which is why this needs a
+    // test rather than a glance at the status code.
+    const { alice, bob } = await createTwoUsers();
+    const carol = await createUser();
+    const rfp = await rfpService.create(alice.id, { ...base, reference: 'S/9' });
+    await rfpService.share(alice.id, rfp.id, [bob.id]);
+
+    await rfpService.unshare(bob.id, rfp.id, bob.id);
+    await rfpService.unshare(carol.id, rfp.id, bob.id);
+    expect(await prisma.rfpShare.count({ where: { rfpId: rfp.id } })).toBe(1);
+    expect((await rfpService.findAll(bob.id, {})).data).toHaveLength(1);
+
+    await rfpService.unshare(alice.id, rfp.id, bob.id);
+    expect(await prisma.rfpShare.count({ where: { rfpId: rfp.id } })).toBe(0);
+  });
+
+  it('separates what is mine from what was shared with me', async () => {
+    const { alice, bob } = await createTwoUsers();
+    const hers = await rfpService.create(alice.id, { ...base, reference: 'S/5', name: 'Alice tender' });
+    await createRfp(bob.id, { name: 'Bob tender' });
+    await rfpService.share(alice.id, hers.id, [bob.id]);
+
+    const names = async (q: Parameters<typeof rfpService.findAll>[1]) =>
+      (await rfpService.findAll(bob.id, q)).data.map((r) => r.name).sort();
+
+    expect(await names({})).toEqual(['Alice tender', 'Bob tender']);
+    expect(await names({ ownership: 'shared' })).toEqual(['Alice tender']);
+    expect(await names({ ownership: 'owned' })).toEqual(['Bob tender']);
+  });
+
+  it('does not let a search reach past the share boundary', async () => {
+    // The shape that once leaked every user's mail: a search branch assigning
+    // `where.OR` over an ownership filter that was spread rather than ANDed.
+    const { alice, bob } = await createTwoUsers();
+    const stranger = await createUser();
+    await rfpService.create(alice.id, { ...base, reference: 'S/6', name: 'Quarterly refonte' });
+    await rfpService.create(stranger.id, { ...base, reference: 'S/7', name: 'Quarterly secret' });
+    const shared = await rfpService.create(alice.id, { ...base, reference: 'S/8', name: 'Shared one' });
+    await rfpService.share(alice.id, shared.id, [bob.id]);
+
+    const found = await rfpService.findAll(bob.id, { search: 'Quarterly' });
+    expect(found.data).toHaveLength(0);
+    expect(JSON.stringify(found)).not.toContain('secret');
   });
 });
