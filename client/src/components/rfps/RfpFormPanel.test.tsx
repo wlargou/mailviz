@@ -195,20 +195,34 @@ describe('RfpFormPanel', () => {
   });
 
   /**
-   * Carbon drives the date field with flatpickr; this is its instance.
+   * Carbon drives the date field with flatpickr; this sets the day on it.
    *
-   * Awaited on the input's own value: flatpickr calls back outside React's
-   * event system, so the state it sets has not landed by the time `setDate`
-   * returns — and the Next button it gates is still disabled.
+   * Retried inside the wait, re-reading the instance each time. Carbon's
+   * DatePicker can rebuild its flatpickr on a re-render, and a `setDate` on
+   * the instance being replaced fires into nothing — a race a loaded CI
+   * runner lost once (#48) while every local run won it. `setDate` is
+   * idempotent, so repeating it until Next unlocks is safe.
+   *
+   * Waiting on the input's own value would not do either: flatpickr writes
+   * that synchronously, before the React state that gates Next has landed.
    */
   async function setDeadline(day: Date, idPrefix = 'rfp-new') {
-    const input = document.querySelector(`#${idPrefix}-deadline-date`) as HTMLInputElement & {
-      _flatpickr?: { setDate: (d: Date, fireChange: boolean) => void };
-    };
-    input._flatpickr!.setDate(day, true);
-    // Waiting on the input's own value is not enough: flatpickr writes that
-    // synchronously, before the React state that gates Next has landed.
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Next' })).toBeEnabled());
+    const next = () => screen.getByRole('button', { name: 'Next' });
+    // A plain loop, not `setDate` inside `waitFor`'s callback: that callback
+    // also runs on every DOM mutation, `setDate` mutates the DOM, and the two
+    // feed each other as microtasks until the timeout can never fire.
+    for (let attempt = 0; attempt < 5 && next().hasAttribute('disabled'); attempt++) {
+      const input = document.querySelector(`#${idPrefix}-deadline-date`) as HTMLInputElement & {
+        _flatpickr?: { setDate: (d: Date, fireChange: boolean) => void };
+      };
+      input._flatpickr!.setDate(day, true);
+      try {
+        await waitFor(() => expect(next()).toBeEnabled());
+      } catch {
+        /* the instance may have been replaced mid-call; set it again */
+      }
+    }
+    expect(next()).toBeEnabled();
   }
 
   /**
