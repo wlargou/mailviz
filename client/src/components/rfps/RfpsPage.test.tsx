@@ -63,8 +63,8 @@ function makeRfp(overrides: Partial<Rfp> = {}): Rfp {
 }
 
 const DOCS = [
-  { id: 'd1', rfpId: 'r1', kind: 'RFP' as const, filename: 'RC.pdf', mimeType: 'application/pdf', size: 10, createdAt: '' },
-  { id: 'd2', rfpId: 'r1', kind: 'AVIS' as const, filename: 'Avis.pdf', mimeType: 'application/pdf', size: 10, createdAt: '' },
+  { id: 'd1', rfpId: 'r1', kind: 'RFP' as const, filename: 'RC.pdf', mimeType: 'application/pdf', size: 10, version: null, uploadedById: null, createdAt: '' },
+  { id: 'd2', rfpId: 'r1', kind: 'AVIS' as const, filename: 'Avis.pdf', mimeType: 'application/pdf', size: 10, version: null, uploadedById: null, createdAt: '' },
 ];
 
 function renderPage() {
@@ -124,7 +124,7 @@ describe('RfpsPage', () => {
   });
 
   it('shows every field of the register for a row', async () => {
-    serve([makeRfp({ documents: [{ id: 'd1', rfpId: 'r1', kind: 'RFP', filename: 'CPS.pdf', mimeType: 'application/pdf', size: 1024, createdAt: '' }] })]);
+    serve([makeRfp({ documents: [{ id: 'd1', rfpId: 'r1', kind: 'RFP', filename: 'CPS.pdf', mimeType: 'application/pdf', size: 1024, version: null, uploadedById: null, createdAt: '' }] })]);
     renderPage();
 
     // By the reference: the tender's name appears on the row button and again

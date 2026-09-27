@@ -12,7 +12,10 @@ import type {
   RfpFolderKind,
   RfpItem,
   RfpItemStatus,
+  RfpItemVerification,
   RfpLot,
+  RfpVerificationDecision,
+  RfpVerifier,
   UpdateRfpInput,
 } from '../types/rfp';
 
@@ -61,6 +64,20 @@ export const rfpsApi = {
   deleteItem(rfpId: string, itemId: string) {
     return api.delete(`/rfps/${rfpId}/items/${itemId}`);
   },
+  // ── Verification ──────────────────────────────────────────────────────
+  /** The whole list — anyone left out stops being a verifier. Owner only. */
+  setVerifiers(rfpId: string, userIds: string[]) {
+    return api.put<ApiResponse<RfpVerifier[]>>(`/rfps/${rfpId}/verifiers`, { userIds });
+  },
+  /** The caller's decision on the piece's current version. */
+  decide(rfpId: string, itemId: string, data: { decision: RfpVerificationDecision; comment?: string | null }) {
+    return api.put<ApiResponse<RfpItemVerification>>(`/rfps/${rfpId}/items/${itemId}/verification`, data);
+  },
+  withdrawDecision(rfpId: string, itemId: string) {
+    return api.delete(`/rfps/${rfpId}/items/${itemId}/verification`);
+  },
+
+  /** A new version of the piece. */
   uploadItemDocument(rfpId: string, itemId: string, file: File) {
     const form = new FormData();
     form.append('file', file);

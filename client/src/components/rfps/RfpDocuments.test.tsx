@@ -26,7 +26,7 @@ vi.mock('../shared/AttachmentPreviewModal', () => ({
 }));
 
 function doc(overrides: Partial<RfpDocument> = {}): RfpDocument {
-  return { id: 'd1', rfpId: 'r1', kind: 'RFP', filename: 'CPS AO 70.pdf', mimeType: 'application/pdf', size: 1295231, createdAt: '', ...overrides };
+  return { id: 'd1', rfpId: 'r1', kind: 'RFP', filename: 'CPS AO 70.pdf', mimeType: 'application/pdf', size: 1295231, version: null, uploadedById: null, createdAt: '', ...overrides };
 }
 
 /**

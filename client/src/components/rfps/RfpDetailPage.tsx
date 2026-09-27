@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { isAxiosError } from 'axios';
 import { Button, Grid, Column, ProgressBar, SkeletonText, Tabs, TabList, Tab, TabPanels, TabPanel, Tag, Tile } from '@carbon/react';
-import { Edit, Launch, Share, TrashCan } from '@carbon/icons-react';
+import { Edit, Launch, Share, TrashCan, UserMultiple } from '@carbon/icons-react';
 import { format } from 'date-fns';
 import { PageHeader } from '../shared/PageHeader';
 import { EmptyState } from '../shared/EmptyState';
@@ -13,13 +13,17 @@ import { RfpFormPanel } from './RfpFormPanel';
 import { RfpDocuments } from './RfpDocuments';
 import { RfpLotsSection } from './RfpLotsSection';
 import { RfpResponseSection } from './RfpResponseSection';
+import { RfpVerifiersModal } from './RfpVerifiersModal';
+import { PersonAvatar } from './RfpPeople';
 import { deadlineTone } from './RfpsPage';
 import { rfpsApi } from '../../api/rfps';
 import { useUIStore } from '../../store/uiStore';
 import { useAuthStore } from '../../store/authStore';
 import {
   formatBudget,
+  personName,
   readiness,
+  verificationStates,
   RFP_STATUS_LABELS,
   RFP_STATUS_TAG_TYPE,
   RFP_SUBMISSION_FORMAT_LABELS,
@@ -50,6 +54,7 @@ export function RfpDetailPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [shares, setShares] = useState<Shares>([]);
+  const [verifiersOpen, setVerifiersOpen] = useState(false);
 
   /** Re-read without the skeleton — every edit on the page ends here. */
   const refresh = useCallback(async () => {
@@ -114,6 +119,13 @@ export function RfpDetailPage() {
   const allItems = rfp.folders.flatMap((f) => f.items);
   const { ready, total } = readiness(allItems);
   const fileCount = allItems.reduce((n, i) => n + i.documents.length, 0);
+  // What is waiting on the signed-in user: pieces with a file whose current
+  // version they have not decided on.
+  const awaitingMe = rfp.verifiers.some((v) => v.userId === currentUserId)
+    ? allItems.filter(
+        (i) => i.status !== 'NOT_APPLICABLE' && verificationStates(i, rfp.verifiers).some((s) => s.person.id === currentUserId && (s.state === 'pending' || s.state === 'stale')) && i.documents.length > 0,
+      ).length
+    : 0;
 
   const handleDelete = async () => {
     try {
@@ -164,6 +176,25 @@ export function RfpDetailPage() {
         <SharedBadge ownerId={rfp.userId} />
       </div>
 
+      <div className="rfp-detail__verifiers">
+        <span className="rfp-detail__verifiers-label">Verifiers</span>
+        {rfp.verifiers.length === 0 ? (
+          <span className="rfp-piece-panel__muted">None — pieces are marked Ready by hand</span>
+        ) : (
+          rfp.verifiers.map((v) => (
+            <span key={v.id} className="rfp-detail__verifier">
+              <PersonAvatar person={v.user} />
+              {personName(v.user)}
+            </span>
+          ))
+        )}
+        {isOwner && (
+          <Button kind="ghost" size="sm" renderIcon={UserMultiple} onClick={() => setVerifiersOpen(true)}>
+            {rfp.verifiers.length === 0 ? 'Add verifiers' : 'Manage'}
+          </Button>
+        )}
+      </div>
+
       <div className="rfp-detail__summary">
         <Tile className="rfp-detail__tile">
           <p className="rfp-detail__tile-label">Submission deadline</p>
@@ -209,6 +240,11 @@ export function RfpDetailPage() {
             status={total > 0 && ready === total ? 'finished' : 'active'}
             helperText={total === 0 ? 'Nothing to prepare yet' : `${ready} of ${total} pieces ready`}
           />
+          {awaitingMe > 0 && (
+            <p className="rfp-detail__tile-hint rfp-detail__awaiting">
+              {awaitingMe} awaiting your verification
+            </p>
+          )}
         </Tile>
       </div>
 
@@ -222,7 +258,7 @@ export function RfpDetailPage() {
         </TabList>
         <TabPanels>
           <TabPanel className="rfp-detail__panel">
-            <RfpResponseSection rfp={rfp} catalogue={catalogue} onLocalChange={(update) => setRfp((r) => (r ? update(r) : r))} onRefresh={refresh} />
+            <RfpResponseSection rfp={rfp} catalogue={catalogue} currentUserId={currentUserId} onLocalChange={(update) => setRfp((r) => (r ? update(r) : r))} onRefresh={refresh} />
           </TabPanel>
           <TabPanel className="rfp-detail__panel">
             <RfpLotsSection rfp={rfp} onRefresh={refresh} />
@@ -240,6 +276,17 @@ export function RfpDetailPage() {
           </TabPanel>
         </TabPanels>
       </Tabs>
+
+      {verifiersOpen && (
+        <RfpVerifiersModal
+          rfp={rfp}
+          onClose={() => setVerifiersOpen(false)}
+          onSaved={async () => {
+            setVerifiersOpen(false);
+            await refresh();
+          }}
+        />
+      )}
 
       <RfpFormPanel open={editOpen} rfp={rfp} onClose={() => setEditOpen(false)} onSaved={refresh} />
 

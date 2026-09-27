@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseBudget, readiness } from './rfp';
+import { parseBudget, readiness, readyNeedsVerifiers, verificationStates, type RfpItemVerification, type RfpVerifier } from './rfp';
 
 describe('parseBudget', () => {
   it('reads an amount the way the Avis prints it', () => {
@@ -29,5 +29,39 @@ describe('readiness', () => {
       total: 3,
     });
     expect(readiness([])).toEqual({ ready: 0, total: 0 });
+  });
+});
+
+describe('verificationStates', () => {
+  const person = (id: string) => ({ id, name: id, email: `${id}@x`, avatarUrl: null });
+  const verifiers: RfpVerifier[] = ['a', 'b', 'c', 'd'].map((id) => ({ id: `v${id}`, rfpId: 'r', userId: id, createdAt: '', user: person(id) }));
+  const doc = (id: string, version: number) => ({ id, rfpId: 'r', kind: 'OTHER' as const, filename: '', mimeType: '', size: 0, version, uploadedById: null, createdAt: '' });
+  const decided = (userId: string, documentId: string, decision: RfpItemVerification['decision']): RfpItemVerification => ({
+    id: userId, itemId: 'i', userId, documentId, decision, comment: null, createdAt: '', updatedAt: '', user: person(userId),
+  });
+
+  it("reads each verifier's standing on the current version", () => {
+    const item = {
+      documents: [doc('v1', 1), doc('v2', 2)],
+      verifications: [decided('a', 'v2', 'APPROVED'), decided('b', 'v2', 'CHANGES_REQUESTED'), decided('c', 'v1', 'APPROVED')],
+    };
+    expect(verificationStates(item, verifiers).map((s) => [s.person.id, s.state])).toEqual([
+      ['a', 'approved'],
+      ['b', 'changes'],
+      // An approval of v1 says nothing about v2.
+      ['c', 'stale'],
+      ['d', 'pending'],
+    ]);
+  });
+
+  it('has everyone pending when there is nothing to verify', () => {
+    expect(verificationStates({ documents: [], verifications: [] }, verifiers).every((s) => s.state === 'pending')).toBe(true);
+    expect(verificationStates({ documents: [], verifications: [] }, verifiers)).toHaveLength(4);
+  });
+
+  it('gates Ready only with verifiers and a file', () => {
+    expect(readyNeedsVerifiers({ documents: [doc('v1', 1)] }, verifiers)).toBe(true);
+    expect(readyNeedsVerifiers({ documents: [] }, verifiers)).toBe(false);
+    expect(readyNeedsVerifiers({ documents: [doc('v1', 1)] }, [])).toBe(false);
   });
 });
