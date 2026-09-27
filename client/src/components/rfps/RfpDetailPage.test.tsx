@@ -34,7 +34,7 @@ function axiosOk<T>(data: T): AxiosResponse<T> {
 }
 
 function item(id: string, title: string, status: RfpItem['status'] = 'TODO', documents: RfpItem['documents'] = []): RfpItem {
-  return { id, folderId: '', title, status, notes: null, position: 0, documents };
+  return { id, folderId: '', title, status, notes: null, position: 0, updatedAt: '2026-09-28T09:00:00.000Z', documents, verifications: [] };
 }
 
 function folder(id: string, title: string, items: RfpItem[], lot: { id: string; number: number; title: string } | null = null): RfpFolder {
@@ -72,6 +72,7 @@ function makeRfp(overrides: Partial<RfpDetail> = {}): RfpDetail {
     updatedAt: '',
     documents: [],
     lots: [LOT1],
+    verifiers: [],
     folders: [
       folder('f1', 'Dossier administratif', [
         item('i1', 'Attestation fiscale', 'READY'),
@@ -168,8 +169,8 @@ describe('RfpDetailPage', () => {
         folders: [
           folder('f1', 'Offre technique', [
             item('i1', 'CV des intervenants', 'IN_PROGRESS', [
-              { id: 'd1', rfpId: 'r1', kind: 'OTHER', filename: 'CV Amine.pdf', mimeType: 'application/pdf', size: 10, createdAt: '' },
-              { id: 'd2', rfpId: 'r1', kind: 'OTHER', filename: 'CV Salma.pdf', mimeType: 'application/pdf', size: 10, createdAt: '' },
+              { id: 'd1', rfpId: 'r1', kind: 'OTHER', filename: 'CV Amine.pdf', mimeType: 'application/pdf', size: 10, version: 1, uploadedById: null, createdAt: '' },
+              { id: 'd2', rfpId: 'r1', kind: 'OTHER', filename: 'CV Salma.pdf', mimeType: 'application/pdf', size: 10, version: 2, uploadedById: null, createdAt: '' },
             ]),
           ]),
         ],

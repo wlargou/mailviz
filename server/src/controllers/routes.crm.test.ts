@@ -2049,3 +2049,100 @@ describe('/api/v1/rfps — lots and composition', () => {
     expect(await prisma.rfpFolder.count({ where: { rfpId: rfp.id } })).toBe(0);
   });
 });
+
+describe('/api/v1/rfps — versions and verification', () => {
+  let storageDir: string;
+  beforeAll(async () => {
+    storageDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'mailviz-rfp-verif-routes-'));
+    process.env.RFP_STORAGE_DIR = storageDir;
+  });
+  afterAll(async () => {
+    delete process.env.RFP_STORAGE_DIR;
+    await fs.promises.rm(storageDir, { recursive: true, force: true });
+  });
+
+  interface VerifiedPiece {
+    id: string;
+    status: string;
+    documents: Array<{ id: string; version: number; uploadedBy: { id: string } | null }>;
+    verifications: Array<{ user: { id: string }; decision: string; comment: string | null; documentId: string }>;
+  }
+
+  /** Alice's tender, shared with bob, one piece — and bob as its verifier. */
+  async function setUp() {
+    const { alice, bob } = await createTwoUsers();
+    const owner = authFor(alice.id);
+    const created = await request(app).post('/api/v1/rfps').set('Cookie', owner).send({
+      name: 'Maintenance SIMPL',
+      reference: `VERIF/${Math.random().toString(36).slice(2, 8)}`,
+      deadlineAt: '2026-11-09T10:00:00.000Z',
+      submissionFormat: 'PORTAL',
+      composition: { kinds: ['ADMINISTRATIF'], prefill: false },
+    });
+    const rfp = (created.body as ItemBody<DetailRfp>).data;
+    await prisma.rfpShare.create({ data: { rfpId: rfp.id, sharedByUserId: alice.id, sharedWithUserId: bob.id } });
+    const item = (await request(app).post(`/api/v1/rfps/${rfp.id}/folders/${rfp.folders[0].id}/items`).set('Cookie', owner).send({ title: 'Attestation CNSS' }))
+      .body as ItemBody<IdRow>;
+    const set = await request(app).put(`/api/v1/rfps/${rfp.id}/verifiers`).set('Cookie', owner).send({ userIds: [bob.id] });
+    expect(set.status).toBe(200);
+    return { alice, bob, owner, verifier: authFor(bob.id), rfpId: rfp.id, itemId: item.data.id };
+  }
+
+  type Cookie = ReturnType<typeof authFor>;
+  const piece = async (cookie: Cookie, rfpId: string) =>
+    ((await request(app).get(`/api/v1/rfps/${rfpId}`).set('Cookie', cookie)).body as ItemBody<DetailRfp>).data.folders[0].items[0] as unknown as VerifiedPiece;
+
+  it('uploads versions, has the verifier approve the current one, and only then is the piece Ready', async () => {
+    const { alice, bob, owner, verifier, rfpId, itemId } = await setUp();
+    const up = (name: string, cookie: Cookie) =>
+      request(app).post(`/api/v1/rfps/${rfpId}/items/${itemId}/documents`).set('Cookie', cookie).attach('file', Buffer.from('%PDF'), { filename: name, contentType: 'application/pdf' });
+
+    expect((await up('v1.pdf', owner)).status).toBe(201);
+    expect((await up('v2.pdf', verifier)).status).toBe(201);
+    let p = await piece(owner, rfpId);
+    expect(p.documents.map((d) => [d.version, d.uploadedBy?.id])).toEqual([[1, alice.id], [2, bob.id]]);
+    expect(p.status).toBe('IN_PROGRESS');
+
+    // Ready by hand is refused while the verifier has not approved.
+    const early = await request(app).patch(`/api/v1/rfps/${rfpId}/items/${itemId}`).set('Cookie', owner).send({ status: 'READY' });
+    expect(early.status).toBe(409);
+
+    const ok = await request(app).put(`/api/v1/rfps/${rfpId}/items/${itemId}/verification`).set('Cookie', verifier).send({ decision: 'APPROVED' });
+    expect(ok.status).toBe(200);
+    p = await piece(owner, rfpId);
+    expect(p.status).toBe('READY');
+    expect(p.verifications.map((v) => [v.user.id, v.decision, v.documentId])).toEqual([[bob.id, 'APPROVED', p.documents[1].id]]);
+
+    const withdrawn = await request(app).delete(`/api/v1/rfps/${rfpId}/items/${itemId}/verification`).set('Cookie', verifier);
+    expect(withdrawn.status).toBe(204);
+    expect((await piece(owner, rfpId)).status).toBe('IN_PROGRESS');
+  });
+
+  it('wants a reason for changes requested, and keeps it', async () => {
+    const { owner, verifier, rfpId, itemId } = await setUp();
+    await request(app).post(`/api/v1/rfps/${rfpId}/items/${itemId}/documents`).set('Cookie', owner).attach('file', Buffer.from('%PDF'), { filename: 'a.pdf', contentType: 'application/pdf' });
+    const url = `/api/v1/rfps/${rfpId}/items/${itemId}/verification`;
+
+    expect((await request(app).put(url).set('Cookie', verifier).send({ decision: 'CHANGES_REQUESTED' })).status).toBe(400);
+    expect((await request(app).put(url).set('Cookie', verifier).send({ decision: 'CHANGES_REQUESTED', comment: '   ' })).status).toBe(400);
+    expect((await request(app).put(url).set('Cookie', verifier).send({ decision: 'MAYBE' })).status).toBe(400);
+    expect(await prisma.rfpItemVerification.count({ where: { itemId } })).toBe(0);
+
+    const res = await request(app).put(url).set('Cookie', verifier).send({ decision: 'CHANGES_REQUESTED', comment: ' Signature manquante ' });
+    expect(res.status).toBe(200);
+    expect((await piece(owner, rfpId)).verifications.map((v) => [v.decision, v.comment])).toEqual([['CHANGES_REQUESTED', 'Signature manquante']]);
+  });
+
+  it('keeps the verifier list to the owner, and to people who can open the tender', async () => {
+    const { bob, verifier, rfpId } = await setUp();
+    const outsider = await createUser();
+
+    // Bob can open the tender but it is not his to staff.
+    expect((await request(app).put(`/api/v1/rfps/${rfpId}/verifiers`).set('Cookie', verifier).send({ userIds: [bob.id] })).status).toBe(404);
+    const alice = (await prisma.rfp.findUniqueOrThrow({ where: { id: rfpId } })).userId;
+    const res = await request(app).put(`/api/v1/rfps/${rfpId}/verifiers`).set('Cookie', authFor(alice)).send({ userIds: [outsider.id] });
+    expect(res.status).toBe(400);
+    expect((await request(app).put(`/api/v1/rfps/${rfpId}/verifiers`).set('Cookie', authFor(alice)).send({ userIds: ['not-a-uuid'] })).status).toBe(400);
+    expect(await prisma.rfpVerifier.findMany({ where: { rfpId }, select: { userId: true } })).toEqual([{ userId: bob.id }]);
+  });
+});

@@ -42,6 +42,20 @@ export const updateItemSchema = z.object({
   notes: z.string().max(10000).nullable().optional().or(z.literal('')),
 });
 
+/** The full list: whoever is not in it stops being a verifier. */
+export const setVerifiersSchema = z.object({
+  userIds: z.array(z.string().uuid()).max(50),
+});
+
+/**
+ * A verifier's decision. Changes requested must say which — trimmed first, so
+ * a comment of spaces is no comment (see the `.trim()` gotcha in CLAUDE.md).
+ */
+export const verificationSchema = z.discriminatedUnion('decision', [
+  z.object({ decision: z.literal('APPROVED'), comment: z.string().trim().max(5000).nullable().optional() }),
+  z.object({ decision: z.literal('CHANGES_REQUESTED'), comment: z.string().trim().min(1).max(5000) }),
+]);
+
 export const createRfpSchema = z.object({
   name: trimmed(500),
   reference: trimmed(255),

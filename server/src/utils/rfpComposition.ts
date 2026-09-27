@@ -72,3 +72,10 @@ export function folderPosition(kind: RfpFolderKind, lotNumber: number | null): n
 
 export const RFP_ITEM_STATUSES = ['TODO', 'IN_PROGRESS', 'READY', 'NOT_APPLICABLE'] as const;
 export type RfpItemStatus = (typeof RFP_ITEM_STATUSES)[number];
+
+/**
+ * A verifier's decision on one version of a piece. Changes requested always
+ * carries a comment — "not good" with no reason sends the uploader guessing.
+ */
+export const RFP_VERIFICATION_DECISIONS = ['APPROVED', 'CHANGES_REQUESTED'] as const;
+export type RfpVerificationDecision = (typeof RFP_VERIFICATION_DECISIONS)[number];

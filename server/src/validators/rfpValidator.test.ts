@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createRfpSchema, updateRfpSchema } from './rfpValidator.js';
+import { createRfpSchema, setVerifiersSchema, updateRfpSchema, verificationSchema } from './rfpValidator.js';
 
 /**
  * The register's front door.
@@ -93,5 +93,33 @@ describe('updateRfpSchema', () => {
     expect(updateRfpSchema.parse({ lots: [{ title: 'x' }] })).not.toHaveProperty('lots');
     expect(updateRfpSchema.parse({ composition: { kinds: [], prefill: false } })).not.toHaveProperty('composition');
     expect(() => updateRfpSchema.parse({ status: 'ARCHIVED' })).toThrow();
+  });
+});
+
+describe('verificationSchema', () => {
+  it('takes an approval with or without a comment', () => {
+    expect(verificationSchema.safeParse({ decision: 'APPROVED' }).success).toBe(true);
+    expect(verificationSchema.safeParse({ decision: 'APPROVED', comment: 'RAS' }).success).toBe(true);
+  });
+
+  it('wants a real comment on changes requested', () => {
+    expect(verificationSchema.safeParse({ decision: 'CHANGES_REQUESTED' }).success).toBe(false);
+    // Trimmed before the length check, so spaces are not a reason.
+    expect(verificationSchema.safeParse({ decision: 'CHANGES_REQUESTED', comment: '   ' }).success).toBe(false);
+    const ok = verificationSchema.safeParse({ decision: 'CHANGES_REQUESTED', comment: '  Cachet manquant ' });
+    expect(ok.success && ok.data.comment).toBe('Cachet manquant');
+  });
+
+  it('knows no other decision', () => {
+    expect(verificationSchema.safeParse({ decision: 'REJECTED', comment: 'x' }).success).toBe(false);
+  });
+});
+
+describe('setVerifiersSchema', () => {
+  it('takes a list of user ids, possibly empty', () => {
+    expect(setVerifiersSchema.safeParse({ userIds: [] }).success).toBe(true);
+    expect(setVerifiersSchema.safeParse({ userIds: ['3f1c7a52-8f0e-4c1a-9d5b-2a6e8b0c4d11'] }).success).toBe(true);
+    expect(setVerifiersSchema.safeParse({ userIds: ['alice'] }).success).toBe(false);
+    expect(setVerifiersSchema.safeParse({}).success).toBe(false);
   });
 });

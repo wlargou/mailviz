@@ -404,6 +404,9 @@ model User {
   rfps             Rfp[]
   rfpSharesSent     RfpShare[] @relation("RfpSharesSent")
   rfpSharesReceived RfpShare[] @relation("RfpSharesReceived")
+  rfpDocumentsUploaded RfpDocument[]          @relation("RfpDocumentUploader")
+  rfpVerifierOf        RfpVerifier[]
+  rfpVerifications     RfpItemVerification[]
 
   createdAt DateTime    @default(now()) @map("created_at")
   updatedAt DateTime    @updatedAt @map("updated_at")
@@ -992,6 +995,7 @@ model Rfp {
   shares    RfpShare[]
   lots      RfpLot[]
   folders   RfpFolder[]
+  verifiers RfpVerifier[]
 
   /// Per account, never globally: two accounts may both track 27/2026/DGI.
   @@unique([userId, reference])
@@ -1019,13 +1023,24 @@ model RfpDocument {
   /// Set when the file is a prepared piece of the response (a CV, an
   /// attestation) rather than part of the tender dossier received.
   itemId     String?  @map("item_id")
-  createdAt  DateTime @default(now()) @map("created_at")
+  /// A piece's files are its versions: 1, 2, 3 … in upload order, the highest
+  /// being the current one. Null for the tender's own documents, which are
+  /// separate files rather than successive drafts of one.
+  version    Int?
+  /// Who uploaded it. `SetNull`: a colleague leaving must not take the
+  /// file — or the record that it was handed in — with them.
+  uploadedById String?  @map("uploaded_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
 
-  rfp  Rfp            @relation(fields: [rfpId], references: [id], onDelete: Cascade)
-  item RfpFolderItem? @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  rfp           Rfp                   @relation(fields: [rfpId], references: [id], onDelete: Cascade)
+  item          RfpFolderItem?        @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  uploadedBy    User?                 @relation("RfpDocumentUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  verifications RfpItemVerification[]
 
   @@index([rfpId])
   @@index([itemId])
+  /// Two uploads racing for the same number fail rather than share it.
+  @@unique([itemId, version])
   @@map("rfp_documents")
 }
 
@@ -1106,9 +1121,52 @@ model RfpFolderItem {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  folder    RfpFolder     @relation(fields: [folderId], references: [id], onDelete: Cascade)
-  documents RfpDocument[]
+  folder        RfpFolder             @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  documents     RfpDocument[]
+  verifications RfpItemVerification[]
 
   @@index([folderId])
   @@map("rfp_folder_items")
+}
+
+/// Someone who must check every piece of a tender's response before it goes.
+/// Chosen by the owner among the people the tender is shared with (or the
+/// owner); unsharing someone removes them here too.
+model RfpVerifier {
+  id        String   @id @default(uuid())
+  rfpId     String   @map("rfp_id")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  rfp  Rfp  @relation(fields: [rfpId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([rfpId, userId])
+  @@index([userId])
+  @@map("rfp_verifiers")
+}
+
+/// One verifier's decision on one version of a piece: APPROVED, or
+/// CHANGES_REQUESTED with a comment saying what. One row per verifier and
+/// piece, moved to the new version when they decide again; a decision on an
+/// older version than the current one is stale and counts for nothing.
+model RfpItemVerification {
+  id         String   @id @default(uuid())
+  itemId     String   @map("item_id")
+  userId     String   @map("user_id")
+  /// The version decided on.
+  documentId String   @map("document_id")
+  decision   String   @db.VarChar(20)
+  comment    String?  @db.Text
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  item     RfpFolderItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  document RfpDocument   @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([itemId, userId])
+  @@index([documentId])
+  @@index([userId])
+  @@map("rfp_item_verifications")
 }

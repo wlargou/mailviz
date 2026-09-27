@@ -90,6 +90,39 @@ export interface RfpLot {
   budget: number | null;
 }
 
+/** Someone named on a tender: an uploader, a verifier. */
+export interface RfpPerson {
+  id: string;
+  name: string | null;
+  email: string;
+  avatarUrl: string | null;
+}
+
+export const RFP_VERIFICATION_DECISIONS = ['APPROVED', 'CHANGES_REQUESTED'] as const;
+export type RfpVerificationDecision = (typeof RFP_VERIFICATION_DECISIONS)[number];
+
+/** One verifier's decision on one version of a piece. */
+export interface RfpItemVerification {
+  id: string;
+  itemId: string;
+  userId: string;
+  /** The version decided on — stale once a newer one is uploaded. */
+  documentId: string;
+  decision: RfpVerificationDecision;
+  comment: string | null;
+  createdAt: string;
+  updatedAt: string;
+  user: RfpPerson;
+}
+
+export interface RfpVerifier {
+  id: string;
+  rfpId: string;
+  userId: string;
+  createdAt: string;
+  user: RfpPerson;
+}
+
 export interface RfpItem {
   id: string;
   folderId: string;
@@ -97,8 +130,56 @@ export interface RfpItem {
   status: RfpItemStatus;
   notes: string | null;
   position: number;
-  /** The prepared files for this piece — a CV, a signed attestation. */
+  updatedAt: string;
+  /** The piece's versions, oldest first — the last is the current one. */
   documents: RfpDocument[];
+  verifications: RfpItemVerification[];
+}
+
+/** The version a verifier is asked about, if anything has been uploaded. */
+export function currentVersion(item: Pick<RfpItem, 'documents'>): RfpDocument | null {
+  return item.documents.length > 0 ? item.documents[item.documents.length - 1] : null;
+}
+
+/**
+ * Where a verifier stands on a piece's current version.
+ *
+ * `stale`: they decided on an older version, so it no longer counts — shown
+ * apart from `pending` because "approved v1, v2 since" is worth knowing.
+ */
+export type VerificationState = 'approved' | 'changes' | 'stale' | 'pending';
+
+export function verificationStates(
+  item: Pick<RfpItem, 'documents' | 'verifications'>,
+  verifiers: RfpVerifier[],
+): Array<{ person: RfpPerson; state: VerificationState; verification: RfpItemVerification | null }> {
+  const current = currentVersion(item);
+  return verifiers.map((v) => {
+    const verification = item.verifications.find((x) => x.userId === v.userId) ?? null;
+    const state: VerificationState =
+      !verification || !current
+        ? 'pending'
+        : verification.documentId !== current.id
+          ? 'stale'
+          : verification.decision === 'APPROVED'
+            ? 'approved'
+            : 'changes';
+    return { person: v.user, state, verification };
+  });
+}
+
+/**
+ * Whether Ready is the verifiers' to give on this piece — mirrors the
+ * server's rule: there are verifiers, and there is a file to verify.
+ */
+export function readyNeedsVerifiers(item: Pick<RfpItem, 'documents'>, verifiers: RfpVerifier[]): boolean {
+  return verifiers.length > 0 && currentVersion(item) !== null;
+}
+
+export function personName(p: Pick<RfpPerson, 'name' | 'email'> | null | undefined): string {
+  // Files uploaded before uploaders were recorded, or by someone since removed.
+  if (!p) return 'Unknown uploader';
+  return p.name || p.email;
 }
 
 export interface RfpFolder {
@@ -128,6 +209,11 @@ export interface RfpDocument {
   filename: string;
   mimeType: string;
   size: number;
+  /** A piece's version number; null for the tender's own documents. */
+  version: number | null;
+  uploadedById: string | null;
+  /** Null when unknown — files uploaded before uploaders were recorded. */
+  uploadedBy?: RfpPerson | null;
   createdAt: string;
 }
 
@@ -168,6 +254,7 @@ export interface Rfp {
 export interface RfpDetail extends Rfp {
   lots: RfpLot[];
   folders: RfpFolder[];
+  verifiers: RfpVerifier[];
 }
 
 export interface LotInput {

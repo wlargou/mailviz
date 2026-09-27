@@ -389,7 +389,8 @@
 
 .rfp-response__item {
   display: grid;
-  grid-template-columns: minmax(12rem, 1.2fr) minmax(0, 2fr) 9rem auto;
+  // title · current version · verifiers · upload · status · remove
+  grid-template-columns: minmax(12rem, 1.2fr) minmax(0, 2fr) minmax(7rem, auto) 8.5rem 9rem auto;
   align-items: center;
   gap: $spacing-04;
   padding: $spacing-02 0;
@@ -405,9 +406,53 @@
   text-decoration: line-through;
 }
 
+// A <button>: it opens the piece's panel.
 .rfp-response__item-title {
   @include type.type-style('body-compact-01');
   min-inline-size: 0;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--cds-text-primary);
+  text-align: start;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--cds-link-primary);
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--cds-focus);
+    outline-offset: 2px;
+  }
+}
+
+.rfp-response__current {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
+.rfp-response__file .rfp-response__version {
+  margin-inline-start: $spacing-03;
+}
+
+.rfp-response__meta {
+  @include type.type-style('helper-text-01');
+  color: var(--cds-text-secondary);
+}
+
+.rfp-response__verif-button {
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid var(--cds-focus);
+    outline-offset: 2px;
+  }
 }
 
 .rfp-response__item-files {
@@ -427,6 +472,9 @@
 
 .rfp-response__file-name {
   @include type.type-style('body-compact-01');
+  // A <button>: centred by default, which floated the name off its column.
+  text-align: start;
+  align-self: flex-start;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -491,4 +539,213 @@
 
 .rfp-lots-table__total td {
   font-weight: 600;
+}
+
+// ─── PEOPLE & VERIFICATION ───────────────────────
+.rfp-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--cds-layer-accent-01);
+  color: var(--cds-text-primary);
+  font-weight: 600;
+
+  img {
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: cover;
+  }
+}
+
+.rfp-avatar--sm {
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  font-size: 0.625rem;
+}
+
+.rfp-avatar--md {
+  inline-size: 2rem;
+  block-size: 2rem;
+  font-size: 0.75rem;
+}
+
+.rfp-verif-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-02;
+}
+
+// The ring and badge carry the state; the colours are Carbon's support tokens.
+.rfp-verif-summary__person {
+  position: relative;
+  display: inline-flex;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--rfp-verif-color);
+}
+
+.rfp-verif-summary__badge {
+  position: absolute;
+  inset-block-end: -0.25rem;
+  inset-inline-end: -0.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 0.875rem;
+  block-size: 0.875rem;
+  border-radius: 50%;
+  background: var(--rfp-verif-color);
+  color: var(--cds-text-on-color);
+}
+
+.rfp-verif--approved {
+  --rfp-verif-color: var(--cds-support-success);
+}
+
+.rfp-verif--changes {
+  --rfp-verif-color: var(--cds-support-error);
+}
+
+.rfp-verif--stale {
+  --rfp-verif-color: var(--cds-support-warning);
+}
+
+.rfp-verif--pending {
+  --rfp-verif-color: var(--cds-border-strong-01);
+}
+
+.rfp-verif-summary__count {
+  @include type.type-style('label-01');
+  color: var(--cds-text-secondary);
+  margin-inline-start: $spacing-02;
+}
+
+.rfp-detail__verifiers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-03 $spacing-05;
+  margin: 0 0 $spacing-05;
+}
+
+.rfp-detail__verifiers-label {
+  @include type.type-style('label-01');
+  color: var(--cds-text-secondary);
+}
+
+.rfp-detail__verifier {
+  @include type.type-style('body-compact-01');
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-03;
+}
+
+.rfp-detail__awaiting {
+  color: var(--cds-support-warning);
+  margin-block-start: $spacing-03;
+}
+
+.rfp-verifiers-modal__intro {
+  @include type.type-style('body-01');
+  color: var(--cds-text-secondary);
+  margin-bottom: $spacing-05;
+}
+
+.rfp-verifiers-modal__person {
+  padding: $spacing-02 0;
+}
+
+.rfp-verifiers-modal__label {
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-03;
+}
+
+// ─── PIECE PANEL ─────────────────────────────────
+// SidePanel supplies its own body gutters (see CLAUDE.md).
+.rfp-piece-panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-07;
+  padding-block: $spacing-05;
+}
+
+.rfp-piece-panel__status {
+  display: flex;
+  align-items: center;
+  gap: $spacing-04;
+}
+
+.rfp-piece-panel__muted {
+  @include type.type-style('helper-text-01');
+  color: var(--cds-text-secondary);
+}
+
+.rfp-piece-panel__heading {
+  @include type.type-style('heading-compact-01');
+  margin: 0 0 $spacing-04;
+}
+
+.rfp-piece-panel__current,
+.rfp-piece-panel__version,
+.rfp-piece-panel__verifier {
+  display: flex;
+  align-items: flex-start;
+  gap: $spacing-04;
+}
+
+.rfp-piece-panel__current {
+  align-items: center;
+}
+
+.rfp-piece-panel__file,
+.rfp-piece-panel__verifier-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-inline-size: 0;
+}
+
+.rfp-piece-panel__upload {
+  display: flex;
+  align-items: center;
+  gap: $spacing-04;
+  margin-block-start: $spacing-05;
+}
+
+.rfp-piece-panel__verifiers,
+.rfp-piece-panel__versions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+
+  > li {
+    padding: $spacing-03 0;
+    border-bottom: 1px solid var(--cds-border-subtle);
+  }
+}
+
+.rfp-piece-panel__version {
+  align-items: center;
+}
+
+.rfp-piece-panel__comment {
+  @include type.type-style('body-compact-01');
+  margin: $spacing-02 0 0;
+  padding-inline-start: $spacing-03;
+  border-inline-start: 2px solid var(--cds-border-strong-01);
+  white-space: pre-line;
+}
+
+.rfp-piece-panel__decide {
+  margin-block-start: $spacing-05;
+}
+
+.rfp-piece-panel__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-03;
+  margin-block-start: $spacing-03;
 }
