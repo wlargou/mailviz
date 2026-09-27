@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { parsePagination, paginationMeta } from '../utils/pagination.js';
 import { auditService } from './auditService.js';
+import { removeVerifiers, syncItemStatus, syncRfpItems } from './rfpVerificationService.js';
 import { removeStoredFile } from './rfpStorage.js';
 import { canAccessRfp, getSharedRfpIds, isRfpOwner } from '../utils/accessControl.js';
 import { notificationService } from './notificationService.js';
@@ -17,7 +18,11 @@ const rfpIncludes = {
   // The tender's own dossier only. A prepared piece's files (a CV, an
   // attestation) share the table but belong to the response, not to what
   // the buyer published — they must not be counted or listed as the tender.
-  documents: { where: { itemId: null }, orderBy: { createdAt: 'asc' } as const },
+  documents: {
+    where: { itemId: null },
+    orderBy: { createdAt: 'asc' } as const,
+    include: { uploadedBy: { select: { id: true, name: true, email: true, avatarUrl: true } } },
+  },
   customer: { select: { id: true, name: true, logoUrl: true } },
   // Who owns it, so the list can badge the rows that arrived through a share.
   user: { select: { id: true, name: true, email: true } },
@@ -30,13 +35,18 @@ const rfpIncludes = {
 const rfpDetailIncludes = {
   ...rfpIncludes,
   lots: { orderBy: { number: 'asc' } as const },
+  verifiers: { include: { user: { select: { id: true, name: true, email: true, avatarUrl: true } } }, orderBy: { createdAt: 'asc' } as const },
   folders: {
     orderBy: [{ position: 'asc' }, { createdAt: 'asc' }] as Prisma.RfpFolderOrderByWithRelationInput[],
     include: {
       lot: { select: { id: true, number: true, title: true } },
       items: {
         orderBy: [{ position: 'asc' }, { createdAt: 'asc' }] as Prisma.RfpFolderItemOrderByWithRelationInput[],
-        include: { documents: { orderBy: { createdAt: 'asc' } as const } },
+        include: {
+          // Versions, oldest first: the last is the current one.
+          documents: { orderBy: { version: 'asc' } as const, include: { uploadedBy: { select: { id: true, name: true, email: true, avatarUrl: true } } } },
+          verifications: { include: { user: { select: { id: true, name: true, email: true, avatarUrl: true } } }, orderBy: { createdAt: 'asc' } as const },
+        },
       },
     },
   },
@@ -272,7 +282,7 @@ export const rfpService = {
     // Whoever may edit the tender may work on its dossier.
     await accessibleRfp(userId, rfpId);
     const doc = await prisma.rfpDocument.create({
-      data: { rfpId, kind, filename: file.filename, mimeType: file.mimeType, size: file.size, storageKey: file.storageKey },
+      data: { rfpId, kind, filename: file.filename, mimeType: file.mimeType, size: file.size, storageKey: file.storageKey, uploadedById: userId },
     });
     auditService.log({ userId, action: 'RFP_DOCUMENT_ADDED', entityType: 'rfp', entityId: rfpId, details: { filename: file.filename, kind } });
     return doc;
@@ -341,7 +351,16 @@ export const rfpService = {
 
   /** Withdraw a share. Scoped to the sharer, so only they can take it back. */
   async unshare(userId: string, rfpId: string, recipientUserId: string) {
-    await prisma.rfpShare.deleteMany({ where: { rfpId, sharedByUserId: userId, sharedWithUserId: recipientUserId } });
+    await prisma.$transaction(async (tx) => {
+      const { count } = await tx.rfpShare.deleteMany({ where: { rfpId, sharedByUserId: userId, sharedWithUserId: recipientUserId } });
+      // Someone who can no longer open the tender cannot be asked to verify
+      // it, and their approvals must stop counting. Only when the share was
+      // actually the caller's to withdraw.
+      if (count > 0) {
+        await removeVerifiers(tx, rfpId, [recipientUserId]);
+        await syncRfpItems(tx, rfpId);
+      }
+    });
     auditService.log({ userId, action: 'RFP_UNSHARED', entityType: 'rfp', entityId: rfpId, details: { recipientUserId } });
     return { success: true };
   },
@@ -357,7 +376,12 @@ export const rfpService = {
 
   async removeDocument(userId: string, rfpId: string, documentId: string) {
     const doc = await this.getDocument(userId, rfpId, documentId);
-    await prisma.rfpDocument.delete({ where: { id: documentId } });
+    await prisma.$transaction(async (tx) => {
+      await tx.rfpDocument.delete({ where: { id: documentId } });
+      // Deleting a piece's current version makes the previous one current,
+      // and the decisions on that one are what count now.
+      if (doc.itemId) await syncItemStatus(tx, rfpId, doc.itemId);
+    });
     await removeStoredFile(doc.storageKey);
     auditService.log({ userId, action: 'RFP_DOCUMENT_REMOVED', entityType: 'rfp', entityId: rfpId, details: { filename: doc.filename } });
   },

@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { canAccessRfp } from '../utils/accessControl.js';
 import { removeStoredFile } from './rfpStorage.js';
+import { assertReadyAllowed, syncItemStatus } from './rfpVerificationService.js';
 import {
   RFP_FOLDER_DEFAULT_ITEMS,
   RFP_FOLDER_KINDS,
@@ -246,14 +247,18 @@ export const rfpCompositionService = {
   ) {
     await assertAccess(userId, rfpId);
     await itemOf(rfpId, itemId);
-    return prisma.rfpFolderItem.update({
-      where: { id: itemId },
-      data: {
-        ...(data.title !== undefined ? { title: data.title } : {}),
-        ...(data.status !== undefined ? { status: data.status } : {}),
-        ...(data.notes !== undefined ? { notes: data.notes || null } : {}),
-      },
-      include: { documents: true },
+    return prisma.$transaction(async (tx) => {
+      // With verifiers, Ready is theirs to give; see rfpVerificationService.
+      if (data.status === 'READY') await assertReadyAllowed(tx, rfpId, itemId);
+      return tx.rfpFolderItem.update({
+        where: { id: itemId },
+        data: {
+          ...(data.title !== undefined ? { title: data.title } : {}),
+          ...(data.status !== undefined ? { status: data.status } : {}),
+          ...(data.notes !== undefined ? { notes: data.notes || null } : {}),
+        },
+        include: { documents: true },
+      });
     });
   },
 
@@ -265,7 +270,17 @@ export const rfpCompositionService = {
     await unlinkAll(keys);
   },
 
-  /** A prepared file for a piece — stored like the tender's own documents. */
+  /**
+   * A new version of a piece: the next number, who uploaded it, and the
+   * piece back to In progress.
+   *
+   * Back to In progress whatever it was — even Ready, even N/A. A new file is
+   * a new thing to check, and the approvals were given on the old one.
+   *
+   * Numbered inside the transaction and guarded by `@@unique([itemId,
+   * version])`: two uploads racing for the same number make one of them
+   * fail and retry, rather than both becoming "v3".
+   */
   async addItemDocument(
     userId: string,
     rfpId: string,
@@ -274,8 +289,31 @@ export const rfpCompositionService = {
   ) {
     await assertAccess(userId, rfpId);
     await itemOf(rfpId, itemId);
-    return prisma.rfpDocument.create({
-      data: { rfpId, itemId, kind: 'OTHER', filename: file.filename, mimeType: file.mimeType, size: file.size, storageKey: file.storageKey },
-    });
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await prisma.$transaction(async (tx) => {
+          const last = await tx.rfpDocument.findFirst({ where: { itemId }, orderBy: { version: 'desc' }, select: { version: true } });
+          const doc = await tx.rfpDocument.create({
+            data: {
+              rfpId,
+              itemId,
+              kind: 'OTHER',
+              filename: file.filename,
+              mimeType: file.mimeType,
+              size: file.size,
+              storageKey: file.storageKey,
+              version: (last?.version ?? 0) + 1,
+              uploadedById: userId,
+            },
+          });
+          await tx.rfpFolderItem.update({ where: { id: itemId }, data: { status: 'IN_PROGRESS' } });
+          await syncItemStatus(tx, rfpId, itemId);
+          return doc;
+        });
+      } catch (err) {
+        const raced = err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
+        if (!raced || attempt >= 2) throw err;
+      }
+    }
   },
 };

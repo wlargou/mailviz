@@ -13,6 +13,8 @@ import {
   updateFolderSchema,
   createItemSchema,
   updateItemSchema,
+  setVerifiersSchema,
+  verificationSchema,
 } from '../validators/rfpValidator.js';
 import { rfpCompositionController as composition } from '../controllers/rfpCompositionController.js';
 import { rfpUpload, MAX_DOCUMENT_BYTES } from '../services/rfpStorage.js';
@@ -70,6 +72,9 @@ router.delete('/:id/folders/:folderId', composition.deleteFolder);
 router.post('/:id/folders/:folderId/items', validate(createItemSchema), composition.createItem);
 router.patch('/:id/items/:itemId', validate(updateItemSchema), composition.updateItem);
 router.delete('/:id/items/:itemId', composition.deleteItem);
+router.put('/:id/verifiers', validate(setVerifiersSchema), composition.setVerifiers);
+router.put('/:id/items/:itemId/verification', validate(verificationSchema), composition.decide);
+router.delete('/:id/items/:itemId/verification', composition.withdraw);
 // A prepared piece's file. Downloaded and deleted through /documents like
 // the tender's own, since it is the same kind of row on the same volume.
 router.post('/:id/items/:itemId/documents', uploadLimiter, upload, composition.addItemDocument);

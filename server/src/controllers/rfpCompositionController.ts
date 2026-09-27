@@ -1,6 +1,7 @@
 import { Response, NextFunction } from 'express';
 import type { Req } from '../types/http.js';
 import { rfpCompositionService } from '../services/rfpCompositionService.js';
+import { rfpVerificationService } from '../services/rfpVerificationService.js';
 import { AppError } from '../middleware/errorHandler.js';
 
 /** Wraps a handler so each one below is its call and nothing else. */
@@ -30,6 +31,10 @@ export const rfpCompositionController = {
   createItem: handle((req) => rfpCompositionService.createItem(req.user!.id, req.params.id, req.params.folderId, req.body), 201),
   updateItem: handle((req) => rfpCompositionService.updateItem(req.user!.id, req.params.id, req.params.itemId, req.body)),
   deleteItem: handle((req) => rfpCompositionService.deleteItem(req.user!.id, req.params.id, req.params.itemId), 204),
+
+  setVerifiers: handle((req) => rfpVerificationService.setVerifiers(req.user!.id, req.params.id, req.body.userIds)),
+  decide: handle((req) => rfpVerificationService.decide(req.user!.id, req.params.id, req.params.itemId, req.body)),
+  withdraw: handle((req) => rfpVerificationService.withdraw(req.user!.id, req.params.id, req.params.itemId), 204),
 
   /** A file multer has already written to the volume, recorded against a piece. */
   addItemDocument: handle(async (req) => {
