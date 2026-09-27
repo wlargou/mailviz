@@ -3,7 +3,18 @@ import rateLimit from 'express-rate-limit';
 import multer from 'multer';
 import { rfpController } from '../controllers/rfpController.js';
 import { validate } from '../middleware/validate.js';
-import { createRfpSchema, updateRfpSchema, shareRfpSchema } from '../validators/rfpValidator.js';
+import {
+  createRfpSchema,
+  updateRfpSchema,
+  shareRfpSchema,
+  createLotSchema,
+  updateLotSchema,
+  createFolderSchema,
+  updateFolderSchema,
+  createItemSchema,
+  updateItemSchema,
+} from '../validators/rfpValidator.js';
+import { rfpCompositionController as composition } from '../controllers/rfpCompositionController.js';
 import { rfpUpload, MAX_DOCUMENT_BYTES } from '../services/rfpStorage.js';
 import { AppError } from '../middleware/errorHandler.js';
 
@@ -36,6 +47,8 @@ function upload(req: Request, res: Response, next: NextFunction) {
 }
 
 router.get('/', rfpController.findAll);
+// Before `/:id`, or "catalogue" would be read as a tender id.
+router.get('/catalogue', composition.catalogue);
 router.get('/:id', rfpController.findById);
 router.post('/', validate(createRfpSchema), rfpController.create);
 router.patch('/:id', validate(updateRfpSchema), rfpController.update);
@@ -44,6 +57,22 @@ router.delete('/:id', rfpController.remove);
 router.post('/:id/share', validate(shareRfpSchema), rfpController.share);
 router.delete('/:id/shares/:recipientId', rfpController.unshare);
 router.get('/:id/shares', rfpController.getShares);
+
+// Lots — every tender has at least one; the budget is their total.
+router.post('/:id/lots', validate(createLotSchema), composition.createLot);
+router.patch('/:id/lots/:lotId', validate(updateLotSchema), composition.updateLot);
+router.delete('/:id/lots/:lotId', composition.deleteLot);
+
+// The response's dossiers, and the pieces each needs.
+router.post('/:id/folders', validate(createFolderSchema), composition.createFolder);
+router.patch('/:id/folders/:folderId', validate(updateFolderSchema), composition.updateFolder);
+router.delete('/:id/folders/:folderId', composition.deleteFolder);
+router.post('/:id/folders/:folderId/items', validate(createItemSchema), composition.createItem);
+router.patch('/:id/items/:itemId', validate(updateItemSchema), composition.updateItem);
+router.delete('/:id/items/:itemId', composition.deleteItem);
+// A prepared piece's file. Downloaded and deleted through /documents like
+// the tender's own, since it is the same kind of row on the same volume.
+router.post('/:id/items/:itemId/documents', uploadLimiter, upload, composition.addItemDocument);
 
 router.post('/:id/documents', uploadLimiter, upload, rfpController.addDocument);
 router.get('/:id/documents/:documentId', rfpController.downloadDocument);

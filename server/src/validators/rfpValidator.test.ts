@@ -20,7 +20,15 @@ describe('createRfpSchema', () => {
   it('accepts a minimal tender and a fully specified one', () => {
     expect(createRfpSchema.parse(valid)).toEqual(valid);
 
-    const full = { ...valid, portalUrl: 'https://portailachats.bankalmaghrib.ma/', isGoe: true, budget: 12500000.5, status: 'WORKING' as const, notes: 'Lot unique' };
+    const full = {
+      ...valid,
+      portalUrl: 'https://portailachats.bankalmaghrib.ma/',
+      isGoe: true,
+      status: 'WORKING' as const,
+      notes: 'Lot unique',
+      lots: [{ title: 'Serveurs', budget: 12500000.5 }, { title: 'Stockage', budget: null }],
+      composition: { kinds: ['ADMINISTRATIF' as const, 'OFFRE_FINANCIERE' as const], prefill: true },
+    };
     expect(createRfpSchema.parse(full)).toEqual(full);
   });
 
@@ -44,10 +52,16 @@ describe('createRfpSchema', () => {
     expect(createRfpSchema.parse({ ...valid, portalUrl: 'http://marchespublics.gov.ma' }).portalUrl).toBe('http://marchespublics.gov.ma');
   });
 
-  it('bounds the budget and keeps the status and format closed sets', () => {
-    expect(() => createRfpSchema.parse({ ...valid, budget: -1 })).toThrow();
-    expect(createRfpSchema.parse({ ...valid, budget: 0 }).budget).toBe(0);
-    expect(createRfpSchema.parse({ ...valid, budget: null }).budget).toBeNull();
+  it('bounds the lot budgets, and keeps the status, format and dossier kinds closed sets', () => {
+    expect(() => createRfpSchema.parse({ ...valid, lots: [{ title: 'Lot 1', budget: -1 }] })).toThrow();
+    expect(createRfpSchema.parse({ ...valid, lots: [{ title: 'Lot 1', budget: 0 }] }).lots![0].budget).toBe(0);
+    expect(createRfpSchema.parse({ ...valid, lots: [{ title: 'Lot 1', budget: null }] }).lots![0].budget).toBeNull();
+    // A tender has at least one lot — an empty list is not "no lots", it is a mistake.
+    expect(() => createRfpSchema.parse({ ...valid, lots: [] })).toThrow();
+    expect(() => createRfpSchema.parse({ ...valid, lots: [{ title: '   ' }] })).toThrow();
+    expect(() => createRfpSchema.parse({ ...valid, composition: { kinds: ['DOSSIER_SECRET'], prefill: true } })).toThrow();
+    // The total is derived; it is no longer something a caller can send.
+    expect(createRfpSchema.parse({ ...valid, budget: 5 })).not.toHaveProperty('budget');
 
     expect(() => createRfpSchema.parse({ ...valid, status: 'PENDING' })).toThrow();
     expect(() => createRfpSchema.parse({ ...valid, submissionFormat: 'FAX' })).toThrow();
@@ -75,7 +89,9 @@ describe('updateRfpSchema', () => {
 
   it('still applies the field rules it inherits', () => {
     expect(() => updateRfpSchema.parse({ portalUrl: 'javascript:alert(1)' })).toThrow();
-    expect(() => updateRfpSchema.parse({ budget: -5 })).toThrow();
+    // Lots and composition have their own endpoints; a PATCH cannot replace them.
+    expect(updateRfpSchema.parse({ lots: [{ title: 'x' }] })).not.toHaveProperty('lots');
+    expect(updateRfpSchema.parse({ composition: { kinds: [], prefill: false } })).not.toHaveProperty('composition');
     expect(() => updateRfpSchema.parse({ status: 'ARCHIVED' })).toThrow();
   });
 });

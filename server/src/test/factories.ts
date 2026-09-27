@@ -266,6 +266,10 @@ export async function createRfp(
   }> = {}
 ) {
   const id = uniq();
+  // With its "Lot unique", the way `rfpService.create` makes one — a tender
+  // with no lot is not a state the app produces, so a fixture should not be
+  // one either. The budget is set on both, as the service's recompute would.
+  const budget = overrides.budget ?? null;
   return prisma.rfp.create({
     data: {
       userId,
@@ -275,9 +279,10 @@ export async function createRfp(
       submissionFormat: overrides.submissionFormat ?? 'PORTAL',
       ...(overrides.portalUrl !== undefined ? { portalUrl: overrides.portalUrl } : {}),
       ...(overrides.isGoe !== undefined ? { isGoe: overrides.isGoe } : {}),
-      ...(overrides.budget !== undefined ? { budget: overrides.budget } : {}),
+      budget,
       ...(overrides.status !== undefined ? { status: overrides.status } : {}),
       ...(overrides.notes !== undefined ? { notes: overrides.notes } : {}),
+      lots: { create: [{ number: 1, title: 'Lot unique', budget }] },
     },
   });
 }

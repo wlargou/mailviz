@@ -205,6 +205,17 @@ const PROTECTED_ROUTES: Array<[HttpMethod, string]> = [
   ['post', '/api/v1/rfps'],
   ['patch', `/api/v1/rfps/${PLACEHOLDER_ID}`],
   ['delete', `/api/v1/rfps/${PLACEHOLDER_ID}`],
+  ['get', '/api/v1/rfps/catalogue'],
+  ['post', `/api/v1/rfps/${PLACEHOLDER_ID}/lots`],
+  ['patch', `/api/v1/rfps/${PLACEHOLDER_ID}/lots/${PLACEHOLDER_ID}`],
+  ['delete', `/api/v1/rfps/${PLACEHOLDER_ID}/lots/${PLACEHOLDER_ID}`],
+  ['post', `/api/v1/rfps/${PLACEHOLDER_ID}/folders`],
+  ['patch', `/api/v1/rfps/${PLACEHOLDER_ID}/folders/${PLACEHOLDER_ID}`],
+  ['delete', `/api/v1/rfps/${PLACEHOLDER_ID}/folders/${PLACEHOLDER_ID}`],
+  ['post', `/api/v1/rfps/${PLACEHOLDER_ID}/folders/${PLACEHOLDER_ID}/items`],
+  ['patch', `/api/v1/rfps/${PLACEHOLDER_ID}/items/${PLACEHOLDER_ID}`],
+  ['delete', `/api/v1/rfps/${PLACEHOLDER_ID}/items/${PLACEHOLDER_ID}`],
+  ['post', `/api/v1/rfps/${PLACEHOLDER_ID}/items/${PLACEHOLDER_ID}/documents`],
   ['post', `/api/v1/rfps/${PLACEHOLDER_ID}/share`],
   ['delete', `/api/v1/rfps/${PLACEHOLDER_ID}/shares/${PLACEHOLDER_ID}`],
   ['get', `/api/v1/rfps/${PLACEHOLDER_ID}/shares`],
@@ -1755,7 +1766,7 @@ describe('/api/v1/rfps', () => {
     const { alice } = await createTwoUsers();
     const cookie = authFor(alice.id);
 
-    const created = await request(app).post('/api/v1/rfps').set('Cookie', cookie).send({ ...body, isGoe: true, budget: 12500000.5 });
+    const created = await request(app).post('/api/v1/rfps').set('Cookie', cookie).send({ ...body, isGoe: true, lots: [{ title: 'Lot unique', budget: 12500000.5 }] });
     expect(created.status).toBe(201);
     const rfp = (created.body as ItemBody<RfpRow>).data;
     expect(rfp.reference).toBe('70/AOO/BKAM/2026');
@@ -1935,5 +1946,106 @@ describe('/api/v1/rfps — sharing', () => {
     const ghost = await request(app).post(`/api/v1/rfps/${rfp.id}/share`).set('Cookie', cookie).send({ userIds: [PLACEHOLDER_ID] });
     expect(ghost.status).toBe(404);
     expect(await prisma.rfpShare.count()).toBe(0);
+  });
+});
+
+interface DetailRfp {
+  id: string;
+  budget: number | null;
+  lots: Array<{ id: string; number: number; title: string; budget: number | null }>;
+  documents: Array<{ id: string }>;
+  folders: Array<{ id: string; title: string; kind: string; items: Array<{ id: string; title: string; status: string; documents: Array<{ id: string; filename: string }> }> }>;
+}
+
+describe('/api/v1/rfps — lots and composition', () => {
+  let storageDir: string;
+  beforeAll(async () => {
+    storageDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'mailviz-rfp-comp-routes-'));
+    process.env.RFP_STORAGE_DIR = storageDir;
+  });
+  afterAll(async () => {
+    delete process.env.RFP_STORAGE_DIR;
+    await fs.promises.rm(storageDir, { recursive: true, force: true });
+  });
+
+  const body = { name: 'Refonte AIX', reference: 'COMP/1/2026', deadlineAt: '2026-11-09T10:00:00.000Z', submissionFormat: 'PORTAL' };
+
+  it('serves the catalogue, and is not swallowed by /:id', async () => {
+    // Registered before `/:id`; the other way round, "catalogue" is read as a
+    // tender id and answers 404.
+    const { alice } = await createTwoUsers();
+    const res = await request(app).get('/api/v1/rfps/catalogue').set('Cookie', authFor(alice.id));
+
+    expect(res.status).toBe(200);
+    const kinds = (res.body as ItemBody<Array<{ kind: string; perLot: boolean; defaultItems: string[] }>>).data;
+    expect(kinds.map((k) => k.kind)).toEqual(['ADMINISTRATIF', 'TECHNIQUE', 'ADDITIF', 'OFFRE_TECHNIQUE', 'OFFRE_FINANCIERE', 'OTHER']);
+    expect(kinds.filter((k) => k.perLot).map((k) => k.kind)).toEqual(['OFFRE_TECHNIQUE', 'OFFRE_FINANCIERE']);
+    expect(kinds.find((k) => k.kind === 'OFFRE_TECHNIQUE')!.defaultItems).toContain('CV des intervenants');
+  });
+
+  it('creates a tender with lots and its composition in one call, and reads it all back', async () => {
+    const { alice } = await createTwoUsers();
+    const cookie = authFor(alice.id);
+
+    const created = await request(app).post('/api/v1/rfps').set('Cookie', cookie).send({
+      ...body,
+      isGoe: true,
+      lots: [{ title: 'Serveurs', budget: 8000000 }, { title: 'Stockage', budget: 4500000 }],
+      composition: { kinds: ['ADMINISTRATIF', 'OFFRE_FINANCIERE'], prefill: true },
+    });
+    expect(created.status).toBe(201);
+    const id = (created.body as ItemBody<IdRow>).data.id;
+
+    const detail = (await request(app).get(`/api/v1/rfps/${id}`).set('Cookie', cookie)).body as ItemBody<DetailRfp>;
+    expect(detail.data.budget).toBe(12500000);
+    expect(detail.data.lots.map((l) => [l.number, l.budget])).toEqual([[1, 8000000], [2, 4500000]]);
+    expect(detail.data.folders.map((f) => f.title)).toEqual(['Dossier administratif', 'Offre financière — Lot 1', 'Offre financière — Lot 2']);
+  });
+
+  it('prepares a piece over HTTP: status, a file up, the file back, and none of it in the tender dossier', async () => {
+    const { alice } = await createTwoUsers();
+    const cookie = authFor(alice.id);
+    const created = await request(app).post('/api/v1/rfps').set('Cookie', cookie).send({
+      ...body,
+      reference: 'COMP/2/2026',
+      composition: { kinds: ['OFFRE_TECHNIQUE'], prefill: true },
+    });
+    const rfp = (created.body as ItemBody<DetailRfp>).data;
+    const cv = rfp.folders[0].items.find((i) => i.title === 'CV des intervenants')!;
+
+    const patched = await request(app).patch(`/api/v1/rfps/${rfp.id}/items/${cv.id}`).set('Cookie', cookie).send({ status: 'IN_PROGRESS' });
+    expect(patched.status).toBe(200);
+
+    const up = await request(app)
+      .post(`/api/v1/rfps/${rfp.id}/items/${cv.id}/documents`)
+      .set('Cookie', cookie)
+      .attach('file', Buffer.from('%PDF cv'), { filename: 'CV Walid.pdf', contentType: 'application/pdf' });
+    expect(up.status).toBe(201);
+    const docId = (up.body as ItemBody<IdRow>).data.id;
+
+    // Downloaded through the same endpoint as the tender's own documents.
+    const down = await request(app).get(`/api/v1/rfps/${rfp.id}/documents/${docId}`).set('Cookie', cookie);
+    expect(down.status).toBe(200);
+    expect(down.body.toString()).toBe('%PDF cv');
+
+    const detail = ((await request(app).get(`/api/v1/rfps/${rfp.id}`).set('Cookie', cookie)).body as ItemBody<DetailRfp>).data;
+    const piece = detail.folders[0].items.find((i) => i.id === cv.id)!;
+    expect(piece.status).toBe('IN_PROGRESS');
+    expect(piece.documents.map((d) => d.filename)).toEqual(['CV Walid.pdf']);
+    expect(detail.documents).toHaveLength(0);
+  });
+
+  it('validates the composition endpoints rather than writing whatever arrives', async () => {
+    const { alice } = await createTwoUsers();
+    const cookie = authFor(alice.id);
+    const rfp = await createRfp(alice.id, { reference: 'COMP/3/2026' });
+
+    expect((await request(app).post(`/api/v1/rfps/${rfp.id}/lots`).set('Cookie', cookie).send({ title: '  ' })).status).toBe(400);
+    expect((await request(app).post(`/api/v1/rfps/${rfp.id}/lots`).set('Cookie', cookie).send({ title: 'Lot 2', budget: -1 })).status).toBe(400);
+    expect((await request(app).post(`/api/v1/rfps/${rfp.id}/folders`).set('Cookie', cookie).send({ kind: 'SECRET' })).status).toBe(400);
+    // Well-formed but wrong for the kind: the service's rule, as a 400.
+    expect((await request(app).post(`/api/v1/rfps/${rfp.id}/folders`).set('Cookie', cookie).send({ kind: 'OFFRE_FINANCIERE' })).status).toBe(400);
+    expect(await prisma.rfpLot.count({ where: { rfpId: rfp.id } })).toBe(1);
+    expect(await prisma.rfpFolder.count({ where: { rfpId: rfp.id } })).toBe(0);
   });
 });
