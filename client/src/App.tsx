@@ -18,6 +18,7 @@ import { SettingsPage } from './components/settings/SettingsPage';
 import { NotFoundPage } from './components/shared/NotFoundPage';
 import { DealsPage } from './components/deals/DealsPage';
 import { RfpsPage } from './components/rfps/RfpsPage';
+import { RfpDetailPage } from './components/rfps/RfpDetailPage';
 import { ActivityLogPage } from './components/audit/ActivityLogPage';
 
 /**
@@ -82,6 +83,7 @@ export function App() {
             <Route path="/contacts/:id" element={<ContactDetailPage />} />
             <Route path="/deals" element={<DealsPage />} />
             <Route path="/rfps" element={<RfpsPage />} />
+            <Route path="/rfps/:id" element={<RfpDetailPage />} />
             <Route path="/calendar" element={<CalendarPage />} />
             <Route path="/mail" element={<MailPage />} />
             <Route path="/mail/review" element={<ReviewPage />} />

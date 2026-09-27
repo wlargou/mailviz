@@ -6,13 +6,15 @@ import { useUIStore } from '../../store/uiStore';
 import { RfpDocuments, type PendingDocument } from './RfpDocuments';
 import {
   EMPTY_RFP_FORM,
-  RfpBudgetFields,
+  RfpCompositionFields,
   RfpDeadlineFields,
+  RfpGoeField,
   RfpIdentityFields,
+  RfpLotsEditor,
   TIME_PATTERN,
   type RfpFormValues,
 } from './RfpFormFields';
-import type { Rfp } from '../../types/rfp';
+import { parseBudget, type Rfp, type RfpCatalogueEntry } from '../../types/rfp';
 
 /**
  * A day and a wall-clock time as an instant.
@@ -48,28 +50,31 @@ interface RfpFormPanelProps {
   rfp?: Rfp | null;
   onClose: () => void;
   onSaved: () => void;
+  /** A new tender goes straight to its page — that is where the work starts. */
+  onCreated?: (id: string) => void;
 }
 
 /**
  * Create or edit one tender.
  *
- * Creating runs through a four-step `CreateTearsheet` — tender, deadline,
- * budget, documents — which is the shape the register is growing into: the
- * questions deadline joins step two, the qualification thresholds join step
- * three, and the response checklist becomes a fifth.
+ * Creating runs through a five-step `CreateTearsheet` — tender, deadline,
+ * lots, composition, documents. The composition decides which dossiers the
+ * detail page tracks from then on; the questions deadline will join step two.
  *
- * Editing stays a single `Tearsheet` with every field on one screen. Walking
- * four steps to move a status from Working to Submitted would be worse than
- * the form it replaced, and `EditTearsheet` — the multi-step edit
+ * Editing stays a single `Tearsheet` for what the tender *is*. Lots, dossiers
+ * and documents are edited where they are shown, on the detail page — they
+ * are lists, and a form is the wrong shape for a list that keeps changing.
+ * Walking five steps to move a status from Working to Submitted would be
+ * worse than the form it replaced, and `EditTearsheet` — the multi-step edit
  * counterpart — is disabled by default in this version of
  * `@carbon/ibm-products` (`pkg.component.EditTearsheet === false`), so using
  * it would mean opting into an unreleased component.
  */
-export function RfpFormPanel({ open, rfp, onClose, onSaved }: RfpFormPanelProps) {
+export function RfpFormPanel({ open, rfp, onClose, onSaved, onCreated }: RfpFormPanelProps) {
   const addNotification = useUIStore((s) => s.addNotification);
   const [values, setValues] = useState<RfpFormValues>(EMPTY_RFP_FORM);
   const [pending, setPending] = useState<PendingDocument[]>([]);
-  const [documents, setDocuments] = useState<Rfp['documents']>([]);
+  const [catalogue, setCatalogue] = useState<RfpCatalogueEntry[]>([]);
   const [saving, setSaving] = useState(false);
   const [referenceError, setReferenceError] = useState<string | null>(null);
 
@@ -93,29 +98,34 @@ export function RfpFormPanel({ open, rfp, onClose, onSaved }: RfpFormPanelProps)
         submissionFormat: rfp.submissionFormat,
         portalUrl: rfp.portalUrl ?? '',
         isGoe: rfp.isGoe,
-        budget: rfp.budget === null ? '' : String(rfp.budget),
         notes: rfp.notes ?? '',
+        // Not edited here — the page owns them.
+        lots: [],
+        compositionKinds: [],
+        prefill: false,
       });
-      setDocuments(rfp.documents);
     } else {
       setValues(EMPTY_RFP_FORM);
-      setDocuments([]);
     }
   }, [open, rfp]);
 
+  // What the composition step offers, and the pieces each dossier starts
+  // with, are the server's — one catalogue, so the two cannot disagree.
+  useEffect(() => {
+    if (!open || rfp || catalogue.length > 0) return;
+    rfpsApi
+      .getCatalogue()
+      .then(({ data: res }) => setCatalogue(res.data))
+      .catch(() => addNotification({ kind: 'error', title: 'Failed to load the dossier catalogue' }));
+  }, [open, rfp, catalogue.length, addNotification]);
+
   const deadlineIso = toDeadlineIso(values.deadlineDate, values.deadlineTime);
   const identityDone = Boolean(values.name.trim() && values.reference.trim());
+  const lotsDone =
+    values.lots.length > 0 &&
+    values.lots.every((l) => l.title.trim() !== '' && (!values.isGoe || parseBudget(l.budget) !== undefined));
   const canSave = identityDone && Boolean(deadlineIso) && !saving;
-
-  const refreshDocuments = async (id: string) => {
-    try {
-      const { data: res } = await rfpsApi.getById(id);
-      setDocuments(res.data.documents);
-      onSaved();
-    } catch {
-      /* the panel still holds what it had */
-    }
-  };
+  const canCreate = canSave && lotsDone;
 
   const handleSubmit = async () => {
     if (!canSave || !deadlineIso) return;
@@ -131,14 +141,26 @@ export function RfpFormPanel({ open, rfp, onClose, onSaved }: RfpFormPanelProps)
       // format change does not leave a stale link behind.
       portalUrl: values.submissionFormat === 'PORTAL' ? values.portalUrl.trim() || null : null,
       isGoe: values.isGoe,
-      budget: values.isGoe && values.budget.trim() !== '' ? Number(values.budget) : null,
       status: values.status,
       notes: values.notes.trim() || null,
     };
 
     let id: string;
     try {
-      id = rfp ? (await rfpsApi.update(rfp.id, body)).data.data.id : (await rfpsApi.create(body)).data.data.id;
+      id = rfp
+        ? (await rfpsApi.update(rfp.id, body)).data.data.id
+        : (
+            await rfpsApi.create({
+              ...body,
+              lots: values.lots.map((l) => ({
+                title: l.title.trim(),
+                // A private buyer publishes no budget, so none is sent even
+                // if one was typed before GOE was switched off.
+                budget: values.isGoe ? (parseBudget(l.budget) ?? null) : null,
+              })),
+              composition: { kinds: values.compositionKinds, prefill: values.prefill },
+            })
+          ).data.data.id;
     } catch (err) {
       if (isAxiosError(err) && err.response?.status === 409) {
         setReferenceError('An RFP with this reference already exists');
@@ -176,6 +198,7 @@ export function RfpFormPanel({ open, rfp, onClose, onSaved }: RfpFormPanelProps)
     setSaving(false);
     onSaved();
     onClose();
+    if (!rfp) onCreated?.(id);
   };
 
   const groupProps = {
@@ -187,13 +210,7 @@ export function RfpFormPanel({ open, rfp, onClose, onSaved }: RfpFormPanelProps)
 
   const documentsSection = (idPrefix: string) => (
     <div className="rfp-form__field rfp-form__field--full">
-      <RfpDocuments
-        rfpId={rfp?.id}
-        documents={documents}
-        pending={pending}
-        onPendingChange={setPending}
-        onUploaded={() => rfp && refreshDocuments(rfp.id)}
-      />
+      <RfpDocuments documents={[]} pending={pending} onPendingChange={setPending} />
       <p className="rfp-form__section-hint" id={`${idPrefix}-documents-hint`}>
         The RC, the CPS, the Avis and any annexes. A tender's dossier is often
         several files, and one file is sometimes several documents.
@@ -221,15 +238,13 @@ export function RfpFormPanel({ open, rfp, onClose, onSaved }: RfpFormPanelProps)
         <div className="rfp-form">
           <RfpIdentityFields {...groupProps} idPrefix="rfp-edit" />
           <RfpDeadlineFields {...groupProps} idPrefix="rfp-edit" />
-          <RfpBudgetFields {...groupProps} idPrefix="rfp-edit" />
-          <p className="rfp-form__section-label rfp-form__field--full">Documents</p>
-          {documentsSection('rfp-edit')}
+          <RfpGoeField {...groupProps} idPrefix="rfp-edit" />
         </div>
       </Tearsheet>
     );
   }
 
-  // ── Creating: the four steps the register is growing into ───────────────
+  // ── Creating: from what the tender is to what the response needs ────────
   return (
     <CreateTearsheet
       {...FLOATING_MENUS}
@@ -272,17 +287,33 @@ export function RfpFormPanel({ open, rfp, onClose, onSaved }: RfpFormPanelProps)
         </div>
       </CreateTearsheetStep>
 
-      <CreateTearsheetStep title="Budget" subtitle="What it is worth, if the buyer publishes it" hasFieldset={false}>
+      <CreateTearsheetStep
+        title="Lots & budget"
+        subtitle="How the tender is split, and what each lot is worth"
+        hasFieldset={false}
+        disableSubmit={!lotsDone}
+      >
         <div className="rfp-form">
-          <RfpBudgetFields {...groupProps} idPrefix="rfp-new" />
+          <RfpGoeField {...groupProps} idPrefix="rfp-new" />
+          <RfpLotsEditor {...groupProps} idPrefix="rfp-new" />
+        </div>
+      </CreateTearsheetStep>
+
+      <CreateTearsheetStep
+        title="Composition"
+        subtitle="The dossiers the response is made of"
+        hasFieldset={false}
+      >
+        <div className="rfp-form">
+          <RfpCompositionFields {...groupProps} idPrefix="rfp-new" catalogue={catalogue} />
         </div>
       </CreateTearsheetStep>
 
       <CreateTearsheetStep
         title="Documents"
-        subtitle="The dossier — added now or later"
+        subtitle="The tender's own files — added now or later"
         hasFieldset={false}
-        disableSubmit={!canSave}
+        disableSubmit={!canCreate}
       >
         <div className="rfp-form">{documentsSection('rfp-new')}</div>
       </CreateTearsheetStep>

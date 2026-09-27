@@ -1,0 +1,276 @@
+import { useCallback, useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { isAxiosError } from 'axios';
+import { Button, Grid, Column, ProgressBar, SkeletonText, Tabs, TabList, Tab, TabPanels, TabPanel, Tag, Tile } from '@carbon/react';
+import { Edit, Launch, Share, TrashCan } from '@carbon/icons-react';
+import { format } from 'date-fns';
+import { PageHeader } from '../shared/PageHeader';
+import { EmptyState } from '../shared/EmptyState';
+import { ConfirmDeleteModal } from '../shared/ConfirmDeleteModal';
+import { ShareDialog } from '../shared/ShareDialog';
+import { SharedBadge } from '../shared/SharedBadge';
+import { RfpFormPanel } from './RfpFormPanel';
+import { RfpDocuments } from './RfpDocuments';
+import { RfpLotsSection } from './RfpLotsSection';
+import { RfpResponseSection } from './RfpResponseSection';
+import { deadlineTone } from './RfpsPage';
+import { rfpsApi } from '../../api/rfps';
+import { useUIStore } from '../../store/uiStore';
+import { useAuthStore } from '../../store/authStore';
+import {
+  formatBudget,
+  readiness,
+  RFP_STATUS_LABELS,
+  RFP_STATUS_TAG_TYPE,
+  RFP_SUBMISSION_FORMAT_LABELS,
+  type RfpCatalogueEntry,
+  type RfpDetail,
+} from '../../types/rfp';
+
+type Shares = Array<{ id: string; createdAt: string; sharedWith: { id: string; name: string | null; email: string; avatarUrl: string | null } }>;
+
+/**
+ * One tender: what it is, when it is due, its lots, and — the reason to open
+ * it — the response being prepared, dossier by dossier and piece by piece.
+ *
+ * A page rather than the panel it replaces, because this is where the work
+ * happens for the weeks a tender is open, and a panel over the register is
+ * the wrong shape for somewhere people stay.
+ */
+export function RfpDetailPage() {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const addNotification = useUIStore((s) => s.addNotification);
+  const currentUserId = useAuthStore((s) => s.user?.id);
+  const [rfp, setRfp] = useState<RfpDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+  const [catalogue, setCatalogue] = useState<RfpCatalogueEntry[]>([]);
+  const [editOpen, setEditOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shares, setShares] = useState<Shares>([]);
+
+  /** Re-read without the skeleton — every edit on the page ends here. */
+  const refresh = useCallback(async () => {
+    if (!id) return;
+    try {
+      const { data: res } = await rfpsApi.getById(id);
+      setRfp(res.data);
+      setNotFound(false);
+    } catch (err) {
+      if (isAxiosError(err) && err.response?.status === 404) setNotFound(true);
+      else addNotification({ kind: 'error', title: 'Failed to load the RFP' });
+    }
+  }, [id, addNotification]);
+
+  useEffect(() => {
+    setLoading(true);
+    refresh().finally(() => setLoading(false));
+  }, [refresh]);
+
+  useEffect(() => {
+    rfpsApi
+      .getCatalogue()
+      .then(({ data: res }) => setCatalogue(res.data))
+      .catch(() => {
+        /* only "Add dossier" needs it, and it says so when empty */
+      });
+  }, []);
+
+  const fetchShares = useCallback(async () => {
+    if (!id) return;
+    try {
+      const { data: res } = await rfpsApi.getRfpShares(id);
+      setShares(res.data);
+    } catch {
+      setShares([]);
+    }
+  }, [id]);
+
+  if (loading) {
+    return (
+      <Grid fullWidth>
+        <Column lg={16} md={8} sm={4}>
+          <SkeletonText heading width="40%" />
+          <SkeletonText paragraph lineCount={4} />
+        </Column>
+      </Grid>
+    );
+  }
+
+  if (notFound || !rfp) {
+    return (
+      <EmptyState
+        title="RFP not found"
+        description="It may have been deleted, or it is not shared with you."
+        action={<Button onClick={() => navigate('/rfps')}>Back to RFPs</Button>}
+      />
+    );
+  }
+
+  const isOwner = rfp.userId === currentUserId;
+  const tone = deadlineTone(rfp.deadlineAt, rfp.status);
+  const allItems = rfp.folders.flatMap((f) => f.items);
+  const { ready, total } = readiness(allItems);
+  const fileCount = allItems.reduce((n, i) => n + i.documents.length, 0);
+
+  const handleDelete = async () => {
+    try {
+      await rfpsApi.delete(rfp.id);
+      addNotification({ kind: 'success', title: 'RFP deleted' });
+      navigate('/rfps');
+    } catch {
+      addNotification({ kind: 'error', title: 'Failed to delete the RFP' });
+    }
+  };
+
+  const documentsTotal = rfp.documents.length + fileCount;
+
+  return (
+    <div className="rfp-detail">
+      <PageHeader
+        title={rfp.name}
+        subtitle={[rfp.reference, rfp.customer?.name].filter(Boolean).join(' · ')}
+        breadcrumbs={[{ label: 'RFPs', href: '/rfps' }]}
+        actions={
+          <>
+            <Button kind="tertiary" size="md" renderIcon={Edit} onClick={() => setEditOpen(true)}>
+              Edit
+            </Button>
+            {isOwner && (
+              <Button
+                kind="ghost"
+                size="md"
+                renderIcon={Share}
+                onClick={async () => {
+                  setShareOpen(true);
+                  await fetchShares();
+                }}
+              >
+                Share
+              </Button>
+            )}
+            {isOwner && (
+              <Button kind="danger--ghost" size="md" hasIconOnly renderIcon={TrashCan} iconDescription="Delete RFP" onClick={() => setDeleteOpen(true)} />
+            )}
+          </>
+        }
+      />
+
+      <div className="rfp-detail__tags">
+        <Tag type={RFP_STATUS_TAG_TYPE[rfp.status]} size="md">{RFP_STATUS_LABELS[rfp.status]}</Tag>
+        {rfp.isGoe && <Tag type="teal" size="md">GOE</Tag>}
+        <SharedBadge ownerId={rfp.userId} />
+      </div>
+
+      <div className="rfp-detail__summary">
+        <Tile className="rfp-detail__tile">
+          <p className="rfp-detail__tile-label">Submission deadline</p>
+          <p className="rfp-detail__tile-value">
+            <span className={`rfp-deadline rfp-deadline--${tone}`}>
+              {format(new Date(rfp.deadlineAt), 'd MMM yyyy')}
+              <span className="rfp-deadline__time">{format(new Date(rfp.deadlineAt), 'HH:mm')}</span>
+            </span>
+          </p>
+          <p className="rfp-detail__tile-hint">
+            {tone === 'overdue' ? 'Past the deadline' : tone === 'soon' ? 'Due within a week' : format(new Date(rfp.deadlineAt), 'EEEE')}
+          </p>
+        </Tile>
+
+        <Tile className="rfp-detail__tile">
+          <p className="rfp-detail__tile-label">Submission</p>
+          <p className="rfp-detail__tile-value">{RFP_SUBMISSION_FORMAT_LABELS[rfp.submissionFormat]}</p>
+          {rfp.submissionFormat === 'PORTAL' && rfp.portalUrl ? (
+            <a className="rfp-detail__tile-hint cds--link" href={rfp.portalUrl} target="_blank" rel="noopener noreferrer">
+              Open the buyer&apos;s portal <Launch size={12} />
+            </a>
+          ) : (
+            <p className="rfp-detail__tile-hint">{rfp.submissionFormat === 'PAPER' ? 'Sealed envelopes, by hand' : ' '}</p>
+          )}
+        </Tile>
+
+        <Tile className="rfp-detail__tile">
+          <p className="rfp-detail__tile-label">Budget</p>
+          <p className="rfp-detail__tile-value">{rfp.isGoe ? formatBudget(rfp.budget) : 'Not published'}</p>
+          <p className="rfp-detail__tile-hint">
+            {rfp.lots.length === 1 ? rfp.lots[0].title : `${rfp.lots.length} lots`}
+          </p>
+        </Tile>
+
+        <Tile className="rfp-detail__tile">
+          <p className="rfp-detail__tile-label">Preparation</p>
+          <ProgressBar
+            label="Pieces ready"
+            hideLabel
+            value={ready}
+            max={Math.max(total, 1)}
+            size="big"
+            status={total > 0 && ready === total ? 'finished' : 'active'}
+            helperText={total === 0 ? 'Nothing to prepare yet' : `${ready} of ${total} pieces ready`}
+          />
+        </Tile>
+      </div>
+
+      {rfp.notes && <p className="rfp-detail__notes">{rfp.notes}</p>}
+
+      <Tabs>
+        <TabList aria-label="RFP sections">
+          <Tab>Response ({ready}/{total})</Tab>
+          <Tab>Lots ({rfp.lots.length})</Tab>
+          <Tab>Tender documents ({rfp.documents.length})</Tab>
+        </TabList>
+        <TabPanels>
+          <TabPanel className="rfp-detail__panel">
+            <RfpResponseSection rfp={rfp} catalogue={catalogue} onLocalChange={(update) => setRfp((r) => (r ? update(r) : r))} onRefresh={refresh} />
+          </TabPanel>
+          <TabPanel className="rfp-detail__panel">
+            <RfpLotsSection rfp={rfp} onRefresh={refresh} />
+          </TabPanel>
+          <TabPanel className="rfp-detail__panel">
+            <section className="rfp-detail__section" aria-labelledby="rfp-documents-heading">
+              <div className="rfp-detail__section-header">
+                <div>
+                  <h2 id="rfp-documents-heading" className="rfp-detail__section-title">Tender documents</h2>
+                  <p className="rfp-detail__section-subtitle">What the buyer published — the RC, the CPS, the Avis and the annexes</p>
+                </div>
+              </div>
+              <RfpDocuments rfpId={rfp.id} documents={rfp.documents} onUploaded={refresh} />
+            </section>
+          </TabPanel>
+        </TabPanels>
+      </Tabs>
+
+      <RfpFormPanel open={editOpen} rfp={rfp} onClose={() => setEditOpen(false)} onSaved={refresh} />
+
+      {shareOpen && (
+        <ShareDialog
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
+          title={rfp.name}
+          currentShares={shares}
+          onShare={async (userIds) => {
+            await rfpsApi.shareRfp(rfp.id, userIds);
+          }}
+          onUnshare={async (userId) => {
+            await rfpsApi.unshareRfp(rfp.id, userId);
+          }}
+          onRefresh={fetchShares}
+        />
+      )}
+
+      <ConfirmDeleteModal
+        open={deleteOpen}
+        title={rfp.name}
+        entityLabel="RFP"
+        consequence={
+          documentsTotal > 0
+            ? `Its lots, its response and ${documentsTotal} file${documentsTotal === 1 ? '' : 's'} will be deleted too.`
+            : 'Its lots and its response will be deleted too.'
+        }
+        onConfirm={handleDelete}
+        onClose={() => setDeleteOpen(false)}
+      />
+    </div>
+  );
+}

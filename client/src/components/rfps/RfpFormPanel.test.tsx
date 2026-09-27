@@ -15,8 +15,28 @@ vi.mock('../../api/customers', () => ({
 }));
 
 vi.mock('../../api/rfps', () => ({
-  rfpsApi: { getAll: vi.fn(), getById: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn(), uploadDocument: vi.fn(), deleteDocument: vi.fn(), documentUrl: (r: string, d: string) => `/api/v1/rfps/${r}/documents/${d}` },
+  rfpsApi: {
+    getAll: vi.fn(),
+    getById: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    uploadDocument: vi.fn(),
+    deleteDocument: vi.fn(),
+    getCatalogue: vi.fn(),
+    documentUrl: (r: string, d: string) => `/api/v1/rfps/${r}/documents/${d}`,
+  },
 }));
+
+/** The server's catalogue, trimmed to what the composition step shows. */
+const CATALOGUE = [
+  { kind: 'ADMINISTRATIF', label: 'Dossier administratif', perLot: false, defaultItems: ['Attestation fiscale', 'Attestation CNSS'] },
+  { kind: 'TECHNIQUE', label: 'Dossier technique', perLot: false, defaultItems: ['Attestations de références'] },
+  { kind: 'ADDITIF', label: 'Dossier additif', perLot: false, defaultItems: ['RC paraphé et signé'] },
+  { kind: 'OFFRE_TECHNIQUE', label: 'Offre technique', perLot: true, defaultItems: ['CV des intervenants', 'Diplômes'] },
+  { kind: 'OFFRE_FINANCIERE', label: 'Offre financière', perLot: true, defaultItems: ["Acte d'engagement"] },
+  { kind: 'OTHER', label: 'Autre', perLot: false, defaultItems: [] },
+];
 
 function axiosOk<T>(data: T): AxiosResponse<T> {
   return { data, status: 200, statusText: 'OK', headers: new AxiosHeaders(), config: { headers: new AxiosHeaders() } };
@@ -44,7 +64,21 @@ function makeRfp(overrides: Partial<Rfp> = {}): Rfp {
   };
 }
 
-beforeEach(() => vi.clearAllMocks());
+/**
+ * Fill a field in one change event. Typing re-renders the whole five-step
+ * wizard per keystroke — seconds per field — and these tests are about the
+ * wizard, not the keyboard. The one test that is about keystrokes types.
+ */
+async function fill(user: ReturnType<typeof userEvent.setup>, field: HTMLElement, text: string) {
+  await user.clear(field);
+  await user.click(field);
+  await user.paste(text);
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(rfpsApi.getCatalogue).mockResolvedValue(axiosOk({ data: CATALOGUE }) as never);
+});
 
 /**
  * The deadline is a day AND an hour — "09/09/2026 à 10H" — and the hour is
@@ -82,19 +116,33 @@ describe('RfpFormPanel', () => {
     expect(screen.getByLabelText('Reference')).toHaveValue('70/AOO/BKAM/2026');
     expect(screen.getByLabelText('Time')).toHaveValue('10:00');
     expect(screen.getByLabelText('Portal')).toHaveValue('https://portailachats.bankalmaghrib.ma/');
-    expect(screen.getByLabelText('Budget (MAD)')).toHaveValue(12500000);
+    expect(screen.getByRole('switch', { name: /Government-Owned Entity/i })).toHaveAttribute('aria-checked', 'true');
   });
 
-  it('offers the portal only for a portal submission, and the budget only for a public buyer', async () => {
+  it('edits what the tender is, and leaves its lots and budget to the page', async () => {
+    // The budget is the lots' total now — a field for it here would be a
+    // second, contradictory place to set it.
+    vi.mocked(rfpsApi.update).mockResolvedValue(axiosOk({ data: makeRfp() }) as never);
+    const user = userEvent.setup();
+    render(<RfpFormPanel open rfp={makeRfp()} onClose={vi.fn()} onSaved={vi.fn()} />);
+
+    expect(screen.queryByLabelText(/budget/i)).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(rfpsApi.update).toHaveBeenCalled());
+    const body = vi.mocked(rfpsApi.update).mock.calls[0][1] as Record<string, unknown>;
+    expect(body).not.toHaveProperty('budget');
+    expect(body).not.toHaveProperty('lots');
+    expect(body).not.toHaveProperty('composition');
+  });
+
+  it('offers the portal only for a portal submission', async () => {
     const user = userEvent.setup();
     render(<RfpFormPanel open rfp={makeRfp()} onClose={vi.fn()} onSaved={vi.fn()} />);
 
     await user.click(screen.getByRole('combobox', { name: /Submission format/i }));
     await user.click(await screen.findByRole('option', { name: 'Paper' }));
     expect(screen.queryByLabelText('Portal')).toBeNull();
-
-    await user.click(screen.getByRole('switch', { name: /Government-Owned Entity/i }));
-    expect(screen.queryByLabelText('Budget (MAD)')).toBeNull();
   });
 
   it('clears the portal link when the submission stops being a portal', async () => {
@@ -124,18 +172,6 @@ describe('RfpFormPanel', () => {
 
     await waitFor(() => expect(rfpsApi.update).toHaveBeenCalled());
     expect(vi.mocked(rfpsApi.update).mock.calls[0][1]).toMatchObject({ customerId: 'c1' });
-  });
-
-  it('sends no budget for a private buyer, even if one had been typed', async () => {
-    vi.mocked(rfpsApi.update).mockResolvedValue(axiosOk({ data: makeRfp() }) as never);
-    const user = userEvent.setup();
-    render(<RfpFormPanel open rfp={makeRfp()} onClose={vi.fn()} onSaved={vi.fn()} />);
-
-    await user.click(screen.getByRole('switch', { name: /Government-Owned Entity/i }));
-    await user.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => expect(rfpsApi.update).toHaveBeenCalled());
-    expect(vi.mocked(rfpsApi.update).mock.calls[0][1]).toMatchObject({ isGoe: false, budget: null });
   });
 
   it('puts a duplicate reference on the field rather than in a toast', async () => {
@@ -182,21 +218,30 @@ describe('RfpFormPanel', () => {
    * and a reference, and a tender with no deadline cannot be acted on, so
    * each of the first two steps refuses to advance without them.
    */
-  async function walkToDocuments(user: ReturnType<typeof userEvent.setup>) {
-    await user.type(screen.getByLabelText('RFP name'), 'Maintenance SIMPL');
-    await user.type(screen.getByLabelText('Reference'), '27/2026/DGI');
+  async function walkToLots(user: ReturnType<typeof userEvent.setup>) {
+    await fill(user, screen.getByLabelText('RFP name'), 'Maintenance SIMPL');
+    await fill(user, screen.getByLabelText('Reference'), '27/2026/DGI');
     await user.click(screen.getByRole('button', { name: 'Next' }));
     await waitFor(() => expect(currentStep()).toBe('Deadline & submission'));
 
     await setDeadline(new Date(2026, 8, 9));
-    await user.clear(screen.getByLabelText('Time'));
-    await user.type(screen.getByLabelText('Time'), '10:00');
+    await fill(user, screen.getByLabelText('Time'), '10:00');
     await user.click(screen.getByRole('button', { name: 'Next' }));
-    await waitFor(() => expect(currentStep()).toBe('Budget'));
+    await waitFor(() => expect(currentStep()).toBe('Lots & budget'));
+  }
 
+  /** From the lots step on: composition, then documents. */
+  async function walkOnToDocuments(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    await waitFor(() => expect(currentStep()).toBe('Composition'));
     await user.click(screen.getByRole('button', { name: 'Next' }));
     await waitFor(() => expect(currentStep()).toBe('Documents'));
     return screen.getByRole('button', { name: 'Create RFP' });
+  }
+
+  async function walkToDocuments(user: ReturnType<typeof userEvent.setup>) {
+    await walkToLots(user);
+    return walkOnToDocuments(user);
   }
 
   /**
@@ -219,8 +264,8 @@ describe('RfpFormPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Next' }));
     expect(currentStep()).toBe('Tender');
 
-    await user.type(screen.getByLabelText('RFP name'), 'Maintenance SIMPL');
-    await user.type(screen.getByLabelText('Reference'), '27/2026/DGI');
+    await fill(user, screen.getByLabelText('RFP name'), 'Maintenance SIMPL');
+    await fill(user, screen.getByLabelText('Reference'), '27/2026/DGI');
     await user.click(screen.getByRole('button', { name: 'Next' }));
 
     await waitFor(() => expect(currentStep()).toBe('Deadline & submission'));
@@ -230,8 +275,8 @@ describe('RfpFormPanel', () => {
     const user = userEvent.setup();
     render(<RfpFormPanel open rfp={null} onClose={vi.fn()} onSaved={vi.fn()} />);
 
-    await user.type(screen.getByLabelText('RFP name'), 'Maintenance SIMPL');
-    await user.type(screen.getByLabelText('Reference'), '27/2026/DGI');
+    await fill(user, screen.getByLabelText('RFP name'), 'Maintenance SIMPL');
+    await fill(user, screen.getByLabelText('Reference'), '27/2026/DGI');
     await user.click(screen.getByRole('button', { name: 'Next' }));
     await waitFor(() => expect(currentStep()).toBe('Deadline & submission'));
 
@@ -240,7 +285,7 @@ describe('RfpFormPanel', () => {
 
     await setDeadline(new Date(2026, 8, 9));
     await user.click(screen.getByRole('button', { name: 'Next' }));
-    await waitFor(() => expect(currentStep()).toBe('Budget'));
+    await waitFor(() => expect(currentStep()).toBe('Lots & budget'));
   });
 
   it('creates a tender with the day and the hour combined into one instant', async () => {
@@ -261,6 +306,146 @@ describe('RfpFormPanel', () => {
     expect(sent.getHours()).toBe(10);
     expect(body).toMatchObject({ name: 'Maintenance SIMPL', reference: '27/2026/DGI', customerId: null });
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('starts as one "Lot unique", and asks for budgets only for a public buyer', async () => {
+    const user = userEvent.setup();
+    render(<RfpFormPanel open rfp={null} onClose={vi.fn()} onSaved={vi.fn()} />);
+    await walkToLots(user);
+
+    expect(screen.getByLabelText('Lot 1 title')).toHaveValue('Lot unique');
+    expect(screen.queryByLabelText('Lot 1 budget (MAD)')).toBeNull();
+
+    await user.click(screen.getByRole('switch', { name: /Government-Owned Entity/i }));
+    expect(screen.getByLabelText('Lot 1 budget (MAD)')).toBeInTheDocument();
+  });
+
+  it('sends each lot with its own budget, and "Lot unique" stops being unique', async () => {
+    vi.mocked(rfpsApi.create).mockResolvedValue(axiosOk({ data: makeRfp({ id: 'new-1' }) }) as never);
+    const user = userEvent.setup();
+    render(<RfpFormPanel open rfp={null} onClose={vi.fn()} onSaved={vi.fn()} />);
+    await walkToLots(user);
+
+    await user.click(screen.getByRole('switch', { name: /Government-Owned Entity/i }));
+    await user.click(screen.getByRole('button', { name: 'Add lot' }));
+    // A second lot makes the first one "Lot 1", not a lot unique among two.
+    expect(screen.getByLabelText('Lot 1 title')).toHaveValue('Lot 1');
+    await fill(user, screen.getByLabelText('Lot 2 title'), 'Support');
+    await fill(user, screen.getByLabelText('Lot 1 budget (MAD)'), '1500000');
+    await fill(user, screen.getByLabelText('Lot 2 budget (MAD)'), '400000');
+
+    await user.click(await walkOnToDocuments(user));
+
+    await waitFor(() => expect(rfpsApi.create).toHaveBeenCalled());
+    expect(vi.mocked(rfpsApi.create).mock.calls[0][0].lots).toEqual([
+      { title: 'Lot 1', budget: 1500000 },
+      { title: 'Support', budget: 400000 },
+    ]);
+  });
+
+  it('reads a budget typed the way the Avis prints it, and refuses one that is not an amount', async () => {
+    vi.mocked(rfpsApi.create).mockResolvedValue(axiosOk({ data: makeRfp({ id: 'new-1' }) }) as never);
+    const user = userEvent.setup();
+    render(<RfpFormPanel open rfp={null} onClose={vi.fn()} onSaved={vi.fn()} />);
+    await walkToLots(user);
+    await user.click(screen.getByRole('switch', { name: /Government-Owned Entity/i }));
+
+    await user.type(screen.getByLabelText('Lot 1 budget (MAD)'), '1 500 000,x');
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    expect(currentStep()).toBe('Lots & budget');
+
+    // Typed key by key: the comma must survive until the cents follow it.
+    await user.type(screen.getByLabelText('Lot 1 budget (MAD)'), '{Backspace}00');
+    expect(screen.getByText(/Total 1 500 000 DH/)).toBeInTheDocument();
+    await user.click(await walkOnToDocuments(user));
+
+    await waitFor(() => expect(rfpsApi.create).toHaveBeenCalled());
+    expect(vi.mocked(rfpsApi.create).mock.calls[0][0].lots).toEqual([{ title: 'Lot unique', budget: 1500000 }]);
+  });
+
+  it('sends no budget for a private buyer, even if one had been typed', async () => {
+    vi.mocked(rfpsApi.create).mockResolvedValue(axiosOk({ data: makeRfp({ id: 'new-1' }) }) as never);
+    const user = userEvent.setup();
+    render(<RfpFormPanel open rfp={null} onClose={vi.fn()} onSaved={vi.fn()} />);
+    await walkToLots(user);
+
+    await user.click(screen.getByRole('switch', { name: /Government-Owned Entity/i }));
+    await fill(user, screen.getByLabelText('Lot 1 budget (MAD)'), '1500000');
+    await user.click(screen.getByRole('switch', { name: /Government-Owned Entity/i }));
+
+    await user.click(await walkOnToDocuments(user));
+
+    await waitFor(() => expect(rfpsApi.create).toHaveBeenCalled());
+    const body = vi.mocked(rfpsApi.create).mock.calls[0][0];
+    expect(body.isGoe).toBe(false);
+    expect(body.lots).toEqual([{ title: 'Lot unique', budget: null }]);
+  });
+
+  it('will not leave the lots step with an untitled lot, and never removes the last one', async () => {
+    const user = userEvent.setup();
+    render(<RfpFormPanel open rfp={null} onClose={vi.fn()} onSaved={vi.fn()} />);
+    await walkToLots(user);
+
+    expect(screen.getByRole('button', { name: 'Remove lot 1' })).toBeDisabled();
+    await user.clear(screen.getByLabelText('Lot 1 title'));
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    expect(currentStep()).toBe('Lots & budget');
+
+    await fill(user, screen.getByLabelText('Lot 1 title'), 'Lot unique');
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    await waitFor(() => expect(currentStep()).toBe('Composition'));
+  });
+
+  it('sends the chosen dossiers, the four usual ones by default', async () => {
+    vi.mocked(rfpsApi.create).mockResolvedValue(axiosOk({ data: makeRfp({ id: 'new-1' }) }) as never);
+    const user = userEvent.setup();
+    render(<RfpFormPanel open rfp={null} onClose={vi.fn()} onSaved={vi.fn()} />);
+    await walkToLots(user);
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    await waitFor(() => expect(currentStep()).toBe('Composition'));
+
+    // What each dossier starts with is shown before it is chosen.
+    expect(screen.getByText('CV des intervenants · Diplômes')).toBeInTheDocument();
+    // "Autre" is added from the page, for what the RC invents.
+    expect(screen.queryByLabelText('Autre')).toBeNull();
+    expect(screen.getByLabelText('Dossier additif')).not.toBeChecked();
+
+    // Carbon's checkbox input is visually hidden; its label is what is clicked.
+    await user.click(screen.getByText('Dossier additif'));
+    await user.click(screen.getByText('Dossier technique'));
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    await waitFor(() => expect(currentStep()).toBe('Documents'));
+    await user.click(screen.getByRole('button', { name: 'Create RFP' }));
+
+    await waitFor(() => expect(rfpsApi.create).toHaveBeenCalled());
+    expect(vi.mocked(rfpsApi.create).mock.calls[0][0].composition).toEqual({
+      kinds: ['ADMINISTRATIF', 'OFFRE_TECHNIQUE', 'OFFRE_FINANCIERE', 'ADDITIF'],
+      prefill: true,
+    });
+  });
+
+  it('says the offers are made once per lot', async () => {
+    const user = userEvent.setup();
+    render(<RfpFormPanel open rfp={null} onClose={vi.fn()} onSaved={vi.fn()} />);
+    await walkToLots(user);
+    await user.click(screen.getByRole('button', { name: 'Add lot' }));
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    await waitFor(() => expect(currentStep()).toBe('Composition'));
+
+    expect(screen.getByLabelText('Offre technique — one per lot (2)')).toBeInTheDocument();
+    // A tender-wide dossier is prepared once, however many lots there are.
+    expect(screen.getByLabelText('Dossier administratif')).toBeInTheDocument();
+  });
+
+  it('opens the new tender once it exists', async () => {
+    vi.mocked(rfpsApi.create).mockResolvedValue(axiosOk({ data: makeRfp({ id: 'new-1' }) }) as never);
+    const onCreated = vi.fn();
+    const user = userEvent.setup();
+    render(<RfpFormPanel open rfp={null} onClose={vi.fn()} onSaved={vi.fn()} onCreated={onCreated} />);
+
+    await user.click(await walkToDocuments(user));
+
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith('new-1'));
   });
 
   it('keeps the tender when only a document fails, rather than reporting a failed save', async () => {

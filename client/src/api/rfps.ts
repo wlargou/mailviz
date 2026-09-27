@@ -1,6 +1,20 @@
 import { api } from './client';
 import type { ApiResponse } from '../types/api';
-import type { CreateRfpInput, Rfp, RfpDocument, RfpDocumentKind, UpdateRfpInput } from '../types/rfp';
+import type {
+  CreateRfpInput,
+  LotInput,
+  Rfp,
+  RfpCatalogueEntry,
+  RfpDetail,
+  RfpDocument,
+  RfpDocumentKind,
+  RfpFolder,
+  RfpFolderKind,
+  RfpItem,
+  RfpItemStatus,
+  RfpLot,
+  UpdateRfpInput,
+} from '../types/rfp';
 
 export const rfpsApi = {
   getAll(params?: Record<string, string>) {
@@ -8,11 +22,52 @@ export const rfpsApi = {
   },
 
   getById(id: string) {
-    return api.get<ApiResponse<Rfp>>(`/rfps/${id}`);
+    return api.get<ApiResponse<RfpDetail>>(`/rfps/${id}`);
   },
 
   create(data: CreateRfpInput) {
-    return api.post<ApiResponse<Rfp>>('/rfps', data);
+    return api.post<ApiResponse<RfpDetail>>('/rfps', data);
+  },
+
+  /** The dossier kinds and the pieces each starts with. */
+  getCatalogue() {
+    return api.get<ApiResponse<RfpCatalogueEntry[]>>('/rfps/catalogue');
+  },
+
+  // ── Lots ──────────────────────────────────────────────────────────────
+  createLot(rfpId: string, data: LotInput) {
+    return api.post<ApiResponse<RfpLot>>(`/rfps/${rfpId}/lots`, data);
+  },
+  updateLot(rfpId: string, lotId: string, data: Partial<LotInput>) {
+    return api.patch<ApiResponse<RfpLot>>(`/rfps/${rfpId}/lots/${lotId}`, data);
+  },
+  deleteLot(rfpId: string, lotId: string) {
+    return api.delete(`/rfps/${rfpId}/lots/${lotId}`);
+  },
+
+  // ── The response's dossiers and pieces ────────────────────────────────
+  createFolder(rfpId: string, data: { kind: RfpFolderKind; lotId?: string | null; title?: string; prefill?: boolean }) {
+    return api.post<ApiResponse<RfpFolder>>(`/rfps/${rfpId}/folders`, data);
+  },
+  deleteFolder(rfpId: string, folderId: string) {
+    return api.delete(`/rfps/${rfpId}/folders/${folderId}`);
+  },
+  createItem(rfpId: string, folderId: string, title: string) {
+    return api.post<ApiResponse<RfpItem>>(`/rfps/${rfpId}/folders/${folderId}/items`, { title });
+  },
+  updateItem(rfpId: string, itemId: string, data: { title?: string; status?: RfpItemStatus; notes?: string | null }) {
+    return api.patch<ApiResponse<RfpItem>>(`/rfps/${rfpId}/items/${itemId}`, data);
+  },
+  deleteItem(rfpId: string, itemId: string) {
+    return api.delete(`/rfps/${rfpId}/items/${itemId}`);
+  },
+  uploadItemDocument(rfpId: string, itemId: string, file: File) {
+    const form = new FormData();
+    form.append('file', file);
+    // Multipart, not the client's JSON default — see `uploadDocument`.
+    return api.post<ApiResponse<RfpDocument>>(`/rfps/${rfpId}/items/${itemId}/documents`, form, {
+      headers: { 'Content-Type': undefined },
+    });
   },
 
   update(id: string, data: UpdateRfpInput) {

@@ -1,0 +1,474 @@
+import { useState } from 'react';
+import { createPortal } from 'react-dom';
+import {
+  Accordion,
+  AccordionItem,
+  Button,
+  Checkbox,
+  Dropdown,
+  FileUploaderButton,
+  InlineLoading,
+  Modal,
+  Tag,
+  TextInput,
+} from '@carbon/react';
+import { Add, Attachment, TrashCan } from '@carbon/icons-react';
+import { rfpsApi } from '../../api/rfps';
+import { useUIStore } from '../../store/uiStore';
+import { AttachmentPreviewModal } from '../shared/AttachmentPreviewModal';
+import { ConfirmDeleteModal } from '../shared/ConfirmDeleteModal';
+import {
+  readiness,
+  RFP_ITEM_STATUSES,
+  RFP_ITEM_STATUS_LABELS,
+  RFP_ITEM_STATUS_TAG_TYPE,
+  type RfpCatalogueEntry,
+  type RfpDetail,
+  type RfpFolder,
+  type RfpFolderKind,
+  type RfpItem,
+  type RfpItemStatus,
+} from '../../types/rfp';
+
+/** Mirrors the server's whitelist in `services/rfpStorage.ts`. */
+const ACCEPTED = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.zip', '.txt', '.csv', '.png', '.jpg', '.jpeg'];
+
+const statusItems = RFP_ITEM_STATUSES.map((id) => ({ id, text: RFP_ITEM_STATUS_LABELS[id] }));
+
+interface RfpResponseSectionProps {
+  rfp: RfpDetail;
+  catalogue: RfpCatalogueEntry[];
+  /** Local, optimistic change — the status dropdown answers before the server does. */
+  onLocalChange: (update: (rfp: RfpDetail) => RfpDetail) => void;
+  /** Re-read the tender after a change the server shapes (positions, prefill). */
+  onRefresh: () => Promise<void> | void;
+}
+
+/**
+ * The response: one accordion row per dossier, and inside each the pieces it
+ * needs — a CV, a diploma, the signed CPS — with where each one stands and
+ * the files prepared for it.
+ *
+ * With more than one lot the dossiers are grouped: what is prepared once for
+ * the whole tender first, then each lot's offers together, which is how the
+ * envelopes are assembled on the day.
+ */
+export function RfpResponseSection({ rfp, catalogue, onLocalChange, onRefresh }: RfpResponseSectionProps) {
+  const addNotification = useUIStore((s) => s.addNotification);
+  const [addFolderOpen, setAddFolderOpen] = useState(false);
+  const [deleteFolder, setDeleteFolder] = useState<RfpFolder | null>(null);
+  const [preview, setPreview] = useState<{ item: RfpItem; index: number } | null>(null);
+
+  const groups: Array<{ key: string; heading: string | null; folders: RfpFolder[] }> =
+    rfp.lots.length > 1
+      ? [
+          { key: 'tender', heading: 'Whole tender', folders: rfp.folders.filter((f) => !f.lotId) },
+          ...rfp.lots.map((lot) => ({
+            key: lot.id,
+            heading: `Lot ${lot.number} — ${lot.title}`,
+            folders: rfp.folders.filter((f) => f.lotId === lot.id),
+          })),
+        ].filter((g) => g.folders.length > 0)
+      : [{ key: 'all', heading: null, folders: rfp.folders }];
+
+  const handleDeleteFolder = async () => {
+    if (!deleteFolder) return;
+    try {
+      await rfpsApi.deleteFolder(rfp.id, deleteFolder.id);
+      addNotification({ kind: 'success', title: 'Dossier removed' });
+      setDeleteFolder(null);
+      await onRefresh();
+    } catch {
+      addNotification({ kind: 'error', title: 'Failed to remove the dossier' });
+    }
+  };
+
+  const fileCount = (folder: RfpFolder) => folder.items.reduce((n, i) => n + i.documents.length, 0);
+
+  return (
+    <section className="rfp-detail__section" aria-labelledby="rfp-response-heading">
+      <div className="rfp-detail__section-header">
+        <div>
+          <h2 id="rfp-response-heading" className="rfp-detail__section-title">Response</h2>
+          <p className="rfp-detail__section-subtitle">The dossiers to prepare, and where each piece stands</p>
+        </div>
+        <Button kind="tertiary" size="sm" renderIcon={Add} onClick={() => setAddFolderOpen(true)}>
+          Add dossier
+        </Button>
+      </div>
+
+      {rfp.folders.length === 0 ? (
+        <p className="rfp-detail__empty">No dossiers yet. Add the ones the RC asks for.</p>
+      ) : (
+        groups.map((group) => (
+          <div key={group.key} className="rfp-response__group">
+            {group.heading && <h3 className="rfp-response__group-heading">{group.heading}</h3>}
+            <Accordion align="start" size="lg" className="rfp-response__accordion">
+              {group.folders.map((folder) => {
+                const { ready, total } = readiness(folder.items);
+                const done = total > 0 && ready === total;
+                return (
+                  <AccordionItem
+                    key={folder.id}
+                    title={
+                      <span className="rfp-response__folder-title">
+                        <span className="rfp-response__folder-name">{folder.title}</span>
+                        <Tag type={done ? 'green' : 'gray'} size="sm">
+                          {total === 0 ? 'No pieces' : `${ready}/${total} ready`}
+                        </Tag>
+                        {fileCount(folder) > 0 && (
+                          <span className="rfp-response__folder-files">
+                            <Attachment size={16} aria-label="Files" />
+                            {fileCount(folder)}
+                          </span>
+                        )}
+                      </span>
+                    }
+                  >
+                    <FolderBody
+                      rfpId={rfp.id}
+                      folder={folder}
+                      onLocalChange={onLocalChange}
+                      onRefresh={onRefresh}
+                      onPreview={(item, index) => setPreview({ item, index })}
+                      onDelete={() => setDeleteFolder(folder)}
+                    />
+                  </AccordionItem>
+                );
+              })}
+            </Accordion>
+          </div>
+        ))
+      )}
+
+      {addFolderOpen && (
+        <AddFolderModal
+          rfp={rfp}
+          catalogue={catalogue}
+          onClose={() => setAddFolderOpen(false)}
+          onAdded={async () => {
+            setAddFolderOpen(false);
+            await onRefresh();
+          }}
+        />
+      )}
+
+      <ConfirmDeleteModal
+        open={Boolean(deleteFolder)}
+        title={deleteFolder?.title ?? ''}
+        entityLabel="dossier"
+        consequence={
+          deleteFolder
+            ? `Its ${deleteFolder.items.length} piece${deleteFolder.items.length === 1 ? '' : 's'}${
+                fileCount(deleteFolder) > 0 ? ` and ${fileCount(deleteFolder)} file${fileCount(deleteFolder) === 1 ? '' : 's'}` : ''
+              } will be deleted too.`
+            : undefined
+        }
+        onConfirm={handleDeleteFolder}
+        onClose={() => setDeleteFolder(null)}
+      />
+
+      <AttachmentPreviewModal
+        open={preview !== null}
+        items={(preview?.item.documents ?? []).map((d) => ({
+          file: d,
+          inlineUrl: rfpsApi.documentInlineUrl(d.rfpId, d.id),
+          downloadUrl: rfpsApi.documentUrl(d.rfpId, d.id),
+        }))}
+        index={preview?.index ?? 0}
+        onIndexChange={(index) => setPreview((p) => (p ? { ...p, index } : p))}
+        onClose={() => setPreview(null)}
+      />
+    </section>
+  );
+}
+
+interface FolderBodyProps {
+  rfpId: string;
+  folder: RfpFolder;
+  onLocalChange: RfpResponseSectionProps['onLocalChange'];
+  onRefresh: RfpResponseSectionProps['onRefresh'];
+  onPreview: (item: RfpItem, index: number) => void;
+  onDelete: () => void;
+}
+
+/** One dossier's pieces, and the way to add another. */
+function FolderBody({ rfpId, folder, onLocalChange, onRefresh, onPreview, onDelete }: FolderBodyProps) {
+  const addNotification = useUIStore((s) => s.addNotification);
+  const [newTitle, setNewTitle] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [uploadingItem, setUploadingItem] = useState<string | null>(null);
+
+  const patchItem = (itemId: string, next: Partial<RfpItem>) =>
+    onLocalChange((r) => ({
+      ...r,
+      folders: r.folders.map((f) =>
+        f.id !== folder.id ? f : { ...f, items: f.items.map((i) => (i.id === itemId ? { ...i, ...next } : i)) },
+      ),
+    }));
+
+  const setStatus = async (item: RfpItem, status: RfpItemStatus) => {
+    const previous = item.status;
+    patchItem(item.id, { status });
+    try {
+      await rfpsApi.updateItem(rfpId, item.id, { status });
+    } catch {
+      patchItem(item.id, { status: previous });
+      addNotification({ kind: 'error', title: 'Failed to update the piece' });
+    }
+  };
+
+  const addItem = async () => {
+    const title = newTitle.trim();
+    if (!title) return;
+    setAdding(true);
+    try {
+      await rfpsApi.createItem(rfpId, folder.id, title);
+      setNewTitle('');
+      await onRefresh();
+    } catch {
+      addNotification({ kind: 'error', title: 'Failed to add the piece' });
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const removeItem = async (item: RfpItem) => {
+    try {
+      await rfpsApi.deleteItem(rfpId, item.id);
+      await onRefresh();
+    } catch {
+      addNotification({ kind: 'error', title: 'Failed to remove the piece' });
+    }
+  };
+
+  const upload = async (item: RfpItem, files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setUploadingItem(item.id);
+    try {
+      for (const file of Array.from(files)) {
+        await rfpsApi.uploadItemDocument(rfpId, item.id, file);
+      }
+      await onRefresh();
+    } catch {
+      addNotification({ kind: 'error', title: 'Upload failed', subtitle: 'Check the file type and that it is under 25 MB.' });
+    } finally {
+      setUploadingItem(null);
+    }
+  };
+
+  const removeFile = async (documentId: string) => {
+    try {
+      await rfpsApi.deleteDocument(rfpId, documentId);
+      await onRefresh();
+    } catch {
+      addNotification({ kind: 'error', title: 'Failed to delete the file' });
+    }
+  };
+
+  return (
+    <div className="rfp-response__folder">
+      {folder.items.length === 0 ? (
+        <p className="rfp-detail__empty">No pieces yet.</p>
+      ) : (
+        <ul className="rfp-response__items" aria-label={`Pieces of ${folder.title}`}>
+          {folder.items.map((item) => (
+            <li key={item.id} className={`rfp-response__item rfp-response__item--${item.status.toLowerCase()}`}>
+              <span className="rfp-response__item-title">{item.title}</span>
+
+              <div className="rfp-response__item-files">
+                {item.documents.map((doc, index) => (
+                  <span key={doc.id} className="rfp-response__file">
+                    <button type="button" className="rfp-response__file-name" title={doc.filename} onClick={() => onPreview(item, index)}>
+                      {doc.filename}
+                    </button>
+                    <Button
+                      kind="ghost"
+                      size="sm"
+                      hasIconOnly
+                      renderIcon={TrashCan}
+                      iconDescription={`Delete ${doc.filename}`}
+                      onClick={() => removeFile(doc.id)}
+                    />
+                  </span>
+                ))}
+                {uploadingItem === item.id ? (
+                  <InlineLoading description="Uploading…" />
+                ) : (
+                  <FileUploaderButton
+                    buttonKind="ghost"
+                    size="sm"
+                    labelText="Attach"
+                    accept={ACCEPTED}
+                    multiple
+                    disableLabelChanges
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => upload(item, e.target.files)}
+                  />
+                )}
+              </div>
+
+              <Dropdown
+                id={`rfp-item-status-${item.id}`}
+                className="rfp-response__item-status"
+                titleText={`Status of ${item.title}`}
+                hideLabel
+                label=""
+                type="inline"
+                size="sm"
+                // The menu is wider than this last-but-one column; unaligned
+                // it ran past the page edge and scrolled the page sideways.
+                autoAlign
+                items={statusItems}
+                itemToString={(i) => i?.text ?? ''}
+                selectedItem={statusItems.find((s) => s.id === item.status)}
+                renderSelectedItem={(i) => (
+                  <Tag type={RFP_ITEM_STATUS_TAG_TYPE[i.id]} size="sm">
+                    {i.text}
+                  </Tag>
+                )}
+                onChange={({ selectedItem }) => selectedItem && selectedItem.id !== item.status && setStatus(item, selectedItem.id)}
+              />
+
+              <Button
+                kind="ghost"
+                size="sm"
+                hasIconOnly
+                renderIcon={TrashCan}
+                iconDescription={`Remove ${item.title}`}
+                onClick={() => removeItem(item)}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <form
+        className="rfp-response__add"
+        onSubmit={(e) => {
+          e.preventDefault();
+          addItem();
+        }}
+      >
+        <TextInput
+          id={`rfp-new-item-${folder.id}`}
+          labelText={`New piece for ${folder.title}`}
+          hideLabel
+          size="sm"
+          placeholder="Add a piece — e.g. CV du chef de projet"
+          value={newTitle}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewTitle(e.target.value)}
+        />
+        <Button kind="ghost" size="sm" type="submit" renderIcon={Add} disabled={!newTitle.trim() || adding}>
+          Add piece
+        </Button>
+        <Button kind="danger--ghost" size="sm" renderIcon={TrashCan} onClick={onDelete} className="rfp-response__remove-folder">
+          Remove dossier
+        </Button>
+      </form>
+    </div>
+  );
+}
+
+interface AddFolderModalProps {
+  rfp: RfpDetail;
+  catalogue: RfpCatalogueEntry[];
+  onClose: () => void;
+  onAdded: () => void;
+}
+
+/**
+ * A dossier the wizard did not create — a forgotten one, or an "Autre" the
+ * RC invents. A couple of fields, so a small modal.
+ */
+function AddFolderModal({ rfp, catalogue, onClose, onAdded }: AddFolderModalProps) {
+  const addNotification = useUIStore((s) => s.addNotification);
+  const [kind, setKind] = useState<RfpFolderKind>('OTHER');
+  /** What was picked; `null` until then, or for "Whole tender". */
+  const [lotId, setLotId] = useState<string | null>(null);
+  const [title, setTitle] = useState('');
+  const [prefill, setPrefill] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const entry = catalogue.find((c) => c.kind === kind);
+  // Offers belong to a lot; tender-wide dossiers never do; "Autre" either.
+  const lotChoice = entry?.perLot ? 'required' : kind === 'OTHER' ? 'optional' : 'none';
+  const kindItems = catalogue.map((c) => ({ id: c.kind, text: c.label }));
+  const lotItems = [
+    ...(lotChoice === 'optional' ? [{ id: '__none__', text: 'Whole tender' }] : []),
+    ...rfp.lots.map((l) => ({ id: l.id, text: `Lot ${l.number} — ${l.title}` })),
+  ];
+  // An offer defaults to the first lot; a one-off "Autre" to the whole tender.
+  const effectiveLot = lotChoice === 'none' ? null : lotChoice === 'required' ? (lotId ?? rfp.lots[0]?.id ?? null) : lotId;
+  const canSave = !saving && (kind !== 'OTHER' || title.trim() !== '') && (lotChoice !== 'required' || effectiveLot !== null);
+
+  const submit = async () => {
+    if (!canSave) return;
+    setSaving(true);
+    try {
+      await rfpsApi.createFolder(rfp.id, {
+        kind,
+        lotId: effectiveLot,
+        title: title.trim() || undefined,
+        prefill: entry && entry.defaultItems.length > 0 ? prefill : false,
+      });
+      addNotification({ kind: 'success', title: 'Dossier added' });
+      onAdded();
+    } catch {
+      addNotification({ kind: 'error', title: 'Failed to add the dossier' });
+      setSaving(false);
+    }
+  };
+
+  return createPortal(
+    <Modal
+      open
+      size="sm"
+      modalHeading="Add dossier"
+      primaryButtonText={saving ? 'Adding…' : 'Add'}
+      secondaryButtonText="Cancel"
+      primaryButtonDisabled={!canSave}
+      onRequestSubmit={submit}
+      onRequestClose={onClose}
+      className="rfp-add-folder"
+    >
+      <div className="rfp-add-folder__fields">
+        <Dropdown
+          id="rfp-add-folder-kind"
+          titleText="Kind"
+          label="Choose a kind"
+          items={kindItems}
+          itemToString={(i) => i?.text ?? ''}
+          selectedItem={kindItems.find((k) => k.id === kind)}
+          onChange={({ selectedItem }) => selectedItem && setKind(selectedItem.id)}
+        />
+        {lotChoice !== 'none' && rfp.lots.length > 0 && (
+          <Dropdown
+            id="rfp-add-folder-lot"
+            titleText="Lot"
+            label="Choose a lot"
+            items={lotItems}
+            itemToString={(i) => i?.text ?? ''}
+            selectedItem={lotItems.find((l) => l.id === (effectiveLot ?? '__none__')) ?? null}
+            onChange={({ selectedItem }) => setLotId(!selectedItem || selectedItem.id === '__none__' ? null : selectedItem.id)}
+          />
+        )}
+        <TextInput
+          id="rfp-add-folder-title"
+          labelText={kind === 'OTHER' ? 'Title' : 'Title (optional)'}
+          placeholder={kind === 'OTHER' ? 'Échantillons' : entry?.label}
+          value={title}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTitle(e.target.value)}
+        />
+        {entry && entry.defaultItems.length > 0 && (
+          <Checkbox
+            id="rfp-add-folder-prefill"
+            labelText={`Start with the standard pieces (${entry.defaultItems.length})`}
+            checked={prefill}
+            onChange={(_e: React.ChangeEvent<HTMLInputElement>, { checked }: { checked: boolean }) => setPrefill(checked)}
+          />
+        )}
+      </div>
+    </Modal>,
+    document.body,
+  );
+}

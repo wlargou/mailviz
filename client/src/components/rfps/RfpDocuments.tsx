@@ -21,10 +21,11 @@ interface RfpDocumentsProps {
   /** Absent while creating: files are held as `pending` until the tender exists. */
   rfpId?: string;
   documents: RfpDocument[];
-  pending: PendingDocument[];
-  onPendingChange: (pending: PendingDocument[]) => void;
+  /** Only while creating — the detail page uploads straight away. */
+  pending?: PendingDocument[];
+  onPendingChange?: (pending: PendingDocument[]) => void;
   /** Re-read the tender after an upload or a delete that already happened. */
-  onUploaded: () => void;
+  onUploaded?: () => void;
 }
 
 /**
@@ -35,7 +36,7 @@ interface RfpDocumentsProps {
  * BKAM and the DGI split them — so the label is a judgement the user makes,
  * not something the filename decides.
  */
-export function RfpDocuments({ rfpId, documents, pending, onPendingChange, onUploaded }: RfpDocumentsProps) {
+export function RfpDocuments({ rfpId, documents, pending = [], onPendingChange, onUploaded }: RfpDocumentsProps) {
   const [kind, setKind] = useState<RfpDocumentKind>('RFP');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +48,7 @@ export function RfpDocuments({ rfpId, documents, pending, onPendingChange, onUpl
     const chosen = Array.from(files);
     setError(null);
     if (!rfpId) {
-      onPendingChange([...pending, ...chosen.map((file) => ({ file, kind }))]);
+      onPendingChange?.([...pending, ...chosen.map((file) => ({ file, kind }))]);
       return;
     }
     setBusy(true);
@@ -55,7 +56,7 @@ export function RfpDocuments({ rfpId, documents, pending, onPendingChange, onUpl
       for (const file of chosen) {
         await rfpsApi.uploadDocument(rfpId, file, kind);
       }
-      onUploaded();
+      onUploaded?.();
     } catch {
       setError('Upload failed. Check the file type and that it is under 25 MB.');
     } finally {
@@ -68,7 +69,7 @@ export function RfpDocuments({ rfpId, documents, pending, onPendingChange, onUpl
     setBusy(true);
     try {
       await rfpsApi.deleteDocument(rfpId, documentId);
-      onUploaded();
+      onUploaded?.();
     } catch {
       setError('Could not remove the document.');
     } finally {
@@ -164,7 +165,7 @@ export function RfpDocuments({ rfpId, documents, pending, onPendingChange, onUpl
               hasIconOnly
               renderIcon={TrashCan}
               iconDescription={`Remove ${p.file.name}`}
-              onClick={() => onPendingChange(pending.filter((_, j) => j !== i))}
+              onClick={() => onPendingChange?.(pending.filter((_, j) => j !== i))}
             />
           </li>
         ))}

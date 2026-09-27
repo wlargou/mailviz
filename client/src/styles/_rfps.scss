@@ -221,3 +221,274 @@
   color: var(--cds-text-error);
   margin: 0 0 $spacing-03;
 }
+
+// ─── RFP FORM: LOTS & COMPOSITION ────────────────
+.rfp-lots-editor__row {
+  display: grid;
+  grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: $spacing-04;
+  margin-bottom: $spacing-03;
+}
+
+// A public buyer's lots carry a budget column beside the title.
+.rfp-lots-editor__row--budget {
+  grid-template-columns: 1.5rem minmax(0, 2fr) minmax(0, 1fr) auto;
+}
+
+.rfp-lots-editor__total {
+  color: var(--cds-text-primary);
+}
+
+.rfp-lots-editor__number {
+  @include type.type-style('label-01');
+  color: var(--cds-text-secondary);
+  text-align: end;
+}
+
+// Doubled class: Carbon's `.cds--fieldset` sets its own margin and wins on order.
+.rfp-composition.rfp-composition {
+  margin-bottom: $spacing-06;
+}
+
+.rfp-composition__option {
+  padding: $spacing-03 0;
+  border-bottom: 1px solid var(--cds-border-subtle);
+}
+
+// The pieces a dossier starts with, under its checkbox — aligned with the
+// label, not the box.
+.rfp-composition__pieces {
+  @include type.type-style('helper-text-01');
+  color: var(--cds-text-secondary);
+  margin: $spacing-02 0 0 $spacing-07;
+}
+
+// ─── RFP DETAIL PAGE ─────────────────────────────
+.rfp-detail__tags {
+  display: flex;
+  align-items: center;
+  gap: $spacing-03;
+  margin: (-$spacing-03) 0 $spacing-05;
+}
+
+.rfp-detail__summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: $spacing-03;
+  margin-bottom: $spacing-06;
+
+  @media (max-width: 66rem) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  @media (max-width: 42rem) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.rfp-detail__tile {
+  min-inline-size: 0;
+}
+
+.rfp-detail__tile-label {
+  @include type.type-style('label-01');
+  color: var(--cds-text-secondary);
+  margin: 0 0 $spacing-03;
+}
+
+.rfp-detail__tile-value {
+  @include type.type-style('heading-03');
+  margin: 0 0 $spacing-02;
+}
+
+.rfp-detail__tile-hint {
+  @include type.type-style('helper-text-01');
+  color: var(--cds-text-secondary);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: $spacing-02;
+}
+
+.rfp-detail__notes {
+  @include type.type-style('body-01');
+  color: var(--cds-text-secondary);
+  white-space: pre-line;
+  margin: 0 0 $spacing-06;
+  max-inline-size: 60rem;
+}
+
+.rfp-detail__panel {
+  padding: $spacing-06 0 0;
+}
+
+.rfp-detail__section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: $spacing-05;
+  margin-bottom: $spacing-05;
+}
+
+.rfp-detail__section-title {
+  @include type.type-style('heading-03');
+  margin: 0;
+}
+
+.rfp-detail__section-subtitle,
+.rfp-detail__empty {
+  @include type.type-style('body-compact-01');
+  color: var(--cds-text-secondary);
+  margin: $spacing-02 0 0;
+}
+
+.rfp-detail__empty {
+  margin: $spacing-03 0;
+}
+
+// ─── RFP RESPONSE ────────────────────────────────
+.rfp-response__group + .rfp-response__group {
+  margin-top: $spacing-07;
+}
+
+.rfp-response__group-heading {
+  @include type.type-style('heading-02');
+  margin: 0 0 $spacing-03;
+}
+
+.rfp-response__folder-title {
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-04;
+}
+
+.rfp-response__folder-name {
+  @include type.type-style('heading-compact-01');
+}
+
+.rfp-response__folder-files {
+  @include type.type-style('label-01');
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-02;
+  color: var(--cds-text-secondary);
+}
+
+// Carbon's accordion content caps its width at 75% for prose; this is a
+// list of rows, and needs the width.
+.rfp-response__accordion .cds--accordion__content {
+  padding-inline-end: $spacing-05;
+}
+
+.rfp-response__items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.rfp-response__item {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1.2fr) minmax(0, 2fr) 9rem auto;
+  align-items: center;
+  gap: $spacing-04;
+  padding: $spacing-02 0;
+  border-bottom: 1px solid var(--cds-border-subtle);
+
+  @media (max-width: 42rem) {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
+
+.rfp-response__item--not_applicable .rfp-response__item-title {
+  color: var(--cds-text-secondary);
+  text-decoration: line-through;
+}
+
+.rfp-response__item-title {
+  @include type.type-style('body-compact-01');
+  min-inline-size: 0;
+}
+
+.rfp-response__item-files {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-02 $spacing-03;
+  min-inline-size: 0;
+}
+
+.rfp-response__file {
+  display: inline-flex;
+  align-items: center;
+  max-inline-size: 100%;
+  min-inline-size: 0;
+}
+
+.rfp-response__file-name {
+  @include type.type-style('body-compact-01');
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-inline-size: 16rem;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--cds-link-primary);
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--cds-focus);
+    outline-offset: 2px;
+  }
+}
+
+.rfp-response__add {
+  display: flex;
+  align-items: center;
+  gap: $spacing-03;
+  margin-top: $spacing-04;
+
+  .cds--text-input-wrapper {
+    flex: 0 1 24rem;
+  }
+}
+
+.rfp-response__remove-folder {
+  margin-inline-start: auto;
+}
+
+.rfp-add-folder__fields {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-05;
+}
+
+// Classes, not `nth-child`: the budget column only exists for a GOE tender,
+// so positions shift with it.
+.rfp-lots-table {
+  .rfp-lots-table__number {
+    inline-size: 5rem;
+  }
+
+  .rfp-lots-table__actions {
+    inline-size: 7rem;
+  }
+
+  // Amounts line up on their last digit. Carbon puts a header's text in an
+  // inner label, so that is what is aligned.
+  .rfp-lots-table__budget,
+  .rfp-lots-table__budget .cds--table-header-label {
+    inline-size: 14rem;
+    text-align: end;
+    white-space: nowrap;
+  }
+}
+
+.rfp-lots-table__total td {
+  font-weight: 600;
+}
