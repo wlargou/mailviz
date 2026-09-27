@@ -17,7 +17,7 @@ import type { Rfp } from '../../types/rfp';
 vi.mock('../../api/rfps', () => ({
   rfpsApi: {
     getAll: vi.fn(), getById: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn(),
-    uploadDocument: vi.fn(), deleteDocument: vi.fn(),
+    uploadDocument: vi.fn(), deleteDocument: vi.fn(), getCatalogue: vi.fn().mockResolvedValue({ data: { data: [] } }),
     shareRfp: vi.fn(), unshareRfp: vi.fn(), getRfpShares: vi.fn(),
     documentUrl: (r: string, d: string) => `/api/v1/rfps/${r}/documents/${d}`,
     documentInlineUrl: (r: string, d: string) => `/api/v1/rfps/${r}/documents/${d}?inline=true`,
@@ -109,6 +109,20 @@ describe('deadlineTone', () => {
 });
 
 describe('RfpsPage', () => {
+  it("opens a tender's page from its name", async () => {
+    // The page is where the response is prepared; the edit panel only
+    // changes what the tender is, so the name no longer opens it.
+    serve([makeRfp()]);
+    const user = userEvent.setup();
+    renderPage();
+
+    const row = (await screen.findByText('70/AOO/BKAM/2026')).closest('tr')!;
+    await user.click(within(row).getByRole('button', { name: 'Refonte de la plateforme matérielle AIX' }));
+
+    expect(navigateSpy).toHaveBeenCalledWith('/rfps/r1');
+    expect(screen.queryByText('Edit RFP')).toBeNull();
+  });
+
   it('shows every field of the register for a row', async () => {
     serve([makeRfp({ documents: [{ id: 'd1', rfpId: 'r1', kind: 'RFP', filename: 'CPS.pdf', mimeType: 'application/pdf', size: 1024, createdAt: '' }] })]);
     renderPage();

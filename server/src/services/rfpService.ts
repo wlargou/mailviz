@@ -6,19 +6,46 @@ import { auditService } from './auditService.js';
 import { removeStoredFile } from './rfpStorage.js';
 import { canAccessRfp, getSharedRfpIds, isRfpOwner } from '../utils/accessControl.js';
 import { notificationService } from './notificationService.js';
+import { buildInitialComposition } from './rfpCompositionService.js';
+import type { RfpFolderKind } from '../utils/rfpComposition.js';
 import { RFP_TERMINAL_STATUSES, type RfpDocumentKind } from '../utils/rfp.js';
 import type { CreateRfpInput, UpdateRfpInput } from '../validators/rfpValidator.js';
 
 const RFP_SORT_FIELDS = ['deadlineAt', 'name', 'reference', 'status', 'budget', 'createdAt', 'updatedAt'] as const;
 
 const rfpIncludes = {
-  documents: { orderBy: { createdAt: 'asc' } as const },
+  // The tender's own dossier only. A prepared piece's files (a CV, an
+  // attestation) share the table but belong to the response, not to what
+  // the buyer published — they must not be counted or listed as the tender.
+  documents: { where: { itemId: null }, orderBy: { createdAt: 'asc' } as const },
   customer: { select: { id: true, name: true, logoUrl: true } },
   // Who owns it, so the list can badge the rows that arrived through a share.
   user: { select: { id: true, name: true, email: true } },
 };
 
+/**
+ * Everything the detail page shows: the lots, and the response's dossiers
+ * with their pieces and each piece's files.
+ */
+const rfpDetailIncludes = {
+  ...rfpIncludes,
+  lots: { orderBy: { number: 'asc' } as const },
+  folders: {
+    orderBy: [{ position: 'asc' }, { createdAt: 'asc' }] as Prisma.RfpFolderOrderByWithRelationInput[],
+    include: {
+      lot: { select: { id: true, number: true, title: true } },
+      items: {
+        orderBy: [{ position: 'asc' }, { createdAt: 'asc' }] as Prisma.RfpFolderItemOrderByWithRelationInput[],
+        include: { documents: { orderBy: { createdAt: 'asc' } as const } },
+      },
+    },
+  },
+};
+
 type RfpRow = Prisma.RfpGetPayload<{ include: typeof rfpIncludes }>;
+type RfpDetailRow = Prisma.RfpGetPayload<{ include: typeof rfpDetailIncludes }>;
+
+const toNumber = (d: Prisma.Decimal | null) => (d === null ? null : Number(d));
 
 /**
  * `budget` is a `Decimal(14,2)`, and Prisma hands back a Decimal object that
@@ -27,7 +54,12 @@ type RfpRow = Prisma.RfpGetPayload<{ include: typeof rfpIncludes }>;
  * Converted once, here, rather than at each of the places that read it.
  */
 export function formatRfp(rfp: RfpRow) {
-  return { ...rfp, budget: rfp.budget === null ? null : Number(rfp.budget) };
+  return { ...rfp, budget: toNumber(rfp.budget) };
+}
+
+/** The same conversion, for the tender and each of its lots. */
+export function formatRfpDetail(rfp: RfpDetailRow) {
+  return { ...rfp, budget: toNumber(rfp.budget), lots: rfp.lots.map((l) => ({ ...l, budget: toNumber(l.budget) })) };
 }
 
 export interface RfpQueryParams {
@@ -93,7 +125,6 @@ function writableFields(data: UpdateRfpInput) {
   if (data.portalUrl !== undefined) out.portalUrl = data.portalUrl || null;
   if (data.customerId !== undefined) out.customerId = data.customerId;
   if (data.isGoe !== undefined) out.isGoe = data.isGoe;
-  if (data.budget !== undefined) out.budget = data.budget === null ? null : new Prisma.Decimal(data.budget);
   if (data.status !== undefined) out.status = data.status;
   if (data.notes !== undefined) out.notes = data.notes || null;
   return out;
@@ -152,30 +183,42 @@ export const rfpService = {
   },
 
   async findById(userId: string, id: string) {
-    return formatRfp(await accessibleRfp(userId, id));
+    await accessibleRfp(userId, id);
+    const rfp = await prisma.rfp.findUniqueOrThrow({ where: { id }, include: rfpDetailIncludes });
+    return formatRfpDetail(rfp);
   },
 
   async create(userId: string, data: CreateRfpInput) {
     await assertCustomerOwnedBy(userId, data.customerId);
     try {
-      const rfp = await prisma.rfp.create({
-        data: {
-          userId,
-          name: data.name,
-          reference: data.reference,
-          deadlineAt: new Date(data.deadlineAt),
-          submissionFormat: data.submissionFormat,
-          portalUrl: data.portalUrl || null,
-          isGoe: data.isGoe ?? false,
-          budget: data.budget === null || data.budget === undefined ? null : new Prisma.Decimal(data.budget),
-          status: data.status ?? 'OPEN',
-          notes: data.notes || null,
-          customerId: data.customerId ?? null,
-        },
-        include: rfpIncludes,
+      // One transaction: a tender never exists without its lots, and the
+      // budget total is written by the same unit of work that writes them.
+      const id = await prisma.$transaction(async (tx) => {
+        const rfp = await tx.rfp.create({
+          data: {
+            userId,
+            name: data.name,
+            reference: data.reference,
+            deadlineAt: new Date(data.deadlineAt),
+            submissionFormat: data.submissionFormat,
+            portalUrl: data.portalUrl || null,
+            isGoe: data.isGoe ?? false,
+            status: data.status ?? 'OPEN',
+            notes: data.notes || null,
+            customerId: data.customerId ?? null,
+          },
+        });
+        await buildInitialComposition(
+          tx,
+          rfp.id,
+          data.lots,
+          data.composition ? { kinds: data.composition.kinds as RfpFolderKind[], prefill: data.composition.prefill } : undefined
+        );
+        return rfp.id;
       });
-      auditService.log({ userId, action: 'RFP_CREATED', entityType: 'rfp', entityId: rfp.id, details: { reference: rfp.reference } });
-      return formatRfp(rfp);
+      const rfp = await prisma.rfp.findUniqueOrThrow({ where: { id }, include: rfpDetailIncludes });
+      auditService.log({ userId, action: 'RFP_CREATED', entityType: 'rfp', entityId: rfp.id, details: { reference: rfp.reference, lots: rfp.lots.length } });
+      return formatRfpDetail(rfp);
     } catch (err) {
       // P2002 on (user_id, reference): the buyer's own numbering is how a
       // tender is recognised, so a second row under the same reference is
@@ -207,11 +250,16 @@ export const rfpService = {
 
   async remove(userId: string, id: string) {
     const rfp = await ownedRfp(userId, id);
+    // EVERY file under the tender — its own dossier and the pieces of the
+    // response. `rfp.documents` is the dossier only (the include filters out
+    // piece files), so reading the keys from it would leave every prepared
+    // CV and attestation on the volume with nothing pointing at it.
+    const keys = (await prisma.rfpDocument.findMany({ where: { rfpId: id }, select: { storageKey: true } })).map((d) => d.storageKey);
     // Rows go first: the cascade is what makes them unreachable, and a file
     // left behind is waste where a row pointing at a deleted file is a 404
     // the user cannot clear.
     await prisma.rfp.delete({ where: { id } });
-    await Promise.all(rfp.documents.map((d) => removeStoredFile(d.storageKey)));
+    await Promise.all(keys.map((k) => removeStoredFile(k)));
     auditService.log({ userId, action: 'RFP_DELETED', entityType: 'rfp', entityId: id, details: { reference: rfp.reference } });
   },
 

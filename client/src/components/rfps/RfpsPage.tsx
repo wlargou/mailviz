@@ -339,7 +339,7 @@ export function RfpsPage() {
                             </TableCell>
                             <TableCell>
                               <span className="shared-title-cell">
-                                <button type="button" className="rfp-name-cell" onClick={() => openEdit(rfp)}>
+                                <button type="button" className="rfp-name-cell" onClick={() => navigate(`/rfps/${rfp.id}`)}>
                                   {rfp.name}
                                 </button>
                                 <SharedBadge ownerId={rfp.userId} />
@@ -440,6 +440,7 @@ export function RfpsPage() {
           setEditRfp(null);
         }}
         onSaved={fetchRfps}
+        onCreated={(id) => navigate(`/rfps/${id}`)}
       />
 
       <AttachmentPreviewModal

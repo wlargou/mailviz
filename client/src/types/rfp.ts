@@ -48,6 +48,79 @@ export const RFP_DOCUMENT_KIND_LABELS: Record<RfpDocumentKind, string> = {
   OTHER: 'Other',
 };
 
+// ── The response: lots, dossiers and their pieces ────────────────────────
+// Mirrors server/src/utils/rfpComposition.ts, where the default pieces live.
+
+export const RFP_FOLDER_KINDS = ['ADMINISTRATIF', 'TECHNIQUE', 'ADDITIF', 'OFFRE_TECHNIQUE', 'OFFRE_FINANCIERE', 'OTHER'] as const;
+export type RfpFolderKind = (typeof RFP_FOLDER_KINDS)[number];
+
+export const RFP_ITEM_STATUSES = ['TODO', 'IN_PROGRESS', 'READY', 'NOT_APPLICABLE'] as const;
+export type RfpItemStatus = (typeof RFP_ITEM_STATUSES)[number];
+
+export const RFP_ITEM_STATUS_LABELS: Record<RfpItemStatus, string> = {
+  TODO: 'To do',
+  IN_PROGRESS: 'In progress',
+  READY: 'Ready',
+  NOT_APPLICABLE: 'N/A',
+};
+
+export const RFP_ITEM_STATUS_TAG_TYPE: Record<RfpItemStatus, 'gray' | 'blue' | 'green' | 'cool-gray'> = {
+  TODO: 'gray',
+  IN_PROGRESS: 'blue',
+  READY: 'green',
+  NOT_APPLICABLE: 'cool-gray',
+};
+
+/** One entry of `GET /rfps/catalogue`. */
+export interface RfpCatalogueEntry {
+  kind: RfpFolderKind;
+  label: string;
+  /** Prepared once per lot (the offers) rather than once per tender. */
+  perLot: boolean;
+  defaultItems: string[];
+}
+
+export interface RfpLot {
+  id: string;
+  rfpId: string;
+  /** As the RC numbers it; stable when another lot is removed. */
+  number: number;
+  title: string;
+  /** Published estimate for this lot, in MAD. */
+  budget: number | null;
+}
+
+export interface RfpItem {
+  id: string;
+  folderId: string;
+  title: string;
+  status: RfpItemStatus;
+  notes: string | null;
+  position: number;
+  /** The prepared files for this piece — a CV, a signed attestation. */
+  documents: RfpDocument[];
+}
+
+export interface RfpFolder {
+  id: string;
+  rfpId: string;
+  lotId: string | null;
+  lot: { id: string; number: number; title: string } | null;
+  kind: RfpFolderKind;
+  title: string;
+  position: number;
+  items: RfpItem[];
+}
+
+/**
+ * How far a dossier (or a whole response) is: pieces ready, out of those
+ * that apply. N/A pieces are neither done nor left to do.
+ */
+export function readiness(items: Pick<RfpItem, 'status'>[]): { ready: number; total: number } {
+  const applicable = items.filter((i) => i.status !== 'NOT_APPLICABLE');
+  return { ready: applicable.filter((i) => i.status === 'READY').length, total: applicable.length };
+}
+
 export interface RfpDocument {
   id: string;
   rfpId: string;
@@ -78,7 +151,7 @@ export interface Rfp {
   portalUrl: string | null;
   /** Government-Owned Entity: a public buyer, which is why a budget is public. */
   isGoe: boolean;
-  /** Published estimate in MAD. A number, never a Decimal string. */
+  /** The lots' total, in MAD — derived, never sent. A number, never a Decimal string. */
   budget: number | null;
   status: RfpStatus;
   notes: string | null;
@@ -87,7 +160,19 @@ export interface Rfp {
   user?: { id: string; name: string | null; email: string };
   createdAt: string;
   updatedAt: string;
+  /** The tender's own dossier (RC, CPS, Avis …) — never a piece's files. */
   documents: RfpDocument[];
+}
+
+/** What `GET /rfps/:id` returns: the tender with its lots and response. */
+export interface RfpDetail extends Rfp {
+  lots: RfpLot[];
+  folders: RfpFolder[];
+}
+
+export interface LotInput {
+  title: string;
+  budget?: number | null;
 }
 
 export interface CreateRfpInput {
@@ -98,12 +183,14 @@ export interface CreateRfpInput {
   submissionFormat: RfpSubmissionFormat;
   portalUrl?: string | null;
   isGoe?: boolean;
-  budget?: number | null;
   status?: RfpStatus;
   notes?: string | null;
+  lots?: LotInput[];
+  composition?: { kinds: RfpFolderKind[]; prefill: boolean };
 }
 
-export type UpdateRfpInput = Partial<CreateRfpInput>;
+/** Lots and composition have their own endpoints; a PATCH does not carry them. */
+export type UpdateRfpInput = Partial<Omit<CreateRfpInput, 'lots' | 'composition'>>;
 
 /**
  * Dirhams, grouped, no decimals — these are seven- and eight-figure estimates.
@@ -117,4 +204,27 @@ export function formatBudget(budget: number | null): string {
   if (budget === null) return '—';
   const grouped = Math.round(budget).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   return `${grouped} DH`;
+}
+
+/**
+ * A budget as typed, in whole dirhams: `null` when empty, `undefined` when it
+ * is not an amount.
+ *
+ * Amounts are written the way the Avis writes them — "1 500 000,00",
+ * "1.500.000", "1500000" — so grouping spaces and dots and two decimals are
+ * all read. Parsed once, on the way out, rather than filtered per keystroke:
+ * a filter that drops the comma of "1500000,00" as it is typed turns the
+ * following "00" into two more zeros.
+ */
+export function parseBudget(raw: string): number | null | undefined {
+  // `\s` covers the no-break spaces a copy from a PDF carries.
+  const s = raw.replace(/\s/g, '').replace(/(DH|MAD)$/i, '');
+  if (s === '') return null;
+  let m = /^(\d+)(?:[.,](\d{1,2}))?$/.exec(s);
+  if (!m) {
+    // Dot-grouped thousands, with an optional comma for the cents.
+    m = /^(\d{1,3}(?:\.\d{3})+)(?:,(\d{1,2}))?$/.exec(s);
+    if (!m) return undefined;
+  }
+  return Math.round(Number(`${m[1].replace(/\./g, '')}.${m[2] ?? '0'}`));
 }

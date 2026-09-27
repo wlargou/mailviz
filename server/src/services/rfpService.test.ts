@@ -121,13 +121,15 @@ describe('rfpService — the register view', () => {
     // a string, so the client would receive "12500000.5" where it formats a
     // number — and `toLocaleString` on a string silently does nothing.
     const { alice } = await createTwoUsers();
-    const created = await rfpService.create(alice.id, { ...base, reference: 'B/1', isGoe: true, budget: 12500000.5 });
+    const created = await rfpService.create(alice.id, { ...base, reference: 'B/1', isGoe: true, lots: [{ title: 'Lot unique', budget: 12500000.5 }] });
 
     expect(created.budget).toBe(12500000.5);
     expect(typeof created.budget).toBe('number');
     expect(typeof (await rfpService.findAll(alice.id, {})).data[0].budget).toBe('number');
     expect(typeof (await rfpService.findById(alice.id, created.id)).budget).toBe('number');
     expect(JSON.parse(JSON.stringify(created)).budget).toBe(12500000.5);
+    // The lot's own budget crosses the wire the same way.
+    expect(typeof (await rfpService.findById(alice.id, created.id)).lots[0].budget).toBe('number');
 
     // No budget stays null rather than becoming 0.
     const noBudget = await rfpService.create(alice.id, { ...base, reference: 'B/2' });
@@ -137,7 +139,7 @@ describe('rfpService — the register view', () => {
   it('a PATCH changes what it names and nothing else', async () => {
     const { alice } = await createTwoUsers();
     const rfp = await rfpService.create(alice.id, {
-      ...base, reference: 'P/1', status: 'WORKING', isGoe: true, budget: 5000, portalUrl: 'https://portal.test', notes: 'Lot unique',
+      ...base, reference: 'P/1', status: 'WORKING', isGoe: true, lots: [{ title: 'Lot unique', budget: 5000 }], portalUrl: 'https://portal.test', notes: 'Lot unique',
     });
 
     const updated = await rfpService.update(alice.id, rfp.id, { name: 'Renamed' });
@@ -151,10 +153,11 @@ describe('rfpService — the register view', () => {
     expect(updated.deadlineAt.toISOString()).toBe(base.deadlineAt);
 
     // An empty string is an explicit clear, which null is how the row holds it.
-    const cleared = await rfpService.update(alice.id, rfp.id, { portalUrl: '', notes: '', budget: null });
+    const cleared = await rfpService.update(alice.id, rfp.id, { portalUrl: '', notes: '' });
     expect(cleared.portalUrl).toBeNull();
     expect(cleared.notes).toBeNull();
-    expect(cleared.budget).toBeNull();
+    // The budget is the lots' total, which an unrelated PATCH leaves alone.
+    expect(cleared.budget).toBe(5000);
   });
 });
 
