@@ -82,3 +82,25 @@ export interface GoogleStatus {
 }
 
 export type CalendarViewMode = 'month' | 'week' | 'day';
+
+/** Something dated that is not a meeting — from GET /calendar/deadlines. */
+export type CalendarDeadlineKind = 'RFP_DEADLINE' | 'RFP_QUESTIONS' | 'PIECE_DUE' | 'TASK_DUE';
+
+export interface CalendarDeadline {
+  kind: CalendarDeadlineKind;
+  id: string;
+  title: string;
+  context: string | null;
+  at: string;
+  href: string;
+}
+
+/**
+ * What the calendar draws: meetings, tender deadlines (submission and
+ * questions), and work due (tasks and RFP pieces).
+ */
+export interface CalendarLayers {
+  meetings: boolean;
+  deadlines: boolean;
+  tasks: boolean;
+}

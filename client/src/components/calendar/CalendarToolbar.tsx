@@ -1,4 +1,4 @@
-import { Button, ContentSwitcher, Switch } from '@carbon/react';
+import { Button, ContentSwitcher, SelectableTag, Switch } from '@carbon/react';
 import { ChevronLeft, ChevronRight, Add, Renew } from '@carbon/icons-react';
 import { format } from 'date-fns';
 import { isAxiosError } from 'axios';
@@ -11,7 +11,7 @@ interface CalendarToolbarProps {
 }
 
 export function CalendarToolbar({ onAddEvent }: CalendarToolbarProps) {
-  const { currentDate, viewMode, syncing, googleStatus, navigate, setViewMode, syncEvents } =
+  const { currentDate, viewMode, syncing, googleStatus, navigate, setViewMode, syncEvents, layers, toggleLayer } =
     useCalendarStore();
   const addNotification = useUIStore((s) => s.addNotification);
 
@@ -53,6 +53,12 @@ export function CalendarToolbar({ onAddEvent }: CalendarToolbarProps) {
         <h3 className="calendar-toolbar__period">{periodLabel}</h3>
       </div>
       <div className="calendar-toolbar__actions">
+        {/* What to draw: meetings, tender dates, and work due. */}
+        <div className="calendar-toolbar__layers" role="group" aria-label="Show on the calendar">
+          <SelectableTag id="layer-meetings" text="Meetings" size="md" selected={layers.meetings} onChange={() => toggleLayer('meetings')} />
+          <SelectableTag id="layer-deadlines" text="Deadlines" size="md" selected={layers.deadlines} onChange={() => toggleLayer('deadlines')} />
+          <SelectableTag id="layer-tasks" text="Tasks" size="md" selected={layers.tasks} onChange={() => toggleLayer('tasks')} />
+        </div>
         <ContentSwitcher
           onChange={(e) => setViewMode(String(e.name) as CalendarViewMode)}
           selectedIndex={viewIndex}

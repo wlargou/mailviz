@@ -15,7 +15,7 @@ import {
 } from 'date-fns';
 import { calendarApi } from '../api/calendar';
 import { authApi } from '../api/auth';
-import { useCalendarStore } from './calendarStore';
+import { useCalendarStore, visibleDeadlines, visibleEvents } from './calendarStore';
 import type { CalendarEvent, GoogleStatus } from '../types/calendar';
 
 /**
@@ -33,6 +33,7 @@ import type { CalendarEvent, GoogleStatus } from '../types/calendar';
 vi.mock('../api/calendar', () => ({
   calendarApi: {
     getAll: vi.fn(),
+    getDeadlines: vi.fn(),
     sync: vi.fn(),
   },
 }));
@@ -100,16 +101,18 @@ beforeEach(() => {
   vi.clearAllMocks();
   useCalendarStore.setState(initialState, true);
   mockEvents([]);
+  vi.mocked(calendarApi.getDeadlines).mockResolvedValue(axiosOk({ data: [] }) as never);
 });
 
 describe('calendarStore', () => {
-  it('starts on the month view with nothing loaded', () => {
+  it('starts on the week view with nothing loaded', () => {
     const state = useCalendarStore.getState();
 
     expect(state.events).toEqual([]);
     expect(state.loading).toBe(false);
     expect(state.syncing).toBe(false);
-    expect(state.viewMode).toBe('month');
+    // A week: in a month every title is cut to a dozen letters.
+    expect(state.viewMode).toBe('week');
     expect(state.googleStatus).toBeNull();
   });
 
@@ -325,5 +328,52 @@ describe('calendarStore', () => {
     // what puts the "Connect Google Calendar" prompt on screen. Leaving the
     // stale connected:true would show an empty calendar with no explanation.
     expect(useCalendarStore.getState().googleStatus).toEqual({ connected: false });
+  });
+});
+
+describe('calendarStore — deadlines and layers', () => {
+  const deadline = (kind: string, id: string) => ({ kind, id, title: id, context: null, at: '2026-11-20T10:00:00.000Z', href: '/rfps/r1' });
+
+  it('fetches the deadlines for the same range as the meetings', async () => {
+    const anchor = new Date(2026, 10, 18);
+    useCalendarStore.setState({ currentDate: anchor, viewMode: 'week' });
+    vi.mocked(calendarApi.getDeadlines).mockResolvedValue(axiosOk({ data: [deadline('RFP_DEADLINE', 'd1')] }) as never);
+
+    await useCalendarStore.getState().fetchEvents();
+
+    await vi.waitFor(() => expect(useCalendarStore.getState().deadlines).toHaveLength(1));
+    expect(vi.mocked(calendarApi.getDeadlines).mock.calls[0]).toEqual(vi.mocked(calendarApi.getAll).mock.calls[0]);
+  });
+
+  it('still shows the meetings when the deadlines fail', async () => {
+    vi.mocked(calendarApi.getDeadlines).mockRejectedValue(new Error('down'));
+    mockEvents([{ id: 'e1' } as CalendarEvent]);
+
+    await useCalendarStore.getState().fetchEvents();
+
+    expect(useCalendarStore.getState().events).toHaveLength(1);
+    await vi.waitFor(() => expect(useCalendarStore.getState().deadlines).toEqual([]));
+  });
+
+  it('sorts tender dates under Deadlines and pieces and tasks under Tasks', () => {
+    const state = {
+      events: [{ id: 'e1' } as CalendarEvent],
+      deadlines: [deadline('RFP_DEADLINE', 'a'), deadline('RFP_QUESTIONS', 'b'), deadline('PIECE_DUE', 'c'), deadline('TASK_DUE', 'd')] as never,
+    };
+    const ids = (layers: { meetings: boolean; deadlines: boolean; tasks: boolean }) =>
+      visibleDeadlines({ ...state, layers }).map((d) => d.id);
+
+    expect(ids({ meetings: true, deadlines: true, tasks: true })).toEqual(['a', 'b', 'c', 'd']);
+    expect(ids({ meetings: true, deadlines: false, tasks: true })).toEqual(['c', 'd']);
+    expect(ids({ meetings: true, deadlines: true, tasks: false })).toEqual(['a', 'b']);
+    expect(visibleEvents({ ...state, layers: { meetings: false, deadlines: true, tasks: true } })).toEqual([]);
+  });
+
+  it('toggles a layer and remembers it', () => {
+    useCalendarStore.getState().toggleLayer('meetings');
+    expect(useCalendarStore.getState().layers.meetings).toBe(false);
+    expect(JSON.parse(localStorage.getItem('mailviz.calendar.layers')!)).toMatchObject({ meetings: false, deadlines: true });
+    useCalendarStore.getState().toggleLayer('meetings');
+    expect(useCalendarStore.getState().layers.meetings).toBe(true);
   });
 });

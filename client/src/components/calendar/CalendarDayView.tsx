@@ -7,8 +7,10 @@ import {
   format,
   differenceInMinutes,
   areIntervalsOverlapping,
+  isSameDay,
 } from 'date-fns';
-import { useCalendarStore } from '../../store/calendarStore';
+import { useCalendarStore, visibleDeadlines, visibleEvents } from '../../store/calendarStore';
+import { DeadlineChip } from './DeadlineChip';
 import type { CalendarEvent } from '../../types/calendar';
 import { getEventColor } from '../../utils/eventColors';
 
@@ -106,7 +108,12 @@ function formatTimeRange(start: Date, end: Date): string {
 }
 
 export function CalendarDayView({ onEventClick, onSlotClick }: CalendarDayViewProps) {
-  const { currentDate, events } = useCalendarStore();
+  // Derived from the whole state, not selected: a selector returning a new
+  // array each call would re-render without end.
+  const calendar = useCalendarStore();
+  const { currentDate } = calendar;
+  const events = visibleEvents(calendar);
+  const deadlines = visibleDeadlines(calendar).filter((d) => isSameDay(new Date(d.at), currentDate));
   const bodyRef = useRef<HTMLDivElement>(null);
 
   const dayStart = startOfDay(currentDate);
@@ -138,12 +145,15 @@ export function CalendarDayView({ onEventClick, onSlotClick }: CalendarDayViewPr
       </div>
 
       {/* All-day row */}
-      {allDayEvents.length > 0 && (
+      {(allDayEvents.length > 0 || deadlines.length > 0) && (
         <div className="calendar-day__allday">
           <div className="calendar-day__gutter">
             <span className="calendar-day__gutter-label">All day</span>
           </div>
           <div className="calendar-day__allday-cell">
+            {deadlines.map((d) => (
+              <DeadlineChip key={d.id} deadline={d} />
+            ))}
             {allDayEvents.map((event) => {
               const colors = getEventColor(event.colorId);
               return (

@@ -135,10 +135,16 @@ export function RfpResponseSection({ rfp, catalogue, currentUserId, onLocalChang
           folders={rfp.folders}
           onOpen={(folderId) => {
             setOpenFolders((prev) => new Set(prev).add(folderId));
-            // After the accordion has opened.
-            requestAnimationFrame(() =>
-              document.getElementById(`rfp-folder-${folderId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
-            );
+            // After the accordion has opened. The app scrolls inside
+            // #main-content; `scrollIntoView` also scrolled <html>, which
+            // pushed the whole shell down under a blank band.
+            requestAnimationFrame(() => {
+              const target = document.getElementById(`rfp-folder-${folderId}`);
+              const container = target?.closest<HTMLElement>('#main-content');
+              if (!target || !container) return;
+              const top = target.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 16;
+              container.scrollTo({ top, behavior: 'smooth' });
+            });
           }}
         />
       )}
