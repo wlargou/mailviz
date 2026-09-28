@@ -27,7 +27,7 @@
 }
 
 .rfp-deadline--soon {
-  color: var(--cds-support-warning);
+  color: var(--text-warning);
   font-weight: 600;
 }
 
@@ -48,7 +48,7 @@
   }
 
   .rfp-deadline--soon & {
-    color: var(--cds-support-warning);
+    color: var(--text-warning);
   }
 }
 
@@ -672,7 +672,7 @@
 }
 
 .rfp-detail__awaiting {
-  color: var(--cds-support-warning);
+  color: var(--text-warning);
   margin-block-start: $spacing-03;
 }
 
@@ -960,7 +960,7 @@
 
 .rfp-dossiers__unowned {
   @include type.type-style('label-01');
-  color: var(--cds-support-warning);
+  color: var(--text-warning);
   margin-inline-start: $spacing-02;
 }
 
