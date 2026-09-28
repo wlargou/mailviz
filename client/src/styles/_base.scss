@@ -391,3 +391,26 @@ body {
     outline-offset: 2px;
   }
 }
+
+// ─── COMPANY PAGE HEADER ─────────────────────────
+// One row of facts under the page title; no tile repeating the name.
+.company-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-03 $spacing-05;
+  margin: (-$spacing-03) 0 $spacing-05;
+}
+
+.company-meta__item {
+  @include type.type-style('body-compact-01');
+  color: var(--cds-text-secondary);
+}
+
+.company-meta__notes {
+  @include type.type-style('body-01');
+  color: var(--cds-text-secondary);
+  white-space: pre-line;
+  max-inline-size: 60rem;
+  margin: 0 0 $spacing-06;
+}
