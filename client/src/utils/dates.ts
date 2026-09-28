@@ -1,4 +1,4 @@
-import { differenceInCalendarDays, format, formatDistanceStrict } from 'date-fns';
+import { differenceInCalendarDays, format, formatDistanceStrict, isSameDay } from 'date-fns';
 
 /**
  * A date as a list shows it: no year when it is this year's.
@@ -29,4 +29,16 @@ export function timeLeft(deadline: Date | string, now = new Date()): string {
   if (days === 0) return `in ${formatDistanceStrict(d, now, { roundingMethod: 'ceil' })}`;
   if (days === 1) return 'tomorrow';
   return `in ${days} days`;
+}
+
+/**
+ * When a message arrived, as a mail list shows it: the time for today,
+ * "Yesterday", then the date — "about 2 hours ago" spent a column on
+ * words, and read differently every minute.
+ */
+export function mailListDate(date: Date | string, now = new Date()): string {
+  const d = new Date(date);
+  if (isSameDay(d, now)) return format(d, 'HH:mm');
+  if (differenceInCalendarDays(now, d) === 1) return 'Yesterday';
+  return shortDate(d, { now });
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { shortDate, timeLeft } from './dates';
+import { shortDate, timeLeft, mailListDate } from './dates';
 
 const now = new Date(2026, 8, 28, 9, 0); // Mon 28 Sep 2026, 09:00 local
 
@@ -31,5 +31,15 @@ describe('timeLeft', () => {
   it('says how late a passed deadline is', () => {
     expect(timeLeft(new Date(2026, 8, 25, 9, 0), now)).toBe('3 days late');
     expect(timeLeft(new Date(2026, 8, 28, 6, 0), now)).toBe('3 hours late');
+  });
+});
+
+describe('mailListDate', () => {
+  it('shows the time for today, "Yesterday", then the date', () => {
+    expect(mailListDate(new Date(2026, 8, 28, 8, 5), now)).toBe('08:05');
+    expect(mailListDate(new Date(2026, 8, 28, 0, 0), now)).toBe('00:00');
+    expect(mailListDate(new Date(2026, 8, 27, 23, 59), now)).toBe('Yesterday');
+    expect(mailListDate(new Date(2026, 8, 26, 12, 0), now)).toBe('Sep 26');
+    expect(mailListDate(new Date(2025, 11, 31, 12, 0), now)).toBe('Dec 31, 2025');
   });
 });
