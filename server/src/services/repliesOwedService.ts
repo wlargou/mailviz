@@ -34,7 +34,6 @@ const CALENDAR_SUBJECT = /^((updated )?invitation( with note)?|invitation mise √
 /** Out-of-office replies, which want nothing back. */
 const AUTO_REPLY_SUBJECT = /^(automatic reply|auto(-| )?reply|out of (the )?office|r√©ponse automatique|absence|absent)\b/i;
 
-
 /**
  * Threads where a person is waiting on the user.
  *
