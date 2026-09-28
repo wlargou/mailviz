@@ -106,7 +106,8 @@ function markFrom(start: Element, root: Element, doc: Document) {
 
 function visibleText(root: Element): string {
   const clone = root.cloneNode(true) as Element;
-  clone.querySelectorAll(`[${QUOTED_ATTR}]`).forEach((el) => el.remove());
+  // Script and style are text no reader sees; the body arrives unsanitised.
+  clone.querySelectorAll(`[${QUOTED_ATTR}], script, style, noscript, template`).forEach((el) => el.remove());
   return (clone.textContent ?? '').replace(/\s+/g, ' ').trim();
 }
 

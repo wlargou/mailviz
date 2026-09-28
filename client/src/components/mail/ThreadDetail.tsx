@@ -129,10 +129,14 @@ export function recipientsLine(msg: Pick<EmailMessage, 'to' | 'cc'>, own: Set<st
 }
 
 function MessageBody({ msg, showQuotes, onToggleQuotes }: { msg: EmailMessage; showQuotes: boolean; onToggleQuotes: () => void }) {
-  const folded = useMemo(
-    () => foldQuotedHistory(DOMPurify.sanitize(msg.body ?? ''), decodeEntities(msg.subject)),
-    [msg.body, msg.subject],
-  );
+  // Fold, then sanitise. The sanitiser's output is safe to parse once, and
+  // folding parses and re-serialises it — done after, it would hand the page
+  // markup the sanitiser never saw. DOMParser's document is inert, so folding
+  // the raw body runs nothing.
+  const folded = useMemo(() => {
+    const { html, folded } = foldQuotedHistory(msg.body ?? '', decodeEntities(msg.subject));
+    return { html: DOMPurify.sanitize(html), folded };
+  }, [msg.body, msg.subject]);
   return (
     <>
       <div

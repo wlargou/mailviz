@@ -92,4 +92,12 @@ describe('foldQuotedHistory', () => {
     const plain = `<p>Just a message</p>`;
     expect(foldQuotedHistory(plain, 'Hello')).toEqual({ html: plain, folded: false });
   });
+
+  it('does not count a style or script block as the reply', () => {
+    // Inside the body: leading, the parser would move them to <head>.
+    const style = `<div><style>p { color: red }</style></div><div class="gmail_quote">only history</div>`;
+    expect(foldQuotedHistory(style, 'Re: x').folded).toBe(false);
+    const script = `<div><script>var x = 1</script></div><div class="gmail_quote">only history</div>`;
+    expect(foldQuotedHistory(script, 'Re: x').folded).toBe(false);
+  });
 });

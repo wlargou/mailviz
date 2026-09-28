@@ -5,6 +5,8 @@ import { MemoryRouter } from 'react-router-dom';
 import { ThreadDetail, threadRows, recipientsLine } from './ThreadDetail';
 import { emailsApi } from '../../api/emails';
 import { contactsApi } from '../../api/contacts';
+import DOMPurify from 'dompurify';
+import { QUOTED_ATTR } from '../../utils/mailQuotes';
 
 /**
  * The thread reader, from a keyboard.
@@ -266,6 +268,26 @@ describe('ThreadDetail — reading', () => {
     await user.click(toggle);
     expect(body.getAttribute('data-quotes')).toBe('shown');
     expect(screen.getByRole('button', { name: 'Hide quoted history' })).toBeInTheDocument();
+  });
+
+  it('sanitises the folded body, so nothing re-parses its output', async () => {
+    const sanitize = vi.spyOn(DOMPurify, 'sanitize');
+    const reply = message('a', {
+      body: '<p>My answer</p><div class="gmail_quote">On Mon: <img src="x" onerror="alert(1)"></div>',
+    });
+    vi.mocked(emailsApi.getThread).mockResolvedValue({ data: { data: [reply] } } as never);
+    vi.mocked(emailsApi.getMessage).mockResolvedValue({ data: { data: reply } } as never);
+    const { container } = renderThread();
+
+    await screen.findByRole('button', { name: 'Show quoted history' });
+    const call = sanitize.mock.calls.findIndex(([html]) => String(html).includes('My answer'));
+    expect(call).toBeGreaterThanOrEqual(0);
+    // It is handed the folded markup — folding came first…
+    expect(String(sanitize.mock.calls[call][0])).toContain(QUOTED_ATTR);
+    // …and what it returns is what the page renders.
+    expect(container.querySelector('.message-card__html')!.innerHTML).toBe(String(sanitize.mock.results[call].value));
+    expect(container.querySelector('[onerror]')).toBeNull();
+    sanitize.mockRestore();
   });
 
   it('hides the middle of a long thread behind one line', async () => {
