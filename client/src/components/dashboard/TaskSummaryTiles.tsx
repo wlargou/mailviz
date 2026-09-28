@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react';
 import { Grid, Column, ClickableTile, SkeletonText } from '@carbon/react';
 import { useNavigate } from 'react-router-dom';
-import { WarningAlt, Email, Calendar, Partnership } from '@carbon/icons-react';
+import { WarningAlt, Email, Calendar, Document } from '@carbon/icons-react';
+import { dashboardApi, type NavCounts } from '../../api/dashboard';
 import type { DashboardStats } from '../../types/dashboard';
 
 interface TaskSummaryTilesProps {
@@ -8,8 +10,17 @@ interface TaskSummaryTilesProps {
   loading: boolean;
 }
 
+/**
+ * Four numbers, each something that can be acted on today. "Unread today"
+ * (0, above 11,855 total unread) and "Expiring deals" (0, with no deals)
+ * took half the row and prompted nothing.
+ */
 export function TaskSummaryTiles({ stats, loading }: TaskSummaryTilesProps) {
   const navigate = useNavigate();
+  const [counts, setCounts] = useState<NavCounts | null>(null);
+  useEffect(() => {
+    dashboardApi.getNavCounts().then(({ data }) => setCounts(data.data)).catch(() => {});
+  }, []);
 
   if (loading || !stats) {
     return (
@@ -26,40 +37,40 @@ export function TaskSummaryTiles({ stats, loading }: TaskSummaryTilesProps) {
     );
   }
 
-  const { tasks, emails, calendar } = stats;
+  const { tasks, calendar } = stats;
 
   const metrics = [
     {
-      label: 'Overdue Tasks',
+      label: 'Late tasks',
       value: tasks.overdue,
-      helper: 'tasks past due date',
+      helper: 'past their due date',
       icon: WarningAlt,
       accentVar: '--cds-support-error',
       onClick: () => navigate('/tasks?overdue=true'),
     },
     {
-      label: 'Unread Today',
-      value: emails.unreadTodayCount,
-      helper: `${emails.unreadCount.toLocaleString()} total unread`,
+      label: 'Replies owed',
+      value: counts?.repliesOwed ?? 0,
+      helper: 'people waiting on you',
       icon: Email,
       accentVar: '--cds-link-primary',
-      onClick: () => navigate('/mail?isRead=false'),
+      onClick: () => navigate('/mail?folder=to-reply'),
     },
     {
-      label: 'Events Today',
+      label: 'Meetings today',
       value: calendar.eventsToday,
-      helper: `${calendar.meetingHoursThisWeek}h meetings this week`,
+      helper: `${calendar.meetingHoursThisWeek}h of meetings this week`,
       icon: Calendar,
       accentVar: '--cds-support-success',
       onClick: () => navigate('/calendar'),
     },
     {
-      label: 'Expiring Deals',
-      value: stats.expiringDeals?.length ?? 0,
-      helper: 'in the next 15 days',
-      icon: Partnership,
-      accentVar: '--cds-support-warning',
-      onClick: () => navigate('/deals'),
+      label: 'Tenders at risk',
+      value: counts?.rfpsAtRisk ?? 0,
+      helper: 'readiness behind the clock',
+      icon: Document,
+      accentVar: '--cds-support-error',
+      onClick: () => navigate('/pursuits'),
     },
   ];
 
