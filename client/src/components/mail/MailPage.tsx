@@ -739,7 +739,7 @@ export function MailPage() {
                 }
               }}
             >
-              Select
+              {selectMode ? 'Done selecting' : 'Select'}
             </Button>
             <Button
               kind="ghost"
@@ -748,7 +748,7 @@ export function MailPage() {
               onClick={handleSync}
               disabled={syncing}
             >
-              {syncing ? 'Syncing...' : 'Sync'}
+              {syncing ? 'Syncing…' : 'Sync now'}
             </Button>
             <Button
               kind="ghost"
@@ -756,7 +756,8 @@ export function MailPage() {
               renderIcon={Review}
               onClick={() => navigate('/mail/review')}
             >
-              Review
+              {/* Says what it does: "Review" alone read as "review this mail". */}
+              Catch up by company
             </Button>
           </div>
         </div>
