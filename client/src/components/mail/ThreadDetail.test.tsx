@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { render, screen, waitFor, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { ThreadDetail, threadRows, recipientsLine } from './ThreadDetail';
@@ -301,6 +301,225 @@ describe('ThreadDetail — reading', () => {
 
     await user.click(gap);
     expect(screen.getAllByRole('button', { name: /message from Sender/i })).toHaveLength(8);
+  });
+});
+
+describe('ThreadDetail — opening a message takes one click', () => {
+  /** Resolves when told to: a body arriving late. */
+  function deferred() {
+    let resolve: (v: unknown) => void = () => {};
+    const promise = new Promise((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+  const bodyOf = (id: string) => ({ data: { data: message(id, { body: `<p>Full text of ${id}</p>` }) } });
+  const header = (id: string) => screen.getByRole('button', { name: new RegExp(`message from Sender ${id}$`) });
+
+  it('opens every unread message with its whole text — REGRESSION', async () => {
+    // Only the first unread message's body was fetched; the others opened on
+    // their snippet, so a click collapsed them and a second click loaded them.
+    vi.mocked(emailsApi.getThread).mockResolvedValue({
+      data: { data: [message('a'), message('b', { isRead: false, body: null }), message('c', { isRead: false, body: null })] },
+    } as never);
+    vi.mocked(emailsApi.getMessage).mockImplementation(async (id: string) => bodyOf(id) as never);
+    renderThread();
+
+    expect(await screen.findByText('Full text of b')).toBeInTheDocument();
+    expect(await screen.findByText('Full text of c')).toBeInTheDocument();
+    expect(header('b')).toHaveAttribute('aria-expanded', 'true');
+    expect(header('c')).toHaveAttribute('aria-expanded', 'true');
+    // Shown open is read, as Gmail has it — both of them, not the first alone.
+    await waitFor(() => expect(emailsApi.markAsRead).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(emailsApi.markAsRead).mock.calls.map(([id]) => id).sort()).toEqual(['b', 'c']);
+  });
+
+  it('opens a message on the first click, and says it is loading', async () => {
+    const user = userEvent.setup();
+    vi.mocked(emailsApi.getThread).mockResolvedValue({
+      data: { data: [message('a', { body: null }), message('b')] },
+    } as never);
+    const late = deferred();
+    vi.mocked(emailsApi.getMessage).mockImplementation(() => late.promise as never);
+    renderThread();
+
+    await user.click(await screen.findByRole('button', { name: /Expand message from Sender a$/ }));
+    expect(header('a')).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('Loading message...')).toBeInTheDocument();
+
+    late.resolve(bodyOf('a'));
+    expect(await screen.findByText('Full text of a')).toBeInTheDocument();
+  });
+
+  it('keeps both open when two messages are clicked before either arrives', async () => {
+    const user = userEvent.setup();
+    vi.mocked(emailsApi.getThread).mockResolvedValue({
+      data: { data: [message('a', { body: null }), message('b', { body: null }), message('c')] },
+    } as never);
+    const bodies = { a: deferred(), b: deferred() };
+    vi.mocked(emailsApi.getMessage).mockImplementation((id: string) => bodies[id as 'a' | 'b'].promise as never);
+    renderThread();
+
+    await user.click(await screen.findByRole('button', { name: /Expand message from Sender a$/ }));
+    await user.click(screen.getByRole('button', { name: /Expand message from Sender b$/ }));
+    bodies.a.resolve(bodyOf('a'));
+    bodies.b.resolve(bodyOf('b'));
+
+    expect(await screen.findByText('Full text of a')).toBeInTheDocument();
+    expect(await screen.findByText('Full text of b')).toBeInTheDocument();
+    expect(header('a')).toHaveAttribute('aria-expanded', 'true');
+    expect(header('b')).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('does not fetch a message it is closing', async () => {
+    // Its text failed to load: closing it is not a reason to try again.
+    const user = userEvent.setup();
+    vi.mocked(emailsApi.getThread).mockResolvedValue({
+      data: { data: [message('a', { body: null }), message('b')] },
+    } as never);
+    vi.mocked(emailsApi.getMessage).mockRejectedValue(new Error('offline'));
+    renderThread();
+
+    await user.click(await screen.findByRole('button', { name: /Expand message from Sender a$/ }));
+    await waitFor(() => expect(screen.queryByText('Loading message...')).toBeNull());
+    await user.click(header('a'));
+    expect(header('a')).toHaveAttribute('aria-expanded', 'false');
+    expect(emailsApi.getMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('fetches a body once, however many times its message is opened', async () => {
+    const user = userEvent.setup();
+    vi.mocked(emailsApi.getThread).mockResolvedValue({
+      data: { data: [message('a', { body: null }), message('b')] },
+    } as never);
+    const late = deferred();
+    vi.mocked(emailsApi.getMessage).mockImplementation(() => late.promise as never);
+    renderThread();
+
+    // Open, close, open again while the first request is still out.
+    await user.click(await screen.findByRole('button', { name: /Expand message from Sender a$/ }));
+    await user.click(header('a'));
+    await user.click(header('a'));
+    late.resolve(bodyOf('a'));
+
+    expect(await screen.findByText('Full text of a')).toBeInTheDocument();
+    expect(emailsApi.getMessage).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * jsdom has no IntersectionObserver. This one reports what a test says is on
+ * screen: `show('b', 0.6)` puts 60% of message b's 400px card in view of an
+ * 800px reader.
+ */
+class FakeIntersectionObserver {
+  static latest: FakeIntersectionObserver | null = null;
+  elements: Element[] = [];
+  constructor(public callback: IntersectionObserverCallback) {
+    FakeIntersectionObserver.latest = this;
+  }
+  observe(el: Element) { this.elements.push(el); }
+  unobserve() {}
+  disconnect() { this.elements = []; }
+  takeRecords() { return []; }
+}
+function show(id: string, fraction: number) {
+  const io = FakeIntersectionObserver.latest!;
+  const target = io.elements.find((el) => (el as HTMLElement).dataset.messageId === id)!;
+  act(() => {
+    io.callback([{
+      target,
+      isIntersecting: fraction > 0,
+      intersectionRatio: fraction,
+      intersectionRect: { height: 400 * fraction },
+      boundingClientRect: { height: 400 },
+      rootBounds: { height: 800 },
+    } as unknown as IntersectionObserverEntry], io as unknown as IntersectionObserver);
+  });
+}
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+describe('ThreadDetail — the timeline rail', () => {
+  const rail = () => screen.queryByRole('navigation', { name: 'Thread timeline' });
+
+  it('stands beside a conversation, not beside a message and its answer', async () => {
+    renderThread();
+    await screen.findByRole('button', { name: /message from Sender b$/ });
+    expect(rail()).toBeNull();
+  });
+
+  it('opens a message folded into "earlier messages" from its marker, and only that one', async () => {
+    const user = userEvent.setup();
+    const eight = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map((id, i) =>
+      message(id, { body: id === 'h' ? '<p>body h</p>' : null, receivedAt: `2026-08-1${i}T09:00:00.000Z` }));
+    vi.mocked(emailsApi.getThread).mockResolvedValue({ data: { data: eight } } as never);
+    vi.mocked(emailsApi.getMessage).mockImplementation(async (id: string) =>
+      ({ data: { data: message(id, { body: `<p>Full text of ${id}</p>` }) } }) as never);
+    renderThread();
+
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await screen.findByRole('button', { name: '5 earlier messages' });
+    await user.click(within(rail()!).getByRole('button', { name: /^Sender d,/ }));
+
+    expect(await screen.findByText('Full text of d')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /message from Sender d$/ })).toHaveAttribute('aria-expanded', 'true');
+    // d came out of the gap, splitting it in two; b, c, e and f stay folded.
+    expect(screen.getAllByRole('button', { name: '2 earlier messages' })).toHaveLength(2);
+    expect(screen.queryByRole('button', { name: /message from Sender c$/ })).toBeNull();
+    // Two gaps are two rows to React, not one key twice.
+    expect(errors.mock.calls.flat().join(' ')).not.toMatch(/same key/);
+    errors.mockRestore();
+  });
+
+  describe('reading what is on screen', () => {
+    beforeEach(() => {
+      vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver);
+      vi.mocked(emailsApi.getThread).mockResolvedValue({
+        data: { data: [message('a'), message('b', { isRead: false }), message('c', { isRead: false })] },
+      } as never);
+    });
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      FakeIntersectionObserver.latest = null;
+    });
+
+    it('reads an unread message once it has been on screen, not on a glimpse, and outlines it on the rail', async () => {
+      renderThread();
+      await screen.findByText('body c');
+
+      show('b', 0.2);
+      await pause(700);
+      expect(emailsApi.markAsRead).not.toHaveBeenCalled();
+      expect(screen.getByTestId('timeline-band')).toBeInTheDocument();
+
+      show('b', 0.6);
+      await waitFor(() => expect(emailsApi.markAsRead).toHaveBeenCalledWith('b'), { timeout: 2000 });
+      // c never came into view: still unread, on the server and on the rail.
+      expect(emailsApi.markAsRead).not.toHaveBeenCalledWith('c');
+      await waitFor(() => expect(within(rail()!).getByRole('button', { name: '1 new' })).toBeInTheDocument());
+    });
+
+    it('reads a message opened from the rail at once, seen or not', async () => {
+      const user = userEvent.setup();
+      renderThread();
+      await screen.findByText('body c');
+
+      await user.click(within(rail()!).getByRole('button', { name: /^Sender c,/ }));
+      expect(emailsApi.markAsRead).toHaveBeenCalledWith('c');
+      expect(emailsApi.markAsRead).not.toHaveBeenCalledWith('b');
+    });
+
+    it('asks once, however often a message is seen before the answer comes', async () => {
+      let answer: (v: unknown) => void = () => {};
+      vi.mocked(emailsApi.markAsRead).mockImplementation(() => new Promise((r) => { answer = r; }) as never);
+      renderThread();
+      await screen.findByText('body b');
+
+      show('b', 1);
+      await waitFor(() => expect(emailsApi.markAsRead).toHaveBeenCalledTimes(1), { timeout: 2000 });
+      show('b', 0.9);
+      await pause(700);
+      expect(emailsApi.markAsRead).toHaveBeenCalledTimes(1);
+      answer({});
+    });
   });
 });
 

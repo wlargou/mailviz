@@ -42,6 +42,7 @@ import { MailComposeModal } from './MailComposeModal';
 import { SnoozeModal } from './SnoozeModal';
 import { ShareDialog } from '../shared/ShareDialog';
 import { ThreadTenders } from './ThreadTenders';
+import { ThreadTimeline } from './ThreadTimeline';
 import { getFileTypeInfo, formatFileSize as formatSize } from '../../utils/fileTypes';
 import { foldQuotedHistory } from '../../utils/mailQuotes';
 import { bareAddress, ownAddressesIn, replyRecipients } from '../../utils/replyRecipients';
@@ -92,6 +93,24 @@ const MessageMenu = OverflowMenu as unknown as React.ComponentType<{
 
 /** Threads longer than this hide their middle messages. */
 const SHOW_ALL_UP_TO = 5;
+
+/** The timeline rail is for a conversation, not a message and its answer. */
+const RAIL_MIN_MESSAGES = 3;
+/** Below this width the rail would squeeze the messages; it steps aside. */
+const RAIL_MIN_WIDTH = 560;
+/**
+ * An unread message counts as seen once half of it — or half the reader — has
+ * been on screen and the scrolling has paused this long. Opening one, from its
+ * card or the rail, reads it at once.
+ */
+const SEEN_AFTER_MS = 500;
+
+/** The element that scrolls `el` — the host panel's body, not the page. */
+function scrollParent(el: HTMLElement | null): HTMLElement | null {
+  let node = el?.parentElement ?? null;
+  while (node && !/(auto|scroll)/.test(getComputedStyle(node).overflowY)) node = node.parentElement;
+  return node;
+}
 
 type Row = { kind: 'message'; msg: EmailMessage } | { kind: 'gap'; count: number };
 
@@ -182,11 +201,57 @@ export function ThreadDetail({ threadId, onEmailAction, onThreadGone, onLoaded }
   const [busy, setBusy] = useState(false);
   const [threadShares, setThreadShares] = useState<Array<{ id: string; createdAt: string; sharedWith: { id: string; name: string | null; email: string; avatarUrl: string | null } }>>([]);
   const scrollTargetRef = useRef<string | null>(null);
+  const [scrollTick, setScrollTick] = useState(0);
   const messageRefs = useRef<Map<string, HTMLElement>>(new Map());
   const rootRef = useRef<HTMLDivElement | null>(null);
+  /** Messages on screen, for the rail's outline. */
+  const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
+  /** …and those shown enough to count as seen. */
+  const shownRef = useRef<Set<string>>(new Set());
+  const seenTimer = useRef<number | undefined>(undefined);
+  const [wide, setWide] = useState(true);
+  /** Requests in flight, so a body or a read is never asked for twice. */
+  const bodyRequests = useRef<Set<string>>(new Set());
+  const readRequests = useRef<Set<string>>(new Set());
+  // Read from callbacks that outlive a render (observers, timers).
+  const messagesRef = useRef<EmailMessage[]>([]);
+  const onEmailActionRef = useRef(onEmailAction);
+  messagesRef.current = messages;
+  onEmailActionRef.current = onEmailAction;
   const navigate = useNavigate();
   const addNotification = useUIStore((s) => s.addNotification);
   const userEmail = useAuthStore((s) => s.user?.email);
+
+  /** Fetches a message's whole text, once; its card says "Loading" meanwhile. */
+  const loadBody = useCallback(async (id: string) => {
+    if (bodyRequests.current.has(id)) return;
+    bodyRequests.current.add(id);
+    setLoadingBodies((prev) => new Set(prev).add(id));
+    try {
+      const { data: res } = await emailsApi.getMessage(id);
+      setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, body: res.data.body } : m)));
+    } catch {
+      // The snippet stands in.
+    } finally {
+      bodyRequests.current.delete(id);
+      setLoadingBodies((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  }, []);
+
+  const markRead = useCallback((msg: EmailMessage) => {
+    if (msg.isRead || readRequests.current.has(msg.id)) return;
+    readRequests.current.add(msg.id);
+    emailsApi.markAsRead(msg.id).then(() => {
+      setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, isRead: true } : m)));
+      onEmailActionRef.current?.();
+    }).catch(() => {
+      readRequests.current.delete(msg.id);
+    });
+  }, []);
 
   const fetchThread = useCallback(async () => {
     setLoading(true);
@@ -203,19 +268,14 @@ export function ThreadDetail({ threadId, onEmailAction, onThreadGone, onLoaded }
         setExpandedMessages(toExpand);
         scrollTargetRef.current = targetMsg.id;
 
-        if (!targetMsg.body) {
-          try {
-            const { data: fullMsg } = await emailsApi.getMessage(targetMsg.id);
-            setMessages((prev) => prev.map((m) => (m.id === targetMsg.id ? { ...m, body: fullMsg.data.body } : m)));
-          } catch {
-            // The snippet stands in.
-          }
-        }
-        if (!targetMsg.isRead) {
-          emailsApi.markAsRead(targetMsg.id).then(() => {
-            setMessages((prev) => prev.map((m) => (m.id === targetMsg.id ? { ...m, isRead: true } : m)));
-            onEmailAction?.();
-          }).catch(() => {});
+        // Every message shown open gets its whole text. Only the first unread
+        // one used to: the others opened on their snippet, so a click folded
+        // them and a second click finally loaded them.
+        await Promise.all(res.data.filter((m) => toExpand.has(m.id) && !m.body).map((m) => loadBody(m.id)));
+        // What is on screen is read once seen (see SEEN_AFTER_MS). Without an
+        // observer there is no telling, so what is shown open counts as read.
+        if (typeof IntersectionObserver === 'undefined') {
+          res.data.filter((m) => toExpand.has(m.id)).forEach(markRead);
         }
       }
     } catch {
@@ -223,9 +283,9 @@ export function ThreadDetail({ threadId, onEmailAction, onThreadGone, onLoaded }
     } finally {
       setLoading(false);
     }
-    // onLoaded / onEmailAction are notifications, not inputs.
+    // onLoaded is a notification, not an input.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [threadId, addNotification]);
+  }, [threadId, addNotification, loadBody, markRead]);
 
   useEffect(() => {
     setShowAll(false);
@@ -244,8 +304,7 @@ export function ThreadDetail({ threadId, onEmailAction, onThreadGone, onLoaded }
     const el = messageRefs.current.get(scrollTargetRef.current);
     scrollTargetRef.current = null;
     if (!el) return;
-    let scroller: HTMLElement | null = el.parentElement;
-    while (scroller && !/(auto|scroll)/.test(getComputedStyle(scroller).overflowY)) scroller = scroller.parentElement;
+    const scroller = scrollParent(el);
     if (!scroller) return;
     const toolbar = rootRef.current?.querySelector('.thread-toolbar')?.getBoundingClientRect().height ?? 0;
     const target = scroller;
@@ -253,7 +312,64 @@ export function ThreadDetail({ threadId, onEmailAction, onThreadGone, onLoaded }
       const delta = el.getBoundingClientRect().top - target.getBoundingClientRect().top - toolbar - 8;
       target.scrollTo?.({ top: target.scrollTop + delta, behavior: 'smooth' });
     });
-  }, [loading, messages]);
+  }, [loading, messages, scrollTick]);
+
+  // The messages rendered, in order — what the observer below watches.
+  const renderedKey = useMemo(
+    () => threadRows(messages, expandedMessages, showAll).map((r) => (r.kind === 'message' ? r.msg.id : 'gap')).join(','),
+    [messages, expandedMessages, showAll],
+  );
+
+  /**
+   * What is on screen: the rail outlines it, and an unread message shown
+   * enough, once the scrolling pauses, is marked read — so the rail's blue
+   * dots are the messages not seen yet, not the ones never clicked.
+   */
+  useEffect(() => {
+    const root = rootRef.current;
+    if (loading || !root || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver((entries) => {
+      setVisibleIds((prev) => {
+        const next = new Set(prev);
+        for (const e of entries) {
+          const id = (e.target as HTMLElement).dataset.messageId;
+          if (!id) continue;
+          if (e.isIntersecting) next.add(id);
+          else next.delete(id);
+        }
+        return next;
+      });
+      for (const e of entries) {
+        const id = (e.target as HTMLElement).dataset.messageId;
+        if (!id) continue;
+        // Half the message, or half the reader for one taller than it.
+        const needed = Math.min(e.boundingClientRect.height, e.rootBounds?.height ?? Infinity) / 2;
+        if (e.isIntersecting && e.intersectionRect.height >= needed) shownRef.current.add(id);
+        else shownRef.current.delete(id);
+      }
+      window.clearTimeout(seenTimer.current);
+      seenTimer.current = window.setTimeout(() => {
+        for (const id of shownRef.current) {
+          const msg = messagesRef.current.find((m) => m.id === id);
+          if (msg) markRead(msg);
+        }
+      }, SEEN_AFTER_MS);
+    }, { root: scrollParent(root), threshold: [0, 0.25, 0.5, 0.75, 1] });
+    root.querySelectorAll('[data-message-id]').forEach((el) => observer.observe(el));
+    return () => {
+      observer.disconnect();
+      window.clearTimeout(seenTimer.current);
+    };
+  }, [loading, renderedKey, markRead]);
+
+  // The rail only where there is room for it beside the messages.
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(([entry]) => setWide(entry.contentRect.width >= RAIL_MIN_WIDTH));
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, [loading]);
 
   const own = useMemo(() => ownAddressesIn(userEmail, messages), [userEmail, messages]);
   const latest = messages[messages.length - 1];
@@ -271,35 +387,32 @@ export function ThreadDetail({ threadId, onEmailAction, onThreadGone, onLoaded }
     }
   };
 
-  const toggleExpand = async (msg: EmailMessage) => {
-    const next = new Set(expandedMessages);
-    if (next.has(msg.id)) {
-      next.delete(msg.id);
-    } else {
-      next.add(msg.id);
-      if (!msg.body) {
-        setLoadingBodies((prev) => new Set(prev).add(msg.id));
-        try {
-          const { data: res } = await emailsApi.getMessage(msg.id);
-          setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, body: res.data.body } : m)));
-        } catch {
-          // The snippet stands in.
-        } finally {
-          setLoadingBodies((prev) => {
-            const s = new Set(prev);
-            s.delete(msg.id);
-            return s;
-          });
-        }
-      }
-    }
-    setExpandedMessages(next);
-    if (!msg.isRead) {
-      emailsApi.markAsRead(msg.id).then(() => {
-        setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, isRead: true } : m)));
-        onEmailAction?.();
-      }).catch(() => {});
-    }
+  /**
+   * Open or close a message — at once, from the latest state. It used to wait
+   * for the body before opening, so a first click looked dead; and it wrote a
+   * snapshot back, so a second message clicked meanwhile closed the first.
+   */
+  const toggleExpand = (msg: EmailMessage) => {
+    const opening = !expandedMessages.has(msg.id);
+    setExpandedMessages((prev) => {
+      const next = new Set(prev);
+      if (next.has(msg.id)) next.delete(msg.id);
+      else next.add(msg.id);
+      return next;
+    });
+    if (opening && !msg.body) void loadBody(msg.id);
+    markRead(msg);
+  };
+
+  /** From the rail: open the message — even one folded into the gap — and bring it up. */
+  const openMessage = (id: string) => {
+    const msg = messages.find((m) => m.id === id);
+    if (!msg) return;
+    setExpandedMessages((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+    if (!msg.body) void loadBody(id);
+    markRead(msg);
+    scrollTargetRef.current = id;
+    setScrollTick((t) => t + 1);
   };
 
   const toggleIn = (setter: typeof setDetailsOpen, id: string) =>
@@ -402,6 +515,7 @@ export function ThreadDetail({ threadId, onEmailAction, onThreadGone, onLoaded }
 
   const customer = messages.find((m) => m.customer)?.customer;
   const rows = threadRows(messages, expandedMessages, showAll);
+  const showRail = wide && messages.length >= RAIL_MIN_MESSAGES;
   const latestReplyAll = replyRecipients(latest, true, own);
   const canReplyAll = latestReplyAll.to.length + latestReplyAll.cc.length > 1;
 
@@ -444,164 +558,173 @@ export function ThreadDetail({ threadId, onEmailAction, onThreadGone, onLoaded }
 
       <ThreadTenders threadId={threadId} />
 
-      <ol className="thread-messages">
-        {rows.map((row) => {
-          if (row.kind === 'gap') {
-            return (
-              <li key="gap" className="thread-gap">
-                <button type="button" className="thread-gap__button" onClick={() => setShowAll(true)}>
-                  {row.count} earlier {row.count === 1 ? 'message' : 'messages'}
-                </button>
-              </li>
-            );
-          }
-          const msg = row.msg;
-          const isExpanded = expandedMessages.has(msg.id);
-          const sender = decodeEntities(msg.fromName || msg.from);
+      <div className={`thread-body${showRail ? ' thread-body--rail' : ''}`}>
+        {showRail && (
+          <div className="thread-body__rail">
+            <ThreadTimeline messages={messages} own={own} visibleIds={visibleIds} onOpen={openMessage} />
+          </div>
+        )}
+        <ol className="thread-messages">
+          {rows.map((row, i) => {
+            if (row.kind === 'gap') {
+              return (
+                // By position: a message opened from the rail can split the gap in two.
+                <li key={`gap-${i}`} className="thread-gap">
+                  <button type="button" className="thread-gap__button" onClick={() => setShowAll(true)}>
+                    {row.count} earlier {row.count === 1 ? 'message' : 'messages'}
+                  </button>
+                </li>
+              );
+            }
+            const msg = row.msg;
+            const isExpanded = expandedMessages.has(msg.id);
+            const sender = decodeEntities(msg.fromName || msg.from);
 
-          return (
-            <li
-              key={msg.id}
-              ref={(el) => { if (el) messageRefs.current.set(msg.id, el); }}
-              className={`message-card${isExpanded ? ' message-card--open' : ''}${!msg.isRead ? ' message-card--unread' : ''}`}
-            >
-              <div
-                className="message-card__header"
-                role="button"
-                tabIndex={0}
-                aria-expanded={isExpanded}
-                aria-label={`${isExpanded ? 'Collapse' : 'Expand'} message from ${sender}`}
-                onClick={(e) => {
-                  // The controls inside the header are their own.
-                  if ((e.target as HTMLElement).closest('button, a, .message-card__avatar, .cds--overflow-menu, .cds--menu')) return;
-                  toggleExpand(msg);
-                }}
-                onKeyDown={(e) => {
-                  if (e.target !== e.currentTarget) return;
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    toggleExpand(msg);
-                  }
-                }}
+            return (
+              <li
+                key={msg.id}
+                data-message-id={msg.id}
+                ref={(el) => { if (el) messageRefs.current.set(msg.id, el); }}
+                className={`message-card${isExpanded ? ' message-card--open' : ''}${!msg.isRead ? ' message-card--unread' : ''}`}
               >
                 <div
+                  className="message-card__header"
                   role="button"
                   tabIndex={0}
-                  className="message-card__avatar"
-                  title="View contact"
-                  aria-label={`View contact ${sender}`}
-                  onClick={openSender(msg)}
+                  aria-expanded={isExpanded}
+                  aria-label={`${isExpanded ? 'Collapse' : 'Expand'} message from ${sender}`}
+                  onClick={(e) => {
+                    // The controls inside the header are their own.
+                    if ((e.target as HTMLElement).closest('button, a, .message-card__avatar, .cds--overflow-menu, .cds--menu')) return;
+                    toggleExpand(msg);
+                  }}
                   onKeyDown={(e) => {
+                    if (e.target !== e.currentTarget) return;
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
-                      void openSender(msg)();
+                      toggleExpand(msg);
                     }
                   }}
                 >
-                  <UserAvatar name={sender} size="sm" />
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    className="message-card__avatar"
+                    title="View contact"
+                    aria-label={`View contact ${sender}`}
+                    onClick={openSender(msg)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        void openSender(msg)();
+                      }
+                    }}
+                  >
+                    <UserAvatar name={sender} size="sm" />
+                  </div>
+                  <div className="message-card__who">
+                    <span className={`message-card__sender${!msg.isRead ? ' message-card__sender--unread' : ''}`}>
+                      {sender}
+                      {isExpanded && msg.fromName && <span className="message-card__address">{msg.from}</span>}
+                    </span>
+                    {isExpanded ? (
+                      <button
+                        type="button"
+                        className="message-card__recipients"
+                        aria-expanded={detailsOpen.has(msg.id)}
+                        onClick={() => toggleIn(setDetailsOpen, msg.id)}
+                      >
+                        {recipientsLine(msg, own) || 'Details'}
+                        {detailsOpen.has(msg.id) ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                      </button>
+                    ) : (
+                      <span className="message-card__snippet">{decodeEntities(msg.snippet)}</span>
+                    )}
+                  </div>
+                  <div className="message-card__side">
+                    {msg.isStarred && <StarFilled size={14} className="message-card__star" aria-label="Starred" />}
+                    <span className="message-card__date" title={format(new Date(msg.receivedAt), 'EEEE d MMMM yyyy, HH:mm')}>
+                      {mailListDate(msg.receivedAt)}
+                    </span>
+                    {isExpanded && (
+                      <>
+                        <IconButton kind="ghost" size="sm" autoAlign label="Reply" onClick={() => setComposeState({ mode: 'reply', email: msg })}>
+                          <Reply />
+                        </IconButton>
+                        {/* The v12 menu: Carbon's Menu floats above the SidePanel, the classic one does not. */}
+                        <FeatureFlags enableV12Overflowmenu>
+                          <MessageMenu label="More actions for this message" size="sm" autoAlign menuAlignment="bottom-end">
+                            <MenuItem label="Reply all" onClick={() => setComposeState({ mode: 'replyAll', email: msg })} />
+                            <MenuItem label="Forward" onClick={() => setComposeState({ mode: 'forward', email: msg })} />
+                            <MenuItemDivider />
+                            <MenuItem label={msg.isStarred ? 'Remove star' : 'Star'} onClick={() => handleToggleStar(msg)} />
+                            <MenuItem label="Create a task from this message" onClick={() => setConvertEmail(msg)} />
+                          </MessageMenu>
+                        </FeatureFlags>
+                      </>
+                    )}
+                  </div>
                 </div>
-                <div className="message-card__who">
-                  <span className={`message-card__sender${!msg.isRead ? ' message-card__sender--unread' : ''}`}>
-                    {sender}
-                    {isExpanded && msg.fromName && <span className="message-card__address">{msg.from}</span>}
-                  </span>
-                  {isExpanded ? (
-                    <button
-                      type="button"
-                      className="message-card__recipients"
-                      aria-expanded={detailsOpen.has(msg.id)}
-                      onClick={() => toggleIn(setDetailsOpen, msg.id)}
-                    >
-                      {recipientsLine(msg, own) || 'Details'}
-                      {detailsOpen.has(msg.id) ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                    </button>
-                  ) : (
-                    <span className="message-card__snippet">{decodeEntities(msg.snippet)}</span>
-                  )}
-                </div>
-                <div className="message-card__side">
-                  {msg.isStarred && <StarFilled size={14} className="message-card__star" aria-label="Starred" />}
-                  <span className="message-card__date" title={format(new Date(msg.receivedAt), 'EEEE d MMMM yyyy, HH:mm')}>
-                    {mailListDate(msg.receivedAt)}
-                  </span>
-                  {isExpanded && (
-                    <>
-                      <IconButton kind="ghost" size="sm" autoAlign label="Reply" onClick={() => setComposeState({ mode: 'reply', email: msg })}>
-                        <Reply />
-                      </IconButton>
-                      {/* The v12 menu: Carbon's Menu floats above the SidePanel, the classic one does not. */}
-                      <FeatureFlags enableV12Overflowmenu>
-                        <MessageMenu label="More actions for this message" size="sm" autoAlign menuAlignment="bottom-end">
-                          <MenuItem label="Reply all" onClick={() => setComposeState({ mode: 'replyAll', email: msg })} />
-                          <MenuItem label="Forward" onClick={() => setComposeState({ mode: 'forward', email: msg })} />
-                          <MenuItemDivider />
-                          <MenuItem label={msg.isStarred ? 'Remove star' : 'Star'} onClick={() => handleToggleStar(msg)} />
-                          <MenuItem label="Create a task from this message" onClick={() => setConvertEmail(msg)} />
-                        </MessageMenu>
-                      </FeatureFlags>
-                    </>
-                  )}
-                </div>
-              </div>
 
-              {isExpanded && (
-                <div className="message-card__body">
-                  {detailsOpen.has(msg.id) && (
-                    <dl className="message-card__meta">
-                      <dt>From</dt>
-                      <dd>{msg.fromName ? `${decodeEntities(msg.fromName)} <${msg.from}>` : msg.from}</dd>
-                      {msg.to.length > 0 && (<><dt>To</dt><dd>{msg.to.join(', ')}</dd></>)}
-                      {msg.cc.length > 0 && (<><dt>Cc</dt><dd>{msg.cc.join(', ')}</dd></>)}
-                      <dt>Date</dt>
-                      <dd>{format(new Date(msg.receivedAt), 'EEEE d MMMM yyyy, HH:mm')}</dd>
-                    </dl>
-                  )}
+                {isExpanded && (
+                  <div className="message-card__body">
+                    {detailsOpen.has(msg.id) && (
+                      <dl className="message-card__meta">
+                        <dt>From</dt>
+                        <dd>{msg.fromName ? `${decodeEntities(msg.fromName)} <${msg.from}>` : msg.from}</dd>
+                        {msg.to.length > 0 && (<><dt>To</dt><dd>{msg.to.join(', ')}</dd></>)}
+                        {msg.cc.length > 0 && (<><dt>Cc</dt><dd>{msg.cc.join(', ')}</dd></>)}
+                        <dt>Date</dt>
+                        <dd>{format(new Date(msg.receivedAt), 'EEEE d MMMM yyyy, HH:mm')}</dd>
+                      </dl>
+                    )}
 
-                  {loadingBodies.has(msg.id) ? (
-                    <InlineLoading description="Loading message..." />
-                  ) : msg.body ? (
-                    <MessageBody msg={msg} showQuotes={quotesShown.has(msg.id)} onToggleQuotes={() => toggleIn(setQuotesShown, msg.id)} />
-                  ) : (
-                    <p className="message-card__plain">{decodeEntities(msg.snippet) || '(No content)'}</p>
-                  )}
+                    {loadingBodies.has(msg.id) ? (
+                      <InlineLoading description="Loading message..." />
+                    ) : msg.body ? (
+                      <MessageBody msg={msg} showQuotes={quotesShown.has(msg.id)} onToggleQuotes={() => toggleIn(setQuotesShown, msg.id)} />
+                    ) : (
+                      <p className="message-card__plain">{decodeEntities(msg.snippet) || '(No content)'}</p>
+                    )}
 
-                  {msg.attachments.length > 0 && (
-                    <div className="message-bubble__attachments">
-                      {msg.attachments.map((att) => {
-                        const FileIcon = getFileTypeInfo(att.mimeType, att.filename).icon;
-                        return (
-                          <div key={att.id} className="attachment-chip">
-                            {/* Every file opens the preview; the explicit
-                                download stays on the icon beside it. */}
-                            <button
-                              type="button"
-                              className="attachment-chip__clickable"
-                              onClick={() => setPreview({ emailId: msg.id, attachments: msg.attachments, index: msg.attachments.findIndex((a) => a.id === att.id) })}
-                            >
-                              <FileIcon size={16} />
-                              <span className="attachment-chip__name">{decodeEntities(att.filename)}</span>
-                              <span className="attachment-chip__size">{formatSize(att.size)}</span>
-                            </button>
-                            <a
-                              className="attachment-chip__download"
-                              href={emailsApi.getAttachmentUrl(msg.id, att.id)}
-                              download={decodeEntities(att.filename)}
-                              onClick={(e) => e.stopPropagation()}
-                              title="Download"
-                            >
-                              <Download size={14} />
-                            </a>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-            </li>
-          );
-        })}
-      </ol>
+                    {msg.attachments.length > 0 && (
+                      <div className="message-bubble__attachments">
+                        {msg.attachments.map((att) => {
+                          const FileIcon = getFileTypeInfo(att.mimeType, att.filename).icon;
+                          return (
+                            <div key={att.id} className="attachment-chip">
+                              {/* Every file opens the preview; the explicit
+                                  download stays on the icon beside it. */}
+                              <button
+                                type="button"
+                                className="attachment-chip__clickable"
+                                onClick={() => setPreview({ emailId: msg.id, attachments: msg.attachments, index: msg.attachments.findIndex((a) => a.id === att.id) })}
+                              >
+                                <FileIcon size={16} />
+                                <span className="attachment-chip__name">{decodeEntities(att.filename)}</span>
+                                <span className="attachment-chip__size">{formatSize(att.size)}</span>
+                              </button>
+                              <a
+                                className="attachment-chip__download"
+                                href={emailsApi.getAttachmentUrl(msg.id, att.id)}
+                                download={decodeEntities(att.filename)}
+                                onClick={(e) => e.stopPropagation()}
+                                title="Download"
+                              >
+                                <Download size={14} />
+                              </a>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ol>
+      </div>
 
       <div className="thread-reply-bar">
         <Button kind="tertiary" size="sm" renderIcon={Reply} onClick={() => setComposeState({ mode: 'reply', email: latest })}>

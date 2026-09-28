@@ -162,12 +162,14 @@ const PREVIEW_RFPS = [
 ];
 
 const PREVIEW_THREAD: EmailMessage[] = [
-  threadMessage(1, { body: '<div>Bonjour, Faisant suite à notre dernier point, nous vous remercions de bien vouloir nous transmettre le fichier PEP comme convenu.</div><div>Cordialement,</div>' }),
-  threadMessage(2, { from: 'me@powerm.test', fromName: 'L.walid (PowerM)', to: ['h.gadialami@example.test'], labelIds: ['SENT'], snippet: 'Bonjour Ssi Hicham, Je partage avec vous le plan d’action prévu : Phase 1…' }),
-  threadMessage(3, { snippet: 'Merci, nous revenons vers vous rapidement.' }),
-  threadMessage(4, { from: 'me@powerm.test', fromName: 'L.walid (PowerM)', to: ['h.gadialami@example.test'], labelIds: ['SENT'], snippet: 'Bonjour Ssi Hicham, Merci de trouver ci-joint les deux fichiers xml.' }),
-  threadMessage(5, { snippet: 'Bien reçu, nous lançons les tests.' }),
+  threadMessage(1, { receivedAt: new Date(Date.now() - 20 * 86_400_000).toISOString(), body: '<div>Bonjour, Faisant suite à notre dernier point, nous vous remercions de bien vouloir nous transmettre le fichier PEP comme convenu.</div><div>Cordialement,</div>' }),
+  threadMessage(2, { receivedAt: new Date(Date.now() - 19 * 86_400_000).toISOString(), from: 'me@powerm.test', fromName: 'L.walid (PowerM)', to: ['h.gadialami@example.test'], labelIds: ['SENT'], snippet: 'Bonjour Ssi Hicham, Je partage avec vous le plan d’action prévu : Phase 1…' }),
+  threadMessage(3, { receivedAt: new Date(Date.now() - 14 * 86_400_000).toISOString(), snippet: 'Merci, nous revenons vers vous rapidement.' }),
+  threadMessage(4, { receivedAt: new Date(Date.now() - 13 * 86_400_000).toISOString(), from: 'me@powerm.test', fromName: 'L.walid (PowerM)', to: ['h.gadialami@example.test'], labelIds: ['SENT'], snippet: 'Bonjour Ssi Hicham, Merci de trouver ci-joint les deux fichiers xml.' }),
+  threadMessage(5, { receivedAt: new Date(Date.now() - 5 * 86_400_000).toISOString(), isRead: false, snippet: 'Bien reçu, nous lançons les tests.' }),
   threadMessage(6, {
+    receivedAt: new Date(Date.now() - 4 * 86_400_000).toISOString(),
+    isRead: false,
     snippet: 'Bonjour Ssi Walid, Veuillez trouver ci-dessous les infos demandées : Avant la récupération de la RAM…',
     hasAttachment: true,
     attachments: [{ id: 'a1', emailId: 'm6', gmailAttachmentId: 'ga1', filename: 'HMC1-lscodpool-PEP_BDI.txt', mimeType: 'text/plain', size: 18_432 } as never],
