@@ -97,3 +97,37 @@ export const contactsApi = {
     return api.post<ApiResponse<MergeContactsResult>>('/contacts/merge', body);
   },
 };
+
+export interface AccountOverview {
+  lastTouchAt: string | null;
+  weekly: Array<{ weekStart: string; emails: number; meetings: number }>;
+  open: {
+    tasks: Array<{ id: string; title: string; dueDate: string | null; priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'; status: string }>;
+    taskCount: number;
+    tenders: Array<{ id: string; name: string; reference: string; status: string; deadlineAt: string }>;
+    deals: Array<{ id: string; title: string; status: string; expiryDate: string | null; partner: { name: string } | null }>;
+  };
+  keyPeople: Array<{ id: string; name: string | null; email: string | null; role: string | null; exchanges: number; lastAt: string | null }>;
+}
+
+export interface AccountTimelineEntry {
+  kind: 'THREAD' | 'MEETING' | 'TASK' | 'TENDER' | 'DEAL';
+  id: string;
+  title: string;
+  detail: string | null;
+  at: string;
+  threadId?: string | null;
+}
+
+/** The account at a glance and its history — see server accountOverviewService. */
+export const accountsApi = {
+  overview(customerId: string) {
+    return api.get<{ data: AccountOverview }>(`/customers/${customerId}/overview`);
+  },
+  timeline(customerId: string, before?: string) {
+    return api.get<{ data: { entries: AccountTimelineEntry[]; nextBefore: string | null } }>(
+      `/customers/${customerId}/timeline`,
+      { params: before ? { before } : {} },
+    );
+  },
+};

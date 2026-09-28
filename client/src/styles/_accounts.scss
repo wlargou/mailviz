@@ -1,0 +1,119 @@
+@use '@carbon/react/scss/type' as type;
+@use '@carbon/react/scss/spacing' as *;
+
+// The account overview on a company page. See customers/AccountOverview.
+
+.account-overview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: $spacing-05;
+  align-items: start;
+  margin-bottom: $spacing-06;
+
+  @media (max-width: 66rem) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.account-card {
+  background: var(--cds-layer-01);
+  padding: $spacing-05;
+  display: grid;
+  gap: $spacing-03;
+  align-content: start;
+  min-width: 0;
+}
+
+.account-card__label {
+  @include type.type-style('label-01');
+  color: var(--cds-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.32px;
+  margin: 0;
+}
+
+.account-muted {
+  @include type.type-style('label-01');
+  color: var(--cds-text-secondary);
+}
+
+.account-warmth {
+  display: flex;
+  align-items: center;
+  gap: $spacing-03;
+  flex-wrap: wrap;
+
+  .cds--tag {
+    margin: 0;
+  }
+}
+
+// Twelve weeks of mail and meetings, oldest first.
+.account-rhythm {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 2.5rem;
+}
+
+.account-rhythm__bar {
+  flex: 1;
+  background: var(--cds-support-info);
+}
+
+.account-rhythm__bar--empty {
+  background: var(--cds-border-subtle);
+}
+
+.account-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+
+  > li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: $spacing-03;
+    padding: $spacing-03 0;
+    border-bottom: 1px solid var(--cds-border-subtle);
+    min-width: 0;
+
+    &:last-child {
+      border-bottom: 0;
+    }
+
+    .cds--tag {
+      margin: 0;
+      flex: none;
+    }
+  }
+}
+
+.account-person {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.account-timeline__list {
+  list-style: none;
+  margin: 0 0 $spacing-04;
+  padding: 0;
+}
+
+.account-timeline__day {
+  @include type.type-style('heading-compact-01');
+  margin: $spacing-05 0 $spacing-02;
+  color: var(--cds-text-secondary);
+}
+
+.account-timeline__row {
+  display: grid;
+  grid-template-columns: 3.5rem 0.75rem minmax(0, 1fr);
+  gap: $spacing-03;
+  align-items: start;
+  padding: $spacing-03 0;
+  border-bottom: 1px solid var(--cds-border-subtle);
+}
