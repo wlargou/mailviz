@@ -1904,6 +1904,9 @@ export const emailService = {
         } else if (scheduled.mode === 'reply' || scheduled.mode === 'replyAll') {
           result = await this.replyToEmail(scheduled.replyToEmailId!, {
             htmlBody: scheduled.htmlBody,
+            // The recipients the form held when it was scheduled — without
+            // them an edited To was dropped at send time.
+            to: scheduled.to,
             replyAll: scheduled.mode === 'replyAll',
             cc: scheduled.cc,
             bcc: scheduled.bcc,

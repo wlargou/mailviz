@@ -43,10 +43,13 @@ export function replyRecipients(
   if (to.length === 0) to = [original.from];
 
   const taken = new Set([...own, ...to.map(bareAddress)]);
-  const ccCandidates = opts.replyAll
-    // Everyone on it; whoever is already in To is filtered out by `taken`.
-    ? [...original.to, ...original.cc, ...(opts.cc ?? [])]
-    : opts.cc ?? [];
+  // An explicit To comes from a form the user edited, and its Cc is final:
+  // someone taken off a reply all stays off. Merging the original's people
+  // back in mailed exactly the person the user had just removed. Only with no
+  // form does reply all copy everyone else — whoever is in To is `taken`.
+  const ccCandidates = explicit.length > 0 || !opts.replyAll
+    ? opts.cc ?? []
+    : [...original.to, ...original.cc, ...(opts.cc ?? [])];
   const cc = uniqueByAddress(ccCandidates, taken);
 
   return { to, cc };

@@ -159,6 +159,31 @@ describe('replyToEmail — who it goes to', () => {
     expect(sentHeader('To')).toBe('omar@bkam.test');
     expect(sentHeader('Cc')).toBe('sara@bkam.test');
   });
+
+  it('sends a scheduled reply all to the people the form held — REGRESSION', async () => {
+    // The dispatcher dropped the saved To, and reply all merged the original's
+    // people back into Cc: an edited To and a removed Cc were both undone.
+    const user = await connected();
+    const theirs = await createEmail(user.id, { subject: 'Plan', from: 'omar@bkam.test' });
+    await prisma.email.update({ where: { id: theirs.id }, data: { to: ['me@example.com', 'sara@bkam.test', 'ahmed@bkam.test'] } });
+    await prisma.scheduledEmail.create({
+      data: {
+        userId: user.id,
+        sendAt: new Date(Date.now() - 1000),
+        mode: 'replyAll',
+        to: ['nadia@bkam.test'],
+        cc: ['sara@bkam.test'],
+        subject: 'Re: Plan',
+        htmlBody: '<p>later</p>',
+        replyToEmailId: theirs.id,
+      },
+    });
+
+    expect(await emailService.processScheduledEmails()).toBe(1);
+
+    expect(sentHeader('To')).toBe('nadia@bkam.test');
+    expect(sentHeader('Cc')).toBe('sara@bkam.test');
+  });
 });
 
 describe('outbound mail — the name it goes out under', () => {

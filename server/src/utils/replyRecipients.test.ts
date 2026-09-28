@@ -42,6 +42,17 @@ describe('replyRecipients', () => {
     expect(r).toEqual({ to: ['new@x.ma'], cc: ['c@x.ma'] });
   });
 
+  it('keeps the Cc of a reply all as the form left it — REGRESSION', () => {
+    // Ahmed was taken off the Cc; merging the original's people back in
+    // mailed him anyway.
+    const r = replyRecipients(
+      { from: 'omar@bkam.ma', to: ['me@powerm.ma', 'sara@bkam.ma', 'ahmed@bkam.ma'], cc: ['karim@bkam.ma'] },
+      { replyAll: true, to: ['omar@bkam.ma'], cc: ['sara@bkam.ma', 'me@powerm.ma'] },
+      own,
+    );
+    expect(r).toEqual({ to: ['omar@bkam.ma'], cc: ['sara@bkam.ma'] });
+  });
+
   it('writes to yourself only when the message only ever went to you', () => {
     const r = replyRecipients({ from: 'me@powerm.ma', to: ['alias@powerm.ma'], cc: [] }, { replyAll: false }, own);
     expect(r.to).toEqual(['me@powerm.ma']);
