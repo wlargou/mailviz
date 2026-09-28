@@ -182,6 +182,14 @@ export function actionLabel(action: string): string {
   );
 }
 
+/** "RFP", "Scheduled email" — from the filter's own labels, spelled out otherwise. */
+export function entityTypeLabel(type: string): string {
+  const known = entityTypeItems.find((t) => t.id === type)?.text;
+  if (known) return known;
+  const words = type.replace(/_/g, ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 const entityTypeItems = [
   { id: '', text: 'All types' },
   { id: 'email', text: 'Email' },
@@ -209,6 +217,7 @@ export function getSummary(entry: AuditLogEntry): string {
   if (d.reference) parts.push(String(d.reference));
   if (d.filename) parts.push(String(d.filename).slice(0, 60));
   if (Array.isArray(d.fields) && d.fields.length) parts.push(`changed ${(d.fields as string[]).join(', ')}`);
+  if (typeof d.recipientUserId === 'string') parts.push('removed 1 person');
   if (Array.isArray(d.sharedWith)) parts.push(`with ${d.sharedWith.length} ${d.sharedWith.length === 1 ? 'person' : 'people'}`);
   // An email's `to`/`from` are addresses; a task update's are the before and
   // after values keyed by field, which read as "[object Object]" through
@@ -369,7 +378,7 @@ export function ActivityLogPage() {
                           )}
                         </TableCell>
                         <TableCell>
-                          <span style={{ textTransform: 'capitalize' }}>{entry.entityType.replace('_', ' ')}</span>
+                          <span>{entityTypeLabel(entry.entityType)}</span>
                         </TableCell>
                         <TableCell>
                           <span style={{ fontSize: '0.8125rem', color: 'var(--cds-text-secondary)' }}>

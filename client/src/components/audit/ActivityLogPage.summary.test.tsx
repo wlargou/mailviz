@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { actionLabel, getSummary } from './ActivityLogPage';
+import { actionLabel, entityTypeLabel, getSummary } from './ActivityLogPage';
 
 /**
  * The Details column. A task update's `from`/`to` are maps keyed by field
@@ -61,5 +61,12 @@ describe('getSummary — RFP rows', () => {
     expect(getSummary(rfp('RFP_DOCUMENT_ADDED', { filename: 'CPS AO 70.pdf', kind: 'RFP' }))).toContain('CPS AO 70.pdf');
     expect(getSummary(rfp('RFP_UPDATED', { fields: ['status', 'deadlineAt'] }))).toContain('changed status, deadlineAt');
     expect(getSummary(rfp('RFP_SHARED', { sharedWith: ['u1', 'u2'] }))).toContain('with 2 people');
+    expect(getSummary(rfp('RFP_UNSHARED', { recipientUserId: 'u1' }))).toBe('removed 1 person');
+  });
+
+  it('names the type as the filter does — RFP, not Rfp', () => {
+    expect(entityTypeLabel('rfp')).toBe('RFP');
+    expect(entityTypeLabel('scheduled_email')).toBe('Scheduled Email');
+    expect(entityTypeLabel('workspace_item')).toBe('Workspace item');
   });
 });
