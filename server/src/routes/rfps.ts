@@ -19,6 +19,9 @@ import {
 import { rfpCompositionController as composition } from '../controllers/rfpCompositionController.js';
 import { rfpUpload, MAX_DOCUMENT_BYTES } from '../services/rfpStorage.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { z } from 'zod';
+import type { Req } from '../types/http.js';
+import { rfpThreadService } from '../services/rfpThreadService.js';
 
 const router = Router();
 
@@ -62,6 +65,29 @@ router.get('/:id/shares', rfpController.getShares);
 
 // Lots — every tender has at least one; the budget is their total.
 router.get('/:id/people', composition.people);
+// Mail filed under the tender — see rfpThreadService.
+const threadLinkSchema = z.object({ threadId: z.string().trim().min(1).max(255) });
+router.get('/:id/threads', async (req, res, next) => {
+  try {
+    res.json({ data: await rfpThreadService.threads((req as Req).user!.id, String(req.params.id)) });
+  } catch (err) {
+    next(err);
+  }
+});
+router.post('/:id/threads', validate(threadLinkSchema), async (req, res, next) => {
+  try {
+    res.status(201).json({ data: await rfpThreadService.link((req as Req).user!.id, String(req.params.id), req.body.threadId) });
+  } catch (err) {
+    next(err);
+  }
+});
+router.delete('/:id/threads/:threadId', async (req, res, next) => {
+  try {
+    res.json({ data: await rfpThreadService.unlink((req as Req).user!.id, String(req.params.id), String(req.params.threadId)) });
+  } catch (err) {
+    next(err);
+  }
+});
 router.post('/:id/lots', validate(createLotSchema), composition.createLot);
 router.patch('/:id/lots/:lotId', validate(updateLotSchema), composition.updateLot);
 router.delete('/:id/lots/:lotId', composition.deleteLot);

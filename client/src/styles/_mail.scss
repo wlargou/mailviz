@@ -1103,3 +1103,20 @@
   flex-shrink: 0;
 }
 
+
+// The tender a thread is filed under, or the offer to file it.
+.thread-tenders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-03;
+  margin-bottom: $spacing-04;
+
+  &:empty {
+    display: none;
+  }
+
+  .cds--actionable-notification {
+    max-inline-size: none;
+    width: 100%;
+  }
+}

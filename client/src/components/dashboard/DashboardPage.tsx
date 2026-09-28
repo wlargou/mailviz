@@ -124,8 +124,8 @@ export function DashboardPage() {
     <div>
       <div className="page-header">
         <div className="page-header__info">
-          <h1>Dashboard</h1>
-          <p className="page-header__subtitle">Overview of your CRM activity</p>
+          <h1>Insights</h1>
+          <p className="page-header__subtitle">Volumes and trends, for looking back — what needs you now is on Today</p>
         </div>
         <MenuButton label="Create" menuAlignment="bottom-end">
           <MenuItem label="New email" renderIcon={EmailIcon} onClick={() => setShowCompose(true)} />

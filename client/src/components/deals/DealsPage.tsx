@@ -15,9 +15,12 @@ import {
   Button,
   DataTableSkeleton,
   Tag,
+  OverflowMenu,
+  OverflowMenuItem,
   Dropdown,
 } from '@carbon/react';
-import { Add, TrashCan, Launch, Edit, Share } from '@carbon/icons-react';
+import { Add, Launch } from '@carbon/icons-react';
+import { openRowOnClick } from '../../utils/rowOpen';
 import { useNavigate } from 'react-router-dom';
 import { DealCreateModal } from './DealCreateModal';
 import { ConfirmDeleteModal } from '../shared/ConfirmDeleteModal';
@@ -60,7 +63,8 @@ const headers = [
   { key: 'actions', header: '' },
 ];
 
-export function DealsPage() {
+/** `embedded`: inside Pursuits, which carries the page header. */
+export function DealsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
   const [meta, setMeta] = useState<PaginationMeta | null>(null);
@@ -172,12 +176,14 @@ export function DealsPage() {
 
   return (
     <div>
-      <div className="page-header">
-        <div className="page-header__info">
-          <h1>Deal Registration</h1>
-          <p className="page-header__subtitle">Partner deal registrations, and when each one lapses</p>
+      {!embedded && (
+        <div className="page-header">
+          <div className="page-header__info">
+            <h1>Deal Registration</h1>
+            <p className="page-header__subtitle">Partner deal registrations, and when each one lapses</p>
+          </div>
         </div>
-      </div>
+      )}
 
           {loading && deals.length === 0 && !search ? (
             <DataTableSkeleton headers={headers} rowCount={5} />
@@ -282,10 +288,16 @@ export function DealsPage() {
                     </TableHead>
                     <TableBody>
                       {deals.map((deal) => (
-                        <TableRow key={deal.id}>
+                        <TableRow
+                          key={deal.id}
+                          className="table-row--clickable"
+                          onClick={openRowOnClick(() => setEditDeal(deal))}
+                        >
                           <TableCell>
                             <span className="shared-title-cell">
-                              {deal.title}
+                              <button type="button" className="table-title-button" onClick={() => setEditDeal(deal)}>
+                                {deal.title}
+                              </button>
                               <SharedBadge ownerId={deal.userId} />
                             </span>
                           </TableCell>
@@ -308,7 +320,11 @@ export function DealsPage() {
                             {deal.customer ? (
                               <span
                                 className="customer-name-cell"
-                                onClick={() => navigate(`/customers/${deal.customer!.id}`)}
+                                onClick={(e) => {
+                                  // Its own destination, not the row's.
+                                  e.stopPropagation();
+                                  navigate(`/customers/${deal.customer!.id}`);
+                                }}
                               >
                                 {deal.customer.name}
                               </span>
@@ -342,32 +358,14 @@ export function DealsPage() {
                             )}
                           </TableCell>
                           <TableCell>
-                            <div className="table-actions">
-                              <Button
-                                kind="ghost"
-                                size="sm"
-                                hasIconOnly
-                                renderIcon={Share}
-                                iconDescription="Share deal"
-                                onClick={() => handleOpenShare(deal)}
-                              />
-                              <Button
-                                kind="ghost"
-                                size="sm"
-                                hasIconOnly
-                                renderIcon={Edit}
-                                iconDescription="Edit deal"
-                                onClick={() => setEditDeal(deal)}
-                              />
-                              <Button
-                                kind="danger--ghost"
-                                size="sm"
-                                hasIconOnly
-                                renderIcon={TrashCan}
-                                iconDescription="Delete"
-                                onClick={() => setDeleteDeal(deal)}
-                              />
-                            </div>
+                            {/* One menu per row, as on every other table — three
+                                always-visible icons, one of them a red trash can,
+                                sat on each deal. */}
+                            <OverflowMenu flipped size="sm" iconDescription={`Actions for ${deal.title}`}>
+                              <OverflowMenuItem itemText="Edit" onClick={() => setEditDeal(deal)} />
+                              <OverflowMenuItem itemText="Share" onClick={() => handleOpenShare(deal)} />
+                              <OverflowMenuItem itemText="Delete" isDelete hasDivider onClick={() => setDeleteDeal(deal)} />
+                            </OverflowMenu>
                           </TableCell>
                         </TableRow>
                       ))}

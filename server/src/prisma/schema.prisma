@@ -415,6 +415,7 @@ model User {
   rfpVerifierOf        RfpVerifier[]
   rfpVerifications     RfpItemVerification[]
   rfpItemsAssigned     RfpFolderItem[]        @relation("RfpItemAssignee")
+  rfpThreadsLinked     RfpThread[]            @relation("RfpThreadsLinked")
 
   createdAt DateTime    @default(now()) @map("created_at")
   updatedAt DateTime    @updatedAt @map("updated_at")
@@ -1014,6 +1015,7 @@ model Rfp {
   lots      RfpLot[]
   folders   RfpFolder[]
   verifiers RfpVerifier[]
+  threads   RfpThread[]
 
   /// Per account, never globally: two accounts may both track 27/2026/DGI.
   @@unique([userId, reference])
@@ -1194,4 +1196,23 @@ model RfpItemVerification {
   @@index([documentId])
   @@index([userId])
   @@map("rfp_item_verifications")
+}
+
+/// A mail thread filed under a tender — the buyer's clarifications, the avis
+/// de report. The thread id is Gmail's, so it names the linker's own copy of
+/// the conversation: someone the tender is shared with sees the thread only if
+/// it is in their mailbox or shared with them too.
+model RfpThread {
+  id         String   @id @default(uuid())
+  rfpId      String   @map("rfp_id")
+  threadId   String   @map("thread_id") @db.VarChar(255)
+  linkedById String   @map("linked_by_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  rfp      Rfp  @relation(fields: [rfpId], references: [id], onDelete: Cascade)
+  linkedBy User @relation("RfpThreadsLinked", fields: [linkedById], references: [id], onDelete: Cascade)
+
+  @@unique([rfpId, threadId])
+  @@index([threadId])
+  @@map("rfp_threads")
 }

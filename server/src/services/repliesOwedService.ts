@@ -49,10 +49,8 @@ const SYSTEM_NAMES = new Set(['root', 'cron', 'daemon', 'mailer-daemon', 'postma
  * mail badge used to count 11,000 unread messages instead, which is a
  * number nobody can act on.
  */
-export async function repliesOwed(userId: string, now = new Date()): Promise<ReplyOwed[]> {
-  const since = new Date(now.getTime() - REPLY_WINDOW_DAYS * 86_400_000);
-
-  // Who the user is: the login address, and whatever they have sent from.
+/** Who the user is: the login address, and whatever they have sent from. */
+export async function ownAddresses(userId: string): Promise<Set<string>> {
   const [user, sentFrom] = await Promise.all([
     prisma.user.findUnique({ where: { id: userId }, select: { email: true } }),
     prisma.email.findMany({
@@ -62,7 +60,18 @@ export async function repliesOwed(userId: string, now = new Date()): Promise<Rep
       take: 20,
     }),
   ]);
-  const own = new Set([user?.email?.toLowerCase(), ...sentFrom.map((e) => addressOf(e.from))].filter(Boolean) as string[]);
+  return new Set([user?.email?.toLowerCase(), ...sentFrom.map((e) => addressOf(e.from))].filter(Boolean) as string[]);
+}
+
+/** Not calendar mail, not an out-of-office reply — a message that wants an answer. */
+export function isConversationSubject(subject: string): boolean {
+  const s = subject.trim();
+  return !CALENDAR_SUBJECT.test(s) && !AUTO_REPLY_SUBJECT.test(s);
+}
+
+export async function repliesOwed(userId: string, now = new Date()): Promise<ReplyOwed[]> {
+  const since = new Date(now.getTime() - REPLY_WINDOW_DAYS * 86_400_000);
+  const own = await ownAddresses(userId);
 
   // The latest message of each thread active in the window.
   const latest = await prisma.$queryRaw<
@@ -85,8 +94,7 @@ export async function repliesOwed(userId: string, now = new Date()): Promise<Rep
       if (own.has(sender)) return false;
       if (classifyContactKind({ email: sender }) !== 'person') return false;
       if (SYSTEM_NAMES.has((m.from_name ?? '').trim().toLowerCase())) return false;
-      if (CALENDAR_SUBJECT.test(m.subject.trim())) return false;
-      if (AUTO_REPLY_SUBJECT.test(m.subject.trim())) return false;
+      if (!isConversationSubject(m.subject)) return false;
       // Directly to the user — not a CC, not a list they are on.
       return m.to.some((t) => own.has(addressOf(t)));
     })

@@ -102,7 +102,8 @@ export function MailPage() {
   const [selectedThread, setSelectedThread] = useState<string | null>(
     () => searchParams.get('thread')
   );
-  const [composeOpen, setComposeOpen] = useState(false);
+  // `?compose=1` opens a new message — the command palette's "New email".
+  const [composeOpen, setComposeOpen] = useState(() => searchParams.get('compose') === '1');
   const [composeMode, setComposeMode] = useState<ComposeMode>('new');
   const [composeDraft, setComposeDraft] = useState<DraftDetail | null>(null);
   const [drafts, setDrafts] = useState<DraftListItem[]>([]);
@@ -738,7 +739,7 @@ export function MailPage() {
                 }
               }}
             >
-              Select
+              {selectMode ? 'Done selecting' : 'Select'}
             </Button>
             <Button
               kind="ghost"
@@ -747,7 +748,7 @@ export function MailPage() {
               onClick={handleSync}
               disabled={syncing}
             >
-              {syncing ? 'Syncing...' : 'Sync'}
+              {syncing ? 'Syncing…' : 'Sync now'}
             </Button>
             <Button
               kind="ghost"
@@ -755,7 +756,8 @@ export function MailPage() {
               renderIcon={Review}
               onClick={() => navigate('/mail/review')}
             >
-              Review
+              {/* Says what it does: "Review" alone read as "review this mail". */}
+              Catch up by company
             </Button>
           </div>
         </div>

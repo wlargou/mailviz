@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
-import { SideNav, SideNavItems, SideNavLink, Tag } from '@carbon/react';
-import { Dashboard, TaskComplete, UserMultiple, Events, Calendar, Email, Settings, Partnership, Activity, Sunrise, Document } from '@carbon/icons-react';
+import { SideNav, SideNavItems, SideNavLink, SideNavDivider, Tag } from '@carbon/react';
+import { Dashboard, TaskComplete, UserMultiple, Events, Calendar, Email, Settings, Activity, Sunrise, Document } from '@carbon/icons-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useUIStore } from '../../store/uiStore';
 import { dashboardApi, type NavCounts } from '../../api/dashboard';
@@ -59,87 +59,15 @@ export function AppSideNav() {
       href="#main-content"
     >
       <SideNavItems>
-        <SideNavLink
-          renderIcon={Dashboard}
-          isActive={location.pathname === '/'}
-          onClick={() => navigate('/')}
-        >
-          Dashboard
+        {/*
+          Built around the job rather than the tables: where the day starts,
+          then the work (mail, pursuits, tasks, calendar), then the records
+          underneath, then what is for looking back or setting up.
+        */}
+        <SideNavLink renderIcon={Sunrise} isActive={location.pathname === '/'} onClick={() => navigate('/')}>
+          Today
         </SideNavLink>
-        <SideNavLink
-          renderIcon={Sunrise}
-          isActive={location.pathname === '/my-day'}
-          onClick={() => navigate('/my-day')}
-        >
-          My Day
-        </SideNavLink>
-        <SideNavLink
-          renderIcon={TaskComplete}
-          isActive={location.pathname === '/tasks'}
-          onClick={() => navigate('/tasks')}
-        >
-          Tasks
-          {counts.overdueTasks > 0 && (
-            <Tag size="sm" type="red" className="nav-badge">
-              {formatBadge(counts.overdueTasks)}
-            </Tag>
-          )}
-        </SideNavLink>
-        <SideNavLink
-          renderIcon={UserMultiple}
-          isActive={location.pathname.startsWith('/customers')}
-          onClick={() => navigate('/customers')}
-        >
-          Companies
-        </SideNavLink>
-        <SideNavLink
-          renderIcon={Events}
-          isActive={location.pathname.startsWith('/contacts')}
-          onClick={() => navigate('/contacts')}
-        >
-          Contacts
-        </SideNavLink>
-        <SideNavLink
-          renderIcon={Partnership}
-          isActive={location.pathname.startsWith('/deals')}
-          onClick={() => navigate('/deals')}
-        >
-          Deals
-          {counts.expiringDeals > 0 && (
-            <Tag size="sm" type="cool-gray" className="nav-badge">
-              {formatBadge(counts.expiringDeals)}
-            </Tag>
-          )}
-        </SideNavLink>
-        <SideNavLink
-          renderIcon={Document}
-          isActive={location.pathname === '/rfps'}
-          onClick={() => navigate('/rfps')}
-        >
-          RFPs
-          {counts.rfpsAtRisk > 0 && (
-            <Tag size="sm" type="red" className="nav-badge" title={`${counts.rfpsAtRisk} at risk`}>
-              {formatBadge(counts.rfpsAtRisk)}
-            </Tag>
-          )}
-        </SideNavLink>
-        <SideNavLink
-          renderIcon={Calendar}
-          isActive={location.pathname === '/calendar'}
-          onClick={() => navigate('/calendar')}
-        >
-          Calendar
-          {counts.eventsToday > 0 && (
-            <Tag size="sm" type="cool-gray" className="nav-badge">
-              {formatBadge(counts.eventsToday)}
-            </Tag>
-          )}
-        </SideNavLink>
-        <SideNavLink
-          renderIcon={Email}
-          isActive={location.pathname === '/mail'}
-          onClick={() => navigate('/mail')}
-        >
+        <SideNavLink renderIcon={Email} isActive={location.pathname === '/mail'} onClick={() => navigate('/mail')}>
           Mail
           {/* People waiting on a reply — not unread mail, which ran to 11k. */}
           {counts.repliesOwed > 0 && (
@@ -149,17 +77,48 @@ export function AppSideNav() {
           )}
         </SideNavLink>
         <SideNavLink
-          renderIcon={Activity}
-          isActive={location.pathname === '/activity'}
-          onClick={() => navigate('/activity')}
+          renderIcon={Document}
+          isActive={location.pathname.startsWith('/pursuits') || location.pathname.startsWith('/rfps') || location.pathname.startsWith('/deals')}
+          onClick={() => navigate('/pursuits')}
         >
+          Pursuits
+          {counts.rfpsAtRisk > 0 && (
+            <Tag size="sm" type="red" className="nav-badge" title={`${counts.rfpsAtRisk} at risk`}>
+              {formatBadge(counts.rfpsAtRisk)}
+            </Tag>
+          )}
+        </SideNavLink>
+        <SideNavLink renderIcon={TaskComplete} isActive={location.pathname === '/tasks'} onClick={() => navigate('/tasks')}>
+          Tasks
+          {counts.overdueTasks > 0 && (
+            <Tag size="sm" type="red" className="nav-badge" title={`${counts.overdueTasks} late`}>
+              {formatBadge(counts.overdueTasks)}
+            </Tag>
+          )}
+        </SideNavLink>
+        <SideNavLink renderIcon={Calendar} isActive={location.pathname === '/calendar'} onClick={() => navigate('/calendar')}>
+          Calendar
+          {counts.eventsToday > 0 && (
+            <Tag size="sm" type="cool-gray" className="nav-badge" title={`${counts.eventsToday} today`}>
+              {formatBadge(counts.eventsToday)}
+            </Tag>
+          )}
+        </SideNavLink>
+        <SideNavDivider />
+        <SideNavLink renderIcon={UserMultiple} isActive={location.pathname.startsWith('/customers')} onClick={() => navigate('/customers')}>
+          Companies
+        </SideNavLink>
+        <SideNavLink renderIcon={Events} isActive={location.pathname.startsWith('/contacts')} onClick={() => navigate('/contacts')}>
+          Contacts
+        </SideNavLink>
+        <SideNavDivider />
+        <SideNavLink renderIcon={Dashboard} isActive={location.pathname === '/insights'} onClick={() => navigate('/insights')}>
+          Insights
+        </SideNavLink>
+        <SideNavLink renderIcon={Activity} isActive={location.pathname === '/activity'} onClick={() => navigate('/activity')}>
           Activity Log
         </SideNavLink>
-        <SideNavLink
-          renderIcon={Settings}
-          isActive={location.pathname === '/settings'}
-          onClick={() => navigate('/settings')}
-        >
+        <SideNavLink renderIcon={Settings} isActive={location.pathname === '/settings'} onClick={() => navigate('/settings')}>
           Settings
         </SideNavLink>
       </SideNavItems>

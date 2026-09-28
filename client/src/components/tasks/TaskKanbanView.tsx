@@ -27,6 +27,9 @@ interface TaskKanbanViewProps {
   onCardClick: (taskId: string) => void;
 }
 
+/** How far back the finished columns reach. */
+const DONE_WINDOW_DAYS = 7;
+
 export function TaskKanbanView({ onCardClick }: TaskKanbanViewProps) {
   const statusesVersion = useTaskStore((s) => s.statusesVersion);
   const taskChanged = useTaskStore((s) => s.taskChanged);
@@ -55,10 +58,14 @@ export function TaskKanbanView({ onCardClick }: TaskKanbanViewProps) {
   const fetchKanbanTasks = useCallback(async (showSkeleton = true) => {
     if (showSkeleton) setLoading(true);
     try {
+      // Open work, and what was finished this week: the Done column held
+      // every task ever finished and grew without end.
       const { data: response } = await tasksApi.getAll({
-        limit: '200',
+        limit: '500',
         sortBy: 'position',
         sortOrder: 'asc',
+        open: 'true',
+        finishedSince: new Date(Date.now() - DONE_WINDOW_DAYS * 86_400_000).toISOString(),
       });
       setTasks(response.data);
     } catch {
@@ -241,6 +248,7 @@ export function TaskKanbanView({ onCardClick }: TaskKanbanViewProps) {
             color={s.color}
             tasks={tasksByStatus[s.name] || []}
             onCardClick={onCardClick}
+            caption={s.isTerminal ? `Last ${DONE_WINDOW_DAYS} days` : undefined}
           />
         ))}
 

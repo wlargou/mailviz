@@ -13,9 +13,11 @@ interface TaskCreateModalProps {
   onClose: () => void;
   onCreated: () => void;
   labels: Label[];
+  /** The company to start with — "New task for BKAM" from the palette. */
+  initialCustomerId?: string | null;
 }
 
-export function TaskCreateModal({ open, onClose, onCreated, labels }: TaskCreateModalProps) {
+export function TaskCreateModal({ open, onClose, onCreated, labels, initialCustomerId = null }: TaskCreateModalProps) {
   const taskChanged = useTaskStore((s) => s.taskChanged);
   const [title, setTitle] = useState('');
   const [form, setForm] = useState<TaskFormValues>(EMPTY_TASK_FORM);
@@ -35,8 +37,9 @@ export function TaskCreateModal({ open, onClose, onCreated, labels }: TaskCreate
   useEffect(() => {
     if (open) {
       fetchStatuses();
+      if (initialCustomerId) setForm((prev) => ({ ...prev, customerId: initialCustomerId }));
     }
-  }, [open, fetchStatuses]);
+  }, [open, fetchStatuses, initialCustomerId]);
 
   const resetForm = () => {
     setTitle('');

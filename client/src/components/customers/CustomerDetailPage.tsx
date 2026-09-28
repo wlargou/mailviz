@@ -31,7 +31,8 @@ import {
   Modal,
   Dropdown,
 } from '@carbon/react';
-import { Add, Edit, UserMultiple, TaskComplete, Calendar, Email, Attachment } from '@carbon/icons-react';
+import { Add, Edit, UserMultiple, TaskComplete, Calendar, Email, Attachment, RecentlyViewed } from '@carbon/icons-react';
+import { AccountOverview, AccountTimeline } from './AccountOverview';
 import { CategoryTag } from '../shared/CategoryTag';
 import { VipBadge } from '../shared/VipBadge';
 import { companyCategoriesApi } from '../../api/companyCategories';
@@ -279,9 +280,12 @@ export function CustomerDetailPage() {
       </div>
       {customer.notes && <p className="company-meta__notes">{customer.notes}</p>}
 
+      <AccountOverview customerId={customer.id} onOpenTask={(id) => navigate(`/tasks?task=${id}`)} />
+
       <div className="company-detail">
           <Tabs>
             <TabList aria-label="Customer details">
+              <Tab renderIcon={RecentlyViewed}>Timeline</Tab>
               <Tab renderIcon={UserMultiple}>Contacts ({contacts.length})</Tab>
               <Tab renderIcon={TaskComplete}>Tasks ({tasks.length})</Tab>
               <Tab renderIcon={Calendar}>Events ({events.length})</Tab>
@@ -289,6 +293,14 @@ export function CustomerDetailPage() {
               <Tab renderIcon={Attachment}>Attachments ({attachments.length})</Tab>
             </TabList>
             <TabPanels>
+              {/* ─── Timeline: everything, interleaved ─── */}
+              <TabPanel>
+                <AccountTimeline
+                  customerId={customer.id}
+                  onOpenThread={(id, subject) => setSelectedThread({ id, subject })}
+                  onOpenTask={(id) => navigate(`/tasks?task=${id}`)}
+                />
+              </TabPanel>
               {/* ─── Contacts Tab ─── */}
               <TabPanel>
                 <div style={{ marginBottom: '1rem' }}>
@@ -360,7 +372,7 @@ export function CustomerDetailPage() {
                               {paginated.map((task, i) => {
                                 const row = tableRows[i]; if (!row) return null;
                                 return (<TableRow {...getRowProps({ row })} key={row.id}>
-                                  <TableCell><span style={{ cursor: 'pointer', fontWeight: 500 }} onClick={() => navigate('/tasks')}>{decodeEntities(task.title)}</span></TableCell>
+                                  <TableCell><span style={{ cursor: 'pointer', fontWeight: 500 }} onClick={() => navigate(`/tasks?task=${task.id}`)}>{decodeEntities(task.title)}</span></TableCell>
                                   <TableCell><TaskStatusTag status={task.status} /></TableCell>
                                   <TableCell><PriorityBadge priority={task.priority} /></TableCell>
                                   <TableCell>{task.dueDate ? shortDate(task.dueDate) : '—'}</TableCell>

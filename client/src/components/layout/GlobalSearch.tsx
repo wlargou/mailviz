@@ -52,10 +52,11 @@ const CATEGORY_META: Record<Category, { icon: typeof Email; label: string }> = {
 };
 
 /**
- * RFPs first: a tender closing this week is the thing most worth finding,
- * and search used not to look at them at all.
+ * Records before messages: a tender closing this week, then the account,
+ * then the rest — "BKAM" used to return last year's meetings before the BKAM
+ * company. Mail comes last; Mail has its own search.
  */
-const CATEGORY_ORDER: Category[] = ['rfps', 'emails', 'tasks', 'events', 'customers', 'contacts', 'deals'];
+const CATEGORY_ORDER: Category[] = ['rfps', 'customers', 'deals', 'contacts', 'tasks', 'events', 'emails'];
 
 function flattenResults(results: SearchResults, scopeIds: string[]): FlatResult[] {
   const flat: FlatResult[] = [];
@@ -84,7 +85,7 @@ function flattenResults(results: SearchResults, scopeIds: string[]): FlatResult[
           category: 'emails', icon: Email,
           label: decodeEntities(email.subject),
           sublabel: `${decodeEntities(email.fromName || email.from)} · ${formatDistanceToNow(new Date(email.receivedAt), { addSuffix: true })}`,
-          navigateTo: '/mail',
+          navigateTo: email.threadId ? `/mail?folder=all&thread=${encodeURIComponent(email.threadId)}` : '/mail',
         });
       }
     } else if (cat === 'tasks') {
@@ -93,7 +94,7 @@ function flattenResults(results: SearchResults, scopeIds: string[]): FlatResult[
           category: 'tasks', icon: Task,
           label: decodeEntities(task.title),
           sublabel: `${task.status.replace('_', ' ')} · ${task.priority}`,
-          navigateTo: '/tasks',
+          navigateTo: `/tasks?task=${task.id}`,
         });
       }
     } else if (cat === 'events') {
@@ -133,7 +134,7 @@ function flattenResults(results: SearchResults, scopeIds: string[]): FlatResult[
             deal.customer?.name,
             deal.status.replace(/_/g, ' ').toLowerCase(),
           ].filter(Boolean).join(' · '),
-          navigateTo: '/deals',
+          navigateTo: '/pursuits?tab=deals',
         });
       }
     }
@@ -330,7 +331,7 @@ export function GlobalSearch() {
           className="global-search__field"
           size="sm"
           labelText="Search emails, tasks, events and companies"
-          placeholder="Search emails, tasks, events..."
+          placeholder="Search — or ⌘K to run a command"
           value={query}
           onChange={handleQueryChange}
           onClear={handleClear}

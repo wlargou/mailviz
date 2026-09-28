@@ -59,6 +59,20 @@ export const rfpsApi = {
   createItem(rfpId: string, folderId: string, title: string) {
     return api.post<ApiResponse<RfpItem>>(`/rfps/${rfpId}/folders/${folderId}/items`, { title });
   },
+  /** Mail filed under the tender, as the caller can read it. */
+  getThreads(rfpId: string) {
+    return api.get<ApiResponse<RfpThreads>>(`/rfps/${rfpId}/threads`);
+  },
+  linkThread(rfpId: string, threadId: string) {
+    return api.post<ApiResponse<RfpThreads>>(`/rfps/${rfpId}/threads`, { threadId });
+  },
+  unlinkThread(rfpId: string, threadId: string) {
+    return api.delete<ApiResponse<RfpThreads>>(`/rfps/${rfpId}/threads/${encodeURIComponent(threadId)}`);
+  },
+  /** The tenders a thread is filed under, and those it quotes. */
+  getThreadTenders(threadId: string) {
+    return api.get<ApiResponse<ThreadTenders>>(`/emails/threads/${encodeURIComponent(threadId)}/tenders`);
+  },
   /** Owner and recipients — who a piece can be assigned to. */
   getPeople(rfpId: string) {
     return api.get<ApiResponse<RfpPerson[]>>(`/rfps/${rfpId}/people`);
@@ -147,3 +161,14 @@ export const rfpsApi = {
     return `/api/v1/rfps/${rfpId}/documents/${documentId}?inline=true`;
   },
 };
+
+export interface RfpThreads {
+  threads: Array<{ threadId: string; subject: string; from: string; receivedAt: string; messages: number; linkedBy: string | null }>;
+  /** Filed by someone else, in a mailbox the caller cannot read. */
+  hidden: number;
+}
+
+export interface ThreadTenders {
+  linked: Array<{ id: string; name: string; reference: string; status: string }>;
+  suggested: Array<{ id: string; name: string; reference: string; status: string }>;
+}

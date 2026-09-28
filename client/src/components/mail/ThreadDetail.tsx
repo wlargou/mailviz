@@ -22,6 +22,7 @@ import { getFileTypeInfo, formatFileSize as formatSize } from '../../utils/fileT
 import type { EmailMessage, EmailAttachment, ComposeMode } from '../../types/email';
 import { decodeEntities } from '../../utils/text';
 
+import { ThreadTenders } from './ThreadTenders';
 interface ThreadDetailProps {
   threadId: string;
   onEmailAction?: () => void;
@@ -282,6 +283,7 @@ export function ThreadDetail({ threadId, onEmailAction }: ThreadDetailProps) {
 
   return (
     <div className="thread-detail">
+      <ThreadTenders threadId={threadId} />
       {customer && (
         <div className="thread-detail__company">
           <Tag
