@@ -14,6 +14,7 @@ import { useNavigate } from 'react-router-dom';
 import { formatDistanceToNow, format } from 'date-fns';
 import { searchApi, type SearchResults } from '../../api/search';
 import { decodeEntities } from '../../utils/text';
+import { HighlightMatch } from '../shared/HighlightMatch';
 
 type Category = 'rfps' | 'emails' | 'tasks' | 'events' | 'customers' | 'contacts' | 'deals';
 
@@ -140,29 +141,6 @@ function flattenResults(results: SearchResults, scopeIds: string[]): FlatResult[
     }
   }
   return flat;
-}
-
-function HighlightMatch({ text, query }: { text: string; query: string }) {
-  if (!text || !query || query.length < 2) return <>{text}</>;
-  try {
-    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`(${escaped})`, 'gi');
-    const parts = text.split(regex);
-    const lowerQuery = query.toLowerCase();
-    return (
-      <>
-        {parts.map((part, i) =>
-          part.toLowerCase() === lowerQuery ? (
-            <strong key={i} className="global-search__highlight">{part}</strong>
-          ) : (
-            <span key={i}>{part}</span>
-          )
-        )}
-      </>
-    );
-  } catch {
-    return <>{text}</>;
-  }
 }
 
 export function GlobalSearch() {
