@@ -31,6 +31,12 @@ interface TaskQueryParams {
    * when `status` names one: asking for Done tasks is asking for finished ones.
    */
   open?: string;
+  /**
+   * With `open`, also the finished tasks last touched since this ISO date —
+   * the Kanban board's Done column shows the last week, not every task ever
+   * finished (28 and growing, while In progress sat at 0).
+   */
+  finishedSince?: string;
   priority?: string;
   search?: string;
   labelId?: string;
@@ -353,7 +359,13 @@ export const taskService = {
     }
     if (query.open === 'true' && !query.status) {
       // Under AND, beside ownership — `where.status` may already hold statusNot.
-      andFilters.push({ status: { notIn: await terminalStatusNames(userId) } });
+      const terminal = await terminalStatusNames(userId);
+      const since = query.finishedSince ? new Date(query.finishedSince) : null;
+      andFilters.push(
+        since && !Number.isNaN(since.getTime())
+          ? { OR: [{ status: { notIn: terminal } }, { AND: [{ status: { in: terminal } }, { updatedAt: { gte: since } }] }] }
+          : { status: { notIn: terminal } },
+      );
     }
     if (query.priority) {
       where.priority = query.priority as Prisma.EnumTaskPriorityFilter;

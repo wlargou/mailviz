@@ -1648,4 +1648,20 @@ describe('taskService.findAll — open tasks', () => {
 
     expect(ids).toEqual([done.id]);
   });
+
+  it('adds the tasks finished since a date, for the board\u2019s Done column', async () => {
+    const { alice } = await createTwoUsers();
+    await seedTaskStatuses(alice.id);
+    const open = await createTask(alice.id, { title: 'open one' });
+    const recent = await createTask(alice.id, { title: 'done this week', status: 'DONE' });
+    const old = await createTask(alice.id, { title: 'done last month', status: 'DONE' });
+    await prisma.$executeRaw`UPDATE tasks SET updated_at = NOW() - INTERVAL '30 days' WHERE id = ${old.id}`;
+    const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
+
+    const ids = (await taskService.findAll(alice.id, { open: 'true', finishedSince: since })).data.map((t) => t.id).sort();
+    expect(ids).toEqual([open.id, recent.id].sort());
+    // A date that does not parse falls back to open only, rather than to everything.
+    const fallback = (await taskService.findAll(alice.id, { open: 'true', finishedSince: 'soon' })).data.map((t) => t.id);
+    expect(fallback).toEqual([open.id]);
+  });
 });
