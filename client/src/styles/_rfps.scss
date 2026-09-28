@@ -757,3 +757,8 @@
   gap: $spacing-03;
   margin-block-start: $spacing-03;
 }
+
+// The buyer, in a row that itself opens the tender: a quieter link.
+.rfp-company-cell {
+  font-weight: 400;
+}

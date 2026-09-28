@@ -18,6 +18,7 @@ import {
   Tag,
 } from '@carbon/react';
 import { Copy, Merge } from '@carbon/icons-react';
+import { openRowOnClick } from '../../utils/rowOpen';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { contactsApi } from '../../api/customers';
 import { useUIStore } from '../../store/uiStore';
@@ -253,10 +254,15 @@ export function ContactsPage() {
                     </TableHead>
                   <TableBody>
                     {contacts.map((contact) => (
-                      <TableRow key={contact.id}>
+                      <TableRow
+                        key={contact.id}
+                        className="table-row--clickable"
+                        onClick={openRowOnClick(() => navigate(`/contacts/${contact.id}`))}
+                      >
                         <TableCell>
-                          <span
-                            className="contact-name-cell"
+                          <button
+                            type="button"
+                            className="table-title-button contact-name-cell"
                             onClick={() => navigate(`/contacts/${contact.id}`)}
                           >
                             <CompanyLogo
@@ -264,7 +270,7 @@ export function ContactsPage() {
                               name={contact.customer?.name ?? contact.firstName}
                             />
                             {decodeEntities(`${contact.firstName} ${contact.lastName}`)}
-                          </span>
+                          </button>
                         </TableCell>
                         <TableCell>
                           {contact.email ? (

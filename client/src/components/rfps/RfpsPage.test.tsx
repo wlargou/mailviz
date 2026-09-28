@@ -75,6 +75,21 @@ function renderPage() {
   );
 }
 
+/** Open a row's "⋯" menu — its actions live there, not as icons on the row. */
+async function openActions(user: ReturnType<typeof userEvent.setup>, name = /Refonte/) {
+  await user.click(await screen.findByRole('button', { name: new RegExp(`Actions for .*${name.source}`) }));
+}
+
+/**
+ * The open menu's items, by label. `hidden: true` because Carbon keeps its
+ * floating menu `visibility: hidden` in jsdom, which cannot measure where to
+ * place it — the items are there and clickable, just not "visible".
+ */
+const menuItems = async () => (await screen.findAllByRole('menuitem', { hidden: true })).map((m) => m.textContent?.trim());
+// By text: a hidden element's accessible name computes to "".
+const menuItem = async (label: string) =>
+  (await screen.findAllByRole('menuitem', { hidden: true })).find((m) => m.textContent?.trim() === label)!;
+
 function serve(rfps: Rfp[]) {
   vi.mocked(rfpsApi.getAll).mockResolvedValue(axiosOk({ data: rfps, meta: { page: 1, limit: 20, total: rfps.length, totalPages: 1 } }) as never);
 }
@@ -138,6 +153,25 @@ describe('RfpsPage', () => {
     expect(params.search).toBe('BKAM');
     expect(params.scope).toBeUndefined();
     expect(screen.getByRole('searchbox')).toHaveValue('BKAM');
+  });
+
+  it('opens a tender from anywhere on its row, but not from the controls in it', async () => {
+    serve([makeRfp()]);
+    const user = userEvent.setup();
+    renderPage();
+
+    const row = (await screen.findByText('70/AOO/BKAM/2026')).closest('tr')!;
+    await user.click(within(row).getByText('70/AOO/BKAM/2026'));
+    expect(navigateSpy).toHaveBeenLastCalledWith('/rfps/r1');
+
+    // The buyer opens the buyer; the menu opens the menu.
+    navigateSpy.mockClear();
+    await user.click(within(row).getByRole('button', { name: 'Bank Al-Maghrib' }));
+    expect(navigateSpy).toHaveBeenCalledTimes(1);
+    expect(navigateSpy).toHaveBeenLastCalledWith('/customers/c1');
+    navigateSpy.mockClear();
+    await openActions(user);
+    expect(navigateSpy).not.toHaveBeenCalled();
   });
 
   it("opens a tender's page from its name", async () => {
@@ -257,7 +291,8 @@ describe('RfpsPage', () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(await screen.findByRole('button', { name: /Delete Refonte/ }));
+    await openActions(user);
+    await user.click(await menuItem('Delete'));
     expect(await screen.findByText(/Its 2 documents will be deleted too/)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Delete' }));
@@ -276,23 +311,24 @@ describe('RfpsPage', () => {
 describe('RfpsPage — shared tenders', () => {
   it('badges a tender owned by someone else and withholds the owner-only actions', async () => {
     serve([makeRfp({ userId: 'colleague', user: { id: 'colleague', name: 'Sam', email: 'sam@test' } })]);
+    const user = userEvent.setup();
     renderPage();
 
     const row = (await screen.findByText('70/AOO/BKAM/2026')).closest('tr')!;
     expect(within(row).getByText('Shared')).toBeInTheDocument();
-    expect(within(row).getByRole('button', { name: /Edit / })).toBeInTheDocument();
-    expect(within(row).queryByRole('button', { name: /Share / })).toBeNull();
-    expect(within(row).queryByRole('button', { name: /Delete / })).toBeNull();
+    await openActions(user);
+    expect(await menuItems()).toEqual(['Edit']);
   });
 
   it('offers sharing and deleting on your own, without a badge', async () => {
     serve([makeRfp()]);
+    const user = userEvent.setup();
     renderPage();
 
     const row = (await screen.findByText('70/AOO/BKAM/2026')).closest('tr')!;
     expect(within(row).queryByText('Shared')).toBeNull();
-    expect(within(row).getByRole('button', { name: /Share / })).toBeInTheDocument();
-    expect(within(row).getByRole('button', { name: /Delete / })).toBeInTheDocument();
+    await openActions(user);
+    expect(await menuItems()).toEqual(['Edit', 'Share', 'Delete']);
   });
 
   it('opens the share dialog on the current recipients', async () => {
@@ -303,7 +339,8 @@ describe('RfpsPage — shared tenders', () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(await screen.findByRole('button', { name: /Share Refonte/ }));
+    await openActions(user);
+    await user.click(await menuItem('Share'));
 
     await waitFor(() => expect(rfpsApi.getRfpShares).toHaveBeenCalledWith('r1'));
     // The dialog shows a recipient's name when they have one, their email

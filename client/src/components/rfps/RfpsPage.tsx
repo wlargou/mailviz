@@ -17,8 +17,11 @@ import {
   DataTableSkeleton,
   Tag,
   Dropdown,
+  OverflowMenu,
+  OverflowMenuItem,
 } from '@carbon/react';
-import { Add, TrashCan, Edit, Launch, Attachment, Document, Share } from '@carbon/icons-react';
+import { Add, Launch, Attachment, Document } from '@carbon/icons-react';
+import { openRowOnClick } from '../../utils/rowOpen';
 import { format } from 'date-fns';
 import { RfpFormPanel } from './RfpFormPanel';
 import { AttachmentPreviewModal } from '../shared/AttachmentPreviewModal';
@@ -335,7 +338,11 @@ export function RfpsPage() {
                       {rfps.map((rfp) => {
                         const tone = deadlineTone(rfp.deadlineAt, rfp.status);
                         return (
-                          <TableRow key={rfp.id}>
+                          <TableRow
+                            key={rfp.id}
+                            className="table-row--clickable"
+                            onClick={openRowOnClick(() => navigate(`/rfps/${rfp.id}`))}
+                          >
                             <TableCell>
                               <span className={`rfp-deadline rfp-deadline--${tone}`}>
                                 {shortDate(rfp.deadlineAt, { dayFirst: true })}
@@ -355,12 +362,13 @@ export function RfpsPage() {
                             </TableCell>
                             <TableCell>
                               {rfp.customer ? (
-                                <span
-                                  className="customer-name-cell"
+                                <button
+                                  type="button"
+                                  className="table-title-button customer-name-cell rfp-company-cell"
                                   onClick={() => navigate(`/customers/${rfp.customer!.id}`)}
                                 >
                                   {rfp.customer.name}
-                                </span>
+                                </button>
                               ) : (
                                 <span className="rfp-muted">—</span>
                               )}
@@ -405,15 +413,19 @@ export function RfpsPage() {
                               )}
                             </TableCell>
                             <TableCell>
-                              <div className="table-row-actions">
-                                <Button kind="ghost" size="sm" hasIconOnly renderIcon={Edit} iconDescription={`Edit ${rfp.name}`} onClick={() => openEdit(rfp)} />
-                                {rfp.userId === currentUserId && (
-                                  <Button kind="ghost" size="sm" hasIconOnly renderIcon={Share} iconDescription={`Share ${rfp.name}`} onClick={() => handleOpenShare(rfp)} />
-                                )}
-                                {rfp.userId === currentUserId && (
-                                  <Button kind="ghost" size="sm" hasIconOnly renderIcon={TrashCan} iconDescription={`Delete ${rfp.name}`} onClick={() => setDeleteRfp(rfp)} />
-                                )}
-                              </div>
+                              <OverflowMenu flipped size="sm" iconDescription={`Actions for ${rfp.name}`}>
+                                {/* An array, not `{cond && <Item/>}`: Carbon's menu
+                                    renders no items at all when a child is `false`. */}
+                                {[
+                                  <OverflowMenuItem key="edit" itemText="Edit" onClick={() => openEdit(rfp)} />,
+                                  ...(rfp.userId === currentUserId
+                                    ? [
+                                        <OverflowMenuItem key="share" itemText="Share" onClick={() => handleOpenShare(rfp)} />,
+                                        <OverflowMenuItem key="delete" itemText="Delete" isDelete hasDivider onClick={() => setDeleteRfp(rfp)} />,
+                                      ]
+                                    : []),
+                                ]}
+                              </OverflowMenu>
                             </TableCell>
                           </TableRow>
                         );

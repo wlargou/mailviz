@@ -386,3 +386,33 @@ body {
   background: transparent;
   box-shadow: inset 0 0 0 1.5px var(--priority-color);
 }
+
+// ─── CLICKABLE ROWS ──────────────────────────────
+// Rows that open their record (utils/rowOpen.ts), and the record's name as a
+// real button inside them so the keyboard can reach it too.
+.table-row--clickable {
+  cursor: pointer;
+}
+
+.table-title-button {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 500;
+  color: var(--cds-text-primary);
+  text-align: start;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+
+  &:hover {
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--cds-focus);
+    outline-offset: 2px;
+  }
+}

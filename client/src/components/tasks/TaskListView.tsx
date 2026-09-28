@@ -19,8 +19,11 @@ import {
   Pagination,
   DataTableSkeleton,
   Dropdown,
+  OverflowMenu,
+  OverflowMenuItem,
 } from '@carbon/react';
-import { Add, Edit, TrashCan, Share, Migrate, UserFollow, Tag as TagIcon, CheckmarkOutline } from '@carbon/icons-react';
+import { Add, TrashCan, Migrate, UserFollow, Tag as TagIcon, CheckmarkOutline } from '@carbon/icons-react';
+import { openRowOnClick } from '../../utils/rowOpen';
 import { TaskBatchPicker, type PickerItem } from './TaskBatchPicker';
 import { TaskViewsMenu } from './TaskViewsMenu';
 import { authApi } from '../../api/auth';
@@ -377,7 +380,12 @@ export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreat
                   // otherwise. `rows` was built from `tasks` in order.
                   const tableRow = tableRows[i];
                   return (
-                  <TableRow key={task.id} {...(tableRow ? getRowProps({ row: tableRow }) : {})}>
+                  <TableRow
+                    key={task.id}
+                    {...(tableRow ? getRowProps({ row: tableRow }) : {})}
+                    className="table-row--clickable"
+                    onClick={openRowOnClick(() => onEdit(task.id))}
+                  >
                     {tableRow ? <TableSelectRow {...getSelectionProps({ row: tableRow })} /> : <TableCell />}
                     <TableCell>
                       <span className="shared-title-cell">
@@ -388,9 +396,9 @@ export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreat
                               onOpen={onEdit}
                             />
                           )}
-                          <span style={{ cursor: 'pointer', fontWeight: 500 }} onClick={() => onEdit(task.id)}>
+                          <button type="button" className="table-title-button" onClick={() => onEdit(task.id)}>
                             {decodeEntities(task.title)}
-                          </span>
+                          </button>
                         </span>
                         <SharedBadge ownerId={task.userId} />
                         <TaskProgressTags task={task} />
@@ -412,8 +420,12 @@ export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreat
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="table-actions">
-                        <Button kind="ghost" size="sm" hasIconOnly renderIcon={Share} iconDescription="Share"
+                      {/* One menu instead of three icons on every row — and
+                          Delete no longer a red button a stray click away. */}
+                      <OverflowMenu flipped size="sm" iconDescription={`Actions for ${decodeEntities(task.title)}`}>
+                        <OverflowMenuItem itemText="Edit" onClick={() => onEdit(task.id)} />
+                        <OverflowMenuItem
+                          itemText="Share"
                           onClick={async () => {
                             try {
                               const { data: res } = await tasksApi.getTaskShares(task.id);
@@ -422,9 +434,8 @@ export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreat
                             setShareTask(task);
                           }}
                         />
-                        <Button kind="ghost" size="sm" hasIconOnly renderIcon={Edit} iconDescription="Edit" onClick={() => onEdit(task.id)} />
-                        <Button kind="danger--ghost" size="sm" hasIconOnly renderIcon={TrashCan} iconDescription="Delete" onClick={() => onDelete(task)} />
-                      </div>
+                        <OverflowMenuItem itemText="Delete" isDelete hasDivider onClick={() => onDelete(task)} />
+                      </OverflowMenu>
                     </TableCell>
                   </TableRow>
                   );
