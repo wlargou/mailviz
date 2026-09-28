@@ -144,6 +144,15 @@ const PREVIEW_LIST = [
   { threadId: 't5', messageCount: 2, unreadCount: 0, latestEmail: threadMessage(7, { id: 'l5', subject: 'Deal reg. extension 71523004', from: 'partner@example.test', fromName: 'Red Hat Partner', snippet: 'Your extension request has been received.', receivedAt: new Date(Date.now() - 6 * 86_400_000).toISOString() }) },
 ];
 
+/** Who the search box can suggest — a person on gmail.com and a machine among them. */
+const PREVIEW_PEOPLE = [
+  { address: 'h.gadialami@attijariwafa.test', name: 'GADI-ALAMI HICHAM', messages: 42, lastAt: new Date().toISOString(), automated: false },
+  { address: 'h.joundy@cfgbank.test', name: 'Hicham Joundy', messages: 12, lastAt: new Date().toISOString(), automated: false },
+  { address: 'akramafkir@gmail.test', name: null, messages: 5, lastAt: new Date().toISOString(), automated: false },
+  { address: 'hicham.benbella@oracle.test', name: 'Hicham Benbella', messages: 3, lastAt: new Date().toISOString(), automated: false },
+  { address: 'notifications@hicham-alerts.test', name: 'Hicham Alerts', messages: 300, lastAt: new Date().toISOString(), automated: true },
+];
+
 /** The register: one tender at risk two days out, one comfortable, one won. */
 const DAY_MS = 86_400_000;
 const PREVIEW_RFPS = [
@@ -188,6 +197,23 @@ function stubApis() {
   emailsApi.getReminders = async () =>
     ({ data: { data: [{ id: 'r1', threadId: 't5', kind: 'snooze', state: 'armed', remindAt: new Date(Date.now() + 2 * 86_400_000).toISOString(), armedAt: '', wasInInbox: true, resolution: null }] } }) as never;
   emailsApi.getRepliesOwed = async () => ({ data: { data: [] } }) as never;
+  // The server's rule, roughly: every word somewhere in the name, address or subject.
+  emailsApi.suggest = async (q: string) => {
+    const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+    const hit = (text: string) => words.every((w) => text.toLowerCase().includes(w));
+    await new Promise((r) => setTimeout(r, 120));
+    return {
+      data: {
+        data: {
+          people: PREVIEW_PEOPLE.filter((p) => hit(`${p.name ?? ''} ${p.address}`)).slice(0, 5),
+          threads: PREVIEW_LIST
+            .filter((t) => hit(`${t.latestEmail.subject} ${t.latestEmail.fromName ?? ''} ${t.latestEmail.from} ${t.latestEmail.snippet ?? ''}`))
+            .slice(0, 5)
+            .map((t) => ({ threadId: t.threadId, emailId: t.latestEmail.id, subject: t.latestEmail.subject, from: t.latestEmail.from, fromName: t.latestEmail.fromName, receivedAt: t.latestEmail.receivedAt })),
+        },
+      },
+    } as never;
+  };
   // The register's form panel mounts a company picker; unstubbed, its 401
   // sends the preview to /login.
   customersApi.getAll = async () =>

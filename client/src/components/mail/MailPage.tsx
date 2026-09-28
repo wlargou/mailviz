@@ -28,7 +28,7 @@ import { ThreadDetail } from './ThreadDetail';
 import { MailCategoryTabs } from './MailCategoryTabs';
 import { MailCategoriesModal } from './MailCategoriesModal';
 import { isMailCategory, visibleCategories, type CategoryCounts, type MailCategory } from '../../utils/mailCategories';
-import { MailSearchBar } from './MailSearchBar';
+import { MailSearchBar, searchScope } from './MailSearchBar';
 import { MailComposeModal } from './MailComposeModal';
 import { ConvertToTaskModal } from './ConvertToTaskModal';
 import { SnoozeModal } from './SnoozeModal';
@@ -39,7 +39,7 @@ import type { ComposeMode, DraftDetail, DraftListItem, EmailReminder, EmailThrea
 import type { PaginationMeta } from '../../types/api';
 import { decodeEntities } from '../../utils/text';
 import { mailListDate } from '../../utils/dates';
-import { sentTo } from '../../utils/mailList';
+import { sentTo, mailListParams } from '../../utils/mailList';
 
 /** An icon as a child of IconButton, from the same references `renderIcon` took. */
 function Glyph({ icon: Icon }: { icon: React.ComponentType }) {
@@ -50,6 +50,8 @@ const defaultFilters: MailFilters = {
   search: '',
   from: '',
   to: '',
+  participant: '',
+  participantName: '',
   subject: '',
   dateAfter: '',
   dateBefore: '',
@@ -85,11 +87,15 @@ export function MailPage() {
     const hasAttachment = searchParams.get('hasAttachment');
     const folder = searchParams.get('folder');
     const search = searchParams.get('search');
+    // `?participant=` is mail with one person, either way — a link from a
+    // contact, say. Like a search, it looks in all mail unless told a folder.
+    const participant = searchParams.get('participant');
     if (isRead !== null) initial.isRead = isRead;
     if (hasAttachment === 'true') initial.hasAttachment = true;
-    if (folder) initial.folder = folder === 'all' ? null : folder;
     if (search) initial.search = search;
-    return initial;
+    if (participant) initial.participant = participant.trim().toLowerCase();
+    if (folder) initial.folder = folder === 'all' ? null : folder;
+    return folder ? initial : searchScope(initial);
   });
   // Gmail's inbox tab. Only sent with the Inbox folder; the other folders
   // have no tabs (Gmail categorises the inbox, not Sent or Trash).
@@ -214,18 +220,7 @@ export function MailPage() {
     fetchRepliesOwed(true);
     if (!silent) setLoading(true);
     try {
-      const params: Record<string, string> = { page: String(page), limit: String(pageSize) };
-      if (filters.search) params.search = filters.search;
-      if (filters.from) params.from = filters.from;
-      if (filters.to) params.to = filters.to;
-      if (filters.subject) params.subject = filters.subject;
-      if (filters.dateAfter) params.dateAfter = filters.dateAfter;
-      if (filters.dateBefore) params.dateBefore = filters.dateBefore;
-      if (filters.customerIds.length > 0) params.customerId = filters.customerIds.join(',');
-      if (filters.isRead !== null) params.isRead = filters.isRead;
-      if (filters.hasAttachment) params.hasAttachment = 'true';
-      if (filters.folder) params.folder = filters.folder;
-      if (filters.folder === 'inbox') params.category = category;
+      const params = mailListParams(filters, { page, pageSize, category });
       const { data: response } = await emailsApi.getThreads(params);
       setThreads(response.data);
       setMeta(response.meta || null);
@@ -707,7 +702,7 @@ export function MailPage() {
     }
   }, [selectedIds, threads, filters.folder, addNotification, fetchThreads]);
 
-  const hasActiveFilters = filters.search || filters.from || filters.to || filters.subject ||
+  const hasActiveFilters = filters.search || filters.from || filters.to || filters.participant || filters.subject ||
     filters.dateAfter || filters.dateBefore || filters.customerIds.length > 0 || filters.isRead !== null ||
     filters.hasAttachment;
 
@@ -796,6 +791,7 @@ export function MailPage() {
             <MailSearchBar
               filters={filters}
               onFiltersChange={handleFiltersChange}
+              onOpenThread={setSelectedThread}
             />
           </div>
         )}

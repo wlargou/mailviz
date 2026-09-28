@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { EmailThread, EmailMessage, ConvertToTaskInput, ReviewSummary, EmailReminder, ReminderKind, ReplyOwed } from '../types/email';
+import type { EmailThread, EmailMessage, ConvertToTaskInput, ReviewSummary, EmailReminder, ReminderKind, ReplyOwed, MailSuggestions } from '../types/email';
 import type { ApiResponse } from '../types/api';
 import type { CategoryCounts } from '../utils/mailCategories';
 import type { Task } from '../types/task';
@@ -21,6 +21,11 @@ export const emailsApi = {
    */
   getRepliesOwed() {
     return api.get<ApiResponse<ReplyOwed[]>>('/emails/replies-owed');
+  },
+
+  /** People and threads for the search box, as the user types (two characters or more). */
+  suggest(q: string) {
+    return api.get<ApiResponse<MailSuggestions>>('/emails/suggest', { params: { q } });
   },
 
   getThread(threadId: string) {

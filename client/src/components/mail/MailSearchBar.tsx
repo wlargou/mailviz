@@ -10,14 +10,22 @@ import {
   IconButton,
   Tag,
 } from '@carbon/react';
-import { Search as SearchIcon, Close, Filter } from '@carbon/icons-react';
-import { contactsApi } from '../../api/customers';
+import { Search as SearchIcon, Close, Filter, User, Email } from '@carbon/icons-react';
+import { emailsApi } from '../../api/emails';
 import { CompanyComboBox } from '../shared/CompanyComboBox';
+import { HighlightMatch } from '../shared/HighlightMatch';
+import { decodeEntities } from '../../utils/text';
+import { mailListDate } from '../../utils/dates';
+import type { MailSuggestions, SuggestedPerson, SuggestedThread } from '../../types/email';
 
 export interface MailFilters {
   search: string;
   from: string;
   to: string;
+  /** One person, whichever way the mail went: from, to, cc or bcc this address. */
+  participant: string;
+  /** What the participant's chip says — the name that was picked. Never sent to the server. */
+  participantName: string;
   subject: string;
   dateAfter: string;
   dateBefore: string;
@@ -31,6 +39,8 @@ const emptyFilters: MailFilters = {
   search: '',
   from: '',
   to: '',
+  participant: '',
+  participantName: '',
   subject: '',
   dateAfter: '',
   dateBefore: '',
@@ -40,46 +50,112 @@ const emptyFilters: MailFilters = {
   folder: null,
 };
 
-type EmailItem = { id: string; text: string; email: string };
+type PersonItem = { id: string; text: string; email: string };
+
+function personItem(p: SuggestedPerson): PersonItem {
+  return { id: p.address, text: p.name ? `${p.name} <${p.address}>` : p.address, email: p.address };
+}
+
+/** A picked address shown as itself when the list no longer holds it. */
+function selectedPerson(email: string, picked: PersonItem | null): PersonItem | null {
+  if (!email) return null;
+  return picked?.email === email ? picked : { id: email, text: email, email };
+}
+
+/** What the suggestion list offers, in order: the search itself, then people, then threads. */
+type Suggestion =
+  | { kind: 'search'; id: string }
+  | { kind: 'person'; id: string; person: SuggestedPerson }
+  | { kind: 'thread'; id: string; thread: SuggestedThread };
+
+const SUGGEST_DELAY_MS = 250;
+const LIST_ID = 'mail-suggest';
+
+/**
+ * Searching from the Inbox searches all mail. The Inbox and its Primary tab
+ * are a triage view: a search there never found a sent or archived thread —
+ * including the ones the suggestions had just offered. A folder chosen on
+ * purpose (Sent, Archived …) stays the scope.
+ */
+export function searchScope(f: MailFilters): MailFilters {
+  const searching = f.search.trim() || f.participant || f.from || f.to || f.subject;
+  return f.folder === 'inbox' && searching ? { ...f, folder: null } : f;
+}
+
+/** Two characters or more, as the server wants: one letter matches half the mailbox. */
+const suggestable = (q: string) => q.trim().length >= 2;
 
 interface MailSearchBarProps {
   filters: MailFilters;
   onFiltersChange: (filters: MailFilters) => void;
+  /** Opens a thread picked from the suggestions in the reader. */
+  onOpenThread?: (threadId: string) => void;
 }
 
-export function MailSearchBar({ filters, onFiltersChange }: MailSearchBarProps) {
+export function MailSearchBar({ filters, onFiltersChange, onOpenThread }: MailSearchBarProps) {
   const [panelOpen, setPanelOpen] = useState(false);
   const [draft, setDraft] = useState<MailFilters>(filters);
-  const [contactItems, setContactItems] = useState<EmailItem[]>([]);
-  const [selectedFrom, setSelectedFrom] = useState<EmailItem | null>(null);
-  const [selectedTo, setSelectedTo] = useState<EmailItem | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  // Lazy-fetch contacts as user types
-  const searchContacts = useCallback((query: string) => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (!query || query.length < 2) {
-      setContactItems([]);
+  // ── Suggestions under the search box ──
+  //
+  // People and threads as you type, from the mail itself: the contacts list
+  // it used to lean on is filed by company, and knew nobody on a personal
+  // address. Picking a person filters to mail with them either way; picking a
+  // thread opens it; the first row runs the search as typed.
+  const [suggestions, setSuggestions] = useState<MailSuggestions | null>(null);
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const suggestTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const suggestRequest = useRef(0);
+
+  const requestSuggestions = useCallback((q: string) => {
+    if (suggestTimer.current) clearTimeout(suggestTimer.current);
+    const id = ++suggestRequest.current;
+    if (!suggestable(q)) {
+      setSuggestions(null);
       return;
     }
-    debounceRef.current = setTimeout(async () => {
+    suggestTimer.current = setTimeout(async () => {
       try {
-        const { data: res } = await contactsApi.getAll({ search: query, limit: '20' });
-        const items: EmailItem[] = [];
-        const seen = new Set<string>();
-        for (const c of res.data) {
-          if (c.email && !seen.has(c.email)) {
-            seen.add(c.email);
-            items.push({ id: c.email, text: `${c.firstName} ${c.lastName} <${c.email}>`, email: c.email });
-          }
-        }
-        setContactItems(items);
+        const { data: res } = await emailsApi.suggest(q.trim());
+        // An answer to an earlier keystroke must not replace a later one.
+        if (id === suggestRequest.current) setSuggestions(res.data);
       } catch {
-        // ignore
+        if (id === suggestRequest.current) setSuggestions(null);
       }
-    }, 300);
+    }, SUGGEST_DELAY_MS);
+  }, []);
+
+  // ── From and To in the filter panel: the same people ──
+  const [fromItems, setFromItems] = useState<PersonItem[]>([]);
+  const [toItems, setToItems] = useState<PersonItem[]>([]);
+  const [pickedFrom, setPickedFrom] = useState<PersonItem | null>(null);
+  const [pickedTo, setPickedTo] = useState<PersonItem | null>(null);
+  const peopleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const peopleRequest = useRef(0);
+
+  const searchPeople = useCallback((query: string, setItems: (items: PersonItem[]) => void) => {
+    if (peopleTimer.current) clearTimeout(peopleTimer.current);
+    const id = ++peopleRequest.current;
+    if (!suggestable(query)) {
+      setItems([]);
+      return;
+    }
+    peopleTimer.current = setTimeout(async () => {
+      try {
+        const { data: res } = await emailsApi.suggest(query.trim());
+        if (id === peopleRequest.current) setItems(res.data.people.map(personItem));
+      } catch {
+        // The field keeps whatever it held.
+      }
+    }, SUGGEST_DELAY_MS);
+  }, []);
+
+  useEffect(() => () => {
+    if (suggestTimer.current) clearTimeout(suggestTimer.current);
+    if (peopleTimer.current) clearTimeout(peopleTimer.current);
   }, []);
 
   // Sync draft with external filters
@@ -87,7 +163,12 @@ export function MailSearchBar({ filters, onFiltersChange }: MailSearchBarProps) 
     setDraft(filters);
   }, [filters]);
 
-  // Close panel on outside click
+  const closeSuggestions = useCallback(() => {
+    setSuggestOpen(false);
+    setActiveIndex(-1);
+  }, []);
+
+  // Close the filter panel on an outside click
   useEffect(() => {
     if (!panelOpen) return;
     const handleClick = (e: MouseEvent) => {
@@ -102,8 +183,18 @@ export function MailSearchBar({ filters, onFiltersChange }: MailSearchBarProps) 
     return () => document.removeEventListener('mousedown', handleClick);
   }, [panelOpen]);
 
+  // …and the suggestions on any click outside the search box, which holds them.
+  useEffect(() => {
+    if (!suggestOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (barRef.current && !barRef.current.contains(e.target as Node)) closeSuggestions();
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [suggestOpen, closeSuggestions]);
+
   const handleSearchSubmit = () => {
-    onFiltersChange({ ...draft });
+    onFiltersChange(searchScope({ ...draft }));
     setPanelOpen(false);
   };
 
@@ -115,16 +206,74 @@ export function MailSearchBar({ filters, onFiltersChange }: MailSearchBarProps) 
     // beside this button already excludes the folder for the same reason.
     const cleared = { ...emptyFilters, folder: draft.folder };
     setDraft(cleared);
-    setSelectedFrom(null);
-    setSelectedTo(null);
-    setContactItems([]);
+    setPickedFrom(null);
+    setPickedTo(null);
+    setFromItems([]);
+    setToItems([]);
     onFiltersChange(cleared);
     setPanelOpen(false);
   };
 
-  const handleSearchKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
+  const query = draft.search.trim();
+  const people = suggestable(query) ? suggestions?.people ?? [] : [];
+  const threads = suggestable(query) ? suggestions?.threads ?? [] : [];
+  const options: Suggestion[] = suggestable(query)
+    ? [
+        { kind: 'search', id: `${LIST_ID}-search` },
+        ...people.map((person, i) => ({ kind: 'person' as const, id: `${LIST_ID}-person-${i}`, person })),
+        ...threads.map((thread, i) => ({ kind: 'thread' as const, id: `${LIST_ID}-thread-${i}`, thread })),
+      ]
+    : [];
+  const listOpen = suggestOpen && options.length > 0;
+
+  const choose = (option: Suggestion) => {
+    closeSuggestions();
+    if (option.kind === 'search') {
       handleSearchSubmit();
+    } else if (option.kind === 'person') {
+      // The person replaces the words typed to find them: "hicham" was the
+      // way to reach GADI-ALAMI HICHAM, not something his mail must contain.
+      const next = searchScope({
+        ...draft,
+        search: '',
+        participant: option.person.address,
+        participantName: option.person.name ?? '',
+      });
+      setDraft(next);
+      onFiltersChange(next);
+      setPanelOpen(false);
+    } else {
+      // Nothing was searched, so the box goes back to what the list shows.
+      setDraft((d) => ({ ...d, search: filters.search }));
+      onOpenThread?.(option.thread.threadId);
+    }
+  };
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (options.length === 0) return;
+      e.preventDefault();
+      const down = e.key === 'ArrowDown';
+      setSuggestOpen(true);
+      setActiveIndex((i) => (down ? (i + 1) % options.length : i <= 0 ? options.length - 1 : i - 1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const active = listOpen && activeIndex >= 0 ? options[activeIndex] : undefined;
+      if (active) {
+        choose(active);
+      } else {
+        closeSuggestions();
+        handleSearchSubmit();
+      }
+    } else if (e.key === 'Escape') {
+      // Closes the list, and only the list — not the reader beside it.
+      if (listOpen) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeSuggestions();
+      }
+    } else if (e.key === 'Tab') {
+      closeSuggestions();
     }
   };
 
@@ -132,6 +281,7 @@ export function MailSearchBar({ filters, onFiltersChange }: MailSearchBarProps) 
   const activeFilterCount = [
     draft.from,
     draft.to,
+    draft.participant,
     draft.subject,
     draft.dateAfter,
     draft.dateBefore,
@@ -148,6 +298,7 @@ export function MailSearchBar({ filters, onFiltersChange }: MailSearchBarProps) 
 
   // Active filter tags for display
   const activeTags: { key: string; label: string }[] = [];
+  if (filters.participant) activeTags.push({ key: 'participant', label: `With: ${filters.participantName || filters.participant}` });
   if (filters.from) activeTags.push({ key: 'from', label: `From: ${filters.from}` });
   if (filters.to) activeTags.push({ key: 'to', label: `To: ${filters.to}` });
   if (filters.subject) activeTags.push({ key: 'subject', label: `Subject: ${filters.subject}` });
@@ -161,7 +312,10 @@ export function MailSearchBar({ filters, onFiltersChange }: MailSearchBarProps) 
 
   const removeFilter = (key: string) => {
     const updated = { ...filters };
-    if (key === 'from' || key === 'to' || key === 'subject' || key === 'dateAfter' || key === 'dateBefore') {
+    if (key === 'participant') {
+      updated.participant = '';
+      updated.participantName = '';
+    } else if (key === 'from' || key === 'to' || key === 'subject' || key === 'dateAfter' || key === 'dateBefore') {
       updated[key] = '';
     } else if (key === 'customerIds') {
       updated.customerIds = [];
@@ -173,6 +327,21 @@ export function MailSearchBar({ filters, onFiltersChange }: MailSearchBarProps) 
     onFiltersChange(updated);
   };
 
+  const selectedFrom = selectedPerson(draft.from, pickedFrom);
+  const selectedTo = selectedPerson(draft.to, pickedTo);
+
+  /** Props every row of the list shares. */
+  const optionProps = (option: Suggestion, index: number) => ({
+    id: option.id,
+    role: 'option' as const,
+    'aria-selected': index === activeIndex,
+    className: `mail-suggest__option${index === activeIndex ? ' mail-suggest__option--active' : ''}`,
+    // Keeps focus in the box, so the keyboard carries on where the mouse left off.
+    onMouseDown: (e: React.MouseEvent) => e.preventDefault(),
+    onClick: () => choose(option),
+    onMouseEnter: () => setActiveIndex(index),
+  });
+
   return (
     <div className="mail-search">
       <div className="mail-search__bar" ref={barRef}>
@@ -181,9 +350,26 @@ export function MailSearchBar({ filters, onFiltersChange }: MailSearchBarProps) 
           <input
             className="mail-search__input"
             type="text"
-            placeholder="Search mail..."
+            placeholder="Search mail, people or subjects"
+            aria-label="Search mail"
+            role="combobox"
+            aria-expanded={listOpen}
+            aria-controls={LIST_ID}
+            aria-autocomplete="list"
+            aria-activedescendant={listOpen && activeIndex >= 0 ? options[activeIndex]?.id : undefined}
             value={draft.search}
-            onChange={(e) => setDraft({ ...draft, search: e.target.value })}
+            onChange={(e) => {
+              const value = e.target.value;
+              setDraft({ ...draft, search: value });
+              setActiveIndex(-1);
+              setSuggestOpen(suggestable(value));
+              requestSuggestions(value);
+            }}
+            onFocus={() => {
+              if (!suggestable(draft.search)) return;
+              setSuggestOpen(true);
+              if (!suggestions) requestSuggestions(draft.search);
+            }}
             onKeyDown={handleSearchKeyDown}
           />
           {draft.search && (
@@ -192,6 +378,8 @@ export function MailSearchBar({ filters, onFiltersChange }: MailSearchBarProps) 
               onClick={() => {
                 const updated = { ...draft, search: '' };
                 setDraft(updated);
+                closeSuggestions();
+                requestSuggestions('');
                 onFiltersChange(updated);
               }}
               aria-label="Clear search"
@@ -212,6 +400,78 @@ export function MailSearchBar({ filters, onFiltersChange }: MailSearchBarProps) 
             <span className="mail-search__badge">{activeFilterCount}</span>
           )}
         </IconButton>
+
+        {listOpen && (
+          <div className="mail-suggest" role="listbox" id={LIST_ID} aria-label="Search suggestions">
+            <div {...optionProps(options[0], 0)}>
+              <SearchIcon size={16} className="mail-suggest__icon" />
+              <span className="mail-suggest__text">
+                <span className="mail-suggest__label">
+                  Search mail for “<span className="search-highlight">{query}</span>”
+                </span>
+              </span>
+            </div>
+            {people.length > 0 && (
+              <div className="mail-suggest__group" role="group" aria-labelledby={`${LIST_ID}-people`}>
+                <div className="mail-suggest__header" id={`${LIST_ID}-people`}>People</div>
+                {people.map((person, i) => {
+                  const index = 1 + i;
+                  return (
+                    <div
+                      key={person.address}
+                      {...optionProps(options[index], index)}
+                      // Named outright: read from the highlighted pieces, name
+                      // and address ran together into one word.
+                      aria-label={person.name ? `${person.name}, ${person.address}` : person.address}
+                    >
+                      <User size={16} className="mail-suggest__icon" />
+                      <span className="mail-suggest__text">
+                        <span className="mail-suggest__label">
+                          <HighlightMatch text={person.name ?? person.address} query={query} />
+                        </span>
+                        {person.name && (
+                          <span className="mail-suggest__sub">
+                            <HighlightMatch text={person.address} query={query} />
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {threads.length > 0 && (
+              <div className="mail-suggest__group" role="group" aria-labelledby={`${LIST_ID}-threads`}>
+                <div className="mail-suggest__header" id={`${LIST_ID}-threads`}>Mail</div>
+                {threads.map((thread, i) => {
+                  const index = 1 + people.length + i;
+                  const subject = decodeEntities(thread.subject) || '(no subject)';
+                  const sender = decodeEntities(thread.fromName || thread.from);
+                  const when = mailListDate(thread.receivedAt);
+                  return (
+                    <div
+                      key={thread.threadId}
+                      {...optionProps(options[index], index)}
+                      aria-label={`${subject}, from ${sender}, ${when}`}
+                    >
+                      <Email size={16} className="mail-suggest__icon" />
+                      <span className="mail-suggest__text">
+                        <span className="mail-suggest__label">
+                          <HighlightMatch text={subject} query={query} />
+                        </span>
+                        <span className="mail-suggest__sub">
+                          <HighlightMatch text={sender} query={query} />
+                          {' · '}
+                          {when}
+                        </span>
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {activeTags.length > 0 && (
@@ -240,21 +500,23 @@ export function MailSearchBar({ filters, onFiltersChange }: MailSearchBarProps) 
             <ComboBox
               id="filter-from"
               titleText="From"
-              placeholder="Type to search contacts..."
-              items={contactItems}
-              itemToString={(item: EmailItem | null) => item?.text || ''}
+              placeholder="Type a name or an address"
+              items={fromItems}
+              itemToString={(item: PersonItem | null) => item?.text || ''}
               selectedItem={selectedFrom}
-              onChange={({ selectedItem }: { selectedItem: EmailItem | null | undefined }) => {
+              onChange={({ selectedItem }: { selectedItem?: PersonItem | null }) => {
                 const item = selectedItem || null;
-                setSelectedFrom(item);
-                setDraft({ ...draft, from: item?.email || '' });
+                setPickedFrom(item);
+                setDraft((d) => ({ ...d, from: item?.email || '' }));
               }}
               onInputChange={(value: string) => {
+                // The box echoing a pick is not a new search.
+                if (value === (selectedFrom?.text ?? '')) return;
                 if (!value) {
-                  setSelectedFrom(null);
+                  setPickedFrom(null);
                   setDraft((d) => ({ ...d, from: '' }));
                 }
-                searchContacts(value);
+                searchPeople(value, setFromItems);
               }}
               shouldFilterItem={() => true}
               size="sm"
@@ -262,21 +524,22 @@ export function MailSearchBar({ filters, onFiltersChange }: MailSearchBarProps) 
             <ComboBox
               id="filter-to"
               titleText="To"
-              placeholder="Type to search contacts..."
-              items={contactItems}
-              itemToString={(item: EmailItem | null) => item?.text || ''}
+              placeholder="Type a name or an address"
+              items={toItems}
+              itemToString={(item: PersonItem | null) => item?.text || ''}
               selectedItem={selectedTo}
-              onChange={({ selectedItem }: { selectedItem: EmailItem | null | undefined }) => {
+              onChange={({ selectedItem }: { selectedItem?: PersonItem | null }) => {
                 const item = selectedItem || null;
-                setSelectedTo(item);
-                setDraft({ ...draft, to: item?.email || '' });
+                setPickedTo(item);
+                setDraft((d) => ({ ...d, to: item?.email || '' }));
               }}
               onInputChange={(value: string) => {
+                if (value === (selectedTo?.text ?? '')) return;
                 if (!value) {
-                  setSelectedTo(null);
+                  setPickedTo(null);
                   setDraft((d) => ({ ...d, to: '' }));
                 }
-                searchContacts(value);
+                searchPeople(value, setToItems);
               }}
               shouldFilterItem={() => true}
               size="sm"
