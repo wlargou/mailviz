@@ -43,7 +43,6 @@ const headers = [
   { key: 'action', header: 'Action' },
   { key: 'entityType', header: 'Type' },
   { key: 'summary', header: 'Details' },
-  { key: 'status', header: 'Status' },
 ];
 
 const actionLabels: Record<string, string> = {
@@ -128,6 +127,13 @@ const actionLabels: Record<string, string> = {
   LABEL_CREATED: 'Label Created',
   LABEL_UPDATED: 'Label Updated',
   LABEL_DELETED: 'Label Deleted',
+  RFP_CREATED: 'RFP Created',
+  RFP_UPDATED: 'RFP Updated',
+  RFP_DELETED: 'RFP Deleted',
+  RFP_SHARED: 'RFP Shared',
+  RFP_UNSHARED: 'RFP Unshared',
+  RFP_DOCUMENT_ADDED: 'RFP Document Added',
+  RFP_DOCUMENT_REMOVED: 'RFP Document Removed',
   ONBOARDING_COMPLETED: 'Setup Completed',
   ONBOARDING_SKIPPED: 'Setup Skipped',
 };
@@ -155,6 +161,27 @@ const actionColors: Record<string, string> = {
   CONTACT_DELETED: 'red',
 };
 
+/** Words kept in capitals when an action name is spelled out. */
+const ACRONYMS = new Set(['RFP', 'VIP', 'CSV', 'ID']);
+
+/**
+ * The label for an action, or the action spelled out if none is set.
+ *
+ * The RFP actions had no label and showed as raw codes (`RFP_DELETED`) next
+ * to "Task Shared". A missing label now reads "RFP Document Added" rather
+ * than the code, so the next new action cannot regress it.
+ */
+export function actionLabel(action: string): string {
+  return (
+    actionLabels[action] ??
+    action
+      .split('_')
+      .filter(Boolean)
+      .map((w) => (ACRONYMS.has(w) ? w : w.charAt(0) + w.slice(1).toLowerCase()))
+      .join(' ')
+  );
+}
+
 const entityTypeItems = [
   { id: '', text: 'All types' },
   { id: 'email', text: 'Email' },
@@ -163,6 +190,7 @@ const entityTypeItems = [
   { id: 'event', text: 'Event' },
   { id: 'company', text: 'Company' },
   { id: 'contact', text: 'Contact' },
+  { id: 'rfp', text: 'RFP' },
   { id: 'label', text: 'Label' },
   { id: 'scheduled_email', text: 'Scheduled Email' },
 ];
@@ -176,6 +204,12 @@ export function getSummary(entry: AuditLogEntry): string {
   if (d.subject) parts.push(`"${decodeEntities(String(d.subject)).slice(0, 60)}"`);
   if (d.title) parts.push(`"${decodeEntities(String(d.title)).slice(0, 60)}"`);
   if (d.name) parts.push(String(d.name));
+  // RFP rows showed "—": their details name the tender by reference and the
+  // file or fields concerned.
+  if (d.reference) parts.push(String(d.reference));
+  if (d.filename) parts.push(String(d.filename).slice(0, 60));
+  if (Array.isArray(d.fields) && d.fields.length) parts.push(`changed ${(d.fields as string[]).join(', ')}`);
+  if (Array.isArray(d.sharedWith)) parts.push(`with ${d.sharedWith.length} ${d.sharedWith.length === 1 ? 'person' : 'people'}`);
   // An email's `to`/`from` are addresses; a task update's are the before and
   // after values keyed by field, which read as "[object Object]" through
   // String(). Those are rendered with the change list below.
@@ -324,8 +358,15 @@ export function ActivityLogPage() {
                         </TableCell>
                         <TableCell>
                           <Tag size="sm" type={(actionColors[entry.action] || 'cool-gray') as any}>
-                            {actionLabels[entry.action] || entry.action}
+                            {actionLabel(entry.action)}
                           </Tag>
+                          {/* A status column said "success" on every row; only
+                              a failure is worth a mark. */}
+                          {entry.status !== 'success' && (
+                            <Tag size="sm" type="red">
+                              Failed
+                            </Tag>
+                          )}
                         </TableCell>
                         <TableCell>
                           <span style={{ textTransform: 'capitalize' }}>{entry.entityType.replace('_', ' ')}</span>
@@ -334,11 +375,6 @@ export function ActivityLogPage() {
                           <span style={{ fontSize: '0.8125rem', color: 'var(--cds-text-secondary)' }}>
                             {getSummary(entry)}
                           </span>
-                        </TableCell>
-                        <TableCell>
-                          <Tag size="sm" type={entry.status === 'success' ? 'green' : 'red'}>
-                            {entry.status}
-                          </Tag>
                         </TableCell>
                       </TableRow>
                     );
@@ -379,7 +415,7 @@ export function ActivityLogPage() {
             <div>
               <strong>Action:</strong>{' '}
               <Tag size="sm" type={(actionColors[selectedLog.action] || 'cool-gray') as any}>
-                {actionLabels[selectedLog.action] || selectedLog.action}
+                {actionLabel(selectedLog.action)}
               </Tag>
             </div>
             <div>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getSummary } from './ActivityLogPage';
+import { actionLabel, getSummary } from './ActivityLogPage';
 
 /**
  * The Details column. A task update's `from`/`to` are maps keyed by field
@@ -36,5 +36,30 @@ describe('getSummary', () => {
     expect(getSummary(entry('TASK_CHECKLIST_UPDATED', { added: 'Close the ticket' }))).toBe('added "Close the ticket"');
     expect(getSummary(entry('TASK_TIME_LOGGED', { minutes: 25, entryId: 'e', timer: true }))).toBe('25 min (timer)');
     expect(getSummary(entry('TASK_BATCH_STATUS', { count: 3, status: 'DONE', skipped: 0 }))).toBe('→ DONE · 3 items');
+  });
+});
+
+describe('actionLabel', () => {
+  it('names the RFP actions, which used to show as raw codes', () => {
+    expect(actionLabel('RFP_DELETED')).toBe('RFP Deleted');
+    expect(actionLabel('RFP_DOCUMENT_ADDED')).toBe('RFP Document Added');
+  });
+
+  it('spells out an action nobody labelled yet, rather than showing its code', () => {
+    expect(actionLabel('RFP_LOT_ADDED')).toBe('RFP Lot Added');
+    expect(actionLabel('CONTACT_VIP_TOGGLED')).toBe('Contact VIP Toggled');
+    expect(actionLabel('SOMETHING_NEW')).not.toContain('_');
+  });
+});
+
+describe('getSummary — RFP rows', () => {
+  const rfp = (action: string, details: Record<string, unknown>) =>
+    ({ id: 'a', action, entityType: 'rfp', entityId: 'r', details, createdAt: '', status: 'success' }) as never;
+
+  it('names the tender, the file, the fields changed and who it was shared with', () => {
+    expect(getSummary(rfp('RFP_CREATED', { reference: '70/AOO/BKAM/2026', lots: 1 }))).toContain('70/AOO/BKAM/2026');
+    expect(getSummary(rfp('RFP_DOCUMENT_ADDED', { filename: 'CPS AO 70.pdf', kind: 'RFP' }))).toContain('CPS AO 70.pdf');
+    expect(getSummary(rfp('RFP_UPDATED', { fields: ['status', 'deadlineAt'] }))).toContain('changed status, deadlineAt');
+    expect(getSummary(rfp('RFP_SHARED', { sharedWith: ['u1', 'u2'] }))).toContain('with 2 people');
   });
 });
