@@ -190,3 +190,20 @@ describe('RFP page — who prepares what', () => {
     await waitFor(() => expect(rfpsApi.updateItem).toHaveBeenCalledWith('r1', 'i2', { assigneeId: 'me' }));
   });
 });
+
+describe('RFP page — the tender beside the response', () => {
+  it('opens the tender documents in a side panel from the response', async () => {
+    serve(
+      makeRfp({
+        documents: [{ id: 'd1', rfpId: 'r1', kind: 'RFP', filename: 'RC AO 70.pdf', mimeType: 'application/pdf', size: 10, version: null, uploadedById: null, createdAt: '' }],
+      }),
+    );
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Tender documents (1)' }));
+
+    const panel = await screen.findByRole('complementary', { name: /Tender documents/ });
+    expect(within(panel).getByText('RC AO 70.pdf')).toBeInTheDocument();
+  });
+});

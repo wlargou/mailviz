@@ -12,7 +12,9 @@ import {
   Tag,
   TextInput,
 } from '@carbon/react';
-import { Add, Attachment, TrashCan } from '@carbon/icons-react';
+import { Add, Attachment, Document as DocumentIcon, TrashCan } from '@carbon/icons-react';
+import { SidePanel } from '@carbon/ibm-products';
+import { RfpDocuments } from './RfpDocuments';
 import { isAxiosError } from 'axios';
 import { rfpsApi } from '../../api/rfps';
 import { useUIStore } from '../../store/uiStore';
@@ -70,6 +72,7 @@ interface RfpResponseSectionProps {
 export function RfpResponseSection({ rfp, catalogue, currentUserId, onLocalChange, onRefresh }: RfpResponseSectionProps) {
   const addNotification = useUIStore((s) => s.addNotification);
   const [addFolderOpen, setAddFolderOpen] = useState(false);
+  const [docsOpen, setDocsOpen] = useState(false);
   const [deleteFolder, setDeleteFolder] = useState<RfpFolder | null>(null);
   const [preview, setPreview] = useState<{ item: RfpItem; index: number } | null>(null);
   /** The piece open in the panel — by id, so a refresh shows its new state. */
@@ -125,10 +128,30 @@ export function RfpResponseSection({ rfp, catalogue, currentUserId, onLocalChang
           <h2 id="rfp-response-heading" className="rfp-detail__section-title">Response</h2>
           <p className="rfp-detail__section-subtitle">The dossiers to prepare, and where each piece stands</p>
         </div>
-        <Button kind="tertiary" size="sm" renderIcon={Add} onClick={() => setAddFolderOpen(true)}>
-          Add dossier
-        </Button>
+        <div className="rfp-detail__actions">
+          {/* The RC and CPS are read while preparing, not in another tab. */}
+          <Button kind="ghost" size="sm" renderIcon={DocumentIcon} onClick={() => setDocsOpen(true)}>
+            Tender documents ({rfp.documents.length})
+          </Button>
+          <Button kind="tertiary" size="sm" renderIcon={Add} onClick={() => setAddFolderOpen(true)}>
+            Add dossier
+          </Button>
+        </div>
       </div>
+
+      <SidePanel
+        open={docsOpen}
+        onRequestClose={() => setDocsOpen(false)}
+        title="Tender documents"
+        subtitle={rfp.reference}
+        size="md"
+        includeOverlay={false}
+        preventCloseOnClickOutside
+      >
+        <div className="rfp-piece-panel__body">
+          <RfpDocuments rfpId={rfp.id} documents={rfp.documents} onUploaded={onRefresh} />
+        </div>
+      </SidePanel>
 
       {rfp.folders.length > 0 && (
         <DossierOverview
