@@ -62,18 +62,22 @@ const ENGAGEMENT_FILTERS = [
 ];
 
 const KIND_FILTERS = [
-  { id: 'people', label: 'People and shared mailboxes' },
-  { id: 'person', label: 'People only' },
+  { id: 'person', label: 'People' },
   { id: 'role', label: 'Shared mailboxes' },
+  { id: 'people', label: 'People and shared mailboxes' },
   { id: 'automated', label: 'Automated senders' },
   { id: 'all', label: 'All contacts' },
 ];
 
 const headers = [
-  { key: 'name', header: 'Name', sortField: 'lastName' },
+  // By first name, as it is shown: sorting on the last name left the many
+  // contacts that have none tied, in id order, under a "Name ↑" header.
+  { key: 'name', header: 'Name', sortField: 'firstName' },
   { key: 'email', header: 'Email', sortField: 'email' },
   { key: 'company', header: 'Company' },
-  { key: 'emails', header: 'Emails' },
+  // The default: busiest first, as on Companies. A→Z opened on the parser's
+  // debris ("-khaoula", "*boutaleb"), which sorts ahead of every letter.
+  { key: 'emails', header: 'Emails', sortField: 'emailCount' },
 ];
 
 export function ContactsPage() {
@@ -82,20 +86,21 @@ export function ContactsPage() {
   const [meta, setMeta] = useState<PaginationMeta | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
-  const { params: sortParams, headerProps } = useTableSort('lastName', 'asc');
+  const { params: sortParams, headerProps } = useTableSort('emailCount', 'desc');
   const [searchParams] = useSearchParams();
   const initialSearch = useMemo(() => searchParams.get('search') || '', []);
   const [search, setSearch] = useState(initialSearch);
   const [debouncedSearch, setDebouncedSearch] = useState(initialSearch);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   /**
-   * Defaults to `people` — a person or a shared mailbox someone answers.
+   * Defaults to people — not shared mailboxes, not machines.
    *
-   * Of 11,694 contacts about 1,350 are machines or brand addresses, and they are
-   * not who you look up a contact to find. "All" is one click away for when the
-   * question is "who has ever emailed me from that domain".
+   * Of 11,694 contacts about 1,350 are machines or brand addresses, and a
+   * support@ or a billing@ is not who you look a contact up to find either;
+   * both are one choice away. "All" answers "who has ever emailed me from
+   * that domain".
    */
-  const [kindFilter, setKindFilter] = useState<string>('people');
+  const [kindFilter, setKindFilter] = useState<string>('person');
   const [engagementFilter, setEngagementFilter] = useState<string>('all');
   const searchRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
@@ -149,7 +154,7 @@ export function ContactsPage() {
       <div className="page-header">
         <div className="page-header__info">
           <h1>Contacts</h1>
-          <p className="page-header__subtitle">All contacts across companies</p>
+          <p className="page-header__subtitle">The people behind the companies you work with</p>
         </div>
         <div className="page-header__actions">
           <Button
@@ -187,12 +192,12 @@ export function ContactsPage() {
                       <TableFilterFlyout
                         activeFilterCount={
                           (selectedCustomerId ? 1 : 0) +
-                          (kindFilter !== 'people' ? 1 : 0) +
+                          (kindFilter !== 'person' ? 1 : 0) +
                           (engagementFilter !== 'all' ? 1 : 0)
                         }
                         onReset={() => {
                           setSelectedCustomerId(null);
-                          setKindFilter('people');
+                          setKindFilter('person');
                           setEngagementFilter('all');
                           setPage(1);
                         }}
@@ -208,7 +213,7 @@ export function ContactsPage() {
                           itemToString={(item) => (item ? item.label : '')}
                           selectedItem={KIND_FILTERS.find((k) => k.id === kindFilter) ?? KIND_FILTERS[0]}
                           onChange={({ selectedItem }) => {
-                            setKindFilter(selectedItem?.id ?? 'people');
+                            setKindFilter(selectedItem?.id ?? 'person');
                             setPage(1);
                           }}
                         />

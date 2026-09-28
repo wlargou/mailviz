@@ -18,7 +18,7 @@ import type { Contact } from '../../types/customer';
  *
  * Three specific failure modes are locked down:
  *
- *  - **Params.** `kind` defaults to `people` and `engagement` to `all`, and
+ *  - **Params.** `kind` defaults to `person` and `engagement` to `all`, and
  *    each has its own "means unfiltered" sentinel that must be *omitted* rather
  *    than sent. Sending `kind=all` and sending nothing are different queries.
  *  - **Page reset.** Narrowing the set while on page 3 must go back to page 1.
@@ -138,16 +138,18 @@ describe('ContactsPage', () => {
   });
 
   describe('initial query', () => {
-    it('asks for page 1 sorted by surname, filtered to people', async () => {
+    it('asks for page 1, busiest first, filtered to people only', async () => {
       renderPage();
       await waitForCallCount(1);
 
       expect(lastParams()).toEqual({
         page: '1',
         limit: '20',
-        sortBy: 'lastName',
-        sortOrder: 'asc',
-        kind: 'people',
+        // Busiest first; A→Z led with malformed names. Shared mailboxes are
+        // one choice away.
+        sortBy: 'emailCount',
+        sortOrder: 'desc',
+        kind: 'person',
       });
     });
 
@@ -258,10 +260,10 @@ describe('ContactsPage', () => {
       await waitForCallCount(2);
       expect(lastParams().page).toBe('2');
 
-      await chooseFilter(user, /type/i, 'People only');
+      await chooseFilter(user, /type/i, 'Shared mailboxes');
 
       await waitForCallCount(3);
-      expect(lastParams()).toMatchObject({ page: '1', kind: 'person' });
+      expect(lastParams()).toMatchObject({ page: '1', kind: 'role' });
     });
 
     it('returns to page 1 when the engagement filter changes', async () => {
@@ -294,7 +296,7 @@ describe('ContactsPage', () => {
       await user.click(screen.getByRole('button', { name: /reset filters/i }));
 
       await waitForCallCount(4);
-      expect(lastParams()).toMatchObject({ page: '1', kind: 'people' });
+      expect(lastParams()).toMatchObject({ page: '1', kind: 'person' });
     });
   });
 
@@ -322,12 +324,12 @@ describe('ContactsPage', () => {
       await waitForCallCount(1);
 
       await screen.findByText('Sara Maach');
-      expect(sortableHeader('Name')).toHaveAttribute('aria-sort', 'ascending');
+      expect(sortableHeader('Emails')).toHaveAttribute('aria-sort', 'descending');
 
       await user.click(within(sortableHeader('Email')).getByRole('button'));
 
       await waitFor(() => expect(sortableHeader('Email')).toHaveAttribute('aria-sort', 'ascending'));
-      expect(sortableHeader('Name')).toHaveAttribute('aria-sort', 'none');
+      expect(sortableHeader('Emails')).toHaveAttribute('aria-sort', 'none');
     });
 
     it('flips direction when the same column is clicked again', async () => {
@@ -336,16 +338,16 @@ describe('ContactsPage', () => {
       await waitForCallCount(1);
 
       await screen.findByText('Sara Maach');
-      // Name is already the active column, ascending.
-      await user.click(within(sortableHeader('Name')).getByRole('button'));
+      // Emails is already the active column, busiest first.
+      await user.click(within(sortableHeader('Emails')).getByRole('button'));
 
       await waitForCallCount(2);
-      expect(lastParams()).toMatchObject({ sortBy: 'lastName', sortOrder: 'desc' });
+      expect(lastParams()).toMatchObject({ sortBy: 'emailCount', sortOrder: 'asc' });
     });
 
     it('sorts Name by the API field, not the column key — REGRESSION', async () => {
       // There is no combined `name` sort field on the endpoint; the column key
-      // is `name` but the query has to say `lastName`. Sending the key gets the
+      // is `name` but the query has to say `firstName`. Sending the key gets the
       // sort silently ignored (or rejected) while the arrow still moves.
       const user = userEvent.setup();
       renderPage();
@@ -355,19 +357,17 @@ describe('ContactsPage', () => {
       await user.click(within(sortableHeader('Name')).getByRole('button'));
 
       await waitForCallCount(2);
-      expect(lastParams().sortBy).toBe('lastName');
+      expect(lastParams().sortBy).toBe('firstName');
     });
 
     it('offers no sort affordance on columns the endpoint cannot order by', async () => {
-      // Company is a relation and Emails a computed count. An arrow on either
-      // is a control that does nothing.
+      // Company is a relation. An arrow on it would be a control that does
+      // nothing. (Emails is a computed count, and the endpoint orders by it.)
       renderPage();
 
       const company = await screen.findByRole('columnheader', { name: /company/i });
-      const emails = screen.getByRole('columnheader', { name: /^emails$/i });
 
       expect(within(company).queryByRole('button')).toBeNull();
-      expect(within(emails).queryByRole('button')).toBeNull();
     });
   });
 
