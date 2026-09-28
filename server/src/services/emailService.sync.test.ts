@@ -1198,11 +1198,13 @@ describe('emailService.upsertMessage — mail from machines', () => {
     // still the user's, never automated.
     const user = await createUser({ email: 'noreply@powerm.ma' });
     await createGoogleAuth(user.id);
-    stubMessagesListPages(gmail, [['bot1', 'person1', 'own1']]);
+    stubMessagesListPages(gmail, [['bot1', 'person1', 'own1', 'cron1']]);
     stubMessagesGet(gmail, [
       { id: 'bot1', from: 'notifications@saas.io', to: ['noreply@powerm.ma'], subject: 'Your export is ready' },
       { id: 'person1', from: 'nadia@lydec.co.ma', to: ['noreply@powerm.ma'], subject: 'Renewal' },
       { id: 'own1', from: 'noreply@powerm.ma', to: ['nadia@lydec.co.ma'], subject: 'Re: Renewal' },
+      // A cron job: a real address, and a system name.
+      { id: 'cron1', from: 'root <ess.dgm@meteo.test>', to: ['noreply@powerm.ma'], subject: 'TSM report' },
     ]);
 
     await emailService.syncFromGmail(user.id);
@@ -1211,7 +1213,7 @@ describe('emailService.upsertMessage — mail from machines', () => {
       (await prisma.email.findMany({ where: { userId: user.id }, select: { gmailMessageId: true, isAutomated: true } }))
         .map((e) => [e.gmailMessageId, e.isAutomated]),
     );
-    expect(flags).toEqual({ bot1: true, person1: false, own1: false });
+    expect(flags).toEqual({ bot1: true, person1: false, own1: false, cron1: true });
   });
 });
 

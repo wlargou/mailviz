@@ -6,6 +6,7 @@ import { buildMimeMessage } from '../utils/mimeBuilder.js';
 import { extractAttachments, extractBody, parseEmailList } from '../utils/emailHelpers.js';
 import { wsEmitToUser } from '../websocket.js';
 import { auditService } from './auditService.js';
+import { fromHeader } from './senderIdentity.js';
 
 /**
  * Gmail drafts.
@@ -368,7 +369,7 @@ export const draftService = {
     const gmail = await getGmailClient(userId);
 
     const raw = await buildMimeMessage({
-      from: auth.email,
+      from: await fromHeader(userId, auth.email),
       to: input.to,
       cc: input.cc.length > 0 ? input.cc : undefined,
       bcc: input.bcc.length > 0 ? input.bcc : undefined,
@@ -455,7 +456,7 @@ export const draftService = {
     const gmail = await getGmailClient(userId);
 
     const raw = await buildMimeMessage({
-      from: auth.email,
+      from: await fromHeader(userId, auth.email),
       to: input.to,
       cc: input.cc.length > 0 ? input.cc : undefined,
       bcc: input.bcc.length > 0 ? input.bcc : undefined,

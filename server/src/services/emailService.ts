@@ -29,7 +29,11 @@ import { canAccessTask, getSharedThreadIds, canAccessThread } from '../utils/acc
 import { auditService } from './auditService.js';
 import { notificationService } from './notificationService.js';
 import { snoozeService } from './snoozeService.js';
-import { classifyContactKind } from '../utils/contactKind.js';
+import { isAutomatedSender } from '../utils/automatedSender.js';
+import { replyRecipients } from '../utils/replyRecipients.js';
+import { replyQuote, forwardQuote } from '../utils/mailQuote.js';
+import { fromHeader } from './senderIdentity.js';
+import { ownAddresses } from './repliesOwedService.js';
 import { categoryFilter, isMailCategory, MAIL_CATEGORIES, type MailCategory } from '../utils/mailCategories.js';
 import { mergeEngagement } from '../utils/contactEngagement.js';
 import { decodeEntities, decodeThenEscape } from '../utils/htmlEntities.js';
@@ -685,7 +689,7 @@ export const emailService = {
       sizeEstimate: msg.sizeEstimate || null,
       labelIds,
       // Outbound mail is the user's own, never a machine's.
-      isAutomated: !isOutbound && classifyContactKind({ email: fromEmail }) === 'automated',
+      isAutomated: !isOutbound && isAutomatedSender(fromEmail, fromName),
       customerId,
       syncedAt: new Date(),
     };
@@ -1493,7 +1497,7 @@ export const emailService = {
     if (!auth?.email) throw Object.assign(new Error('Google not connected'), { status: 400 });
 
     const raw = await buildMimeMessage({
-      from: auth.email,
+      from: await fromHeader(userId, auth.email),
       to: data.to,
       cc: data.cc,
       bcc: data.bcc,
@@ -1536,30 +1540,13 @@ export const emailService = {
     const original = await prisma.email.findFirst({ where: { id: emailId, userId } });
     if (!original) throw Object.assign(new Error('Email not found'), { status: 404 });
 
-    const userEmail = auth.email.toLowerCase();
-
-    // Determine recipients
-    let to: string[];
-    let cc: string[] = [];
-
-    // An explicit `to` wins. Compose lets the user edit the recipient on a
-    // reply, and this is what makes that edit mean something — without it the
-    // message went to `original.from` no matter what the field said.
-    const overrideTo = data.to?.filter((address) => address.trim().length > 0) ?? [];
-
-    if (data.replyAll) {
-      to = overrideTo.length > 0 ? overrideTo : [original.from];
-      // Combine original to + cc, exclude user's own email
-      const allCc = [...original.to, ...original.cc, ...(data.cc || [])];
-      cc = [...new Set(allCc.map((e) => e.toLowerCase().trim()))].filter((e) => e !== userEmail && e !== original.from.toLowerCase());
-    } else {
-      to = overrideTo.length > 0 ? overrideTo : [original.from];
-      cc = data.cc || [];
-    }
-
-    // Deduplicate case-insensitively
-    to = [...new Set(to.map((e) => e.toLowerCase().trim()))].filter((e) => e !== userEmail);
-    if (to.length === 0) to = [original.from]; // Fallback: can't remove all recipients
+    // Recipients: see replyRecipients — replying to your own message answers
+    // the people you wrote to, and none of your addresses is ever a recipient.
+    // It used to fall back to `original.from`, which on your own message is
+    // you: "Click to reply" on a thread you wrote last mailed only yourself.
+    const own = await ownAddresses(userId);
+    own.add(auth.email.toLowerCase());
+    const { to, cc } = replyRecipients(original, { replyAll: Boolean(data.replyAll), to: data.to, cc: data.cc }, own);
 
     // Subject
     const decodedSubject = decodeEntities(original.subject);
@@ -1591,7 +1578,7 @@ export const emailService = {
       }
     }
 
-    const quotedHtml = `<div style="border-left:2px solid #ccc;padding-left:12px;margin-top:16px;color:#666"><p>On ${originalDate}, ${originalSender} wrote:</p>${originalBody}</div>`;
+    const quotedHtml = replyQuote(`On ${originalDate}, ${originalSender} wrote:`, originalBody);
     const fullHtml = `${data.htmlBody}${quotedHtml}`;
 
     // Threading headers
@@ -1601,7 +1588,7 @@ export const emailService = {
       : original.messageId || undefined;
 
     const raw = await buildMimeMessage({
-      from: auth.email,
+      from: await fromHeader(userId, auth.email),
       to,
       cc: cc.length > 0 ? cc : undefined,
       bcc: data.bcc,
@@ -1667,7 +1654,10 @@ export const emailService = {
     const fwdAddress = decodeThenEscape(original.from);
     const fwdSubject = decodeThenEscape(original.subject);
     const fwdTo = original.to.map(decodeThenEscape).join(', ');
-    const forwardedHtml = `<div style="margin-top:16px;padding-top:12px;border-top:1px solid #ccc"><p style="color:#666">---------- Forwarded message ----------<br>From: ${fwdFrom} &lt;${fwdAddress}&gt;<br>Date: ${originalDate}<br>Subject: ${fwdSubject}<br>To: ${fwdTo}</p>${originalBody}</div>`;
+    const forwardedHtml = forwardQuote(
+      [`From: ${fwdFrom} &lt;${fwdAddress}&gt;`, `Date: ${originalDate}`, `Subject: ${fwdSubject}`, `To: ${fwdTo}`],
+      originalBody,
+    );
     const fullHtml = `${data.htmlBody}${forwardedHtml}`;
 
     // Deduplicate recipients
@@ -1708,7 +1698,7 @@ export const emailService = {
     }
 
     const raw = await buildMimeMessage({
-      from: auth.email,
+      from: await fromHeader(userId, auth.email),
       to,
       cc,
       bcc: data.bcc,
