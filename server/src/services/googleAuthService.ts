@@ -198,6 +198,7 @@ export const googleAuthService = {
               website: `https://${domain}`,
               logoUrl: getLogoUrl(domain),
               isInternal: true,
+              status: 'ACCOUNT',
               userId,
             },
           });

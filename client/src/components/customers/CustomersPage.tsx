@@ -18,6 +18,9 @@ import {
   Dropdown,
   OverflowMenu,
   OverflowMenuItem,
+  Tabs,
+  TabList,
+  Tab,
 } from '@carbon/react';
 import { Add } from '@carbon/icons-react';
 import { openRowOnClick } from '../../utils/rowOpen';
@@ -31,7 +34,7 @@ import { TableFilterFlyout } from '../shared/TableFilterFlyout';
 import { customersApi } from '../../api/customers';
 import { companyCategoriesApi } from '../../api/companyCategories';
 import { useUIStore } from '../../store/uiStore';
-import type { Customer, CompanyCategory } from '../../types/customer';
+import type { Customer, CompanyCategory, CompanyStatus } from '../../types/customer';
 import type { PaginationMeta } from '../../types/api';
 import { toolbarSearchValue } from '../../utils/carbonSearch';
 import { CompanyLogo } from '../shared/CompanyLogo';
@@ -48,9 +51,22 @@ const headers = [
   { key: 'category', header: 'Category' },
   { key: 'contacts', header: 'Contacts' },
   { key: 'tasks', header: 'Tasks' },
-  { key: 'emails', header: 'Emails' },
+  { key: 'emails', header: 'Emails', sortField: 'emailCount' },
   { key: 'actions', header: '' },
 ];
+
+const STATUS_TABS: Array<{ id: CompanyStatus; label: string }> = [
+  { id: 'ACCOUNT', label: 'Accounts' },
+  { id: 'SENDER', label: 'Senders to review' },
+  { id: 'IGNORED', label: 'Ignored' },
+];
+
+/** "3 046" — grouped by hand; `toLocaleString` differs between Node and Chrome. */
+const group = (n: number) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+
+function Count({ n }: { n: number }) {
+  return <span className={n === 0 ? 'table-count table-count--zero' : 'table-count'}>{group(n)}</span>;
+}
 
 export function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -58,7 +74,12 @@ export function CustomersPage() {
   const [meta, setMeta] = useState<PaginationMeta | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
-  const { params: sortParams, headerProps } = useTableSort('name', 'asc');
+  // The busiest first: A→Z opened on "0X5E", "163", "1ft Seabass".
+  const { params: sortParams, headerProps } = useTableSort('emailCount', 'desc');
+  /** Accounts by default; senders to review and ignored ones a tab away. */
+  const [status, setStatus] = useState<CompanyStatus>('ACCOUNT');
+  const [statusCounts, setStatusCounts] = useState<Record<CompanyStatus, number> | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [urlParams] = useSearchParams();
   const [search, setSearch] = useState(() => urlParams.get('search') || '');
   const [debouncedSearch, setDebouncedSearch] = useState(() => urlParams.get('search') || '');
@@ -93,6 +114,7 @@ export function CustomersPage() {
       };
       if (debouncedSearch) params.search = debouncedSearch;
       if (selectedCategoryId) params.categoryId = selectedCategoryId;
+      params.status = status;
       const { data: response } = await customersApi.getAll(params);
       setCustomers(response.data);
       setMeta(response.meta || null);
@@ -114,11 +136,42 @@ export function CustomersPage() {
         });
       }
     }
-  }, [page, pageSize, debouncedSearch, selectedCategoryId, addNotification, search, sortParams.sortBy, sortParams.sortOrder]);
+  }, [page, pageSize, debouncedSearch, selectedCategoryId, status, addNotification, search, sortParams.sortBy, sortParams.sortOrder]);
 
   useEffect(() => {
     fetchCustomers();
   }, [fetchCustomers]);
+
+  const fetchCounts = useCallback(() => {
+    customersApi
+      .getStatusCounts()
+      .then(({ data: res }) => setStatusCounts(res.data))
+      .catch(() => setStatusCounts(null));
+  }, []);
+  useEffect(() => fetchCounts(), [fetchCounts]);
+
+  /** Keep or ignore, one or many; the rows leave the tab they were in. */
+  const triage = async (ids: string[], next: CompanyStatus) => {
+    try {
+      await customersApi.setStatus(ids, next);
+      const verb = next === 'ACCOUNT' ? 'Kept as account' : next === 'IGNORED' ? 'Ignored' : 'Moved back to review';
+      addNotification({ kind: 'success', title: ids.length === 1 ? verb : `${verb} · ${ids.length} companies` });
+      setSelected(new Set());
+      fetchCustomers();
+      fetchCounts();
+    } catch {
+      addNotification({ kind: 'error', title: 'Failed to update the companies' });
+    }
+  };
+
+  const toggleSelected = (id: string, on: boolean) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  const triaging = status !== 'ACCOUNT';
 
   const handleDelete = async () => {
     if (!deleteCustomer) return;
@@ -137,9 +190,49 @@ export function CustomersPage() {
       <div className="page-header">
         <div className="page-header__info">
           <h1>Companies</h1>
-          <p className="page-header__subtitle">All companies and their contacts</p>
+          <p className="page-header__subtitle">The companies you deal with — and the senders to sort</p>
         </div>
       </div>
+
+      <Tabs
+        selectedIndex={STATUS_TABS.findIndex((t) => t.id === status)}
+        onChange={({ selectedIndex }: { selectedIndex: number }) => {
+          setStatus(STATUS_TABS[selectedIndex].id);
+          setSelected(new Set());
+          setPage(1);
+        }}
+      >
+        <TabList aria-label="Company status" className="companies-tabs">
+          {STATUS_TABS.map((t) => (
+            <Tab key={t.id}>
+              {t.label}
+              {statusCounts && <span className="companies-tabs__count">{group(statusCounts[t.id])}</span>}
+            </Tab>
+          ))}
+        </TabList>
+      </Tabs>
+      {status === 'SENDER' && (
+        <p className="companies-tabs__hint">
+          Domains that have mailed you and nothing more. Keep the ones you deal with; ignore the rest — an ignored sender
+          stays out of your accounts, even when it mails again.
+        </p>
+      )}
+      {triaging && selected.size > 0 && (
+        <div className="companies-batch" role="region" aria-label="Selected companies">
+          <span>{selected.size} selected</span>
+          <Button size="sm" kind="primary" onClick={() => triage([...selected], 'ACCOUNT')}>
+            Keep as accounts
+          </Button>
+          {status === 'SENDER' && (
+            <Button size="sm" kind="secondary" onClick={() => triage([...selected], 'IGNORED')}>
+              Ignore
+            </Button>
+          )}
+          <Button size="sm" kind="ghost" onClick={() => setSelected(new Set())}>
+            Clear
+          </Button>
+        </div>
+      )}
 
           {loading && customers.length === 0 && !search ? (
             <DataTableSkeleton headers={headers} rowCount={5} />
@@ -192,13 +285,29 @@ export function CustomersPage() {
                   </TableToolbar>
                   {customers.length === 0 ? (
                     <EmptyState
-                      title="No companies"
-                      description={search || selectedCategoryId ? 'No companies match your filters' : 'Create your first company to get started'}
+                      title={status === 'SENDER' ? 'Nothing to review' : status === 'IGNORED' ? 'No ignored senders' : 'No accounts'}
+                      description={
+                        search || selectedCategoryId
+                          ? 'No companies match your filters'
+                          : status === 'ACCOUNT'
+                            ? 'Create a company, or keep one from the senders to review'
+                            : undefined
+                      }
                     />
                   ) : (
                   <Table {...getTableProps()} size="lg">
                     <TableHead>
                       <TableRow>
+                        {triaging && (
+                          <TableHeader className="companies-select">
+                            <input
+                              type="checkbox"
+                              aria-label="Select every company on this page"
+                              checked={customers.length > 0 && customers.every((c) => selected.has(c.id))}
+                              onChange={(e) => setSelected(e.target.checked ? new Set(customers.map((c) => c.id)) : new Set())}
+                            />
+                          </TableHeader>
+                        )}
                         {headers.map((header) => (
                           <TableHeader
                             key={header.key}
@@ -217,6 +326,16 @@ export function CustomersPage() {
                         className="table-row--clickable"
                         onClick={openRowOnClick(() => navigate(`/customers/${customer.id}`))}
                       >
+                        {triaging && (
+                          <TableCell className="companies-select">
+                            <input
+                              type="checkbox"
+                              aria-label={`Select ${customer.name}`}
+                              checked={selected.has(customer.id)}
+                              onChange={(e) => toggleSelected(customer.id, e.target.checked)}
+                            />
+                          </TableCell>
+                        )}
                         <TableCell>
                           <button
                             type="button"
@@ -231,20 +350,44 @@ export function CustomersPage() {
                         <TableCell>
                           <CategoryTag category={customer.category} />
                         </TableCell>
+                        {/* Plain numbers, a zero muted: a coloured pill around
+                            every 0 made the table look busy with nothing. */}
                         <TableCell className="table-cell--center">
-                          <Tag type="cyan" size="sm">{customer._count?.contacts ?? 0}</Tag>
+                          <Count n={customer._count?.contacts ?? 0} />
                         </TableCell>
                         <TableCell className="table-cell--center">
-                          <Tag type="blue" size="sm">{customer._count?.tasks ?? 0}</Tag>
+                          <Count n={customer._count?.tasks ?? 0} />
                         </TableCell>
                         <TableCell className="table-cell--center">
-                          <Tag type="teal" size="sm">{customer._count?.emails ?? 0}</Tag>
+                          <Count n={customer._count?.emails ?? 0} />
                         </TableCell>
                         <TableCell>
-                          <OverflowMenu flipped size="sm" iconDescription={`Actions for ${customer.name}`}>
-                            <OverflowMenuItem itemText="Open" onClick={() => navigate(`/customers/${customer.id}`)} />
-                            <OverflowMenuItem itemText="Delete" isDelete hasDivider onClick={() => setDeleteCustomer(customer)} />
-                          </OverflowMenu>
+                          <div className="companies-row-actions">
+                            {status === 'SENDER' && (
+                              <>
+                                <Button size="sm" kind="ghost" onClick={() => triage([customer.id], 'ACCOUNT')}>
+                                  Keep
+                                </Button>
+                                <Button size="sm" kind="ghost" onClick={() => triage([customer.id], 'IGNORED')}>
+                                  Ignore
+                                </Button>
+                              </>
+                            )}
+                            {status === 'IGNORED' && (
+                              <Button size="sm" kind="ghost" onClick={() => triage([customer.id], 'SENDER')}>
+                                Un-ignore
+                              </Button>
+                            )}
+                            <OverflowMenu flipped size="sm" iconDescription={`Actions for ${customer.name}`}>
+                              {[
+                                <OverflowMenuItem key="open" itemText="Open" onClick={() => navigate(`/customers/${customer.id}`)} />,
+                                ...(status === 'ACCOUNT'
+                                  ? [<OverflowMenuItem key="sender" itemText="Not an account" onClick={() => triage([customer.id], 'SENDER')} />]
+                                  : []),
+                                <OverflowMenuItem key="delete" itemText="Delete" isDelete hasDivider onClick={() => setDeleteCustomer(customer)} />,
+                              ]}
+                            </OverflowMenu>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}

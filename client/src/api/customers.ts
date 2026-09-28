@@ -1,10 +1,20 @@
 import { api } from './client';
-import type { Customer, Contact, CreateCustomerInput, UpdateCustomerInput, CreateContactInput, UpdateContactInput, DuplicateGroup, MergeContactsResult } from '../types/customer';
+import type { Customer, Contact, CreateCustomerInput, UpdateCustomerInput, CreateContactInput, UpdateContactInput, DuplicateGroup, MergeContactsResult, CompanyStatus } from '../types/customer';
 import type { CalendarEvent } from '../types/calendar';
 import type { AttachmentWithEmail } from '../types/email';
 import type { ApiResponse } from '../types/api';
 
 export const customersApi = {
+  /** How many companies are accounts, senders to review, and ignored. */
+  getStatusCounts() {
+    return api.get<{ data: Record<CompanyStatus, number> }>('/customers/status-counts');
+  },
+
+  /** Keep or ignore one or many — the triage. */
+  setStatus(ids: string[], status: CompanyStatus) {
+    return api.post<{ data: { updated: number } }>('/customers/status', { ids, status });
+  },
+
   getAll(params?: Record<string, string>) {
     return api.get<ApiResponse<Customer[]>>('/customers', { params });
   },

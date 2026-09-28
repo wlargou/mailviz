@@ -4,6 +4,22 @@ import { prisma } from '../lib/prisma.js';
 import { customerService } from '../services/customerService.js';
 
 export const customerController = {
+  async statusCounts(req: Req, res: Response, next: NextFunction) {
+    try {
+      res.json({ data: await customerService.statusCounts(req.user!.id) });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async setStatus(req: Req, res: Response, next: NextFunction) {
+    try {
+      res.json({ data: await customerService.setStatus(req.user!.id, req.body.ids, req.body.status) });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async findAll(req: Req, res: Response, next: NextFunction) {
     try {
       const result = await customerService.findAll(req.user!.id, req.query as Record<string, string>);
@@ -76,7 +92,8 @@ export const customerController = {
       }
       const updated = await prisma.customer.update({
         where: { id: req.params.id },
-        data: { isVip: !customer.isVip },
+        // A sender marked VIP is an account from now on.
+        data: { isVip: !customer.isVip, ...(!customer.isVip && customer.status === 'SENDER' ? { status: 'ACCOUNT' } : {}) },
         include: { category: true, _count: { select: { contacts: true, tasks: true, emails: true } } },
       });
       res.json({ data: updated });

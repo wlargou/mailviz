@@ -14,7 +14,14 @@ export const createCustomerSchema = z.object({
   isVip: z.boolean().optional(),
 });
 
-export const updateCustomerSchema = createCustomerSchema.partial();
+export const companyStatusSchema = z.enum(['ACCOUNT', 'SENDER', 'IGNORED']);
+
+export const updateCustomerSchema = createCustomerSchema.partial().extend({ status: companyStatusSchema.optional() });
+
+export const setCompanyStatusSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1).max(500),
+  status: companyStatusSchema,
+});
 
 export type CreateCustomerInput = z.infer<typeof createCustomerSchema>;
 export type UpdateCustomerInput = z.infer<typeof updateCustomerSchema>;

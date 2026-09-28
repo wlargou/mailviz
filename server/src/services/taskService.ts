@@ -1,3 +1,4 @@
+import { promoteSenders } from './accountStatus.js';
 import { Prisma } from '../lib/prismaClient.js';
 import { prisma } from '../lib/prisma.js';
 import { terminalStatusNames, notTerminal, isTerminalStatus } from '../utils/taskStatus.js';
@@ -893,6 +894,9 @@ export const taskService = {
     });
 
     auditService.log({ userId, action: 'TASK_CREATED', entityType: 'task', entityId: task.id, details: { title: data.title, status: data.status, priority: data.priority, parentId: parentId ?? undefined } });
+
+    // Work against a company makes it an account.
+    if (task.customerId) await promoteSenders(userId, [task.customerId]);
 
     const [created] = await withSubtaskProgress(userId, [formatTask(task)]);
     return created;

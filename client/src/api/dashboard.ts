@@ -7,6 +7,10 @@ export interface NavCounts {
   overdueTasks: number;
   expiringDeals: number;
   eventsToday: number;
+  /** Threads where a person is waiting on the user's reply. */
+  repliesOwed: number;
+  /** Tenders whose readiness trails the time used. */
+  rfpsAtRisk: number;
 }
 
 export const dashboardApi = {

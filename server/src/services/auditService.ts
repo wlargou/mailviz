@@ -81,6 +81,7 @@ export type AuditAction =
   // Company/Contact actions
   | 'COMPANY_CREATED'
   | 'COMPANY_UPDATED'
+  | 'COMPANY_STATUS_SET'
   | 'COMPANY_DELETED'
   | 'CONTACT_CREATED'
   | 'CONTACT_UPDATED'

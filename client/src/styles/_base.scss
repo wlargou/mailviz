@@ -414,3 +414,53 @@ body {
   max-inline-size: 60rem;
   margin: 0 0 $spacing-06;
 }
+
+// ─── COMPANIES: ACCOUNTS AND SENDERS ─────────────
+.companies-tabs__count {
+  @include type.type-style('label-01');
+  margin-inline-start: $spacing-03;
+  color: var(--cds-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.companies-tabs__hint {
+  @include type.type-style('body-compact-01');
+  color: var(--cds-text-secondary);
+  max-inline-size: 60rem;
+  margin: $spacing-04 0 $spacing-05;
+}
+
+.companies-batch {
+  display: flex;
+  align-items: center;
+  gap: $spacing-04;
+  padding: $spacing-03 $spacing-05;
+  margin-block: $spacing-04;
+  background: var(--cds-background-brand, var(--cds-interactive));
+  color: var(--cds-text-on-color);
+}
+
+.companies-select {
+  inline-size: 3rem;
+
+  input {
+    inline-size: 1rem;
+    block-size: 1rem;
+    cursor: pointer;
+  }
+}
+
+.companies-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: $spacing-02;
+}
+
+.table-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.table-count--zero {
+  color: var(--cds-text-disabled);
+}

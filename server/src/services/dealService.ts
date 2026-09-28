@@ -1,3 +1,4 @@
+import { promoteSenders } from './accountStatus.js';
 import { Prisma } from '../lib/prismaClient.js';
 import { prisma } from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
@@ -165,6 +166,7 @@ export const dealService = {
       include: dealIncludes,
     });
     auditService.log({ userId, action: 'DEAL_CREATED', entityType: 'deal', entityId: deal.id, details: { title: data.title, partnerId: data.partnerId, status: data.status } });
+    if (deal.customerId) await promoteSenders(userId, [deal.customerId]);
     return deal;
   },
 
