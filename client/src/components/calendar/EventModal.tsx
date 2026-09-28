@@ -627,7 +627,7 @@ export function EventModal({ open, event, initialDate, onClose, onSaved }: Event
     <Tearsheet
       open={open}
       onClose={onClose}
-      title={event ? 'Edit Event' : 'New Event'}
+      title={event ? 'Edit event' : 'New event'}
       label="Calendar"
       description={event ? 'Update event details' : 'Add a new event to your calendar'}
       hasCloseIcon

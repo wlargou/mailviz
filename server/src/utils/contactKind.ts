@@ -71,6 +71,12 @@ const ROLE_EXACT = [
   'talent', 'partner', 'legal', 'dpo', 'ceo', 'event', 'learn', 'community',
 ];
 
+/** Role words long enough to find inside another word without false hits. */
+// Not 'contact': "contactos.ruiz" is a person.
+const EMBEDDED_ROLE = ['support', 'helpdesk', 'service', 'billing', 'invoice', 'facturation', 'recrutement', 'marketing'];
+
+const SYSTEM_TOKENS = new Set(['sys', 'dba', 'svc', 'ops', 'noc', 'soc', 'sysadm', 'sysops', 'infra']);
+
 const AUTOMATED_SET = new Set(AUTOMATED);
 const ROLE_SET = new Set(ROLE);
 const AUTOMATED_EXACT_SET = new Set(AUTOMATED_EXACT);
@@ -126,6 +132,22 @@ export function classifyContactKind(input: {
   // Then by word. Automated wins: `noreply-billing` is still a machine.
   if (parts.some((word) => AUTOMATED_SET.has(word))) return 'automated';
   if (parts.some((word) => ROLE_SET.has(word))) return 'role';
+
+  /**
+   * A role word run into a prefix — `swsupport`, `itservice`, `ebilling`. Only
+   * the long, unambiguous role words, so a name that merely contains a short
+   * one ("Kinfo", "Adminah") is left alone.
+   */
+  if (parts.some((word) => EMBEDDED_ROLE.some((r) => word.length > r.length && word.includes(r)))) return 'role';
+
+  /**
+   * A system account: a `sys`, `dba`, `svc` or `ops` token, or a short word
+   * ending in `sys` — `ld_sys_dba`, `gssys`. Someone administers it; nobody is
+   * called that.
+   */
+  if (parts.some((word) => SYSTEM_TOKENS.has(word) || (word.length <= 6 && word.length > 3 && word.endsWith('sys')))) {
+    return 'role';
+  }
 
   /**
    * A display name identical to the company's is a brand, not a person —

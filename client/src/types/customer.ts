@@ -7,8 +7,15 @@ export interface CompanyCategory {
   createdAt: string;
 }
 
+/**
+ * ACCOUNT — someone the user deals with; SENDER — a domain that has only
+ * mailed them; IGNORED — a sender set aside, which stays aside.
+ */
+export type CompanyStatus = 'ACCOUNT' | 'SENDER' | 'IGNORED';
+
 export interface Customer {
   id: string;
+  status?: CompanyStatus;
   name: string;
   email: string | null;
   phone: string | null;

@@ -1,3 +1,4 @@
+import { promoteSenders } from './accountStatus.js';
 import { Prisma } from '../lib/prismaClient.js';
 import { prisma } from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
@@ -81,7 +82,7 @@ export function formatRfpDetail(rfp: RfpDetailRow) {
  * as "Ready" and weighs against the time left. One grouped query for the page
  * rather than every tender's pieces.
  */
-async function readinessOf(rfpIds: string[]): Promise<Map<string, { ready: number; total: number }>> {
+export async function readinessOf(rfpIds: string[]): Promise<Map<string, { ready: number; total: number }>> {
   if (rfpIds.length === 0) return new Map();
   const rows = await prisma.$queryRaw<Array<{ rfp_id: string; ready: bigint; total: bigint }>>`
     SELECT f.rfp_id,
@@ -282,6 +283,7 @@ export const rfpService = {
       });
       const rfp = await prisma.rfp.findUniqueOrThrow({ where: { id }, include: rfpDetailIncludes });
       auditService.log({ userId, action: 'RFP_CREATED', entityType: 'rfp', entityId: rfp.id, details: { reference: rfp.reference, lots: rfp.lots.length } });
+      if (rfp.customerId) await promoteSenders(userId, [rfp.customerId]);
       return formatRfpDetail(rfp);
     } catch (err) {
       // P2002 on (user_id, reference): the buyer's own numbering is how a

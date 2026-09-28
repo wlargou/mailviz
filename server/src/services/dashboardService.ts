@@ -281,7 +281,14 @@ export const dashboardService = {
     const [topCustomersRaw, emailVolumeResult] = await Promise.all([
       prisma.email.groupBy({
         by: ['customerId'],
-        where: { userId, customerId: { not: null } },
+        // Accounts only, and not the user's own company: ranked by volume, the
+        // top five were newsletters, a bank and the office itself — the
+        // companies that write most, not the ones being worked.
+        where: {
+          userId,
+          customerId: { not: null },
+          customer: { is: { status: 'ACCOUNT', isInternal: false } },
+        },
         _count: { id: true },
         orderBy: { _count: { id: 'desc' } },
         take: 5,

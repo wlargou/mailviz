@@ -1005,7 +1005,7 @@ describe('/api/v1/dashboard', () => {
     expect(res.body.data.emails.totalSynced).toBe(1);
   });
 
-  it('returns the four sidebar badge counts, scoped to the caller', async () => {
+  it('returns the sidebar badge counts, scoped to the caller', async () => {
     const { alice, bob } = await createTwoUsers();
     const yesterday = new Date(Date.now() - 86_400_000);
     const inAWeek = new Date(Date.now() + 7 * 86_400_000);
@@ -1028,6 +1028,18 @@ describe('/api/v1/dashboard', () => {
     // rather than a coincidence.
     await createEmail(bob.id, { isRead: false });
 
+    // One person waiting on each of them, and one tender behind for each:
+    // registered twenty days ago, due in two, nothing of four pieces ready.
+    for (const u of [alice, bob]) {
+      await prisma.email.create({
+        data: { userId: u.id, threadId: `owed-${u.id}`, subject: 'Offre', from: 'omar@bkam.ma', to: [u.email], receivedAt: new Date(Date.now() - 3_600_000), labelIds: ['INBOX'], isRead: true },
+      });
+      const rfp = await createRfp(u.id, { reference: `RISK-${u.id}`, deadlineAt: new Date(Date.now() + 2 * 86_400_000) });
+      await prisma.rfp.update({ where: { id: rfp.id }, data: { createdAt: new Date(Date.now() - 20 * 86_400_000) } });
+      const folder = await prisma.rfpFolder.create({ data: { rfpId: rfp.id, kind: 'ADMINISTRATIF', title: 'Admin' } });
+      await prisma.rfpFolderItem.createMany({ data: ['a', 'b', 'c', 'd'].map((t) => ({ folderId: folder.id, title: t })) });
+    }
+
     const res = await request(app)
       .get('/api/v1/dashboard/nav-counts')
       .set('Cookie', cookieFor(alice.id));
@@ -1038,6 +1050,8 @@ describe('/api/v1/dashboard', () => {
       overdueTasks: 1,
       expiringDeals: 1,
       eventsToday: 1,
+      repliesOwed: 1,
+      rfpsAtRisk: 1,
     });
   });
 });

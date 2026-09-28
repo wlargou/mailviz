@@ -1,3 +1,5 @@
+import type { Req } from '../types/http.js';
+import { repliesOwed } from '../services/repliesOwedService.js';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { emailController } from '../controllers/emailController.js';
@@ -41,6 +43,14 @@ const draftLimiter = rateLimit({
 
 router.get('/', emailController.findAllThreads);
 router.get('/review-summary', emailController.getReviewSummary);
+// Before `/:id`. Who is waiting on a reply — see repliesOwedService.
+router.get('/replies-owed', async (req, res, next) => {
+  try {
+    res.json({ data: await repliesOwed((req as Req).user!.id) });
+  } catch (err) {
+    next(err);
+  }
+});
 router.get('/unread-count', emailController.getUnreadCount);
 router.get('/category-counts', emailController.getCategoryCounts);
 router.get('/sync-status', emailController.getSyncStatus);

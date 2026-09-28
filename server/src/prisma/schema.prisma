@@ -272,6 +272,12 @@ model Customer {
   categoryId String?  @map("category_id")
   isVip      Boolean  @default(false) @map("is_vip")
   isInternal Boolean  @default(false) @map("is_internal")
+  /// ACCOUNT — someone you deal with; SENDER — a domain that has mailed you
+  /// and nothing more; IGNORED — a sender you set aside, which stays aside.
+  /// Auto-created companies start as SENDER and are promoted when a relation
+  /// appears (see services/accountStatus.ts): 3,046 companies, most of them
+  /// newsletters, had buried the forty that mattered.
+  status     String   @default("SENDER") @db.VarChar(20)
   userId     String   @map("user_id")
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
@@ -288,6 +294,7 @@ model Customer {
   @@unique([userId, domain])
   @@index([categoryId])
   @@index([userId])
+  @@index([userId, status])
   @@map("customers")
 }
 
@@ -545,6 +552,10 @@ model Email {
   hasAttachment  Boolean   @default(false) @map("has_attachment")
   sizeEstimate   Int?      @map("size_estimate")
   labelIds       String[]  @map("label_ids")
+  /// The sender is a machine (noreply@, notifications@ …), by the same rule
+  /// as `Contact.kind`. Set at sync; such mail is filed under Updates rather
+  /// than Primary when Gmail gave it no category of its own.
+  isAutomated    Boolean   @default(false) @map("is_automated")
   syncedAt       DateTime? @map("synced_at")
   createdAt      DateTime  @default(now()) @map("created_at")
 

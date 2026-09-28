@@ -159,6 +159,16 @@ export interface DraftSaveInput {
 export type ReminderKind = 'snooze' | 'follow_up';
 
 /** A pending snooze or follow-up. Mirrors `EmailReminder` on the server. */
+/** A thread waiting on the user's reply — see `GET /emails/replies-owed`. */
+export interface ReplyOwed {
+  threadId: string;
+  emailId: string;
+  subject: string;
+  from: string;
+  fromName: string | null;
+  receivedAt: string;
+}
+
 export interface EmailReminder {
   id: string;
   threadId: string;

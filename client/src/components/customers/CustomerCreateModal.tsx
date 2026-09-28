@@ -56,7 +56,7 @@ export function CustomerCreateModal({ open, onClose, onCreated }: CustomerCreate
     <TearsheetNarrow
       open={open}
       onClose={() => { resetForm(); onClose(); }}
-      title="New Company"
+      title="New company"
       label="Companies"
       description="Add a new company to your CRM"
       hasCloseIcon

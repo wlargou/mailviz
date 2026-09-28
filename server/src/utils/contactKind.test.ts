@@ -111,3 +111,23 @@ describe('classifyContactKind — degenerate input', () => {
     expect(classifyContactKind({ email: null })).toBe('person');
   });
 });
+
+describe('classifyContactKind — mailboxes the word list missed', () => {
+  it.each([
+    'swsupport@ru.ibm.com',
+    'itservice@acme.ma',
+    'ebilling@lydec.ma',
+    'ld_sys_dba@wafasalaf.ma',
+    'gssys@royalairmaroc.com',
+    'svc.backup@bank.ma',
+  ])('reads %s as a shared or system mailbox', (email) => {
+    expect(classifyContactKind({ email })).toBe('role');
+  });
+
+  it.each(['amadou@infolog.mr', 'mteixeira@adaming.fr', 'martinh@morpheus.africa', 'sysoev.ivan@acme.ru', 'bborhan@redhat.com'])(
+    'still reads %s as a person',
+    (email) => {
+      expect(classifyContactKind({ email })).toBe('person');
+    },
+  );
+});

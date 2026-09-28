@@ -1,6 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Tabs, TabList, Tab, TabPanels, TabPanel, Button } from '@carbon/react';
-import { TemplateIcon } from './TemplateIcon';
+import { Tabs, TabList, Tab, TabPanels, TabPanel, ComboButton, MenuItem } from '@carbon/react';
 import { ApplyTemplateModal } from './ApplyTemplateModal';
 import { useSearchParams } from 'react-router-dom';
 import { TaskListView } from './TaskListView';
@@ -15,6 +14,7 @@ import { labelsApi } from '../../api/labels';
 import { tasksApi } from '../../api/tasks';
 import type { Task, Label } from '../../types/task';
 import { decodeEntities } from '../../utils/text';
+import { PageHeader } from '../shared/PageHeader';
 
 export function TasksPage() {
   const { tasks, loading, fetchTasks, setFilter } = useTaskStore();
@@ -103,15 +103,20 @@ export function TasksPage() {
 
   return (
     <div>
-      <div className="page-header">
-        <div className="page-header__info">
-          <h1>Tasks</h1>
-          <p className="page-header__subtitle">Manage and track all your tasks</p>
-        </div>
-        <Button kind="tertiary" renderIcon={TemplateIcon} onClick={() => setApplyOpen(true)}>
-          From template
-        </Button>
-      </div>
+      {/*
+        The create action lives in the header, not in a view's toolbar: the
+        Kanban board has no toolbar, so "New task" used to exist in two of the
+        three views and "From template" floated alone up here.
+      */}
+      <PageHeader
+        title="Tasks"
+        subtitle="What is open, who has it, and when it is due"
+        actions={
+          <ComboButton label="New task" onClick={() => setCreateOpen(true)} menuAlignment="bottom-end">
+            <MenuItem label="From template…" onClick={() => setApplyOpen(true)} />
+          </ComboButton>
+        }
+      />
 
           <Tabs>
             <TabList aria-label="Task views">
@@ -138,7 +143,6 @@ export function TasksPage() {
                   labels={labels}
                   onEdit={setEditTaskId}
                   onDelete={setDeleteTask}
-                  onCreateNew={() => setCreateOpen(true)}
                 />
               </TabPanel>
             </TabPanels>

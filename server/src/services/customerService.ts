@@ -7,6 +7,7 @@ import { cleanEmptyStrings } from '../utils/shared.js';
 import { domainToCompanyName, getLogoUrl, parseName } from '../utils/domainResolver.js';
 import { auditService } from './auditService.js';
 import { classifyContactKind } from '../utils/contactKind.js';
+import { COMPANY_STATUSES, type CompanyStatus } from './accountStatus.js';
 
 interface CustomerQueryParams {
   search?: string;
@@ -15,6 +16,8 @@ interface CustomerQueryParams {
   sortBy?: string;
   sortOrder?: string;
   categoryId?: string;
+  /** ACCOUNT, SENDER or IGNORED. Absent: every company, as before. */
+  status?: string;
 }
 
 // Whitelist of sortable Customer columns. `sortBy` comes straight off the query
@@ -24,6 +27,24 @@ interface CustomerQueryParams {
 const CUSTOMER_SORT_FIELDS = ['name', 'company', 'email', 'domain', 'isVip', 'createdAt', 'updatedAt'] as const;
 
 export const customerService = {
+  /** How many companies are in each status — the Companies page's tabs. */
+  async statusCounts(userId: string): Promise<Record<CompanyStatus, number>> {
+    const rows = await prisma.customer.groupBy({ by: ['status'], where: { userId }, _count: { _all: true } });
+    const counts = { ACCOUNT: 0, SENDER: 0, IGNORED: 0 } as Record<CompanyStatus, number>;
+    for (const r of rows) if ((COMPANY_STATUSES as readonly string[]).includes(r.status)) counts[r.status as CompanyStatus] = r._count._all;
+    return counts;
+  },
+
+  /**
+   * Keep or ignore senders, one or many — the triage. Scoped to the caller's
+   * own rows: ids from another account match nothing.
+   */
+  async setStatus(userId: string, ids: string[], status: CompanyStatus) {
+    const { count } = await prisma.customer.updateMany({ where: { id: { in: ids }, userId }, data: { status } });
+    auditService.log({ userId, action: 'COMPANY_STATUS_SET', entityType: 'company', details: { count, status } });
+    return { updated: count };
+  },
+
   async findAll(userId: string, query: CustomerQueryParams) {
     const pagination = parsePagination(query);
 
@@ -37,6 +58,9 @@ export const customerService = {
     }
     if (query.categoryId) {
       where.categoryId = query.categoryId;
+    }
+    if (query.status && (COMPANY_STATUSES as readonly string[]).includes(query.status)) {
+      where.status = query.status;
     }
 
     const requestedSort = query.sortBy || 'emailCount';
@@ -124,7 +148,8 @@ export const customerService = {
     let customer;
     try {
       customer = await prisma.customer.create({
-        data: { ...cleaned, userId } as any,
+        // Created by hand: someone the user deals with, by definition.
+        data: { status: 'ACCOUNT', ...cleaned, userId } as any,
         include: { category: true, _count: { select: { contacts: true, tasks: true, emails: true } } },
       });
     } catch (err: any) {
@@ -149,9 +174,12 @@ export const customerService = {
     const cleaned = cleanEmptyStrings(data);
     let customer;
     try {
+      // Marking a sender VIP or giving it a category is saying it matters:
+      // it becomes an account in the same write, not at the next sync.
+      const marked = existing.status === 'SENDER' && (cleaned.isVip === true || Boolean(cleaned.categoryId));
       customer = await prisma.customer.update({
         where: { id, userId },
-        data: cleaned,
+        data: marked && !cleaned.status ? { ...cleaned, status: 'ACCOUNT' } : cleaned,
         include: { category: true, _count: { select: { contacts: true, tasks: true, emails: true } } },
       });
     } catch (err: any) {

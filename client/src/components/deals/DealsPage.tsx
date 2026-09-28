@@ -175,7 +175,7 @@ export function DealsPage() {
       <div className="page-header">
         <div className="page-header__info">
           <h1>Deal Registration</h1>
-          <p className="page-header__subtitle">Track partner deal registrations</p>
+          <p className="page-header__subtitle">Partner deal registrations, and when each one lapses</p>
         </div>
       </div>
 
@@ -257,7 +257,7 @@ export function DealsPage() {
                         />
                       </TableFilterFlyout>
                       <Button renderIcon={Add} onClick={() => setCreateOpen(true)}>
-                        New Deal
+                        New deal
                       </Button>
                     </TableToolbarContent>
                   </TableToolbar>

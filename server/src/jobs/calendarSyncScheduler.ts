@@ -1,3 +1,4 @@
+import { promoteSenders } from '../services/accountStatus.js';
 import * as cron from 'node-cron';
 import { calendarService } from '../services/calendarService.js';
 import { env } from '../config/env.js';
@@ -30,6 +31,8 @@ async function syncAccount(userId: string): Promise<void> {
     const result = await calendarService.syncFromGoogle(false, userId);
     const hasChanges = result.synced > 0 || result.customersCreated > 0 || result.contactsCreated > 0;
     if (hasChanges) {
+      // A meeting with a company makes it an account (see accountStatus.ts).
+      await promoteSenders(userId).catch((err) => console.error('[CalendarSync] Account promotion failed:', err?.message || err));
       console.log(
         `[CalendarSync] Synced ${result.synced} events, ${result.customersCreated} companies, ${result.contactsCreated} contacts`
       );

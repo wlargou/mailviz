@@ -80,7 +80,7 @@ export function CalendarToolbar({ onAddEvent }: CalendarToolbarProps) {
           />
         )}
         <Button size="sm" renderIcon={Add} onClick={onAddEvent}>
-          Add Event
+          New event
         </Button>
       </div>
     </div>

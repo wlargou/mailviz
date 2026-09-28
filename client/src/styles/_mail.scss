@@ -181,17 +181,90 @@
   white-space: nowrap;
 }
 
-.mail-folder-switcher {
-  padding: 0;
+.mail-folder-bar {
+  display: flex;
+  align-items: center;
+  gap: $spacing-03;
   margin-bottom: $spacing-04;
 
   .cds--content-switcher {
-    width: 100%;
+    flex: 1;
+    min-width: 0;
   }
 
   .cds--content-switcher-btn {
     flex: 1;
     max-inline-size: none;
+  }
+}
+
+// To reply: who is waiting on the user, longest wait first.
+.to-reply__hint {
+  @include type.type-style('helper-text-01');
+  color: var(--cds-text-secondary);
+  margin-bottom: $spacing-03;
+}
+
+.to-reply-list {
+  border-top: 1px solid var(--cds-border-subtle);
+}
+
+.to-reply-item {
+  display: grid;
+  grid-template-columns: minmax(8rem, 14rem) minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: $spacing-05;
+  width: 100%;
+  padding: $spacing-04 $spacing-05;
+  border: 0;
+  border-bottom: 1px solid var(--cds-border-subtle);
+  background: transparent;
+  color: var(--cds-text-primary);
+  text-align: start;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--cds-layer-hover);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--cds-focus);
+    outline-offset: -2px;
+  }
+}
+
+.to-reply-item--selected {
+  background: var(--cds-layer-selected);
+}
+
+.to-reply-item__from {
+  @include type.type-style('heading-compact-01');
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.to-reply-item__subject {
+  @include type.type-style('body-compact-01');
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.to-reply-item__waiting {
+  @include type.type-style('label-01');
+  color: var(--cds-text-secondary);
+  white-space: nowrap;
+}
+
+@media (max-width: 42rem) {
+  .to-reply-item {
+    grid-template-columns: minmax(0, 1fr) auto;
+
+    .to-reply-item__subject {
+      grid-column: 1 / -1;
+      grid-row: 2;
+    }
   }
 }
 

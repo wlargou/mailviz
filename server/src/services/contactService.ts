@@ -45,6 +45,11 @@ export const contactService = {
     const pagination = parsePagination(query);
 
     const where: Prisma.ContactWhereInput = { customer: { userId } };
+    // Not the user themselves: their own address is the busiest "contact"
+    // there is, and it topped the list by 13,000 emails. Written so a contact
+    // with no address survives — `NOT (email = x)` is NULL, and drops it.
+    const ownEmail = (await prisma.user.findUnique({ where: { id: userId }, select: { email: true } }))?.email ?? '';
+    where.AND = [{ OR: [{ email: null }, { NOT: { email: { equals: ownEmail, mode: 'insensitive' } } }] }];
     if (query.customerId) {
       where.customerId = query.customerId;
     }
@@ -80,7 +85,10 @@ export const contactService = {
     if (sortBy === 'emailCount') {
       // Sort by email count across all pages. Uses parameterized Prisma.sql —
       // never interpolate query values into the SQL string.
-      const conditions: Prisma.Sql[] = [Prisma.sql`cu.user_id = ${userId}`];
+      const conditions: Prisma.Sql[] = [
+        Prisma.sql`cu.user_id = ${userId}`,
+        Prisma.sql`(c.email IS NULL OR lower(c.email) <> lower(${ownEmail}))`,
+      ];
       if (query.customerId) {
         conditions.push(Prisma.sql`c.customer_id = ${query.customerId}`);
       }
@@ -124,7 +132,8 @@ export const contactService = {
           WHERE ${whereClause}
           -- c.id for the same reason as the Prisma branch: without it, ties on
           -- email_count (most contacts have none) reshuffle between page queries.
-          ORDER BY email_count DESC, c.id ASC
+          -- The direction is one of two literals, never the query string.
+          ORDER BY email_count ${Prisma.raw(sortOrder === 'asc' ? 'ASC' : 'DESC')}, c.id ASC
           LIMIT ${pagination.limit} OFFSET ${pagination.skip}
         `),
         prisma.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
@@ -164,7 +173,12 @@ export const contactService = {
     const [contacts, total] = await Promise.all([
       prisma.contact.findMany({
         where,
-        orderBy: [{ [sortBy]: sortOrder }, { id: 'asc' }],
+        // The list shows "first last", so a first-name sort breaks its ties on
+        // the last name — many contacts share a first name — then on id, which
+        // keeps the pages stable.
+        orderBy: sortBy === 'firstName'
+          ? [{ firstName: sortOrder }, { lastName: sortOrder }, { id: 'asc' }]
+          : [{ [sortBy]: sortOrder }, { id: 'asc' }],
         skip: pagination.skip,
         take: pagination.limit,
         include: {

@@ -115,6 +115,7 @@ export async function createEmail(
     isArchived: boolean;
     labelIds: string[];
     receivedAt: Date;
+    isAutomated: boolean;
     /** RFC 5322 Message-ID — what a reply's In-Reply-To has to quote back. */
     messageId: string;
     references: string;
@@ -136,6 +137,7 @@ export async function createEmail(
       ...(overrides.isStarred !== undefined ? { isStarred: overrides.isStarred } : {}),
       ...(overrides.isArchived !== undefined ? { isArchived: overrides.isArchived } : {}),
       ...(overrides.labelIds !== undefined ? { labelIds: overrides.labelIds } : {}),
+      ...(overrides.isAutomated !== undefined ? { isAutomated: overrides.isAutomated } : {}),
       ...(overrides.messageId !== undefined ? { messageId: overrides.messageId } : {}),
       ...(overrides.references !== undefined ? { references: overrides.references } : {}),
     },

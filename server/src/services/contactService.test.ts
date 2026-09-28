@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { contactService } from './contactService.js';
 import { contactMergeService } from './contactMergeService.js';
 import { createTwoUsers, createCustomer, createContact, createEmail } from '../test/factories.js';
+import { prisma } from '../lib/prisma.js';
 
 /**
  * Multi-tenant isolation for contacts.
@@ -241,5 +242,66 @@ describe('contactService.findByEmail — merged addresses', () => {
     await merged(alice.id);
 
     expect(await contactService.findByEmail(bob.id, 'b.smith@corp.test')).toBeNull();
+  });
+});
+
+describe('contactService.findAll — sorting by name', () => {
+  // The list shows "first last". Sorting on the first name alone left every
+  // "Sam" in id order, which reads as random under a "Name ↑" header.
+  it('breaks first-name ties on the last name, in the same direction', async () => {
+    const { alice } = await createTwoUsers();
+    const customer = await createCustomer(alice.id);
+    for (const lastName of ['Zed', 'Abe', 'Mid', 'Kay', 'Dun']) {
+      await createContact(customer.id, { firstName: 'Sam', lastName });
+    }
+    await createContact(customer.id, { firstName: 'Adam', lastName: 'Young' });
+
+    const names = async (sortOrder: 'asc' | 'desc') =>
+      (await contactService.findAll(alice.id, { sortBy: 'firstName', sortOrder }))
+        .data.map((c) => `${c.firstName} ${c.lastName}`);
+
+    expect(await names('asc')).toEqual([
+      'Adam Young', 'Sam Abe', 'Sam Dun', 'Sam Kay', 'Sam Mid', 'Sam Zed',
+    ]);
+    expect(await names('desc')).toEqual([
+      'Sam Zed', 'Sam Mid', 'Sam Kay', 'Sam Dun', 'Sam Abe', 'Adam Young',
+    ]);
+  });
+});
+
+describe('contactService.findAll — sorting by mail exchanged', () => {
+  // The Contacts page opens busiest first; the Emails header flips it.
+  it('orders by email count in the direction asked, most first by default', async () => {
+    const { alice } = await createTwoUsers();
+    const customer = await createCustomer(alice.id);
+    const counts: Record<string, number> = { Quiet: 1, Busy: 3, Middle: 2 };
+    for (const [firstName, n] of Object.entries(counts)) {
+      const email = `${firstName.toLowerCase()}@corp.test`;
+      await createContact(customer.id, { firstName, email });
+      for (let i = 0; i < n; i++) await createEmail(alice.id, { from: email });
+    }
+    const names = async (sortOrder?: 'asc' | 'desc') =>
+      (await contactService.findAll(alice.id, { sortBy: 'emailCount', ...(sortOrder ? { sortOrder } : {}) }))
+        .data.map((c) => c.firstName);
+
+    expect(await names()).toEqual(['Busy', 'Middle', 'Quiet']);
+    expect(await names('desc')).toEqual(['Busy', 'Middle', 'Quiet']);
+    expect(await names('asc')).toEqual(['Quiet', 'Middle', 'Busy']);
+  });
+});
+
+describe('contactService.findAll — the user is not their own contact', () => {
+  it('leaves out the login address on both sort paths, and keeps contacts with no address', async () => {
+    const { alice } = await createTwoUsers();
+    const customer = await createCustomer(alice.id);
+    await createContact(customer.id, { firstName: 'Me', email: alice.email.toUpperCase() });
+    await createContact(customer.id, { firstName: 'Omar', email: 'omar@corp.test' });
+    const noAddress = await createContact(customer.id, { firstName: 'Nameonly' });
+    await prisma.contact.update({ where: { id: noAddress.id }, data: { email: null } });
+
+    for (const sortBy of ['emailCount', 'firstName']) {
+      const names = (await contactService.findAll(alice.id, { sortBy, sortOrder: 'asc' })).data.map((c) => c.firstName).sort();
+      expect(names, `sortBy=${sortBy}`).toEqual(['Nameonly', 'Omar']);
+    }
   });
 });

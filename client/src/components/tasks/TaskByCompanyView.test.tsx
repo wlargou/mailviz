@@ -142,7 +142,6 @@ function renderView(props: { onEdit: (taskId: string) => void }) {
       <TaskByCompanyView
         labels={[]}
         onDelete={vi.fn()}
-        onCreateNew={vi.fn()}
         {...props}
       />
     </MemoryRouter>
@@ -632,29 +631,12 @@ describe('TaskByCompanyView — chips and sorting', () => {
 /**
  * The toolbar, which is the List View's toolbar.
  *
- * The two tabs should read as one component in different shapes, so search,
- * the filter flyout and the New Task button come from the same Carbon
- * primitives and sit in the same place. Sort moved inside the flyout with the
+ * The two tabs should read as one component in different shapes, so search
+ * and the filter flyout come from the same Carbon primitives and sit in the
+ * same place. Sort moved inside the flyout with the
  * other filters rather than floating beside the table.
  */
 describe('TaskByCompanyView — toolbar', () => {
-  it('offers a New Task button that reaches the page', async () => {
-    // Previously this tab had no way to create anything: you had to go back to
-    // List View to add a task to a company you were looking at.
-    const user = userEvent.setup();
-    const onCreateNew = vi.fn();
-    respond([group('Acme', [makeTask()])]);
-    render(
-      <MemoryRouter>
-        <TaskByCompanyView labels={[]} onEdit={vi.fn()} onDelete={vi.fn()} onCreateNew={onCreateNew} />
-      </MemoryRouter>
-    );
-
-    await user.click(await screen.findByRole('button', { name: /new task/i }));
-
-    expect(onCreateNew).toHaveBeenCalled();
-  });
-
   it('keeps sort and filters together in the flyout', async () => {
     const user = userEvent.setup();
     respond([group('Acme', [makeTask()])]);
@@ -694,7 +676,7 @@ describe('TaskByCompanyView — row actions', () => {
     respond([group('Acme', [target])]);
     render(
       <MemoryRouter>
-        <TaskByCompanyView labels={[]} onEdit={vi.fn()} onDelete={onDelete} onCreateNew={vi.fn()} />
+        <TaskByCompanyView labels={[]} onEdit={vi.fn()} onDelete={onDelete} />
       </MemoryRouter>
     );
 

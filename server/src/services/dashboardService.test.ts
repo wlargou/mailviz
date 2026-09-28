@@ -510,20 +510,32 @@ describe('dashboardService.getStats — customers and contacts', () => {
     expect(customers.totalContacts).toBe(2);
   });
 
-  it('ranks top customers by email count and attaches their task counts', async () => {
+  it('ranks accounts by email count, leaving out senders and the own company, with task counts', async () => {
     const { alice, bob } = await createTwoUsers();
 
     const busiest = await createCustomer(alice.id, { name: 'Busiest' });
     const quieter = await createCustomer(alice.id, { name: 'Quieter' });
+    await prisma.customer.updateMany({ where: { id: { in: [busiest.id, quieter.id] } }, data: { status: 'ACCOUNT' } });
     for (let i = 0; i < 3; i++) await createEmail(alice.id, { customerId: busiest.id });
     await createEmail(alice.id, { customerId: quieter.id });
+    // Louder than both, and neither is an account being worked: a sender
+    // (a newsletter) and the user's own company.
+    const newsletter = await createCustomer(alice.id, { name: 'Newsletter' });
+    const office = await createCustomer(alice.id, { name: 'Own office' });
+    await prisma.customer.update({ where: { id: office.id }, data: { status: 'ACCOUNT', isInternal: true } });
+    for (let i = 0; i < 6; i++) {
+      await createEmail(alice.id, { customerId: newsletter.id });
+      await createEmail(alice.id, { customerId: office.id });
+    }
     // Unlinked mail must not create a phantom entry.
     await createEmail(alice.id);
     await seedTask(alice.id, { title: 'For busiest', customerId: busiest.id });
     await seedTask(alice.id, { title: 'Also busiest', customerId: busiest.id });
 
     // Bob's customer has far more mail and must not appear in Alice's ranking.
+    // An account, so only the ownership filter keeps it out.
     const bobCustomer = await createCustomer(bob.id, { name: 'Bob Loud' });
+    await prisma.customer.update({ where: { id: bobCustomer.id }, data: { status: 'ACCOUNT' } });
     for (let i = 0; i < 10; i++) await createEmail(bob.id, { customerId: bobCustomer.id });
 
     const { customers } = await dashboardService.getStats(await inMachineZone(alice.id));

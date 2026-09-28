@@ -6,9 +6,12 @@ import { useUIStore } from '../../store/uiStore';
 import { dashboardApi, type NavCounts } from '../../api/dashboard';
 import { useEmailWebSocket } from '../../hooks/useEmailWebSocket';
 
+/**
+ * A badge counts what can be finished today, so it never needs to be large;
+ * past 99 it says "99+" rather than "11k", which was a number nobody could act on.
+ */
 function formatBadge(count: number): string {
-  if (count >= 1000) return `${Math.floor(count / 1000)}k`;
-  return String(count);
+  return count > 99 ? '99+' : String(count);
 }
 
 export function AppSideNav() {
@@ -16,7 +19,7 @@ export function AppSideNav() {
   const location = useLocation();
   const sideNavOpen = useUIStore((s) => s.sideNavOpen);
   const [counts, setCounts] = useState<NavCounts>({
-    unreadEmails: 0, overdueTasks: 0, expiringDeals: 0, eventsToday: 0,
+    unreadEmails: 0, overdueTasks: 0, expiringDeals: 0, eventsToday: 0, repliesOwed: 0, rfpsAtRisk: 0,
   });
 
   const refreshCounts = useCallback(() => {
@@ -103,7 +106,7 @@ export function AppSideNav() {
         >
           Deals
           {counts.expiringDeals > 0 && (
-            <Tag size="sm" type="warm-gray" className="nav-badge">
+            <Tag size="sm" type="cool-gray" className="nav-badge">
               {formatBadge(counts.expiringDeals)}
             </Tag>
           )}
@@ -114,6 +117,11 @@ export function AppSideNav() {
           onClick={() => navigate('/rfps')}
         >
           RFPs
+          {counts.rfpsAtRisk > 0 && (
+            <Tag size="sm" type="red" className="nav-badge" title={`${counts.rfpsAtRisk} at risk`}>
+              {formatBadge(counts.rfpsAtRisk)}
+            </Tag>
+          )}
         </SideNavLink>
         <SideNavLink
           renderIcon={Calendar}
@@ -122,7 +130,7 @@ export function AppSideNav() {
         >
           Calendar
           {counts.eventsToday > 0 && (
-            <Tag size="sm" type="teal" className="nav-badge">
+            <Tag size="sm" type="cool-gray" className="nav-badge">
               {formatBadge(counts.eventsToday)}
             </Tag>
           )}
@@ -133,9 +141,10 @@ export function AppSideNav() {
           onClick={() => navigate('/mail')}
         >
           Mail
-          {counts.unreadEmails > 0 && (
-            <Tag size="sm" type="blue" className="nav-badge">
-              {formatBadge(counts.unreadEmails)}
+          {/* People waiting on a reply — not unread mail, which ran to 11k. */}
+          {counts.repliesOwed > 0 && (
+            <Tag size="sm" type="cool-gray" className="nav-badge" title={`${counts.repliesOwed} waiting on your reply`}>
+              {formatBadge(counts.repliesOwed)}
             </Tag>
           )}
         </SideNavLink>

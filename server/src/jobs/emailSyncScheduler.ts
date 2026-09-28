@@ -1,3 +1,4 @@
+import { promoteSenders } from '../services/accountStatus.js';
 import * as cron from 'node-cron';
 import { emailService } from '../services/emailService.js';
 import { draftService } from '../services/draftService.js';
@@ -24,6 +25,8 @@ async function syncAccount(userId: string): Promise<void> {
         result.contactsCreated > 0 ||
         (result.labelsChanged ?? 0) > 0;
       if (hasChanges) {
+        // New replies make senders into accounts (see accountStatus.ts).
+        await promoteSenders(userId).catch((err) => console.error('[EmailSync] Account promotion failed:', err?.message || err));
         console.log(
           `[EmailSync] Synced ${result.synced} emails, ${result.labelsChanged ?? 0} label changes, ${result.customersCreated} companies, ${result.contactsCreated} contacts`
         );

@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { EmailThread, EmailMessage, ConvertToTaskInput, ReviewSummary, EmailReminder, ReminderKind } from '../types/email';
+import type { EmailThread, EmailMessage, ConvertToTaskInput, ReviewSummary, EmailReminder, ReminderKind, ReplyOwed } from '../types/email';
 import type { ApiResponse } from '../types/api';
 import type { CategoryCounts } from '../utils/mailCategories';
 import type { Task } from '../types/task';
@@ -12,6 +12,15 @@ export const emailsApi = {
   /** Unread threads per Gmail category in the inbox, for the tabs. */
   getCategoryCounts() {
     return api.get<ApiResponse<CategoryCounts>>('/emails/category-counts');
+  },
+
+  /**
+   * Threads whose latest message is from someone else, to the user, in the
+   * last two weeks, and unanswered — oldest first, because the longest wait
+   * is the one to clear.
+   */
+  getRepliesOwed() {
+    return api.get<ApiResponse<ReplyOwed[]>>('/emails/replies-owed');
   },
 
   getThread(threadId: string) {
