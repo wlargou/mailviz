@@ -6,8 +6,6 @@ import {
   Tag,
   DismissibleTag,
   InlineLoading,
-  ContentSwitcher,
-  Switch,
   SkeletonText,
   Modal,
   DatePicker,
@@ -33,8 +31,10 @@ import { MailSearchBar } from './MailSearchBar';
 import { MailComposeModal } from './MailComposeModal';
 import { ConvertToTaskModal } from './ConvertToTaskModal';
 import { SnoozeModal } from './SnoozeModal';
+import { MailFolderBar } from './MailFolderBar';
+import { ToReplyList } from './ToReplyList';
 import type { MailFilters } from './MailSearchBar';
-import type { ComposeMode, DraftDetail, DraftListItem, EmailReminder, EmailThread, ReminderKind } from '../../types/email';
+import type { ComposeMode, DraftDetail, DraftListItem, EmailReminder, EmailThread, ReminderKind, ReplyOwed } from '../../types/email';
 import type { PaginationMeta } from '../../types/api';
 import { decodeEntities } from '../../utils/text';
 
@@ -126,6 +126,10 @@ export function MailPage() {
   const [reminders, setReminders] = useState<EmailReminder[]>([]);
   const [snoozeTarget, setSnoozeTarget] = useState<EmailThread | null>(null);
   const [snoozeSaving, setSnoozeSaving] = useState(false);
+  // Threads waiting on the user's reply. Fetched whatever folder is open,
+  // because its count labels the "To reply" switch.
+  const [repliesOwed, setRepliesOwed] = useState<ReplyOwed[] | null>(null);
+  const [repliesOwedLoading, setRepliesOwedLoading] = useState(false);
   const addNotification = useUIStore((s) => s.addNotification);
   const currentUser = useAuthStore((s) => s.user);
 
@@ -176,7 +180,27 @@ export function MailPage() {
   const fetchDraftsRef = useRef<(() => void) | null>(null);
   const fetchRemindersRef = useRef<(() => void) | null>(null);
 
+  const fetchRepliesOwed = useCallback(async (silent = false) => {
+    if (!silent) setRepliesOwedLoading(true);
+    try {
+      const { data: response } = await emailsApi.getRepliesOwed();
+      setRepliesOwed(response.data);
+    } catch {
+      if (!silent) addNotification({ kind: 'error', title: 'Failed to load mail to reply to' });
+    } finally {
+      if (!silent) setRepliesOwedLoading(false);
+    }
+  }, [addNotification]);
+
   const fetchThreads = useCallback(async (silent = false) => {
+    // Every refresh (a sync, a send, a read) may change who is waiting, so the
+    // list behind "To reply" is reread with the thread list — and is the only
+    // thing read while it is the view, since it is not a Gmail folder.
+    if (filters.folder === 'to-reply') {
+      await fetchRepliesOwed(silent);
+      return;
+    }
+    fetchRepliesOwed(true);
     if (!silent) setLoading(true);
     try {
       const params: Record<string, string> = { page: String(page), limit: String(pageSize) };
@@ -207,7 +231,7 @@ export function MailPage() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [page, pageSize, filters, category, addNotification]);
+  }, [page, pageSize, filters, category, addNotification, fetchRepliesOwed]);
 
   const fetchReminders = useCallback(async () => {
     try {
@@ -677,6 +701,10 @@ export function MailPage() {
   const selectedThreadData = selectedThread
     ? threads.find((t) => t.threadId === selectedThread)
     : null;
+  // Opened from To reply, the thread need not be on the loaded page of mail.
+  const selectedOwed = selectedThread
+    ? repliesOwed?.find((r) => r.threadId === selectedThread)
+    : undefined;
 
   return (
     <div className="mail-page">
@@ -732,40 +760,11 @@ export function MailPage() {
           </div>
         </div>
 
-        <div className="mail-folder-switcher">
-          <ContentSwitcher
-            size="sm"
-            selectedIndex={
-              filters.folder === null ? 0
-              : filters.folder === 'inbox' ? 1
-              : filters.folder === 'sent' ? 2
-              : filters.folder === 'drafts' ? 3
-              : filters.folder === 'starred' ? 4
-              : filters.folder === 'archived' ? 5
-              : filters.folder === 'trash' ? 6
-              : filters.folder === 'snoozed' ? 7
-              : filters.folder === 'scheduled' ? 8
-              : 0
-            }
-            onChange={({ index }) => {
-              // Carbon only fires onChange once it has resolved an index, but
-              // `SwitchEventHandlersParams['index']` is optional.
-              if (index === undefined) return;
-              const folders = [null, 'inbox', 'sent', 'drafts', 'starred', 'archived', 'trash', 'snoozed', 'scheduled'];
-              handleFolderChange(folders[index]);
-            }}
-          >
-            <Switch name="all" text="All" />
-            <Switch name="inbox" text="Inbox" />
-            <Switch name="sent" text="Sent" />
-            <Switch name="drafts" text="Drafts" />
-            <Switch name="starred" text="Starred" />
-            <Switch name="archived" text="Archived" />
-            <Switch name="trash" text="Trash" />
-            <Switch name="snoozed" text="Snoozed" />
-            <Switch name="scheduled" text="Scheduled" />
-          </ContentSwitcher>
-        </div>
+        <MailFolderBar
+          folder={filters.folder}
+          toReplyCount={repliesOwed?.length ?? null}
+          onChange={handleFolderChange}
+        />
 
         {filters.folder === 'inbox' && (
           <MailCategoryTabs
@@ -777,12 +776,15 @@ export function MailPage() {
           />
         )}
 
-        <div className="mail-page__search-wrapper">
-          <MailSearchBar
-            filters={filters}
-            onFiltersChange={handleFiltersChange}
-          />
-        </div>
+        {/* To reply is a worklist, not a folder: it has nothing to search. */}
+        {filters.folder !== 'to-reply' && (
+          <div className="mail-page__search-wrapper">
+            <MailSearchBar
+              filters={filters}
+              onFiltersChange={handleFiltersChange}
+            />
+          </div>
+        )}
 
         {syncing && (
           <div className="mail-page__sync-status">
@@ -790,7 +792,14 @@ export function MailPage() {
           </div>
         )}
 
-        {filters.folder === 'drafts' ? (
+        {filters.folder === 'to-reply' ? (
+          <ToReplyList
+            items={repliesOwed ?? []}
+            loading={repliesOwedLoading || repliesOwed === null}
+            selectedThread={selectedThread}
+            onOpen={setSelectedThread}
+          />
+        ) : filters.folder === 'drafts' ? (
           draftsLoading ? (
             <div className="thread-list">
               {[1, 2, 3, 4, 5].map((i) => (
@@ -1132,7 +1141,7 @@ export function MailPage() {
       <SidePanel
         open={!!selectedThread}
         onRequestClose={() => setSelectedThread(null)}
-        title={decodeEntities(selectedThreadData?.latestEmail.subject) || 'Thread'}
+        title={decodeEntities(selectedThreadData?.latestEmail.subject ?? selectedOwed?.subject) || 'Thread'}
         size="lg"
         className="mail-page__side-panel"
       >
