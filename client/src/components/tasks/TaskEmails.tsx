@@ -10,6 +10,7 @@ import { useTaskStore } from '../../store/taskStore';
 import { decodeEntities } from '../../utils/text';
 import { apiErrorMessage } from '../../utils/apiError';
 import type { Task } from '../../types/task';
+import { shortDate } from '../../utils/dates';
 
 interface TaskEmailsProps {
   task: Task;
@@ -149,7 +150,7 @@ export function TaskEmails({ task, onChanged }: TaskEmailsProps) {
                 <button type="button" role="option" aria-selected={false} className="task-links__result" onClick={() => void attach(c)}>
                   <Email size={16} aria-hidden="true" className="task-links__result-icon" />
                   <span className="task-links__result-label">{decodeEntities(c.subject)}</span>
-                  <small>{decodeEntities(c.from)} · {format(new Date(c.receivedAt), 'MMM d, yyyy')}</small>
+                  <small>{decodeEntities(c.from)} · {shortDate(c.receivedAt)}</small>
                 </button>
               </li>
             ))}

@@ -58,6 +58,7 @@ import { ThreadItemList } from '../shared/ThreadItemList';
 import { toolbarSearchValue } from '../../utils/carbonSearch';
 import { CompanyLogo } from '../shared/CompanyLogo';
 import { decodeEntities } from '../../utils/text';
+import { shortDate } from '../../utils/dates';
 
 const contactHeaders = [
   { key: 'name', header: 'Name' },
@@ -374,7 +375,7 @@ export function CustomerDetailPage() {
                                   <TableCell><span style={{ cursor: 'pointer', fontWeight: 500 }} onClick={() => navigate('/tasks')}>{decodeEntities(task.title)}</span></TableCell>
                                   <TableCell><TaskStatusTag status={task.status} /></TableCell>
                                   <TableCell><PriorityBadge priority={task.priority} /></TableCell>
-                                  <TableCell>{task.dueDate ? format(new Date(task.dueDate), 'MMM d, yyyy') : '—'}</TableCell>
+                                  <TableCell>{task.dueDate ? shortDate(task.dueDate) : '—'}</TableCell>
                                 </TableRow>);
                               })}
                             </TableBody>

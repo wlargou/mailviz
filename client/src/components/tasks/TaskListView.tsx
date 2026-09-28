@@ -44,6 +44,7 @@ import type { Task, Label, TaskStatusConfig } from '../../types/task';
 import { toolbarSearchValue, type TableToolbarSearchChangeEvent } from '../../utils/carbonSearch';
 import type { DataTableSortState } from '@carbon/react';
 import { decodeEntities } from '../../utils/text';
+import { shortDate } from '../../utils/dates';
 
 /**
  * `sortField` names the API field a column orders by (`TASK_SORT_FIELDS` in
@@ -400,7 +401,7 @@ export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreat
                     <TableCell>
                       {task.dueDate ? (
                         <span className={new Date(task.dueDate) < new Date() && task.status !== 'DONE' ? 'overdue-date' : ''}>
-                          {format(new Date(task.dueDate), 'MMM d, yyyy')}
+                          {shortDate(task.dueDate)}
                         </span>
                       ) : '—'}
                     </TableCell>

@@ -8,6 +8,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useUIStore } from '../../store/uiStore';
 import { decodeEntities } from '../../utils/text';
 import type { TaskActivityEntry, TaskActor, TaskStatusConfig } from '../../types/task';
+import { shortDate } from '../../utils/dates';
 
 interface MentionableUser {
   id: string;
@@ -470,7 +471,7 @@ export function describeEvent(
             parts.push(
               'dueDate' in to
                 ? to.dueDate
-                  ? <>set the due date to <strong>{format(new Date(String(to.dueDate)), 'MMM d, yyyy')}</strong></>
+                  ? <>set the due date to <strong>{shortDate(String(to.dueDate))}</strong></>
                   : 'cleared the due date'
                 : 'changed the due date'
             );
@@ -478,7 +479,7 @@ export function describeEvent(
           case 'startDate':
             parts.push(
               to.startDate
-                ? <>set the start date to <strong>{format(new Date(String(to.startDate)), 'MMM d, yyyy')}</strong></>
+                ? <>set the start date to <strong>{shortDate(String(to.startDate))}</strong></>
                 : 'cleared the start date'
             );
             break;

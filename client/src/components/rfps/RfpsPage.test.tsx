@@ -109,6 +109,20 @@ describe('deadlineTone', () => {
 });
 
 describe('RfpsPage', () => {
+  it('says how far each live deadline is, and not for a finished tender', async () => {
+    const inTwoDays = new Date(Date.now() + 2 * 86_400_000 + 3_600_000).toISOString();
+    serve([
+      makeRfp({ id: 'live', reference: 'LIVE/1', deadlineAt: inTwoDays }),
+      makeRfp({ id: 'won', reference: 'WON/1', deadlineAt: inTwoDays, status: 'WON' }),
+    ]);
+    renderPage();
+
+    const live = (await screen.findByText('LIVE/1')).closest('tr')!;
+    expect(within(live).getByText(/^in 2 days$|^in 3 days$/)).toBeInTheDocument();
+    const won = screen.getByText('WON/1').closest('tr')!;
+    expect(within(won).queryByText(/^in \d+ days$|tomorrow|late$/)).toBeNull();
+  });
+
   it('arrives from global search with the query in place, across every tender', async () => {
     // "View all" from the header lands here; the register's usual Open scope
     // would hide last year's tender the search was after.
@@ -148,7 +162,8 @@ describe('RfpsPage', () => {
     // inside each action button's description.
     const row = (await screen.findByText('70/AOO/BKAM/2026')).closest('tr')!;
     expect(within(row).getByRole('button', { name: 'Refonte de la plateforme matérielle AIX' })).toBeInTheDocument();
-    expect(within(row).getByText('9 Dec 2026')).toBeInTheDocument();
+    // The year only when it is not this one.
+    expect(within(row).getByText(/^9 Dec( 2026)?$/)).toBeInTheDocument();
     // The buying organisation — a tender is recognised by who it is from at
     // least as often as by its reference.
     expect(within(row).getByText('Bank Al-Maghrib')).toBeInTheDocument();

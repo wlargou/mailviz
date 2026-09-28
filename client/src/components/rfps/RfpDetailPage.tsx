@@ -27,9 +27,11 @@ import {
   RFP_STATUS_LABELS,
   RFP_STATUS_TAG_TYPE,
   RFP_SUBMISSION_FORMAT_LABELS,
+  RFP_TERMINAL_STATUSES,
   type RfpCatalogueEntry,
   type RfpDetail,
 } from '../../types/rfp';
+import { shortDate, timeLeft } from '../../utils/dates';
 
 type Shares = Array<{ id: string; createdAt: string; sharedWith: { id: string; name: string | null; email: string; avatarUrl: string | null } }>;
 
@@ -200,12 +202,17 @@ export function RfpDetailPage() {
           <p className="rfp-detail__tile-label">Submission deadline</p>
           <p className="rfp-detail__tile-value">
             <span className={`rfp-deadline rfp-deadline--${tone}`}>
-              {format(new Date(rfp.deadlineAt), 'd MMM yyyy')}
+              {shortDate(rfp.deadlineAt, { dayFirst: true })}
               <span className="rfp-deadline__time">{format(new Date(rfp.deadlineAt), 'HH:mm')}</span>
             </span>
           </p>
           <p className="rfp-detail__tile-hint">
-            {tone === 'overdue' ? 'Past the deadline' : tone === 'soon' ? 'Due within a week' : format(new Date(rfp.deadlineAt), 'EEEE')}
+            {/* Time left, not a bucket: "Due within a week" said the same
+                thing at six days as at two hours. A finished tender has no
+                countdown — its date is history. */}
+            {RFP_TERMINAL_STATUSES.includes(rfp.status)
+              ? format(new Date(rfp.deadlineAt), 'EEEE')
+              : `${timeLeft(rfp.deadlineAt)} · ${format(new Date(rfp.deadlineAt), 'EEEE')}`}
           </p>
         </Tile>
 

@@ -21,6 +21,7 @@ import type { DuplicateContact, DuplicateGroup } from '../../types/customer';
 import type { PaginationMeta } from '../../types/api';
 import { CompanyLogo } from '../shared/CompanyLogo';
 import { decodeEntities } from '../../utils/text';
+import { shortDate } from '../../utils/dates';
 
 /**
  * Review-and-merge for duplicate contacts.
@@ -128,7 +129,7 @@ function GroupCard({ group, onMerged }: GroupCardProps) {
                   {contact.emailCount} email{contact.emailCount === 1 ? '' : 's'}
                   {contact.role ? ` · ${contact.role}` : ''}
                   {contact.phone ? ` · ${contact.phone}` : ''}
-                  {` · added ${format(new Date(contact.createdAt), 'MMM d, yyyy')}`}
+                  {` · added ${shortDate(contact.createdAt)}`}
                 </span>
               </span>
             }

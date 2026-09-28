@@ -59,7 +59,8 @@ describe('describeEvent', () => {
     const text = textOf(describeEvent('TASK_UPDATED', details, statusLabel));
     expect(text).toContain('moved this from To do to Done');
     expect(text).toContain('set priority to high');
-    expect(text).toMatch(/and set the due date to (Sep 30|Oct 1), 2026/);
+    // No year when it is the current one (see utils/dates.ts).
+    expect(text).toMatch(/and set the due date to (Sep 30|Oct 1)(, 2026)?$/);
   });
 
   it('degrades to the change names for rows written before from/to existed', () => {

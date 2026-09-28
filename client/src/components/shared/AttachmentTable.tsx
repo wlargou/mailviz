@@ -23,6 +23,7 @@ import { getFileTypeInfo, formatFileSize } from '../../utils/fileTypes';
 import type { AttachmentWithEmail } from '../../types/email';
 import { toolbarSearchValue } from '../../utils/carbonSearch';
 import { decodeEntities } from '../../utils/text';
+import { shortDate } from '../../utils/dates';
 
 interface AttachmentTableProps {
   attachments: AttachmentWithEmail[];
@@ -202,7 +203,7 @@ export function AttachmentTable({ attachments, emptyDescription = 'No attachment
                       <TableCell>{info.label}</TableCell>
                       <TableCell>{formatFileSize(attachment.size)}</TableCell>
                       <TableCell>{attachment.email.subject}</TableCell>
-                      <TableCell>{format(new Date(attachment.email.receivedAt), 'MMM d, yyyy')}</TableCell>
+                      <TableCell>{shortDate(attachment.email.receivedAt)}</TableCell>
                       <TableCell>
                         <Button
                           kind="ghost"

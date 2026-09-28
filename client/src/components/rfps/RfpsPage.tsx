@@ -43,6 +43,7 @@ import {
 } from '../../types/rfp';
 import { toolbarSearchValue } from '../../utils/carbonSearch';
 import { useTableSort } from '../../hooks/useTableSort';
+import { shortDate, timeLeft } from '../../utils/dates';
 
 /**
  * `sortField` is the API field. Format, GOE and Documents are not ordered on:
@@ -337,9 +338,12 @@ export function RfpsPage() {
                           <TableRow key={rfp.id}>
                             <TableCell>
                               <span className={`rfp-deadline rfp-deadline--${tone}`}>
-                                {format(new Date(rfp.deadlineAt), 'd MMM yyyy')}
+                                {shortDate(rfp.deadlineAt, { dayFirst: true })}
                                 <span className="rfp-deadline__time">{format(new Date(rfp.deadlineAt), 'HH:mm')}</span>
                               </span>
+                              {!RFP_TERMINAL_STATUSES.includes(rfp.status) && (
+                                <span className={`rfp-deadline__left rfp-deadline--${tone}`}>{timeLeft(rfp.deadlineAt)}</span>
+                              )}
                             </TableCell>
                             <TableCell>
                               <span className="shared-title-cell">
