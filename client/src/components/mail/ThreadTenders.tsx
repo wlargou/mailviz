@@ -56,6 +56,8 @@ export function ThreadTenders({ threadId }: { threadId: string }) {
           onActionButtonClick={() => void file(offer.id, offer.name)}
           onClose={() => { setDismissed((d) => new Set(d).add(offer.id)); }}
           statusIconDescription="Information"
+          // An offer, not an alert: it must not take focus from the thread.
+          hasFocus={false}
         />
       )}
     </div>

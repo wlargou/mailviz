@@ -2,23 +2,20 @@
 @use '@carbon/react/scss/spacing' as *;
 
 // ─── RFP REGISTER ────────────────────────────────
-.rfp-deadline {
-  display: inline-flex;
-  align-items: baseline;
-  gap: $spacing-03;
+// How far, then when: two lines, only the first coloured.
+.rfp-deadline-cell {
   white-space: nowrap;
 }
 
-// "in 2 days" under the date — the distance is what a reader acts on.
 .rfp-deadline__left {
-  @include type.type-style('helper-text-01');
+  @include type.type-style('body-compact-01');
   display: block;
-  font-weight: 400;
-  color: var(--cds-text-secondary);
+  color: var(--cds-text-primary);
 }
 
-.rfp-deadline__time {
+.rfp-deadline__when {
   @include type.type-style('label-01');
+  display: block;
   color: var(--cds-text-secondary);
 }
 
@@ -27,19 +24,43 @@
 .rfp-deadline--overdue {
   color: var(--cds-text-error);
   font-weight: 600;
-
-  .rfp-deadline__time {
-    color: var(--cds-text-error);
-  }
 }
 
 .rfp-deadline--soon {
-  color: var(--cds-support-warning);
+  color: var(--text-warning);
   font-weight: 600;
+}
 
-  .rfp-deadline__time {
-    color: var(--cds-support-warning);
+// Date and time on one line, as the tender page's deadline tile shows it.
+.rfp-deadline {
+  display: inline-flex;
+  align-items: baseline;
+  gap: $spacing-03;
+  white-space: nowrap;
+}
+
+.rfp-deadline__time {
+  @include type.type-style('label-01');
+  color: var(--cds-text-secondary);
+
+  .rfp-deadline--overdue & {
+    color: var(--cds-text-error);
   }
+
+  .rfp-deadline--soon & {
+    color: var(--text-warning);
+  }
+}
+
+.rfp-budget {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.rfp-ready-cell {
+  display: inline-grid;
+  justify-items: start;
+  gap: $spacing-02;
 }
 
 .rfp-name-cell {
@@ -651,7 +672,7 @@
 }
 
 .rfp-detail__awaiting {
-  color: var(--cds-support-warning);
+  color: var(--text-warning);
   margin-block-start: $spacing-03;
 }
 
@@ -765,8 +786,7 @@
 
 // ─── RISK & READINESS ────────────────────────────
 .rfp-risk-tag {
-  margin-inline-start: 0;
-  margin-block-start: $spacing-02;
+  margin: 0;
 }
 
 .rfp-ready {
@@ -940,7 +960,7 @@
 
 .rfp-dossiers__unowned {
   @include type.type-style('label-01');
-  color: var(--cds-support-warning);
+  color: var(--text-warning);
   margin-inline-start: $spacing-02;
 }
 

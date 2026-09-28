@@ -12,7 +12,7 @@
  */
 
 import { prisma } from '../lib/prisma.js';
-import { classifyContactKind } from '../utils/contactKind.js';
+import { isAutomatedSender } from '../utils/automatedSender.js';
 
 export async function classifyAutomatedEmails({ apply }: { apply: boolean }) {
   const users = await prisma.user.findMany({ select: { id: true, email: true } });
@@ -24,32 +24,32 @@ export async function classifyAutomatedEmails({ apply }: { apply: boolean }) {
   for (const user of users) {
     const own = user.email.trim().toLowerCase();
     const groups = await prisma.email.groupBy({
-      by: ['from', 'isAutomated'],
+      by: ['from', 'fromName', 'isAutomated'],
       where: { userId: user.id },
       _count: { id: true },
     });
 
-    const flag: string[] = [];
-    const clear: string[] = [];
+    // Keyed by address *and* display name: a cron job mailing as "root"
+    // from an address a person also uses must not flag that person's mail.
+    const flag: Array<{ from: string; fromName: string | null }> = [];
+    const clear: Array<{ from: string; fromName: string | null }> = [];
     const seen = new Set<string>();
     for (const g of groups) {
-      const automated = g.from.trim().toLowerCase() !== own
-        && classifyContactKind({ email: g.from }) === 'automated';
+      const automated = g.from.trim().toLowerCase() !== own && isAutomatedSender(g.from, g.fromName);
       if (!seen.has(g.from)) {
         seen.add(g.from);
         senders++;
         if (automated) automatedSenders++;
       }
-      if (automated && !g.isAutomated) { flag.push(g.from); toFlag += g._count.id; }
-      if (!automated && g.isAutomated) { clear.push(g.from); toClear += g._count.id; }
+      if (automated && !g.isAutomated) { flag.push({ from: g.from, fromName: g.fromName }); toFlag += g._count.id; }
+      if (!automated && g.isAutomated) { clear.push({ from: g.from, fromName: g.fromName }); toClear += g._count.id; }
     }
 
     if (apply) {
-      if (flag.length > 0) {
-        await prisma.email.updateMany({ where: { userId: user.id, from: { in: flag } }, data: { isAutomated: true } });
-      }
-      if (clear.length > 0) {
-        await prisma.email.updateMany({ where: { userId: user.id, from: { in: clear } }, data: { isAutomated: false } });
+      for (const [pairs, isAutomated] of [[flag, true], [clear, false]] as const) {
+        for (const { from, fromName } of pairs) {
+          await prisma.email.updateMany({ where: { userId: user.id, from, fromName }, data: { isAutomated } });
+        }
       }
     }
   }

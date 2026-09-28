@@ -106,6 +106,7 @@ export async function createEmail(
     threadId: string;
     subject: string;
     from: string;
+    fromName: string;
     gmailMessageId: string;
     snippet: string;
     isRead: boolean;
@@ -129,6 +130,7 @@ export async function createEmail(
       threadId: overrides.threadId ?? `thread-${id}`,
       subject: overrides.subject ?? `Subject ${id}`,
       from: overrides.from ?? `sender-${id}@example.com`,
+      ...(overrides.fromName !== undefined ? { fromName: overrides.fromName } : {}),
       receivedAt: overrides.receivedAt ?? new Date(),
       ...(overrides.customerId ? { customerId: overrides.customerId } : {}),
       ...(overrides.snippet !== undefined ? { snippet: overrides.snippet } : {}),

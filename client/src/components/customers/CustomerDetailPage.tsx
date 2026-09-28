@@ -518,7 +518,7 @@ export function CustomerDetailPage() {
         </div>
       </Modal>
 
-      <SidePanel
+      <SidePanel selectorPrimaryFocus=".thread-detail"
         open={!!selectedThread}
         onRequestClose={() => setSelectedThread(null)}
         title={decodeEntities(selectedThread?.subject) || 'Thread'}

@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma.js';
 import { classifyContactKind } from '../utils/contactKind.js';
+import { isSystemSenderName } from '../utils/automatedSender.js';
 import { CATEGORY_LABELS } from '../utils/mailCategories.js';
 
 /** How far back an unanswered message still counts as owed. */
@@ -32,9 +33,6 @@ const CALENDAR_SUBJECT = /^((updated )?invitation( with note)?|invitation mise �
 
 /** Out-of-office replies, which want nothing back. */
 const AUTO_REPLY_SUBJECT = /^(automatic reply|auto(-| )?reply|out of (the )?office|réponse automatique|absence|absent)\b/i;
-
-/** Display names that are a machine, whatever address it sends from. */
-const SYSTEM_NAMES = new Set(['root', 'cron', 'daemon', 'mailer-daemon', 'postmaster', 'nobody']);
 
 /**
  * Threads where a person is waiting on the user.
@@ -93,7 +91,7 @@ export async function repliesOwed(userId: string, now = new Date()): Promise<Rep
       const sender = addressOf(m.from);
       if (own.has(sender)) return false;
       if (classifyContactKind({ email: sender }) !== 'person') return false;
-      if (SYSTEM_NAMES.has((m.from_name ?? '').trim().toLowerCase())) return false;
+      if (isSystemSenderName(m.from_name)) return false;
       if (!isConversationSubject(m.subject)) return false;
       // Directly to the user — not a CC, not a list they are on.
       return m.to.some((t) => own.has(addressOf(t)));

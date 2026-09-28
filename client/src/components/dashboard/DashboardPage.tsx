@@ -208,7 +208,7 @@ export function DashboardPage() {
       </Grid>
 
       {/* Email SidePanel */}
-      <SidePanel
+      <SidePanel selectorPrimaryFocus=".thread-detail"
         open={!!selectedThread}
         onRequestClose={() => setSelectedThread(null)}
         title={decodeEntities(selectedThread?.subject) || 'Thread'}

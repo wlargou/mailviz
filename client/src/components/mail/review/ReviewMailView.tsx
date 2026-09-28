@@ -191,7 +191,7 @@ export function ReviewMailView({ period, customerIds, includeUncategorized, onBa
         </div>
       )}
 
-      <SidePanel
+      <SidePanel selectorPrimaryFocus=".thread-detail"
         open={!!selectedThread}
         onRequestClose={() => setSelectedThread(null)}
         title={decodeEntities(selectedThread?.latestEmail.subject) || 'Thread'}

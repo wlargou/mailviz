@@ -40,13 +40,19 @@ body {
   font-family: 'IBM Plex Sans', 'Helvetica Neue', Arial, sans-serif;
 }
 
-// Theme application on html/body so portals (menus, modals) inherit the theme
+// Theme application on html/body so portals (menus, modals) inherit the theme.
+//
+// --text-warning: Carbon has no text token for a warning, and support-warning
+// is yellow 30 in every theme — 12:1 on g100's background, 1.6:1 on g10's
+// white. Icons and fills keep support-warning; warning *text* uses this.
 [data-carbon-theme='g100'] {
   @include theme.theme(themes.$g100);
+  --text-warning: #{colors.$yellow-30};
 }
 
 [data-carbon-theme='g10'] {
   @include theme.theme(themes.$g10);
+  --text-warning: #{colors.$yellow-60};
 }
 
 // Custom scrollbar

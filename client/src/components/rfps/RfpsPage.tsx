@@ -85,6 +85,12 @@ export function deadlineTone(deadlineAt: string, status: Rfp['status'], now = Da
   return 'normal';
 }
 
+/** "Wed 30 Sep · 11:00" — the deadline itself, under how far away it is. */
+export function deadlineWhen(deadlineAt: string, now = new Date()): string {
+  const d = new Date(deadlineAt);
+  return `${format(d, 'EEE')} ${shortDate(d, { dayFirst: true, now })} · ${format(d, 'HH:mm')}`;
+}
+
 const scopeItems = [
   { id: 'open', text: 'Open tenders' },
   { id: '__all__', text: 'All tenders' },
@@ -352,15 +358,14 @@ export function RfpsPage({ embedded = false }: { embedded?: boolean } = {}) {
                             className="table-row--clickable"
                             onClick={openRowOnClick(() => navigate(`/rfps/${rfp.id}`))}
                           >
-                            <TableCell>
-                              <span className={`rfp-deadline rfp-deadline--${tone}`}>
-                                {shortDate(rfp.deadlineAt, { dayFirst: true })}
-                                <span className="rfp-deadline__time">{format(new Date(rfp.deadlineAt), 'HH:mm')}</span>
-                              </span>
+                            {/* Two quiet lines: how far, then when. The date, the
+                                distance and the risk tag used to stack three
+                                bold lines in a column a hundred pixels wide. */}
+                            <TableCell className="rfp-deadline-cell">
                               {!RFP_TERMINAL_STATUSES.includes(rfp.status) && (
                                 <span className={`rfp-deadline__left rfp-deadline--${tone}`}>{timeLeft(rfp.deadlineAt)}</span>
                               )}
-                              {risk.atRisk && <RiskTag risk={risk} />}
+                              <span className="rfp-deadline__when">{deadlineWhen(rfp.deadlineAt)}</span>
                             </TableCell>
                             <TableCell>
                               <span className="shared-title-cell">
@@ -401,13 +406,18 @@ export function RfpsPage({ embedded = false }: { embedded?: boolean } = {}) {
                             </TableCell>
                             <TableCell>{rfp.isGoe ? <Tag type="teal" size="sm">GOE</Tag> : <span className="rfp-muted">—</span>}</TableCell>
                             <TableCell>
-                              {rfp.isGoe ? formatBudget(rfp.budget) : <span className="rfp-muted">—</span>}
+                              {rfp.isGoe ? <span className="rfp-budget">{formatBudget(rfp.budget)}</span> : <span className="rfp-muted">—</span>}
                             </TableCell>
                             <TableCell>
                               <Tag type={RFP_STATUS_TAG_TYPE[rfp.status]} size="sm">{RFP_STATUS_LABELS[rfp.status]}</Tag>
                             </TableCell>
+                            {/* The risk beside the readiness it is about — ready
+                                pieces trailing the time used. */}
                             <TableCell>
-                              <ReadyMeter readiness={readiness} />
+                              <span className="rfp-ready-cell">
+                                <ReadyMeter readiness={readiness} />
+                                {risk.atRisk && <RiskTag risk={risk} />}
+                              </span>
                             </TableCell>
                             <TableCell>
                               {rfp.documents.length > 0 ? (

@@ -10,7 +10,8 @@ export interface MimeAttachment {
 }
 
 export interface MimeOptions {
-  from: string;
+  /** A bare address, or a name and address — nodemailer quotes and encodes the name. */
+  from: string | { name: string; address: string };
   to: string[];
   cc?: string[];
   bcc?: string[];
@@ -42,6 +43,9 @@ function sanitize(html: string): string {
   return sanitizeHtml(html, {
     allowedTags: SAFE_TAGS,
     allowedAttributes: SAFE_ATTRIBUTES,
+    // Gmail's quote markup, and nothing else: it is what lets the recipient's
+    // client (and Mailviz's reader) fold the history under a reply.
+    allowedClasses: { div: ['gmail_quote', 'gmail_attr'], blockquote: ['gmail_quote'] },
     allowedSchemes: ['http', 'https', 'mailto'],
   });
 }

@@ -85,7 +85,7 @@ export function RfpCorrespondence({ rfpId, onCount }: { rfpId: string; onCount?:
           {data.hidden} more filed by others, in mailboxes you cannot read.
         </p>
       )}
-      <SidePanel
+      <SidePanel selectorPrimaryFocus=".thread-detail"
         open={!!open}
         onRequestClose={() => setOpen(null)}
         title={decodeEntities(open?.subject) || 'Thread'}

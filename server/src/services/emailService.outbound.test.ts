@@ -124,3 +124,99 @@ describe('replyToEmail — quoting a hostile sender', () => {
     expect(html).toContain('&lt;a href=');
   });
 });
+
+/** A header of what was handed to users.messages.send, unfolded. */
+function sentHeader(name: string): string {
+  const raw = gmail.messagesSend.mock.calls[0][0].requestBody.raw as string;
+  const message = Buffer.from(raw, 'base64url').toString('utf8');
+  const head = message.slice(0, message.indexOf('\r\n\r\n')).replace(/\r\n[ \t]+/g, ' ');
+  const line = head.split('\r\n').find((l) => l.toLowerCase().startsWith(`${name.toLowerCase()}:`));
+  return line ? line.slice(name.length + 1).trim() : '';
+}
+
+describe('replyToEmail — who it goes to', () => {
+  it('answers the people you wrote to when the message is your own — REGRESSION', async () => {
+    // It fell back to the original sender, which on your own message is you.
+    const user = await connected();
+    const mine = await createEmail(user.id, { subject: 'Plan', from: 'me@example.com' });
+    await prisma.email.update({ where: { id: mine.id }, data: { to: ['h.gadialami@awb.test'], cc: ['t.eljallab@awb.test'] } });
+
+    await emailService.replyToEmail(mine.id, { htmlBody: '<p>up</p>', to: ['me@example.com'] }, user.id);
+
+    expect(sentHeader('To')).toBe('h.gadialami@awb.test');
+    expect(sentHeader('Cc')).toBe('');
+  });
+
+  it('keeps every one of your addresses out of a reply all', async () => {
+    const user = await connected();
+    // An alias: something this account has sent from.
+    await createEmail(user.id, { from: 'alias@example.com', labelIds: ['SENT'] });
+    const theirs = await createEmail(user.id, { subject: 'Plan', from: 'omar@bkam.test' });
+    await prisma.email.update({ where: { id: theirs.id }, data: { to: ['me@example.com', 'sara@bkam.test'], cc: ['alias@example.com'] } });
+
+    await emailService.replyToEmail(theirs.id, { htmlBody: '<p>ok</p>', replyAll: true }, user.id);
+
+    expect(sentHeader('To')).toBe('omar@bkam.test');
+    expect(sentHeader('Cc')).toBe('sara@bkam.test');
+  });
+
+  it('sends a scheduled reply all to the people the form held — REGRESSION', async () => {
+    // The dispatcher dropped the saved To, and reply all merged the original's
+    // people back into Cc: an edited To and a removed Cc were both undone.
+    const user = await connected();
+    const theirs = await createEmail(user.id, { subject: 'Plan', from: 'omar@bkam.test' });
+    await prisma.email.update({ where: { id: theirs.id }, data: { to: ['me@example.com', 'sara@bkam.test', 'ahmed@bkam.test'] } });
+    await prisma.scheduledEmail.create({
+      data: {
+        userId: user.id,
+        sendAt: new Date(Date.now() - 1000),
+        mode: 'replyAll',
+        to: ['nadia@bkam.test'],
+        cc: ['sara@bkam.test'],
+        subject: 'Re: Plan',
+        htmlBody: '<p>later</p>',
+        replyToEmailId: theirs.id,
+      },
+    });
+
+    expect(await emailService.processScheduledEmails()).toBe(1);
+
+    expect(sentHeader('To')).toBe('nadia@bkam.test');
+    expect(sentHeader('Cc')).toBe('sara@bkam.test');
+  });
+});
+
+describe('outbound mail — the name it goes out under', () => {
+  it('uses the Gmail send-as display name', async () => {
+    const user = await connected();
+    gmail.sendAsList.mockResolvedValue({ data: { sendAs: [{ sendAsEmail: 'me@example.com', displayName: 'L.walid (PowerM)', isDefault: true }] } });
+    const email = await createEmail(user.id, { from: 'them@other.test' });
+
+    await emailService.replyToEmail(email.id, { htmlBody: '<p>thanks</p>' }, user.id);
+
+    expect(sentHeader('From')).toBe('"L.walid (PowerM)" <me@example.com>');
+  });
+
+  it("falls back to the account's profile name", async () => {
+    const user = await connected();
+    await prisma.user.update({ where: { id: user.id }, data: { name: 'Walid Largou' } });
+
+    await emailService.sendEmail({ to: ['you@x.test'], subject: 'Hi', htmlBody: '<p>hi</p>' }, user.id);
+
+    expect(sentHeader('From')).toBe('Walid Largou <me@example.com>');
+  });
+});
+
+describe('replyToEmail — the quoted history', () => {
+  it("quotes in Gmail's markup, so the recipient's client folds it", async () => {
+    const user = await connected();
+    const email = await createEmail(user.id, { subject: 'ordinary', from: 'them@other.test' });
+
+    await emailService.replyToEmail(email.id, { htmlBody: '<p>thanks</p>' }, user.id);
+
+    // Quoted-printable writes `=` as `=3D`; decode it to read the markup.
+    const html = sentHtml().replace(/=([0-9A-F]{2})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
+    expect(html).toContain('<div class="gmail_quote">');
+    expect(html).toContain('<blockquote class="gmail_quote"');
+  });
+});

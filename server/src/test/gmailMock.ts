@@ -36,6 +36,8 @@ export interface GmailMock {
   draftsUpdate: Mock;
   draftsSend: Mock;
   draftsDelete: Mock;
+  /** users.settings.sendAs.list — where the From display name comes from. */
+  sendAsList: Mock;
 }
 
 export function createGmailMock(): GmailMock {
@@ -55,6 +57,7 @@ export function createGmailMock(): GmailMock {
   const draftsUpdate = vi.fn().mockResolvedValue({ data: { id: 'draft-new', message: { id: 'msg-updated', threadId: 'thread-new' } } });
   const draftsSend = vi.fn().mockResolvedValue({ data: { id: 'sent-msg', threadId: 'thread-new' } });
   const draftsDelete = vi.fn().mockResolvedValue({ data: {} });
+  const sendAsList = vi.fn().mockResolvedValue({ data: { sendAs: [] } });
 
   const client = {
     users: {
@@ -68,6 +71,7 @@ export function createGmailMock(): GmailMock {
         attachments: { get: attachmentsGet },
       },
       history: { list: historyList },
+      settings: { sendAs: { list: sendAsList } },
       threads: { get: threadsGet },
       drafts: {
         list: draftsList,
@@ -99,6 +103,7 @@ export function createGmailMock(): GmailMock {
     draftsUpdate,
     draftsSend,
     draftsDelete,
+    sendAsList,
   };
 }
 

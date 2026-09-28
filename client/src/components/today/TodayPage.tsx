@@ -469,7 +469,7 @@ export function TodayPage({ now: nowProp }: { now?: Date } = {}) {
         </div>
       )}
 
-      <SidePanel
+      <SidePanel selectorPrimaryFocus=".thread-detail"
         open={!!thread}
         onRequestClose={() => setThread(null)}
         title={decodeEntities(thread?.subject) || 'Thread'}

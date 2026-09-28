@@ -6,6 +6,7 @@ import { MailComposeModal } from './MailComposeModal';
 import { templatesApi } from '../../api/templates';
 import { emailsApi } from '../../api/emails';
 import { draftsApi } from '../../api/drafts';
+import { useAuthStore } from '../../store/authStore';
 import type { EmailMessage } from '../../types/email';
 
 /**
@@ -308,5 +309,76 @@ describe('MailComposeModal — reply drafts keep their threading', () => {
     await waitFor(() => expect(draftsApi.update).toHaveBeenCalled());
     const payload = vi.mocked(draftsApi.update).mock.calls[0][1];
     expect(payload).not.toHaveProperty('replyToEmailId');
+  });
+});
+
+describe('MailComposeModal — replying', () => {
+  const MINE = {
+    ...REPLY_TO,
+    id: 'email-mine',
+    from: 'me@mailviz.test',
+    fromName: 'Me',
+    to: ['h.gadialami@awb.test'],
+    cc: ['t.eljallab@awb.test'],
+  } as EmailMessage;
+
+  it('addresses a reply to your own message to the people you wrote to — REGRESSION', async () => {
+    // It prefilled your own address, so the reply went only to you.
+    const user = userEvent.setup();
+    vi.mocked(emailsApi.replyToEmail).mockResolvedValue({ data: {} } as never);
+    renderCompose({ mode: 'reply', replyToEmail: MINE, ownAddresses: new Set(['me@mailviz.test']) });
+    const send = await screen.findByRole('button', { name: /^send$/i });
+    fakeEditor.html = '<p>Here is the plan</p>';
+
+    await user.click(send);
+
+    await waitFor(() => expect(emailsApi.replyToEmail).toHaveBeenCalled());
+    expect(vi.mocked(emailsApi.replyToEmail).mock.calls[0][1]).toMatchObject({ to: ['h.gadialami@awb.test'], replyAll: false });
+    expect(vi.mocked(emailsApi.replyToEmail).mock.calls[0][1].cc).toBeUndefined();
+  });
+
+  it('knows your login address without being told', async () => {
+    const user = userEvent.setup();
+    useAuthStore.setState({ user: { id: 'u1', email: 'me@mailviz.test', name: 'Me' } as never });
+    vi.mocked(emailsApi.replyToEmail).mockResolvedValue({ data: {} } as never);
+    renderCompose({ mode: 'reply', replyToEmail: MINE });
+    const send = await screen.findByRole('button', { name: /^send$/i });
+    fakeEditor.html = '<p>Plan</p>';
+
+    await user.click(send);
+
+    await waitFor(() => expect(emailsApi.replyToEmail).toHaveBeenCalled());
+    expect(vi.mocked(emailsApi.replyToEmail).mock.calls[0][1]).toMatchObject({ to: ['h.gadialami@awb.test'] });
+    useAuthStore.setState({ user: null } as never);
+  });
+
+  it('keeps everyone else on a reply all, and never you', async () => {
+    const user = userEvent.setup();
+    vi.mocked(emailsApi.replyToEmail).mockResolvedValue({ data: {} } as never);
+    renderCompose({ mode: 'replyAll', replyToEmail: { ...REPLY_TO, to: ['me@mailviz.test', 'sara@acme.test'], cc: ['boss@acme.test'] } as EmailMessage, ownAddresses: new Set(['me@mailviz.test']) });
+    const send = await screen.findByRole('button', { name: /^send$/i });
+    fakeEditor.html = '<p>Noted</p>';
+
+    await user.click(send);
+
+    await waitFor(() => expect(emailsApi.replyToEmail).toHaveBeenCalled());
+    expect(vi.mocked(emailsApi.replyToEmail).mock.calls[0][1]).toMatchObject({ to: ['jane@acme.test'], cc: ['sara@acme.test', 'boss@acme.test'] });
+  });
+
+  it('folds the quoted original until asked', async () => {
+    const user = userEvent.setup();
+    renderCompose({ mode: 'reply', replyToEmail: REPLY_TO });
+
+    const toggle = await screen.findByRole('button', { name: 'Show quoted history' });
+    expect(screen.queryByText('Could you send pricing?')).not.toBeInTheDocument();
+    await user.click(toggle);
+    expect(screen.getByText('Could you send pricing?')).toBeInTheDocument();
+  });
+
+  it('leaves out the Templates field when there are none to insert', async () => {
+    vi.mocked(templatesApi.getAll).mockResolvedValue({ data: { data: [] } } as never);
+    renderCompose({ mode: 'new' });
+    await waitFor(() => expect(templatesApi.getAll).toHaveBeenCalled());
+    expect(screen.queryByRole('combobox', { name: /templates/i })).not.toBeInTheDocument();
   });
 });

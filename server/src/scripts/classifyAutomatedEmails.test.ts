@@ -44,6 +44,17 @@ describe('classifyAutomatedEmails', () => {
     expect(await flagOf(sent.id)).toBe(false);
   });
 
+  it('flags a system display name, and only under that name', async () => {
+    const { alice } = await createTwoUsers();
+    const cron = await createEmail(alice.id, { from: 'ess.dgm@meteo.test', fromName: 'root', subject: 'TSM report' });
+    const person = await createEmail(alice.id, { from: 'ess.dgm@meteo.test', fromName: 'Driss El Ghali' });
+
+    await classifyAutomatedEmails({ apply: true });
+
+    expect(await flagOf(cron.id)).toBe(true);
+    expect(await flagOf(person.id)).toBe(false);
+  });
+
   it('writes nothing on a dry run', async () => {
     const { alice } = await createTwoUsers();
     const bot = await createEmail(alice.id, { from: 'notifications@saas.test' });

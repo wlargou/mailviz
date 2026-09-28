@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { ThreadDetail } from './ThreadDetail';
+import { ThreadDetail, threadRows, recipientsLine } from './ThreadDetail';
 import { emailsApi } from '../../api/emails';
 import { contactsApi } from '../../api/contacts';
+import DOMPurify from 'dompurify';
+import { QUOTED_ATTR } from '../../utils/mailQuotes';
 
 /**
  * The thread reader, from a keyboard.
@@ -29,7 +31,12 @@ vi.mock('../../api/emails', () => ({
     markAsRead: vi.fn().mockResolvedValue({}),
     markAsUnread: vi.fn().mockResolvedValue({}),
     toggleStar: vi.fn().mockResolvedValue({}),
-    archive: vi.fn(), unarchive: vi.fn(), trash: vi.fn(), untrash: vi.fn(),
+    archive: vi.fn(), unarchive: vi.fn().mockResolvedValue({}), trash: vi.fn(), untrash: vi.fn().mockResolvedValue({}),
+    batchArchive: vi.fn().mockResolvedValue({}),
+    batchTrash: vi.fn().mockResolvedValue({}),
+    batchMarkAsUnread: vi.fn().mockResolvedValue({}),
+    createReminder: vi.fn().mockResolvedValue({}),
+    getThreadShares: vi.fn().mockResolvedValue({ data: { data: [] } }),
     getAttachmentUrl: (emailId: string, attachmentId: string) => `/api/v1/emails/${emailId}/attachments/${attachmentId}`,
     getAttachmentInlineUrl: (emailId: string, attachmentId: string) => `/api/v1/emails/${emailId}/attachments/${attachmentId}?inline=true`,
   },
@@ -97,6 +104,20 @@ beforeEach(() => {
   } as never);
 });
 
+/**
+ * Buttons named by their tooltip. Carbon's IconButton is named through
+ * aria-labelledby to its tooltip; with autoAlign, floating-ui keeps that
+ * tooltip `visibility: hidden` in jsdom (it cannot measure anything), and
+ * jsdom's name computation then skips it — a browser does not. So read the
+ * label the way the browser does.
+ */
+function labelled(name: string, root: HTMLElement = document.body): HTMLElement[] {
+  return within(root).queryAllByRole('button').filter((b) => {
+    const id = b.getAttribute('aria-labelledby');
+    return (id ? document.getElementById(id)?.textContent : b.getAttribute('aria-label') ?? b.textContent)?.trim() === name;
+  });
+}
+
 function renderThread() {
   return render(
     <MemoryRouter>
@@ -154,11 +175,14 @@ describe('ThreadDetail — keyboard operability', () => {
     await waitFor(() => expect(navigate).toHaveBeenCalledWith('/contacts/contact-9'));
   });
 
-  it('offers the reply trigger as a real button', async () => {
-    renderThread();
+  it('offers Reply at the foot of the thread as a real button', async () => {
+    const { container } = renderThread();
 
     // A div with an onClick satisfies a click test and fails this one.
-    expect(await screen.findByRole('button', { name: /click to reply/i })).toBeInTheDocument();
+    await screen.findAllByRole('button', { name: /message from Sender/i });
+    const bar = container.querySelector('.thread-reply-bar')!;
+    expect(within(bar as HTMLElement).getByRole('button', { name: 'Reply' })).toBeInTheDocument();
+    expect(within(bar as HTMLElement).getByRole('button', { name: 'Forward' })).toBeInTheDocument();
   });
 });
 
@@ -183,5 +207,122 @@ describe('ThreadDetail — attachments', () => {
     expect(screen.getByTestId('attachment-preview')).toHaveTextContent('Proposal.docx');
     // The explicit download stays on the icon beside the name.
     expect(screen.getByTitle('Download')).toHaveAttribute('href', '/api/v1/emails/a/attachments/att-1');
+  });
+});
+
+describe('ThreadDetail — one toolbar for the conversation', () => {
+  it('offers each conversation action once, not once per message', async () => {
+    vi.mocked(emailsApi.getThread).mockResolvedValue({
+      data: { data: [message('a', { labelIds: ['INBOX'] }), message('b', { labelIds: ['INBOX'] }), message('c', { labelIds: ['INBOX'] })] },
+    } as never);
+    renderThread();
+
+    const toolbar = await screen.findByRole('toolbar', { name: 'Conversation actions' });
+    for (const name of ['Archive', 'Move to trash', 'Mark as unread', 'Snooze or follow up', 'Create a task', 'Share conversation']) {
+      expect(labelled(name, toolbar)).toHaveLength(1);
+      expect(labelled(name)).toHaveLength(1);
+    }
+  });
+
+  it('archives the whole thread and closes the reader', async () => {
+    const user = userEvent.setup();
+    const onThreadGone = vi.fn();
+    vi.mocked(emailsApi.getThread).mockResolvedValue({ data: { data: [message('a', { labelIds: ['INBOX'] }), message('b', { labelIds: ['INBOX'] })] } } as never);
+    render(<MemoryRouter><ThreadDetail threadId="thread-1" onThreadGone={onThreadGone} /></MemoryRouter>);
+
+    await screen.findByRole('toolbar');
+    await user.click(labelled('Archive')[0]);
+
+    expect(emailsApi.batchArchive).toHaveBeenCalledWith(['b']);
+    expect(onThreadGone).toHaveBeenCalled();
+  });
+
+  it('offers Move to Inbox once the thread is archived, and moves every archived message', async () => {
+    const user = userEvent.setup();
+    vi.mocked(emailsApi.getThread).mockResolvedValue({
+      data: { data: [message('a', { isArchived: true }), message('b', { isArchived: true })] },
+    } as never);
+    renderThread();
+
+    await screen.findByRole('toolbar');
+    await user.click(labelled('Move to Inbox')[0]);
+
+    expect(emailsApi.unarchive).toHaveBeenCalledTimes(2);
+    expect(emailsApi.batchArchive).not.toHaveBeenCalled();
+  });
+});
+
+describe('ThreadDetail — reading', () => {
+  it('folds the quoted history under a reply until asked', async () => {
+    const user = userEvent.setup();
+    const reply = message('a', { body: '<p>My answer</p><div class="gmail_quote">On Mon, Omar wrote: the old question</div>' });
+    vi.mocked(emailsApi.getThread).mockResolvedValue({ data: { data: [reply] } } as never);
+    vi.mocked(emailsApi.getMessage).mockResolvedValue({ data: { data: reply } } as never);
+    const { container } = renderThread();
+
+    const toggle = await screen.findByRole('button', { name: 'Show quoted history' });
+    const body = container.querySelector('.message-card__html')!;
+    expect(body.getAttribute('data-quotes')).toBe('hidden');
+    expect(body.querySelector('[data-mv-quoted]')?.textContent).toContain('the old question');
+
+    await user.click(toggle);
+    expect(body.getAttribute('data-quotes')).toBe('shown');
+    expect(screen.getByRole('button', { name: 'Hide quoted history' })).toBeInTheDocument();
+  });
+
+  it('sanitises the folded body, so nothing re-parses its output', async () => {
+    const sanitize = vi.spyOn(DOMPurify, 'sanitize');
+    const reply = message('a', {
+      body: '<p>My answer</p><div class="gmail_quote">On Mon: <img src="x" onerror="alert(1)"></div>',
+    });
+    vi.mocked(emailsApi.getThread).mockResolvedValue({ data: { data: [reply] } } as never);
+    vi.mocked(emailsApi.getMessage).mockResolvedValue({ data: { data: reply } } as never);
+    const { container } = renderThread();
+
+    await screen.findByRole('button', { name: 'Show quoted history' });
+    const call = sanitize.mock.calls.findIndex(([html]) => String(html).includes('My answer'));
+    expect(call).toBeGreaterThanOrEqual(0);
+    // It is handed the folded markup — folding came first…
+    expect(String(sanitize.mock.calls[call][0])).toContain(QUOTED_ATTR);
+    // …and what it returns is what the page renders.
+    expect(container.querySelector('.message-card__html')!.innerHTML).toBe(String(sanitize.mock.results[call].value));
+    expect(container.querySelector('[onerror]')).toBeNull();
+    sanitize.mockRestore();
+  });
+
+  it('hides the middle of a long thread behind one line', async () => {
+    const user = userEvent.setup();
+    const eight = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map((id) => message(id));
+    vi.mocked(emailsApi.getThread).mockResolvedValue({ data: { data: eight } } as never);
+    renderThread();
+
+    const gap = await screen.findByRole('button', { name: '5 earlier messages' });
+    expect(screen.getAllByRole('button', { name: /message from Sender/i })).toHaveLength(3);
+
+    await user.click(gap);
+    expect(screen.getAllByRole('button', { name: /message from Sender/i })).toHaveLength(8);
+  });
+});
+
+describe('threadRows', () => {
+  const m = (id: string, isRead = true) => message(id, { isRead }) as never;
+  it('keeps the first, the last two, and anything open or unread', () => {
+    const rows = threadRows([m('1'), m('2'), m('3', false), m('4'), m('5'), m('6'), m('7')], new Set(['5']), false);
+    expect(rows.map((r) => (r.kind === 'gap' ? `gap${r.count}` : (r.msg as { id: string }).id))).toEqual(['1', 'gap1', '3', 'gap1', '5', '6', '7']);
+  });
+
+  it('shows everything for five messages or fewer, or when asked', () => {
+    const five = ['1', '2', '3', '4', '5'].map((id) => m(id));
+    expect(threadRows(five, new Set(), false)).toHaveLength(5);
+    expect(threadRows([...five, m('6')], new Set(), true)).toHaveLength(6);
+  });
+});
+
+describe('recipientsLine', () => {
+  const own = new Set(['me@powerm.ma']);
+  it('names you as "me", people by name, and counts the rest', () => {
+    expect(recipientsLine({ to: ['me@powerm.ma', 'Sara Alami <sara@awb.ma>'], cc: ['a@x.ma', 'b@x.ma'] }, own)).toBe('to me, Sara Alami and 2 others');
+    expect(recipientsLine({ to: ['omar@bkam.ma'], cc: [] }, own)).toBe('to omar@bkam.ma');
+    expect(recipientsLine({ to: [], cc: [] }, own)).toBe('');
   });
 });
