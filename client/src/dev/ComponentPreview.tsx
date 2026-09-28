@@ -371,7 +371,7 @@ export function ComponentPreview() {
           {screen === 'thread' && (
             // The reader in the panel the Mail page uses, transform and all —
             // the containing block that misplaced every tooltip.
-            <SidePanel open onRequestClose={() => setScreen('empty')} title="RE: Projet Migration // Fichier PEP XML" size="lg" className="mail-page__side-panel">
+            <SidePanel selectorPrimaryFocus=".thread-detail" open onRequestClose={() => setScreen('empty')} title="RE: Projet Migration // Fichier PEP XML" size="lg" className="mail-page__side-panel">
               <ThreadDetail threadId="preview-thread" />
             </SidePanel>
           )}

@@ -346,7 +346,7 @@ export function ContactDetailPage() {
         onSaved={fetchData}
       />
 
-      <SidePanel
+      <SidePanel selectorPrimaryFocus=".thread-detail"
         open={!!selectedThread}
         onRequestClose={() => setSelectedThread(null)}
         title={decodeEntities(selectedThread?.subject) || 'Thread'}

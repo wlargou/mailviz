@@ -813,6 +813,11 @@
   display: flex;
   flex-direction: column;
   gap: $spacing-04;
+
+  // It takes focus when the panel opens, as a starting point, not a control.
+  &:focus {
+    outline: none;
+  }
 }
 
 // One toolbar for the conversation, pinned while the messages scroll.

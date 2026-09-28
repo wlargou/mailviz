@@ -385,7 +385,7 @@ export function ThreadDetail({ threadId, onEmailAction, onThreadGone, onLoaded }
 
   if (loading && messages.length === 0) {
     return (
-      <div style={{ padding: '1rem' }}>
+      <div className="thread-detail" tabIndex={-1} style={{ padding: '1rem' }}>
         <SkeletonText heading width="60%" />
         <SkeletonText paragraph lineCount={4} />
       </div>
@@ -402,7 +402,10 @@ export function ThreadDetail({ threadId, onEmailAction, onThreadGone, onLoaded }
   const canReplyAll = latestReplyAll.to.length + latestReplyAll.cc.length > 1;
 
   return (
-    <div className="thread-detail" ref={rootRef}>
+    // Focusable, so a host SidePanel can land focus here
+    // (selectorPrimaryFocus=".thread-detail") instead of on its close
+    // button — whose tooltip then sat open over the header.
+    <div className="thread-detail" ref={rootRef} tabIndex={-1}>
       <div className="thread-toolbar" role="toolbar" aria-label="Conversation actions">
         <IconButton kind="ghost" size="sm" autoAlign align="bottom" label={inInbox ? 'Archive' : 'Move to Inbox'} disabled={busy} onClick={archiveOrRestore}>
           {inInbox ? <Archive /> : <Undo />}

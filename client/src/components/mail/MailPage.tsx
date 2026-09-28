@@ -1198,7 +1198,7 @@ export function MailPage() {
         )}
       </div>
 
-      <SidePanel
+      <SidePanel selectorPrimaryFocus=".thread-detail"
         open={!!selectedThread}
         onRequestClose={() => setSelectedThread(null)}
         title={decodeEntities(selectedThreadData?.latestEmail.subject ?? selectedOwed?.subject) || loadedSubject || 'Thread'}
