@@ -1,0 +1,111 @@
+@use '@carbon/react/scss/type' as type;
+@use '@carbon/react/scss/spacing' as *;
+
+// ⌘K command palette. Above SidePanels (8000) and Carbon modals (9000).
+.palette-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9100;
+  background: var(--cds-overlay);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 12vh $spacing-05 0;
+}
+
+.palette {
+  width: min(40rem, 100%);
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--cds-layer-01);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 40%);
+}
+
+.palette__input {
+  position: relative;
+  border-bottom: 1px solid var(--cds-border-subtle);
+
+  .cds--search-input {
+    border-bottom: 0;
+  }
+}
+
+.palette__loading {
+  position: absolute;
+  right: 3rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: auto;
+}
+
+.palette__list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 $spacing-03;
+  overflow-y: auto;
+}
+
+.palette__group {
+  @include type.type-style('label-01');
+  color: var(--cds-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.32px;
+  padding: $spacing-04 $spacing-05 $spacing-02;
+}
+
+.palette__item {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: $spacing-04;
+  padding: $spacing-03 $spacing-05;
+  cursor: pointer;
+  color: var(--cds-text-primary);
+}
+
+.palette__item--active {
+  background: var(--cds-layer-selected-01);
+  box-shadow: inset 3px 0 0 var(--cds-interactive);
+}
+
+.palette__label {
+  @include type.type-style('body-compact-01');
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette__hint {
+  @include type.type-style('label-01');
+  color: var(--cds-text-secondary);
+  flex: none;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette__empty {
+  @include type.type-style('body-compact-01');
+  color: var(--cds-text-secondary);
+  padding: $spacing-05;
+}
+
+.palette__footer {
+  @include type.type-style('label-01');
+  color: var(--cds-text-secondary);
+  display: flex;
+  gap: $spacing-02;
+  align-items: center;
+  padding: $spacing-03 $spacing-05;
+  border-top: 1px solid var(--cds-border-subtle);
+
+  kbd {
+    @include type.type-style('code-01');
+    padding: 0 $spacing-02;
+    border: 1px solid var(--cds-border-subtle);
+    margin-left: $spacing-02;
+  }
+}

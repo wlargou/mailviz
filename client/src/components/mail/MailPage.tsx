@@ -102,7 +102,8 @@ export function MailPage() {
   const [selectedThread, setSelectedThread] = useState<string | null>(
     () => searchParams.get('thread')
   );
-  const [composeOpen, setComposeOpen] = useState(false);
+  // `?compose=1` opens a new message — the command palette's "New email".
+  const [composeOpen, setComposeOpen] = useState(() => searchParams.get('compose') === '1');
   const [composeMode, setComposeMode] = useState<ComposeMode>('new');
   const [composeDraft, setComposeDraft] = useState<DraftDetail | null>(null);
   const [drafts, setDrafts] = useState<DraftListItem[]>([]);

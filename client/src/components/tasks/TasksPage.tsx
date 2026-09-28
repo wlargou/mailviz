@@ -55,6 +55,9 @@ export function TasksPage() {
     // comment or a mention lands on the thing it is about.
     const task = searchParams.get('task');
     if (task) setEditTaskId(task);
+    // `?new=1` opens the form — the palette's "New task", with `customer`
+    // for "New task for …".
+    if (searchParams.get('new') === '1') setCreateOpen(true);
   }, [searchParams, setFilter]);
 
   useEffect(() => {
@@ -151,6 +154,7 @@ export function TasksPage() {
       <ApplyTemplateModal open={applyOpen} onClose={() => setApplyOpen(false)} />
 
       <TaskCreateModal
+        initialCustomerId={searchParams.get('customer')}
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         onCreated={() => {

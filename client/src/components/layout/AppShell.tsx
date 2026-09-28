@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom';
 import { Theme } from '@carbon/react';
 import { AppHeader } from './AppHeader';
 import { AppSideNav } from './AppSideNav';
+import { CommandPalette } from './CommandPalette';
 import { OnboardingGate } from '../onboarding/OnboardingGate';
 import { NotificationContainer } from '../shared/NotificationContainer';
 import { useUIStore } from '../../store/uiStore';
@@ -64,6 +65,7 @@ export function AppShell() {
           </main>
         </div>
         <NotificationContainer />
+        <CommandPalette />
         {/* Renders nothing for an account that has already been through setup. */}
         <OnboardingGate />
       </div>

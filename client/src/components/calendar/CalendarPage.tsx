@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { SkeletonText } from '@carbon/react';
 import { useCalendarStore } from '../../store/calendarStore';
 import { calendarApi } from '../../api/calendar';
@@ -17,7 +18,9 @@ export function CalendarPage() {
   const { viewMode, fetchEvents, fetchGoogleStatus, syncing, goToDay, loading } = useCalendarStore();
   const addNotification = useUIStore((s) => s.addNotification);
 
-  const [createOpen, setCreateOpen] = useState(false);
+  const [urlParams] = useSearchParams();
+  // `?new=1` opens the form — the command palette's "New event".
+  const [createOpen, setCreateOpen] = useState(() => urlParams.get('new') === '1');
   const [editEvent, setEditEvent] = useState<CalendarEvent | null>(null);
   const [detailEvent, setDetailEvent] = useState<CalendarEvent | null>(null);
   const [initialDate, setInitialDate] = useState<Date | null>(null);
