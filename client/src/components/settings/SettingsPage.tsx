@@ -668,6 +668,9 @@ export function SettingsPage() {
               <Tab>Mail</Tab>
               <Tab>Workspace</Tab>
               <Tab>Getting started</Tab>
+              {/* Last and on its own: it used to be the largest thing on the
+                  tab Settings opens on. */}
+              <Tab>Danger zone</Tab>
             </TabList>
             <TabPanels>
           <TabPanel>
@@ -803,31 +806,6 @@ export function SettingsPage() {
             </Stack>
           </Tile>
 
-          <Tile className="settings-tile settings-tile--danger">
-            <Stack gap={5}>
-              <div className="settings-tile__header">
-                <div className="settings-tile__icon settings-tile__icon--danger">
-                  <TrashCan size={20} />
-                </div>
-                <div>
-                  <h3 className="settings-tile__title">Delete account</h3>
-                  <p className="settings-tile__desc">
-                    Permanently remove this account and everything in it.
-                  </p>
-                </div>
-              </div>
-              <p className="settings-tile__desc">
-                This removes your synced mail and calendar, your companies and contacts, and
-                everything you have created here — tasks, deals, labels, templates and settings.
-                It cannot be undone, and there is no export.
-              </p>
-              <div>
-                <Button kind="danger--tertiary" size="md" onClick={openDeleteAccount}>
-                  Delete account
-                </Button>
-              </div>
-            </Stack>
-          </Tile>
             </Stack>
           </TabPanel>
           <TabPanel>
@@ -1041,6 +1019,35 @@ export function SettingsPage() {
           <TabPanel>
             <Stack gap={7}>
           <OnboardingSettings />
+            </Stack>
+          </TabPanel>
+          <TabPanel>
+            <Stack gap={7}>
+          <Tile className="settings-tile settings-tile--danger">
+            <Stack gap={5}>
+              <div className="settings-tile__header">
+                <div className="settings-tile__icon settings-tile__icon--danger">
+                  <TrashCan size={20} />
+                </div>
+                <div>
+                  <h3 className="settings-tile__title">Delete account</h3>
+                  <p className="settings-tile__desc">
+                    Permanently remove this account and everything in it.
+                  </p>
+                </div>
+              </div>
+              <p className="settings-tile__desc">
+                This removes your synced mail and calendar, your companies and contacts, and
+                everything you have created here — tasks, deals, labels, templates and settings.
+                It cannot be undone, and there is no export.
+              </p>
+              <div>
+                <Button kind="danger--tertiary" size="md" onClick={openDeleteAccount}>
+                  Delete account
+                </Button>
+              </div>
+            </Stack>
+          </Tile>
             </Stack>
           </TabPanel>
             </TabPanels>
