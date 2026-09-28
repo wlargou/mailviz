@@ -60,7 +60,8 @@ const headers = [
   { key: 'actions', header: '' },
 ];
 
-export function DealsPage() {
+/** `embedded`: inside Pursuits, which carries the page header. */
+export function DealsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
   const [meta, setMeta] = useState<PaginationMeta | null>(null);
@@ -172,12 +173,14 @@ export function DealsPage() {
 
   return (
     <div>
-      <div className="page-header">
-        <div className="page-header__info">
-          <h1>Deal Registration</h1>
-          <p className="page-header__subtitle">Partner deal registrations, and when each one lapses</p>
+      {!embedded && (
+        <div className="page-header">
+          <div className="page-header__info">
+            <h1>Deal Registration</h1>
+            <p className="page-header__subtitle">Partner deal registrations, and when each one lapses</p>
+          </div>
         </div>
-      </div>
+      )}
 
           {loading && deals.length === 0 && !search ? (
             <DataTableSkeleton headers={headers} rowCount={5} />

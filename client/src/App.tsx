@@ -1,11 +1,11 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppShell } from './components/layout/AppShell';
 import { LoginPage } from './components/auth/LoginPage';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { DashboardPage } from './components/dashboard/DashboardPage';
 import { TasksPage } from './components/tasks/TasksPage';
-import { MyDayPage } from './components/tasks/MyDayPage';
+import { TodayPage } from './components/today/TodayPage';
 import { CustomersPage } from './components/customers/CustomersPage';
 import { CustomerDetailPage } from './components/customers/CustomerDetailPage';
 import { ContactsPage } from './components/contacts/ContactsPage';
@@ -16,8 +16,7 @@ import { MailPage } from './components/mail/MailPage';
 import { ReviewPage } from './components/mail/review/ReviewPage';
 import { SettingsPage } from './components/settings/SettingsPage';
 import { NotFoundPage } from './components/shared/NotFoundPage';
-import { DealsPage } from './components/deals/DealsPage';
-import { RfpsPage } from './components/rfps/RfpsPage';
+import { PursuitsPage, PursuitsRedirect } from './components/pursuits/PursuitsPage';
 import { RfpDetailPage } from './components/rfps/RfpDetailPage';
 import { ActivityLogPage } from './components/audit/ActivityLogPage';
 
@@ -72,17 +71,20 @@ export function App() {
         )}
         <Route element={<ProtectedRoute />}>
           <Route element={<AppShell />}>
-            <Route path="/" element={<DashboardPage />} />
+            <Route path="/" element={<TodayPage />} />
+            {/* Today replaced My Day and the Dashboard; the charts live on as Insights. */}
+            <Route path="/my-day" element={<Navigate to="/" replace />} />
+            <Route path="/insights" element={<DashboardPage />} />
             <Route path="/tasks" element={<TasksPage />} />
-            <Route path="/my-day" element={<MyDayPage />} />
             <Route path="/customers" element={<CustomersPage />} />
             <Route path="/customers/:id" element={<CustomerDetailPage />} />
             <Route path="/contacts" element={<ContactsPage />} />
             {/* Above `/contacts/:id` — otherwise "duplicates" reads as an id. */}
             <Route path="/contacts/duplicates" element={<ContactDuplicatesPage />} />
             <Route path="/contacts/:id" element={<ContactDetailPage />} />
-            <Route path="/deals" element={<DealsPage />} />
-            <Route path="/rfps" element={<RfpsPage />} />
+            <Route path="/pursuits" element={<PursuitsPage />} />
+            <Route path="/deals" element={<PursuitsRedirect tab="deals" />} />
+            <Route path="/rfps" element={<PursuitsRedirect tab="tenders" />} />
             <Route path="/rfps/:id" element={<RfpDetailPage />} />
             <Route path="/calendar" element={<CalendarPage />} />
             <Route path="/mail" element={<MailPage />} />

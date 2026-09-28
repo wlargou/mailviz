@@ -104,7 +104,8 @@ const goeItems = [
   { id: 'false', text: 'Private only' },
 ];
 
-export function RfpsPage() {
+/** `embedded`: inside Pursuits, which carries the page header. */
+export function RfpsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const [rfps, setRfps] = useState<Rfp[]>([]);
   const [loading, setLoading] = useState(true);
   const [meta, setMeta] = useState<PaginationMeta | null>(null);
@@ -122,7 +123,8 @@ export function RfpsPage() {
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
   const [selectedFormat, setSelectedFormat] = useState<string | null>(null);
   const [selectedGoe, setSelectedGoe] = useState<string | null>(null);
-  const [panelOpen, setPanelOpen] = useState(false);
+  // `?new=1` opens the form straight away — Today's Create menu lands here.
+  const [panelOpen, setPanelOpen] = useState(() => urlParams.get('new') === '1');
   const [editRfp, setEditRfp] = useState<Rfp | null>(null);
   const [deleteRfp, setDeleteRfp] = useState<Rfp | null>(null);
   /**
@@ -210,12 +212,14 @@ export function RfpsPage() {
 
   return (
     <div>
-      <div className="page-header">
-        <div className="page-header__info">
-          <h1>RFPs</h1>
-          <p className="page-header__subtitle">Tenders in flight, their deadlines and their dossiers</p>
+      {!embedded && (
+        <div className="page-header">
+          <div className="page-header__info">
+            <h1>RFPs</h1>
+            <p className="page-header__subtitle">Tenders in flight, their deadlines and their dossiers</p>
+          </div>
         </div>
-      </div>
+      )}
 
       <TableContainer>
         {loading ? (

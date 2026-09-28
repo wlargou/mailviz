@@ -9,9 +9,11 @@ interface KanbanColumnProps {
   color: string;
   tasks: Task[];
   onCardClick: (taskId: string) => void;
+  /** A line under the header — the Done column says it shows the last week. */
+  caption?: string;
 }
 
-export function KanbanColumn({ status, label, color, tasks, onCardClick }: KanbanColumnProps) {
+export function KanbanColumn({ status, label, color, tasks, onCardClick, caption }: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
 
   return (
@@ -27,6 +29,7 @@ export function KanbanColumn({ status, label, color, tasks, onCardClick }: Kanba
         <h4>{label}</h4>
         <span className="column-count">{tasks.length}</span>
       </div>
+      {caption && <p className="kanban-column__caption">{caption}</p>}
       <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
         <div className="kanban-cards">
           {tasks.map((task) => (

@@ -1,0 +1,284 @@
+@use '@carbon/react/scss/type' as type;
+@use '@carbon/react/scss/spacing' as *;
+
+// Today — the home page. See components/today/TodayPage.
+
+.today-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: $spacing-05;
+  align-items: start;
+
+  @media (max-width: 66rem) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.today-main,
+.today-side {
+  display: grid;
+  gap: $spacing-05;
+  align-content: start;
+  min-width: 0;
+}
+
+.today-card {
+  background: var(--cds-layer-01);
+  padding: $spacing-05;
+  min-width: 0;
+}
+
+.today-card__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: $spacing-03;
+  margin-bottom: $spacing-03;
+
+  .today-card__label {
+    margin-bottom: 0;
+  }
+}
+
+.today-card__label {
+  @include type.type-style('label-01');
+  display: block;
+  color: var(--cds-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.32px;
+  margin: 0 0 $spacing-04;
+}
+
+.today-muted {
+  @include type.type-style('body-compact-01');
+  color: var(--cds-text-secondary);
+  margin: 0;
+}
+
+.today-time {
+  @include type.type-style('code-01');
+  color: var(--cds-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.today-link {
+  @include type.type-style('body-compact-01');
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--cds-text-primary);
+  text-align: start;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--cds-focus);
+    outline-offset: 1px;
+  }
+
+  &:disabled {
+    cursor: default;
+    text-decoration: none;
+  }
+}
+
+.today-link--strong {
+  font-weight: 600;
+}
+
+.today-plain {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: $spacing-03;
+  @include type.type-style('body-compact-01');
+}
+
+// ── Next up ─────────────────────────────────────────────
+.today-next {
+  background: var(--cds-layer-01);
+  border-left: 3px solid var(--cds-interactive);
+  padding: $spacing-05;
+  display: grid;
+  gap: $spacing-03;
+
+  .today-card__label {
+    margin: 0;
+  }
+}
+
+.today-next__title {
+  @include type.type-style('heading-03');
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--cds-text-primary);
+  text-align: start;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.today-next__meta {
+  @include type.type-style('body-compact-01');
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-02 $spacing-04;
+  color: var(--cds-text-secondary);
+}
+
+.today-prep {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: $spacing-05;
+  border-top: 1px solid var(--cds-border-subtle);
+  padding-top: $spacing-04;
+  margin-top: $spacing-02;
+}
+
+.today-prep__head {
+  @include type.type-style('heading-compact-01');
+  margin: 0 0 $spacing-03;
+}
+
+// ── Timeline ────────────────────────────────────────────
+.today-timeline,
+.today-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.today-row,
+.today-list > li {
+  display: grid;
+  grid-template-columns: 3.5rem 0.75rem minmax(0, 1fr) auto;
+  gap: $spacing-03;
+  align-items: start;
+  padding: $spacing-03 0;
+  border-bottom: 1px solid var(--cds-border-subtle);
+
+  &:last-child {
+    border-bottom: 0;
+  }
+}
+
+.today-list > li {
+  grid-template-columns: 0.75rem minmax(0, 1fr) auto;
+}
+
+.today-list > li.today-stake {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.today-row--past {
+  opacity: 0.55;
+}
+
+// The red rule that marks "now" between the past and the rest of the day.
+.today-now {
+  height: 0;
+  border-top: 2px solid var(--cds-support-error);
+  margin: -1px 0 0;
+}
+
+.today-what {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+
+  small {
+    @include type.type-style('label-01');
+    color: var(--cds-text-secondary);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: $spacing-02;
+  }
+}
+
+.today-what--task {
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: $spacing-03;
+  align-items: start;
+
+  > span {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+}
+
+// Shape carries the kind as well as colour: ● meeting, ▲ deadline, ■ task, ◆ mail.
+.today-shape {
+  width: 0.625rem;
+  height: 0.625rem;
+  margin-top: 0.3rem;
+}
+
+.today-shape--meeting {
+  background: var(--cds-support-info);
+  border-radius: 50%;
+}
+
+.today-shape--deadline {
+  background: var(--cds-support-error);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.today-shape--task {
+  background: var(--cds-support-warning);
+}
+
+.today-shape--mail {
+  background: var(--cds-tag-color-purple);
+  transform: rotate(45deg) scale(0.8);
+}
+
+.today-stake__when {
+  white-space: nowrap;
+}
+
+// ── Wrap-up ─────────────────────────────────────────────
+.today-wrapup {
+  border-left: 3px solid var(--cds-support-success);
+}
+
+.today-wrapup__cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: $spacing-05;
+}
+
+.today-wrapup__head {
+  @include type.type-style('heading-compact-01');
+  margin: 0 0 $spacing-03;
+}
+
+.today-wrapup__slipped {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: $spacing-03;
+}
+
+// Finish a task in place — a native checkbox (see CLAUDE.md on Carbon's).
+.today-check {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  margin: 0.15rem 0 0;
+  accent-color: var(--cds-interactive);
+  cursor: pointer;
+
+  &:disabled {
+    cursor: not-allowed;
+  }
+}
