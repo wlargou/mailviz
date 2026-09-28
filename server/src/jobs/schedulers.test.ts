@@ -566,6 +566,20 @@ describe('notificationScheduler', () => {
     expect(mocks.createIfNotExists.mock.calls.some(([userId]) => userId === bob.id)).toBe(false);
   });
 
+  it('takes down "Starting soon" for a meeting that has started, on each tick', async () => {
+    const alice = await createConnectedUser();
+    const started = await prisma.calendarEvent.create({
+      data: { userId: alice.id, title: 'Weekly', startTime: new Date(Date.now() - 30 * 60_000), endTime: new Date(Date.now() + 30 * 60_000) },
+    });
+    const notice = await prisma.notification.create({
+      data: { userId: alice.id, type: 'EVENT_STARTING', title: 'Starting soon: Weekly', entityType: 'event', entityId: started.id },
+    });
+
+    await captureTick(startNotificationScheduler)();
+
+    expect((await prisma.notification.findUniqueOrThrow({ where: { id: notice.id } })).isDismissed).toBe(true);
+  });
+
   it('skips accounts that have not connected Google', async () => {
     // The scheduler walks googleAuth rows, not users. A user who never
     // connected has no mail or calendar to be reminded about.

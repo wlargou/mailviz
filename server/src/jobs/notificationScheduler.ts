@@ -3,6 +3,38 @@ import { terminalStatusNames, notTerminal } from '../utils/taskStatus.js';
 import { prisma } from '../lib/prisma.js';
 import { notificationService } from '../services/notificationService.js';
 
+/**
+ * Take down "Starting soon" once the meeting has started.
+ *
+ * They were raised fifteen minutes ahead and then left for ever, so the bell
+ * still said "Starting soon" about meetings three days gone and its count sat
+ * at 99+. Dismissed rather than deleted — the same state a user's own dismissal
+ * leaves — and an event that no longer exists counts as started.
+ */
+export async function expireStartedEventNotifications(userId: string, now = new Date()) {
+  const live = await prisma.notification.findMany({
+    where: { userId, type: 'EVENT_STARTING', isDismissed: false },
+    select: { id: true, entityId: true },
+  });
+  if (live.length === 0) return 0;
+  const eventIds = live.map((n) => n.entityId).filter((id): id is string => Boolean(id));
+  const stillAhead = new Set(
+    (
+      await prisma.calendarEvent.findMany({
+        where: { userId, id: { in: eventIds }, startTime: { gt: now } },
+        select: { id: true },
+      })
+    ).map((e) => e.id)
+  );
+  const expired = live.filter((n) => !n.entityId || !stillAhead.has(n.entityId)).map((n) => n.id);
+  if (expired.length === 0) return 0;
+  const { count } = await prisma.notification.updateMany({
+    where: { id: { in: expired }, userId },
+    data: { isDismissed: true, dismissedAt: now },
+  });
+  return count;
+}
+
 let isRunning = false;
 let task: ReturnType<typeof cron.schedule> | null = null;
 
@@ -108,6 +140,9 @@ async function runNotificationCheck() {
             entityId: e.id,
           });
         }
+
+        // c'. …and take them down once the meeting has started.
+        await expireStartedEventNotifications(userId, now);
 
         // d. Deals expiring within 3 days
         const expiringDeals = await prisma.deal.findMany({
