@@ -109,6 +109,23 @@ describe('deadlineTone', () => {
 });
 
 describe('RfpsPage', () => {
+  it('arrives from global search with the query in place, across every tender', async () => {
+    // "View all" from the header lands here; the register's usual Open scope
+    // would hide last year's tender the search was after.
+    serve([makeRfp()]);
+    render(
+      <MemoryRouter initialEntries={['/rfps?search=BKAM']}>
+        <RfpsPage />
+      </MemoryRouter>
+    );
+
+    await screen.findByText('70/AOO/BKAM/2026');
+    const params = vi.mocked(rfpsApi.getAll).mock.calls.at(-1)![0]!;
+    expect(params.search).toBe('BKAM');
+    expect(params.scope).toBeUndefined();
+    expect(screen.getByRole('searchbox')).toHaveValue('BKAM');
+  });
+
   it("opens a tender's page from its name", async () => {
     // The page is where the response is prepared; the edit panel only
     // changes what the tender is, so the name no longer opens it.

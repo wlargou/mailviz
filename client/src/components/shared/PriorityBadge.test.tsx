@@ -1,37 +1,26 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import fs from 'node:fs';
-import path from 'node:path';
-import { PriorityBadge } from './PriorityBadge';
+import { PRIORITY_COLOR, PriorityBadge } from './PriorityBadge';
 
 /**
  * High and Medium used to render the same yellow: `support-warning` and
- * `support-caution-minor` are both #f1c21b in g100. jsdom resolves no CSS
- * variables, so the colours are pinned where they are decided — in the
- * stylesheet — and the component is pinned to a class per priority.
+ * `support-caution-minor` are both #f1c21b in g100.
  */
-const scss = fs.readFileSync(path.resolve(__dirname, '../../styles/_base.scss'), 'utf8');
-
-function tokenFor(priority: string): string {
-  const block = scss.match(new RegExp(`\\.priority-dot--${priority}\\s*\\{([^}]*)\\}`))?.[1] ?? '';
-  return block.match(/var\((--cds-[a-z-]+)\)/)?.[1] ?? '';
-}
-
 describe('PriorityBadge', () => {
-  it('names the priority and marks it with its own class', () => {
+  it('names the priority and marks it with a shape class and its colour', () => {
     const { container } = render(<PriorityBadge priority="HIGH" />);
     expect(screen.getByText('High')).toBeInTheDocument();
-    expect(container.querySelector('.priority-dot--high')).not.toBeNull();
+    const dot = container.querySelector('.priority-dot--high') as HTMLElement;
+    expect(dot.style.getPropertyValue('--priority-color')).toBe(PRIORITY_COLOR.HIGH);
   });
 
   it('gives every priority a colour of its own', () => {
-    const tokens = ['urgent', 'high', 'medium', 'low'].map(tokenFor);
-    expect(tokens.every(Boolean)).toBe(true);
-    expect(new Set(tokens).size).toBe(4);
+    expect(new Set(Object.values(PRIORITY_COLOR)).size).toBe(4);
   });
 
-  it('never colours High with support-warning, the yellow Medium already uses in g100', () => {
-    expect(tokenFor('high')).not.toBe('--cds-support-warning');
-    expect(tokenFor('high')).not.toBe('--cds-support-caution-minor');
+  it('never colours High with a token that is the same yellow as Medium in g100', () => {
+    // support-warning and support-caution-minor are both yellow 30 there.
+    expect(PRIORITY_COLOR.HIGH).not.toContain('support-warning');
+    expect(PRIORITY_COLOR.HIGH).not.toContain('support-caution-minor');
   });
 });

@@ -129,6 +129,7 @@ describe('TaskEmails', () => {
           customers: [],
           contacts: [],
           deals: [],
+          rfps: [],
         },
       })
     );

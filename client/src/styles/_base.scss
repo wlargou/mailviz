@@ -347,8 +347,8 @@ body {
 
 // ─── PRIORITY ────────────────────────────────────
 // Colour and shape together (Carbon status-indicator pattern): urgent ▲,
-// high ◆, medium ●, low ○. High is caution-major (orange) — support-warning
-// and caution-minor are the same yellow in g100.
+// high ◆, medium ●, low ○. The colour comes from `PRIORITY_COLOR` in
+// PriorityBadge.tsx through --priority-color, where a test can see it.
 .priority-badge {
   display: inline-flex;
   align-items: center;
@@ -365,13 +365,13 @@ body {
   inline-size: 8px;
   block-size: 8px;
   border-radius: 50%;
+  background: var(--priority-color);
 }
 
 .priority-dot--urgent {
   inline-size: 10px;
   block-size: 9px;
   border-radius: 0;
-  background: var(--cds-support-error);
   clip-path: polygon(50% 0, 100% 100%, 0 100%);
 }
 
@@ -379,15 +379,10 @@ body {
   inline-size: 9px;
   block-size: 9px;
   border-radius: 0;
-  background: var(--cds-support-caution-major);
   clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
-}
-
-.priority-dot--medium {
-  background: var(--cds-support-caution-minor);
 }
 
 .priority-dot--low {
   background: transparent;
-  box-shadow: inset 0 0 0 1.5px var(--cds-support-info);
+  box-shadow: inset 0 0 0 1.5px var(--priority-color);
 }

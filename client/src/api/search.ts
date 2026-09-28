@@ -48,6 +48,14 @@ export interface SearchResults {
     partner: { name: string } | null;
     customer: { id: string; name: string } | null;
   }>;
+  rfps: Array<{
+    id: string;
+    name: string;
+    reference: string;
+    status: string;
+    deadlineAt: string;
+    customer: { id: string; name: string } | null;
+  }>;
 }
 
 export const searchApi = {

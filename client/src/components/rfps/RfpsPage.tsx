@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   DataTable,
   Table,
@@ -104,10 +104,14 @@ export function RfpsPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const { params: sortParams, headerProps } = useTableSort('deadlineAt', 'asc');
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [urlParams] = useSearchParams();
+  // Arriving from global search: seeded with the query, and across every
+  // tender — a search for last year's BKAM tender must not come back empty
+  // because the register hides finished ones by default.
+  const [search, setSearch] = useState(() => urlParams.get('search') || '');
+  const [debouncedSearch, setDebouncedSearch] = useState(() => urlParams.get('search') || '');
   // The register keeps every tender for ever, so it opens on what is live.
-  const [scope, setScope] = useState<string>('open');
+  const [scope, setScope] = useState<string>(() => (urlParams.get('search') ? '__all__' : 'open'));
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
   const [selectedFormat, setSelectedFormat] = useState<string | null>(null);
   const [selectedGoe, setSelectedGoe] = useState<string | null>(null);
