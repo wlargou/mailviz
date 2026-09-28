@@ -227,6 +227,21 @@ export const rfpCompositionService = {
     await unlinkAll(keys);
   },
 
+  /**
+   * Everyone who can open the tender — its owner, then whoever it is shared
+   * with. Who a piece can be assigned to. Readable by any of them, unlike the
+   * share list itself, which is the owner's.
+   */
+  async people(userId: string, rfpId: string) {
+    await assertAccess(userId, rfpId);
+    const person = { select: { id: true, name: true, email: true, avatarUrl: true } } as const;
+    const rfp = await prisma.rfp.findUniqueOrThrow({
+      where: { id: rfpId },
+      select: { user: person, shares: { select: { sharedWith: person }, orderBy: { createdAt: 'asc' } } },
+    });
+    return [rfp.user, ...rfp.shares.map((s) => s.sharedWith)];
+  },
+
   // ── Pieces ──────────────────────────────────────────────────────────────
 
   async createItem(userId: string, rfpId: string, folderId: string, data: { title: string }) {
@@ -243,10 +258,14 @@ export const rfpCompositionService = {
     userId: string,
     rfpId: string,
     itemId: string,
-    data: { title?: string; status?: RfpItemStatus; notes?: string | null }
+    data: { title?: string; status?: RfpItemStatus; notes?: string | null; assigneeId?: string | null; dueDate?: string | null }
   ) {
     await assertAccess(userId, rfpId);
     await itemOf(rfpId, itemId);
+    // Only someone who can open the tender can prepare a piece of it.
+    if (data.assigneeId && !(await canAccessRfp(rfpId, data.assigneeId))) {
+      throw new AppError(400, 'ASSIGNEE_WITHOUT_ACCESS', 'Assign the piece to the owner or someone the RFP is shared with');
+    }
     return prisma.$transaction(async (tx) => {
       // With verifiers, Ready is theirs to give; see rfpVerificationService.
       if (data.status === 'READY') await assertReadyAllowed(tx, rfpId, itemId);
@@ -256,6 +275,8 @@ export const rfpCompositionService = {
           ...(data.title !== undefined ? { title: data.title } : {}),
           ...(data.status !== undefined ? { status: data.status } : {}),
           ...(data.notes !== undefined ? { notes: data.notes || null } : {}),
+          ...(data.assigneeId !== undefined ? { assigneeId: data.assigneeId } : {}),
+          ...(data.dueDate !== undefined ? { dueDate: data.dueDate ? new Date(data.dueDate) : null } : {}),
         },
         include: { documents: true },
       });

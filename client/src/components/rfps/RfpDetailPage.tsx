@@ -1,8 +1,23 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { isAxiosError } from 'axios';
-import { Button, Grid, Column, ProgressBar, SkeletonText, Tabs, TabList, Tab, TabPanels, TabPanel, Tag, Tile } from '@carbon/react';
-import { Edit, Launch, Share, TrashCan, UserMultiple } from '@carbon/icons-react';
+import {
+  Button,
+  Grid,
+  Column,
+  OverflowMenu,
+  OverflowMenuItem,
+  ProgressBar,
+  SkeletonText,
+  Tabs,
+  TabList,
+  Tab,
+  TabPanels,
+  TabPanel,
+  Tag,
+  Tile,
+} from '@carbon/react';
+import { Edit, Launch, Share, UserMultiple } from '@carbon/icons-react';
 import { format } from 'date-fns';
 import { PageHeader } from '../shared/PageHeader';
 import { EmptyState } from '../shared/EmptyState';
@@ -16,6 +31,7 @@ import { RfpResponseSection } from './RfpResponseSection';
 import { RfpVerifiersModal } from './RfpVerifiersModal';
 import { PersonAvatar } from './RfpPeople';
 import { deadlineTone } from './RfpsPage';
+import { RiskTag, TimeUsed } from './RfpRisk';
 import { rfpsApi } from '../../api/rfps';
 import { useUIStore } from '../../store/uiStore';
 import { useAuthStore } from '../../store/authStore';
@@ -23,6 +39,7 @@ import {
   formatBudget,
   personName,
   readiness,
+  tenderRisk,
   verificationStates,
   RFP_STATUS_LABELS,
   RFP_STATUS_TAG_TYPE,
@@ -120,6 +137,8 @@ export function RfpDetailPage() {
   const tone = deadlineTone(rfp.deadlineAt, rfp.status);
   const allItems = rfp.folders.flatMap((f) => f.items);
   const { ready, total } = readiness(allItems);
+  const risk = tenderRisk(rfp, { ready, total });
+  const preparing = !RFP_TERMINAL_STATUSES.includes(rfp.status) && rfp.status !== 'SUBMITTED';
   const fileCount = allItems.reduce((n, i) => n + i.documents.length, 0);
   // What is waiting on the signed-in user: pieces with a file whose current
   // version they have not decided on.
@@ -148,13 +167,13 @@ export function RfpDetailPage() {
         subtitle={[rfp.reference, rfp.customer?.name].filter(Boolean).join(' · ')}
         breadcrumbs={[{ label: 'RFPs', href: '/rfps' }]}
         actions={
-          <>
-            <Button kind="tertiary" size="md" renderIcon={Edit} onClick={() => setEditOpen(true)}>
-              Edit
-            </Button>
+          // One primary action, one secondary, and Delete out of reach of a
+          // stray click — three buttons in three styles said nothing about
+          // which mattered.
+          <div className="rfp-detail__actions">
             {isOwner && (
               <Button
-                kind="ghost"
+                kind="tertiary"
                 size="md"
                 renderIcon={Share}
                 onClick={async () => {
@@ -165,19 +184,28 @@ export function RfpDetailPage() {
                 Share
               </Button>
             )}
+            <Button kind="primary" size="md" renderIcon={Edit} onClick={() => setEditOpen(true)}>
+              Edit
+            </Button>
             {isOwner && (
-              <Button kind="danger--ghost" size="md" hasIconOnly renderIcon={TrashCan} iconDescription="Delete RFP" onClick={() => setDeleteOpen(true)} />
+              <OverflowMenu flipped size="md" iconDescription="More actions">
+                <OverflowMenuItem itemText="Delete RFP" isDelete onClick={() => setDeleteOpen(true)} />
+              </OverflowMenu>
             )}
-          </>
+          </div>
         }
       />
 
       <div className="rfp-detail__tags">
         <Tag type={RFP_STATUS_TAG_TYPE[rfp.status]} size="md">{RFP_STATUS_LABELS[rfp.status]}</Tag>
         {rfp.isGoe && <Tag type="teal" size="md">GOE</Tag>}
+        {risk.atRisk && <RiskTag risk={risk} size="md" />}
         <SharedBadge ownerId={rfp.userId} />
       </div>
 
+      {/* Only when there is someone to verify: on a tender nobody else can
+          open, "Verifiers: None" read as a warning about nothing. */}
+      {(rfp.verifiers.length > 0 || (rfp._count?.shares ?? 0) > 0) && (
       <div className="rfp-detail__verifiers">
         <span className="rfp-detail__verifiers-label">Verifiers</span>
         {rfp.verifiers.length === 0 ? (
@@ -196,6 +224,7 @@ export function RfpDetailPage() {
           </Button>
         )}
       </div>
+      )}
 
       <div className="rfp-detail__summary">
         <Tile className="rfp-detail__tile">
@@ -214,6 +243,13 @@ export function RfpDetailPage() {
               ? format(new Date(rfp.deadlineAt), 'EEEE')
               : `${timeLeft(rfp.deadlineAt)} · ${format(new Date(rfp.deadlineAt), 'EEEE')}`}
           </p>
+          {rfp.questionsDeadlineAt && (
+            <p className="rfp-detail__tile-hint rfp-detail__questions">
+              Questions close {shortDate(rfp.questionsDeadlineAt, { dayFirst: true })}{' '}
+              {format(new Date(rfp.questionsDeadlineAt), 'HH:mm')}
+              {!RFP_TERMINAL_STATUSES.includes(rfp.status) && ` · ${timeLeft(rfp.questionsDeadlineAt)}`}
+            </p>
+          )}
         </Tile>
 
         <Tile className="rfp-detail__tile">
@@ -238,15 +274,26 @@ export function RfpDetailPage() {
 
         <Tile className="rfp-detail__tile">
           <p className="rfp-detail__tile-label">Preparation</p>
-          <ProgressBar
-            label="Pieces ready"
-            hideLabel
-            value={ready}
-            max={Math.max(total, 1)}
-            size="big"
-            status={total > 0 && ready === total ? 'finished' : 'active'}
-            helperText={total === 0 ? 'Nothing to prepare yet' : `${ready} of ${total} pieces ready`}
-          />
+          {/* While it is being prepared, readiness is shown against the time
+              used — the at-risk rule made visible. Otherwise a plain bar. */}
+          {preparing && total > 0 ? (
+            <>
+              <TimeUsed risk={risk} />
+              <p className="rfp-detail__tile-hint">
+                {ready} of {total} pieces ready
+              </p>
+            </>
+          ) : (
+            <ProgressBar
+              label="Pieces ready"
+              hideLabel
+              value={ready}
+              max={Math.max(total, 1)}
+              size="big"
+              status={total > 0 && ready === total ? 'finished' : 'active'}
+              helperText={total === 0 ? 'Nothing to prepare yet' : `${ready} of ${total} pieces ready`}
+            />
+          )}
           {awaitingMe > 0 && (
             <p className="rfp-detail__tile-hint rfp-detail__awaiting">
               {awaitingMe} awaiting your verification

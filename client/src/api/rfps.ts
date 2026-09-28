@@ -14,6 +14,7 @@ import type {
   RfpItemStatus,
   RfpItemVerification,
   RfpLot,
+  RfpPerson,
   RfpVerificationDecision,
   RfpVerifier,
   UpdateRfpInput,
@@ -58,7 +59,15 @@ export const rfpsApi = {
   createItem(rfpId: string, folderId: string, title: string) {
     return api.post<ApiResponse<RfpItem>>(`/rfps/${rfpId}/folders/${folderId}/items`, { title });
   },
-  updateItem(rfpId: string, itemId: string, data: { title?: string; status?: RfpItemStatus; notes?: string | null }) {
+  /** Owner and recipients — who a piece can be assigned to. */
+  getPeople(rfpId: string) {
+    return api.get<ApiResponse<RfpPerson[]>>(`/rfps/${rfpId}/people`);
+  },
+  updateItem(
+    rfpId: string,
+    itemId: string,
+    data: { title?: string; status?: RfpItemStatus; notes?: string | null; assigneeId?: string | null; dueDate?: string | null },
+  ) {
     return api.patch<ApiResponse<RfpItem>>(`/rfps/${rfpId}/items/${itemId}`, data);
   },
   deleteItem(rfpId: string, itemId: string) {

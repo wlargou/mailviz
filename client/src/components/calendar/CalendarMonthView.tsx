@@ -6,7 +6,7 @@ import {
   eachDayOfInterval,
 } from 'date-fns';
 import { CalendarDayCell } from './CalendarDayCell';
-import { useCalendarStore } from '../../store/calendarStore';
+import { useCalendarStore, visibleDeadlines, visibleEvents } from '../../store/calendarStore';
 import type { CalendarEvent } from '../../types/calendar';
 import { WEEK_STARTS_ON } from '../../utils/week';
 
@@ -18,7 +18,12 @@ interface CalendarMonthViewProps {
 }
 
 export function CalendarMonthView({ onDayClick, onEventClick }: CalendarMonthViewProps) {
-  const { currentDate, events } = useCalendarStore();
+  // Derived from the whole state, not selected: a selector returning a new
+  // array each call would re-render without end.
+  const calendar = useCalendarStore();
+  const { currentDate } = calendar;
+  const events = visibleEvents(calendar);
+  const deadlines = visibleDeadlines(calendar);
 
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
@@ -42,6 +47,7 @@ export function CalendarMonthView({ onDayClick, onEventClick }: CalendarMonthVie
             date={day}
             currentMonth={currentDate}
             events={events}
+            deadlines={deadlines}
             onDayClick={onDayClick}
             onEventClick={onEventClick}
           />

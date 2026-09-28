@@ -28,6 +28,8 @@ export const rfpCompositionController = {
   updateFolder: handle((req) => rfpCompositionService.updateFolder(req.user!.id, req.params.id, req.params.folderId, req.body)),
   deleteFolder: handle((req) => rfpCompositionService.deleteFolder(req.user!.id, req.params.id, req.params.folderId), 204),
 
+  people: handle((req) => rfpCompositionService.people(req.user!.id, req.params.id)),
+
   createItem: handle((req) => rfpCompositionService.createItem(req.user!.id, req.params.id, req.params.folderId, req.body), 201),
   updateItem: handle((req) => rfpCompositionService.updateItem(req.user!.id, req.params.id, req.params.itemId, req.body)),
   deleteItem: handle((req) => rfpCompositionService.deleteItem(req.user!.id, req.params.id, req.params.itemId), 204),

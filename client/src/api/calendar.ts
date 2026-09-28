@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { CalendarEvent, CreateEventInput, UpdateEventInput } from '../types/calendar';
+import type { CalendarDeadline, CalendarEvent, CreateEventInput, UpdateEventInput } from '../types/calendar';
 
 /**
  * Present when the event saved here but could not be sent to Google.
@@ -17,6 +17,10 @@ export interface PushWarning {
 export const calendarApi = {
   getAll: (start: string, end: string) =>
     api.get<{ data: CalendarEvent[] }>('/calendar', { params: { start, end } }),
+
+  /** Tender deadlines, question cut-offs, my pieces and tasks due. */
+  getDeadlines: (start: string, end: string) =>
+    api.get<{ data: CalendarDeadline[] }>('/calendar/deadlines', { params: { start, end } }),
 
   getById: (id: string) =>
     api.get<{ data: CalendarEvent }>(`/calendar/${id}`),

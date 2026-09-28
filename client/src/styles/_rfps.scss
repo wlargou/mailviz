@@ -762,3 +762,193 @@
 .rfp-company-cell {
   font-weight: 400;
 }
+
+// ─── RISK & READINESS ────────────────────────────
+.rfp-risk-tag {
+  margin-inline-start: 0;
+  margin-block-start: $spacing-02;
+}
+
+.rfp-ready {
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-03;
+  white-space: nowrap;
+}
+
+.rfp-ready__bar {
+  inline-size: 3.5rem;
+  block-size: 4px;
+  background: var(--cds-layer-accent-01);
+}
+
+.rfp-ready__fill {
+  display: block;
+  block-size: 100%;
+  background: var(--cds-interactive);
+}
+
+.rfp-ready__fill--done {
+  background: var(--cds-support-success);
+}
+
+.rfp-ready__count {
+  @include type.type-style('label-01');
+  color: var(--cds-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.rfp-time-used {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: $spacing-02 $spacing-03;
+  margin-block-start: $spacing-04;
+}
+
+.rfp-time-used__label,
+.rfp-time-used__pct {
+  @include type.type-style('label-01');
+  color: var(--cds-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.rfp-time-used__bar {
+  block-size: 4px;
+  background: var(--cds-layer-accent-01);
+}
+
+.rfp-time-used__fill {
+  display: block;
+  block-size: 100%;
+  background: var(--cds-interactive);
+}
+
+.rfp-time-used__fill--behind {
+  background: var(--cds-support-error);
+}
+
+.rfp-time-used__fill--time {
+  background: var(--cds-text-secondary);
+}
+
+.rfp-detail__actions {
+  display: flex;
+  align-items: center;
+  gap: $spacing-03;
+}
+
+.rfp-detail__questions {
+  margin-block-start: $spacing-02;
+}
+
+// ─── PIECE OWNER ─────────────────────────────────
+.rfp-response__item-head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: $spacing-01;
+  min-inline-size: 0;
+}
+
+.rfp-response__owner {
+  @include type.type-style('helper-text-01');
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-02;
+  color: var(--cds-text-secondary);
+
+  .rfp-avatar--sm {
+    inline-size: 1rem;
+    block-size: 1rem;
+    font-size: 0.5rem;
+  }
+}
+
+.rfp-response__due--late {
+  color: var(--cds-text-error);
+  font-weight: 600;
+}
+
+.rfp-piece-panel__owner-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 11rem;
+  gap: $spacing-05;
+  align-items: end;
+
+  @media (max-width: 42rem) {
+    grid-template-columns: 1fr;
+  }
+}
+
+// ─── DOSSIERS AT A GLANCE ────────────────────────
+.rfp-dossiers {
+  display: grid;
+  margin-block-end: $spacing-07;
+  border-block-start: 1px solid var(--cds-border-subtle);
+}
+
+.rfp-dossiers__row {
+  display: grid;
+  grid-template-columns: minmax(12rem, 2fr) minmax(0, 1.4fr) minmax(8rem, 1fr) minmax(9rem, 1fr);
+  align-items: center;
+  gap: $spacing-05;
+  padding: $spacing-03 $spacing-04;
+  border: 0;
+  border-block-end: 1px solid var(--cds-border-subtle);
+  background: none;
+  color: var(--cds-text-primary);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--cds-layer-hover-01);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--cds-focus);
+    outline-offset: -2px;
+  }
+
+  @media (max-width: 42rem) {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
+
+.rfp-dossiers__row--head {
+  @include type.type-style('label-01');
+  color: var(--cds-text-secondary);
+  cursor: default;
+
+  &:hover {
+    background: none;
+  }
+}
+
+.rfp-dossiers__name {
+  @include type.type-style('body-compact-01');
+  font-weight: 600;
+}
+
+.rfp-dossiers__owners {
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-02;
+  flex-wrap: wrap;
+}
+
+.rfp-dossiers__unowned {
+  @include type.type-style('label-01');
+  color: var(--cds-support-warning);
+  margin-inline-start: $spacing-02;
+}
+
+.rfp-dossiers__due {
+  @include type.type-style('body-compact-01');
+  color: var(--cds-text-secondary);
+}
+
+.rfp-risk {
+  display: inline-flex;
+}

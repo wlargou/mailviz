@@ -124,6 +124,32 @@ describe('deadlineTone', () => {
 });
 
 describe('RfpsPage', () => {
+  it('shows readiness per tender and flags one that is behind', async () => {
+    const DAY = 86_400_000;
+    serve([
+      makeRfp({
+        id: 'behind', reference: 'BEHIND/1',
+        createdAt: new Date(Date.now() - 8 * DAY).toISOString(),
+        deadlineAt: new Date(Date.now() + 2 * DAY).toISOString(),
+        readiness: { ready: 1, total: 10 },
+      }),
+      makeRfp({
+        id: 'fine', reference: 'FINE/1',
+        createdAt: new Date(Date.now() - 2 * DAY).toISOString(),
+        deadlineAt: new Date(Date.now() + 8 * DAY).toISOString(),
+        readiness: { ready: 6, total: 10 },
+      }),
+    ]);
+    renderPage();
+
+    const behind = (await screen.findByText('BEHIND/1')).closest('tr')!;
+    expect(within(behind).getByLabelText('1 of 10 pieces ready')).toBeInTheDocument();
+    expect(within(behind).getByText('▲ At risk').closest('.rfp-risk')).toHaveAttribute('title', '10% ready with 80% of the time used');
+    const fine = screen.getByText('FINE/1').closest('tr')!;
+    expect(within(fine).getByLabelText('6 of 10 pieces ready')).toBeInTheDocument();
+    expect(within(fine).queryByText('▲ At risk')).toBeNull();
+  });
+
   it('says how far each live deadline is, and not for a finished tender', async () => {
     const inTwoDays = new Date(Date.now() + 2 * 86_400_000 + 3_600_000).toISOString();
     serve([

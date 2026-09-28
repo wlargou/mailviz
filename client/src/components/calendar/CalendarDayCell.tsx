@@ -1,13 +1,16 @@
 import { useState, useRef, useEffect } from 'react';
 import { isSameDay, isSameMonth, isToday, format } from 'date-fns';
 import { createPortal } from 'react-dom';
-import type { CalendarEvent } from '../../types/calendar';
+import type { CalendarEvent, CalendarDeadline } from '../../types/calendar';
+import { DeadlineChip } from './DeadlineChip';
 import { getEventColor } from '../../utils/eventColors';
 
 interface CalendarDayCellProps {
   date: Date;
   currentMonth: Date;
   events: CalendarEvent[];
+  /** Tender deadlines and work due — pinned above the day's meetings. */
+  deadlines?: CalendarDeadline[];
   onDayClick: (date: Date) => void;
   onEventClick: (event: CalendarEvent) => void;
 }
@@ -120,8 +123,9 @@ function OverflowPopover({ events, date, anchorRect, onEventClick, onClose }: Ov
   );
 }
 
-export function CalendarDayCell({ date, currentMonth, events, onDayClick, onEventClick }: CalendarDayCellProps) {
+export function CalendarDayCell({ date, currentMonth, events, deadlines = [], onDayClick, onEventClick }: CalendarDayCellProps) {
   const dayEvents = events.filter((e) => isSameDay(new Date(e.startTime), date));
+  const dayDeadlines = deadlines.filter((d) => isSameDay(new Date(d.at), date));
   const isCurrentMonth = isSameMonth(date, currentMonth);
   const today = isToday(date);
 
@@ -176,6 +180,9 @@ export function CalendarDayCell({ date, currentMonth, events, onDayClick, onEven
         {format(date, 'd')}
       </span>
       <div className="calendar-day-cell__events">
+        {dayDeadlines.map((d) => (
+          <DeadlineChip key={d.id} deadline={d} />
+        ))}
         {visible.map((event) => {
           const colors = getEventColor(event.colorId);
 

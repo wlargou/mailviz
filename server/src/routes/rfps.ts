@@ -61,6 +61,7 @@ router.delete('/:id/shares/:recipientId', rfpController.unshare);
 router.get('/:id/shares', rfpController.getShares);
 
 // Lots — every tender has at least one; the budget is their total.
+router.get('/:id/people', composition.people);
 router.post('/:id/lots', validate(createLotSchema), composition.createLot);
 router.patch('/:id/lots/:lotId', validate(updateLotSchema), composition.updateLot);
 router.delete('/:id/lots/:lotId', composition.deleteLot);

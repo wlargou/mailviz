@@ -130,6 +130,11 @@ export interface RfpItem {
   status: RfpItemStatus;
   notes: string | null;
   position: number;
+  /** Who prepares it; someone with access to the tender. */
+  assigneeId?: string | null;
+  assignee?: RfpPerson | null;
+  /** The internal due date, ahead of the tender's own deadline. */
+  dueDate?: string | null;
   updatedAt: string;
   /** The piece's versions, oldest first — the last is the current one. */
   documents: RfpDocument[];
@@ -233,6 +238,12 @@ export interface Rfp {
   customer: RfpCustomer | null;
   /** ISO instant — the deadline carries an hour, and the hour is binding. */
   deadlineAt: string;
+  /** The Avis date: where the at-risk clock starts. Creation is the fallback. */
+  publishedAt?: string | null;
+  /** When questions to the buyer close. */
+  questionsDeadlineAt?: string | null;
+  /** Ready pieces of those that apply — on list rows only. */
+  readiness?: { ready: number; total: number };
   submissionFormat: RfpSubmissionFormat;
   portalUrl: string | null;
   /** Government-Owned Entity: a public buyer, which is why a budget is public. */
@@ -255,6 +266,34 @@ export interface RfpDetail extends Rfp {
   lots: RfpLot[];
   folders: RfpFolder[];
   verifiers: RfpVerifier[];
+  /** How many colleagues it is shared with. */
+  _count?: { shares: number };
+}
+
+/**
+ * Whether a tender is behind: its readiness trails the share of its time
+ * already used, counted from publication (or registration) to the deadline.
+ *
+ * The one signal a bid manager needs and the app did not give — a tender two
+ * days out with nothing ready read the same as one with a month to go. Only
+ * for tenders still being prepared; a submitted or finished one is not "at
+ * risk", and one with no pieces has nothing to measure.
+ */
+export function tenderRisk(
+  rfp: Pick<Rfp, 'status' | 'deadlineAt' | 'createdAt'> & { publishedAt?: string | null },
+  readiness: { ready: number; total: number },
+  now = Date.now(),
+): { atRisk: boolean; overdue: boolean; timeUsed: number; ready: number } {
+  const deadline = new Date(rfp.deadlineAt).getTime();
+  const start = new Date(rfp.publishedAt ?? rfp.createdAt).getTime();
+  const span = Math.max(deadline - start, 1);
+  const timeUsed = Math.min(1, Math.max(0, (now - start) / span));
+  const ready = readiness.total > 0 ? readiness.ready / readiness.total : 0;
+  const preparing = !RFP_TERMINAL_STATUSES.includes(rfp.status) && rfp.status !== 'SUBMITTED';
+  const overdue = preparing && now > deadline;
+  // A small grace, so a tender registered this morning is not already "late".
+  const atRisk = preparing && readiness.total > 0 && (overdue || (timeUsed >= 0.1 && ready < timeUsed));
+  return { atRisk, overdue, timeUsed, ready };
 }
 
 export interface LotInput {
@@ -272,6 +311,8 @@ export interface CreateRfpInput {
   isGoe?: boolean;
   status?: RfpStatus;
   notes?: string | null;
+  publishedAt?: string | null;
+  questionsDeadlineAt?: string | null;
   lots?: LotInput[];
   composition?: { kinds: RfpFolderKind[]; prefill: boolean };
 }
