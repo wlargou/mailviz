@@ -238,6 +238,49 @@ describe('emailService.findAllThreads — customer scoping for the review flow',
   });
 });
 
+describe('emailService.findAllThreads — search words', () => {
+  it('matches every word, in any order, across subject and sender', async () => {
+    const { alice } = await createTwoUsers();
+    await createEmail(alice.id, { threadId: 't-name', from: 'o.alami@bkam.test', fromName: 'ALAMI Omar', subject: 'Point' });
+    await createEmail(alice.id, { threadId: 't-mixed', from: 'omar@bkam.test', subject: 'Budget Alami' });
+    await createEmail(alice.id, { threadId: 't-one', from: 'omar@other.test', fromName: 'Omar Benali', subject: 'Hello' });
+
+    const result = await emailService.findAllThreads({ search: 'omar alami' }, alice.id);
+    expect(result.data.map((t) => t.threadId).sort()).toEqual(['t-mixed', 't-name']);
+  });
+});
+
+describe('emailService.findAllThreads — one person, either way', () => {
+  it('finds mail from, to, cc or bcc a person, and nobody else’s', async () => {
+    const { alice, bob } = await createTwoUsers();
+    const on = async (threadId: string, from: string, lists: { to?: string[]; cc?: string[]; bcc?: string[] } = {}) => {
+      const e = await createEmail(alice.id, { threadId, from });
+      await prisma.email.update({ where: { id: e.id }, data: { to: lists.to ?? [], cc: lists.cc ?? [], bcc: lists.bcc ?? [] } });
+    };
+    await on('t-from', 'omar@bkam.test');
+    await on('t-to', alice.email, { to: ['omar@bkam.test'] });
+    await on('t-cc', 'sara@bkam.test', { to: [alice.email], cc: ['omar@bkam.test'] });
+    await on('t-bcc', alice.email, { to: ['sara@bkam.test'], bcc: ['omar@bkam.test'] });
+    await on('t-other', 'sara@bkam.test', { to: [alice.email] });
+    await createEmail(bob.id, { threadId: 't-bob', from: 'omar@bkam.test' });
+
+    const result = await emailService.findAllThreads({ participant: ' Omar@BKAM.test ' }, alice.id);
+
+    expect(result.data.map((t) => t.threadId).sort()).toEqual(['t-bcc', 't-cc', 't-from', 't-to']);
+    expect(result.meta.total).toBe(4);
+  });
+
+  it('narrows a search rather than replacing it', async () => {
+    const { alice } = await createTwoUsers();
+    await createEmail(alice.id, { threadId: 't-budget', from: 'omar@bkam.test', subject: 'Budget 2027' });
+    await createEmail(alice.id, { threadId: 't-lunch', from: 'omar@bkam.test', subject: 'Lunch' });
+    await createEmail(alice.id, { threadId: 't-sara', from: 'sara@bkam.test', subject: 'Budget too' });
+
+    const result = await emailService.findAllThreads({ participant: 'omar@bkam.test', search: 'budget' }, alice.id);
+    expect(result.data.map((t) => t.threadId)).toEqual(['t-budget']);
+  });
+});
+
 describe('emailService.findAllThreads — pagination', () => {
   it('reports the full total and reaches every thread across pages', async () => {
     const { alice } = await createTwoUsers();

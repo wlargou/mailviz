@@ -470,3 +470,9 @@ body {
 .table-count--zero {
   color: var(--cds-text-disabled);
 }
+
+// The matched part of a search result — header search, mail suggestions.
+.search-highlight {
+  color: var(--cds-text-primary);
+  font-weight: 600;
+}

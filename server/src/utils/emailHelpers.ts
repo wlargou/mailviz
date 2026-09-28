@@ -188,6 +188,8 @@ export interface EmailQueryParams {
   category?: string;
   from?: string;
   to?: string;
+  /** An address on the mail either way — from, to, cc or bcc. */
+  participant?: string;
   subject?: string;
   dateAfter?: string;
   dateBefore?: string;

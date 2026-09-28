@@ -246,6 +246,7 @@ const PROTECTED_ROUTES: Array<[method: string, path: string]> = [
   // emails — reads
   ['GET', '/api/v1/emails'],
   ['GET', '/api/v1/emails/review-summary'],
+  ['GET', '/api/v1/emails/suggest'],
   ['GET', '/api/v1/emails/unread-count'],
   ['GET', '/api/v1/emails/sync-status'],
   ['GET', '/api/v1/emails/scheduled'],
@@ -648,6 +649,29 @@ describe('/api/v1/emails reads', () => {
 
     const threadIds = rows(res).map((t) => (t as { threadId: string }).threadId);
     expect(threadIds).toEqual(['alice-thread']);
+  });
+
+  it('GET /suggest answers for the caller, and is not read as a message id', async () => {
+    // Registered before `/:id`; after it, "suggest" would be looked up as an
+    // email and answered with a 404.
+    const { alice, bob } = await createTwoUsers();
+    await createEmail(alice.id, { threadId: 'alice-offer', from: 'omar@bkam.test', fromName: 'Omar Alami', subject: 'Offre' });
+    await createEmail(bob.id, { threadId: 'bob-offer', from: 'omar@secret.test', subject: 'Offre' });
+
+    const res = await call('GET', '/api/v1/emails/suggest?q=omar', { as: alice.id });
+    expect(res.status).toBe(200);
+    const data = res.body.data as { people: Array<{ address: string }>; threads: Array<{ threadId: string }> };
+    expect(data.people.map((p) => p.address)).toEqual(['omar@bkam.test']);
+    expect(data.threads.map((t) => t.threadId)).toEqual(['alice-offer']);
+  });
+
+  it('GET / takes one person, either way, through the participant filter', async () => {
+    const { alice } = await createTwoUsers();
+    await createEmail(alice.id, { threadId: 'from-omar', from: 'omar@bkam.test' });
+    await createEmail(alice.id, { threadId: 'from-sara', from: 'sara@bkam.test' });
+
+    const res = await call('GET', '/api/v1/emails?participant=omar%40bkam.test', { as: alice.id });
+    expect(rows(res).map((t) => (t as { threadId: string }).threadId)).toEqual(['from-omar']);
   });
 
   it('GET / never surfaces another tenant thread through the search branch', async () => {

@@ -169,6 +169,32 @@ export interface ReplyOwed {
   receivedAt: string;
 }
 
+/** Someone the user corresponds with — see `GET /emails/suggest`. */
+export interface SuggestedPerson {
+  address: string;
+  name: string | null;
+  /** Messages exchanged, both ways. */
+  messages: number;
+  lastAt: string;
+  /** Everything from them came from a machine, and the user never wrote to them. */
+  automated: boolean;
+}
+
+/** A thread matching the search box, by its newest matching message. */
+export interface SuggestedThread {
+  threadId: string;
+  emailId: string;
+  subject: string;
+  from: string;
+  fromName: string | null;
+  receivedAt: string;
+}
+
+export interface MailSuggestions {
+  people: SuggestedPerson[];
+  threads: SuggestedThread[];
+}
+
 export interface EmailReminder {
   id: string;
   threadId: string;

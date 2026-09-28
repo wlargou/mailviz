@@ -4,6 +4,7 @@
 @use '@carbon/colors';
 @use '@carbon/react/scss/type' as type;
 @use '@carbon/react/scss/spacing' as *;
+@use 'elevation' as *;
 
 // ─── MAIL PAGE ────────────────────────────────
 .mail-page {
@@ -302,7 +303,9 @@
   position: relative;
 }
 
+// The suggestions hang from the bar, so it is their containing block.
 .mail-search__bar {
+  position: relative;
   display: flex;
   align-items: center;
   background: var(--cds-field);
@@ -313,6 +316,76 @@
   &:focus-within {
     border-color: var(--cds-focus);
   }
+}
+
+// ─── Suggestions under the mail search box ─────
+// Same anatomy as the header search's results (_global-search.scss): grouped
+// rows, an icon, a label and a line under it, the matched words in bold.
+.mail-suggest {
+  position: absolute;
+  top: calc(100% + #{$spacing-01});
+  left: -1px;
+  right: -1px;
+  z-index: 10;
+  max-height: min(28rem, 60vh);
+  overflow-y: auto;
+  background: var(--cds-layer-01);
+  border: 1px solid var(--cds-border-subtle-01);
+  box-shadow: $shadow-overlay;
+}
+
+.mail-suggest__group {
+  border-top: 1px solid var(--cds-border-subtle-01);
+}
+
+.mail-suggest__header {
+  padding: $spacing-03 $spacing-05 $spacing-02;
+  @include type.type-style('label-01');
+  font-weight: 600;
+  color: var(--cds-text-secondary);
+}
+
+.mail-suggest__option {
+  display: flex;
+  align-items: flex-start;
+  gap: $spacing-03;
+  padding: $spacing-03 $spacing-05;
+  cursor: pointer;
+
+  &:hover,
+  &--active {
+    background: var(--cds-layer-hover-01);
+  }
+}
+
+.mail-suggest__icon {
+  flex-shrink: 0;
+  margin-top: $spacing-01;
+  fill: var(--cds-icon-secondary);
+}
+
+.mail-suggest__text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.mail-suggest__label,
+.mail-suggest__sub {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--cds-text-secondary);
+}
+
+.mail-suggest__label {
+  @include type.type-style('body-compact-01');
+}
+
+.mail-suggest__sub {
+  @include type.type-style('label-01');
+  margin-top: $spacing-01;
 }
 
 .mail-search__input-wrap {
