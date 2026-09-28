@@ -6,6 +6,8 @@ import { useUIStore } from '../../store/uiStore';
 import { RfpDocuments, type PendingDocument } from './RfpDocuments';
 import {
   EMPTY_RFP_FORM,
+  publishedAfterDeadline,
+  questionsAfterDeadline,
   RfpCompositionFields,
   RfpDeadlineFields,
   RfpGoeField,
@@ -95,6 +97,9 @@ export function RfpFormPanel({ open, rfp, onClose, onSaved, onCreated }: RfpForm
         status: rfp.status,
         deadlineDate: new Date(rfp.deadlineAt),
         deadlineTime: timeOf(rfp.deadlineAt),
+        questionsDate: rfp.questionsDeadlineAt ? new Date(rfp.questionsDeadlineAt) : null,
+        questionsTime: rfp.questionsDeadlineAt ? timeOf(rfp.questionsDeadlineAt) : '10:00',
+        publishedDate: rfp.publishedAt ? new Date(rfp.publishedAt) : null,
         submissionFormat: rfp.submissionFormat,
         portalUrl: rfp.portalUrl ?? '',
         isGoe: rfp.isGoe,
@@ -124,7 +129,13 @@ export function RfpFormPanel({ open, rfp, onClose, onSaved, onCreated }: RfpForm
   const lotsDone =
     values.lots.length > 0 &&
     values.lots.every((l) => l.title.trim() !== '' && (!values.isGoe || parseBudget(l.budget) !== undefined));
-  const canSave = identityDone && Boolean(deadlineIso) && !saving;
+  const questionsIso = values.questionsDate ? toDeadlineIso(values.questionsDate, values.questionsTime) : null;
+  const datesValid =
+    !questionsAfterDeadline(values) &&
+    !publishedAfterDeadline(values) &&
+    // A questions day with a time that is not one.
+    !(values.questionsDate && !questionsIso);
+  const canSave = identityDone && Boolean(deadlineIso) && datesValid && !saving;
   const canCreate = canSave && lotsDone;
 
   const handleSubmit = async () => {
@@ -136,6 +147,8 @@ export function RfpFormPanel({ open, rfp, onClose, onSaved, onCreated }: RfpForm
       reference: values.reference.trim(),
       customerId: values.customerId,
       deadlineAt: deadlineIso,
+      questionsDeadlineAt: questionsIso,
+      publishedAt: values.publishedDate ? values.publishedDate.toISOString() : null,
       submissionFormat: values.submissionFormat,
       // Only meaningful for a portal submission; cleared otherwise so a
       // format change does not leave a stale link behind.
@@ -280,7 +293,7 @@ export function RfpFormPanel({ open, rfp, onClose, onSaved, onCreated }: RfpForm
         title="Deadline & submission"
         subtitle="When it is due, and how the offer is handed over"
         hasFieldset={false}
-        disableSubmit={!deadlineIso}
+        disableSubmit={!deadlineIso || !datesValid}
       >
         <div className="rfp-form">
           <RfpDeadlineFields {...groupProps} idPrefix="rfp-new" />

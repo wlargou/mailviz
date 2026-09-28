@@ -30,6 +30,11 @@ export interface RfpFormValues {
   status: RfpStatus;
   deadlineDate: Date | null;
   deadlineTime: string;
+  /** When questions to the buyer close — day and hour, like the deadline. */
+  questionsDate: Date | null;
+  questionsTime: string;
+  /** The Avis date, where the at-risk clock starts. */
+  publishedDate: Date | null;
   submissionFormat: RfpSubmissionFormat;
   portalUrl: string;
   isGoe: boolean;
@@ -49,6 +54,9 @@ export const EMPTY_RFP_FORM: RfpFormValues = {
   status: 'OPEN',
   deadlineDate: null,
   deadlineTime: '10:00',
+  questionsDate: null,
+  questionsTime: '10:00',
+  publishedDate: null,
   submissionFormat: 'PORTAL',
   portalUrl: '',
   isGoe: false,
@@ -137,6 +145,16 @@ export function RfpIdentityFields({ values, patch, idPrefix, referenceError, onR
 }
 
 /** When it is due, and how the offer is handed over. */
+/** Questions must close on or before the submission deadline. */
+export function questionsAfterDeadline(v: Pick<RfpFormValues, 'questionsDate' | 'deadlineDate'>): boolean {
+  return Boolean(v.questionsDate && v.deadlineDate && v.questionsDate.getTime() > v.deadlineDate.getTime());
+}
+
+/** Nor can a tender be published after it closes. */
+export function publishedAfterDeadline(v: Pick<RfpFormValues, 'publishedDate' | 'deadlineDate'>): boolean {
+  return Boolean(v.publishedDate && v.deadlineDate && v.publishedDate.getTime() > v.deadlineDate.getTime());
+}
+
 export function RfpDeadlineFields({ values, patch, idPrefix }: GroupProps) {
   return (
     <>
@@ -144,7 +162,17 @@ export function RfpDeadlineFields({ values, patch, idPrefix }: GroupProps) {
         <DatePicker
           datePickerType="single"
           value={values.deadlineDate ? [values.deadlineDate] : []}
-          onChange={(dates: Date[]) => patch({ deadlineDate: dates[0] ?? null })}
+          onChange={(dates: Date[]) => {
+            const deadline = dates[0] ?? null;
+            // Public tenders close questions seven days before the opening.
+            // Filled in the first time a deadline is picked, and only then:
+            // a date the user set or cleared is theirs.
+            const firstDeadline = deadline && !values.deadlineDate && !values.questionsDate;
+            patch({
+              deadlineDate: deadline,
+              ...(firstDeadline ? { questionsDate: new Date(deadline.getTime() - 7 * 86_400_000) } : {}),
+            });
+          }}
         >
           <DatePickerInput id={`${idPrefix}-deadline-date`} labelText="Submission deadline" placeholder="mm/dd/yyyy" />
         </DatePicker>
@@ -157,6 +185,45 @@ export function RfpDeadlineFields({ values, patch, idPrefix }: GroupProps) {
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => patch({ deadlineTime: e.target.value })}
         />
       </div>
+      <div className="rfp-form__field rfp-form__row">
+        <DatePicker
+          datePickerType="single"
+          value={values.questionsDate ? [values.questionsDate] : []}
+          onChange={(dates: Date[]) => patch({ questionsDate: dates[0] ?? null })}
+        >
+          <DatePickerInput
+            id={`${idPrefix}-questions-date`}
+            labelText="Questions close"
+            placeholder="mm/dd/yyyy"
+            helperText="Usually 7 days before, for a public tender"
+            invalid={questionsAfterDeadline(values)}
+            invalidText="Must be before the deadline"
+          />
+        </DatePicker>
+        <TimePicker
+          id={`${idPrefix}-questions-time`}
+          labelText="Closing time"
+          value={values.questionsTime}
+          invalid={Boolean(values.questionsDate) && !TIME_PATTERN.test(values.questionsTime)}
+          invalidText="Use HH:MM"
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => patch({ questionsTime: e.target.value })}
+        />
+      </div>
+      <DatePicker
+        datePickerType="single"
+        className="rfp-form__field"
+        value={values.publishedDate ? [values.publishedDate] : []}
+        onChange={(dates: Date[]) => patch({ publishedDate: dates[0] ?? null })}
+      >
+        <DatePickerInput
+          id={`${idPrefix}-published-date`}
+          labelText="Published on (optional)"
+          placeholder="mm/dd/yyyy"
+          helperText="The Avis date — readiness is measured from here"
+          invalid={publishedAfterDeadline(values)}
+          invalidText="Must be before the deadline"
+        />
+      </DatePicker>
       <Dropdown
         id={`${idPrefix}-format`}
         titleText="Submission format"

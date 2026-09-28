@@ -42,8 +42,10 @@ import {
   RFP_SUBMISSION_FORMATS,
   RFP_SUBMISSION_FORMAT_LABELS,
   RFP_TERMINAL_STATUSES,
+  tenderRisk,
   type Rfp,
 } from '../../types/rfp';
+import { ReadyMeter, RiskTag } from './RfpRisk';
 import { toolbarSearchValue } from '../../utils/carbonSearch';
 import { useTableSort } from '../../hooks/useTableSort';
 import { shortDate, timeLeft } from '../../utils/dates';
@@ -62,6 +64,7 @@ const headers = [
   { key: 'goe', header: 'GOE' },
   { key: 'budget', header: 'Budget', sortField: 'budget' },
   { key: 'status', header: 'Status', sortField: 'status' },
+  { key: 'ready', header: 'Ready' },
   { key: 'documents', header: 'Docs' },
   { key: 'actions', header: '' },
 ];
@@ -337,6 +340,8 @@ export function RfpsPage() {
                     <TableBody>
                       {rfps.map((rfp) => {
                         const tone = deadlineTone(rfp.deadlineAt, rfp.status);
+                        const readiness = rfp.readiness ?? { ready: 0, total: 0 };
+                        const risk = tenderRisk(rfp, readiness);
                         return (
                           <TableRow
                             key={rfp.id}
@@ -351,6 +356,7 @@ export function RfpsPage() {
                               {!RFP_TERMINAL_STATUSES.includes(rfp.status) && (
                                 <span className={`rfp-deadline__left rfp-deadline--${tone}`}>{timeLeft(rfp.deadlineAt)}</span>
                               )}
+                              {risk.atRisk && <RiskTag risk={risk} />}
                             </TableCell>
                             <TableCell>
                               <span className="shared-title-cell">
@@ -395,6 +401,9 @@ export function RfpsPage() {
                             </TableCell>
                             <TableCell>
                               <Tag type={RFP_STATUS_TAG_TYPE[rfp.status]} size="sm">{RFP_STATUS_LABELS[rfp.status]}</Tag>
+                            </TableCell>
+                            <TableCell>
+                              <ReadyMeter readiness={readiness} />
                             </TableCell>
                             <TableCell>
                               {rfp.documents.length > 0 ? (

@@ -11,7 +11,7 @@ import type { RfpDetail, RfpFolder, RfpItem } from '../../types/rfp';
 vi.mock('../../api/rfps', () => ({
   rfpsApi: {
     getAll: vi.fn(), getById: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn(),
-    uploadDocument: vi.fn(), deleteDocument: vi.fn(), getCatalogue: vi.fn(),
+    uploadDocument: vi.fn(), deleteDocument: vi.fn(), getCatalogue: vi.fn(), getPeople: vi.fn(),
     createLot: vi.fn(), updateLot: vi.fn(), deleteLot: vi.fn(),
     createFolder: vi.fn(), deleteFolder: vi.fn(),
     createItem: vi.fn(), updateItem: vi.fn(), deleteItem: vi.fn(), uploadItemDocument: vi.fn(),
@@ -104,6 +104,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   useAuthStore.setState({ user: { id: 'me', email: 'me@test', name: 'Me', avatarUrl: null } });
   vi.mocked(rfpsApi.getCatalogue).mockResolvedValue(axiosOk({ data: [] }) as never);
+  vi.mocked(rfpsApi.getPeople).mockResolvedValue(axiosOk({ data: [] }) as never);
 });
 
 describe('RfpDetailPage', () => {

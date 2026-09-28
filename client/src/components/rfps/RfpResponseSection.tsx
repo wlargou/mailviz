@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Accordion,
@@ -19,7 +19,14 @@ import { useUIStore } from '../../store/uiStore';
 import { AttachmentPreviewModal } from '../shared/AttachmentPreviewModal';
 import { ConfirmDeleteModal } from '../shared/ConfirmDeleteModal';
 import { PIECE_ACCEPTED, RfpPiecePanel } from './RfpPiecePanel';
-import { VerificationSummary, When } from './RfpPeople';
+import { PersonAvatar, VerificationSummary, When } from './RfpPeople';
+import { shortDate, timeLeft } from '../../utils/dates';
+import { ReadyMeter } from './RfpRisk';
+
+/** Past its internal due date and not done. */
+function isLate(item: RfpItem): boolean {
+  return Boolean(item.dueDate) && new Date(item.dueDate!).getTime() < Date.now() && item.status !== 'READY' && item.status !== 'NOT_APPLICABLE';
+}
 import {
   currentVersion,
   personName,
@@ -35,6 +42,7 @@ import {
   type RfpFolderKind,
   type RfpItem,
   type RfpItemStatus,
+  type RfpPerson,
   type RfpVerifier,
 } from '../../types/rfp';
 
@@ -68,6 +76,21 @@ export function RfpResponseSection({ rfp, catalogue, currentUserId, onLocalChang
   const [openItemId, setOpenItemId] = useState<string | null>(null);
   const openFolder = rfp.folders.find((f) => f.items.some((i) => i.id === openItemId)) ?? null;
   const openItem = openFolder?.items.find((i) => i.id === openItemId) ?? null;
+  /** Which dossiers are open — controlled, so the overview can open one. */
+  const [openFolders, setOpenFolders] = useState<Set<string>>(() => new Set());
+  /** Who a piece can be assigned to — re-read when the sharing changes. */
+  const [people, setPeople] = useState<RfpPerson[]>([]);
+  const shareCount = rfp._count?.shares ?? 0;
+  useEffect(() => {
+    let live = true;
+    rfpsApi
+      .getPeople(rfp.id)
+      .then(({ data: res }) => live && setPeople(res.data))
+      .catch(() => live && setPeople([]));
+    return () => {
+      live = false;
+    };
+  }, [rfp.id, shareCount]);
 
   const groups: Array<{ key: string; heading: string | null; folders: RfpFolder[] }> =
     rfp.lots.length > 1
@@ -107,6 +130,19 @@ export function RfpResponseSection({ rfp, catalogue, currentUserId, onLocalChang
         </Button>
       </div>
 
+      {rfp.folders.length > 0 && (
+        <DossierOverview
+          folders={rfp.folders}
+          onOpen={(folderId) => {
+            setOpenFolders((prev) => new Set(prev).add(folderId));
+            // After the accordion has opened.
+            requestAnimationFrame(() =>
+              document.getElementById(`rfp-folder-${folderId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+            );
+          }}
+        />
+      )}
+
       {rfp.folders.length === 0 ? (
         <p className="rfp-detail__empty">No dossiers yet. Add the ones the RC asks for.</p>
       ) : (
@@ -120,8 +156,17 @@ export function RfpResponseSection({ rfp, catalogue, currentUserId, onLocalChang
                 return (
                   <AccordionItem
                     key={folder.id}
+                    open={openFolders.has(folder.id)}
+                    onHeadingClick={({ isOpen }: { isOpen: boolean }) =>
+                      setOpenFolders((prev) => {
+                        const next = new Set(prev);
+                        if (isOpen) next.add(folder.id);
+                        else next.delete(folder.id);
+                        return next;
+                      })
+                    }
                     title={
-                      <span className="rfp-response__folder-title">
+                      <span className="rfp-response__folder-title" id={`rfp-folder-${folder.id}`}>
                         <span className="rfp-response__folder-name">{folder.title}</span>
                         <Tag type={done ? 'green' : 'gray'} size="sm">
                           {total === 0 ? 'No pieces' : `${ready}/${total} ready`}
@@ -185,6 +230,8 @@ export function RfpResponseSection({ rfp, catalogue, currentUserId, onLocalChang
         item={openItem}
         folderTitle={openFolder?.title ?? ''}
         verifiers={rfp.verifiers}
+        people={people}
+        tenderDeadline={rfp.deadlineAt}
         currentUserId={currentUserId}
         onClose={() => setOpenItemId(null)}
         onPreview={(item, index) => setPreview({ item, index })}
@@ -203,6 +250,60 @@ export function RfpResponseSection({ rfp, catalogue, currentUserId, onLocalChang
         onClose={() => setPreview(null)}
       />
     </section>
+  );
+}
+
+/**
+ * Every dossier on one screen: who is on it, how far along, and the next
+ * date that falls due. The accordions below start closed, so the response
+ * used to open on a column of headers with nothing in them.
+ */
+function DossierOverview({ folders, onOpen }: { folders: RfpFolder[]; onOpen: (folderId: string) => void }) {
+  return (
+    <div className="rfp-dossiers" role="table" aria-label="Dossiers at a glance">
+      <div className="rfp-dossiers__row rfp-dossiers__row--head" role="row">
+        <span role="columnheader">Dossier</span>
+        <span role="columnheader">Owners</span>
+        <span role="columnheader">Ready</span>
+        <span role="columnheader">Next due</span>
+      </div>
+      {folders.map((folder) => {
+        const owners = [...new Map(folder.items.filter((i) => i.assignee).map((i) => [i.assignee!.id, i.assignee!])).values()];
+        const open = folder.items.filter((i) => i.status !== 'READY' && i.status !== 'NOT_APPLICABLE');
+        const unowned = open.filter((i) => !i.assigneeId).length;
+        const nextDue = open
+          .filter((i) => i.dueDate)
+          .map((i) => i.dueDate!)
+          .sort()[0];
+        const late = nextDue && new Date(nextDue).getTime() < Date.now();
+        return (
+          <button type="button" key={folder.id} className="rfp-dossiers__row" role="row" onClick={() => onOpen(folder.id)}>
+            <span role="cell" className="rfp-dossiers__name">
+              {folder.title}
+            </span>
+            <span role="cell" className="rfp-dossiers__owners">
+              {owners.map((o) => (
+                <span key={o.id} title={personName(o)}>
+                  <PersonAvatar person={o} />
+                </span>
+              ))}
+              {unowned > 0 && (
+                <span className="rfp-dossiers__unowned" title={`${unowned} open piece${unowned === 1 ? '' : 's'} without an owner`}>
+                  {unowned} unassigned
+                </span>
+              )}
+              {owners.length === 0 && unowned === 0 && <span className="rfp-muted">—</span>}
+            </span>
+            <span role="cell">
+              <ReadyMeter readiness={readiness(folder.items)} />
+            </span>
+            <span role="cell" className={late ? 'rfp-response__due--late' : 'rfp-dossiers__due'}>
+              {nextDue ? `${shortDate(nextDue, { dayFirst: true })} · ${timeLeft(nextDue)}` : '—'}
+            </span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -308,9 +409,22 @@ function FolderBody({ rfpId, folder, verifiers, onLocalChange, onRefresh, onPrev
             );
             return (
               <li key={item.id} className={`rfp-response__item rfp-response__item--${item.status.toLowerCase()}`}>
-                <button type="button" className="rfp-response__item-title" onClick={() => onOpen(item)}>
-                  {item.title}
-                </button>
+                <span className="rfp-response__item-head">
+                  <button type="button" className="rfp-response__item-title" onClick={() => onOpen(item)}>
+                    {item.title}
+                  </button>
+                  {(item.assignee || item.dueDate) && (
+                    <span className="rfp-response__owner">
+                      {item.assignee && <PersonAvatar person={item.assignee} />}
+                      {item.assignee && <span>{personName(item.assignee)}</span>}
+                      {item.dueDate && (
+                        <span className={isLate(item) ? 'rfp-response__due--late' : undefined}>
+                          {item.assignee ? ' · ' : ''}due {shortDate(item.dueDate, { dayFirst: true })}
+                        </span>
+                      )}
+                    </span>
+                  )}
+                </span>
 
                 <div className="rfp-response__item-files">
                   {current ? (

@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { SidePanel } from '@carbon/ibm-products';
-import { Button, FileUploaderButton, InlineLoading, Tag, TextArea } from '@carbon/react';
+import { Button, Dropdown, FileUploaderButton, InlineLoading, Tag, TextArea, TextInput } from '@carbon/react';
+import { format } from 'date-fns';
 import { Checkmark, Download, Edit, TrashCan, Undo } from '@carbon/icons-react';
 import { rfpsApi } from '../../api/rfps';
 import { useUIStore } from '../../store/uiStore';
@@ -16,6 +17,7 @@ import {
   verificationStates,
   type RfpDocument,
   type RfpItem,
+  type RfpPerson,
   type RfpVerifier,
   type VerificationState,
 } from '../../types/rfp';
@@ -36,6 +38,10 @@ interface RfpPiecePanelProps {
   item: RfpItem | null;
   folderTitle: string;
   verifiers: RfpVerifier[];
+  /** Who can open the tender — who the piece can be assigned to. */
+  people: RfpPerson[];
+  /** The tender's deadline: an owner's due date defaults two days before it. */
+  tenderDeadline: string;
   currentUserId: string | undefined;
   onClose: () => void;
   onPreview: (item: RfpItem, index: number) => void;
@@ -49,7 +55,18 @@ interface RfpPiecePanelProps {
  * A SidePanel because the page is the context — the dossier the piece
  * belongs to stays in view beside it.
  */
-export function RfpPiecePanel({ rfpId, item, folderTitle, verifiers, currentUserId, onClose, onPreview, onRefresh }: RfpPiecePanelProps) {
+export function RfpPiecePanel({
+  rfpId,
+  item,
+  folderTitle,
+  verifiers,
+  people,
+  tenderDeadline,
+  currentUserId,
+  onClose,
+  onPreview,
+  onRefresh,
+}: RfpPiecePanelProps) {
   const addNotification = useUIStore((s) => s.addNotification);
   const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -58,6 +75,7 @@ export function RfpPiecePanel({ rfpId, item, folderTitle, verifiers, currentUser
   const [deleteVersion, setDeleteVersion] = useState<RfpDocument | null>(null);
 
   const current = item ? currentVersion(item) : null;
+  const ownerItems = [{ id: '', text: 'Unassigned' }, ...people.map((p) => ({ id: p.id, text: personName(p) }))];
   const states = item ? verificationStates(item, verifiers) : [];
   const mine = states.find((s) => s.person.id === currentUserId) ?? null;
 
@@ -103,6 +121,27 @@ export function RfpPiecePanel({ rfpId, item, folderTitle, verifiers, currentUser
     }
   };
 
+  /**
+   * Save who prepares it and by when. Picking an owner for a piece with no
+   * date gives it one — two days before the tender's deadline, the internal
+   * freeze — because an owner without a date is a wish.
+   */
+  const assign = async (next: { assigneeId?: string | null; dueDate?: string | null }) => {
+    if (!item) return;
+    const body = { ...next };
+    if (next.assigneeId && !item.dueDate && next.dueDate === undefined) {
+      const freeze = new Date(new Date(tenderDeadline).getTime() - 2 * 86_400_000);
+      freeze.setHours(18, 0, 0, 0);
+      body.dueDate = freeze.toISOString();
+    }
+    try {
+      await rfpsApi.updateItem(rfpId, item.id, body);
+      await onRefresh();
+    } catch {
+      addNotification({ kind: 'error', title: 'Failed to update the piece' });
+    }
+  };
+
   const removeVersion = async () => {
     if (!deleteVersion) return;
     try {
@@ -140,6 +179,34 @@ export function RfpPiecePanel({ rfpId, item, folderTitle, verifiers, currentUser
                 Last update <When at={current && current.createdAt > item.updatedAt ? current.createdAt : item.updatedAt} />
               </span>
             </div>
+
+            <section className="rfp-piece-panel__section rfp-piece-panel__owner" aria-labelledby="rfp-piece-owner">
+              <h3 id="rfp-piece-owner" className="rfp-piece-panel__heading">Who prepares it</h3>
+              <div className="rfp-piece-panel__owner-fields">
+                <Dropdown
+                  id="rfp-piece-assignee"
+                  titleText="Owner"
+                  label="Unassigned"
+                  items={ownerItems}
+                  itemToString={(i) => i?.text ?? ''}
+                  selectedItem={ownerItems.find((o) => o.id === (item.assigneeId ?? '')) ?? ownerItems[0]}
+                  onChange={({ selectedItem }) => assign({ assigneeId: selectedItem?.id || null })}
+                />
+                <TextInput
+                  id="rfp-piece-due"
+                  type="date"
+                  labelText="Due"
+                  value={item.dueDate ? format(new Date(item.dueDate), 'yyyy-MM-dd') : ''}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                    const v = e.target.value;
+                    if (!v) return void assign({ dueDate: null });
+                    const [y, m, d] = v.split('-').map(Number);
+                    // End of that working day, local time.
+                    assign({ dueDate: new Date(y, m - 1, d, 18, 0, 0, 0).toISOString() });
+                  }}
+                />
+              </div>
+            </section>
 
             <section className="rfp-piece-panel__section" aria-labelledby="rfp-piece-current">
               <h3 id="rfp-piece-current" className="rfp-piece-panel__heading">Current version</h3>

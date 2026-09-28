@@ -285,6 +285,43 @@ describe('RfpFormPanel', () => {
     await waitFor(() => expect(currentStep()).toBe('Deadline & submission'));
   });
 
+  it('fills questions closing seven days before the first deadline picked, and keeps what the user sets', async () => {
+    const user = userEvent.setup();
+    render(<RfpFormPanel open rfp={null} onClose={vi.fn()} onSaved={vi.fn()} />);
+    await fill(user, screen.getByLabelText('RFP name'), 'Maintenance SIMPL');
+    await fill(user, screen.getByLabelText('Reference'), '27/2026/DGI');
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    await waitFor(() => expect(currentStep()).toBe('Deadline & submission'));
+
+    await setDeadline(new Date(2026, 8, 30));
+    expect(screen.getByLabelText('Questions close')).toHaveValue('09/23/2026');
+
+    // A second deadline does not move a questions date that is already set.
+    // Moved before it, so the kept date is flagged — which also proves the
+    // change reached state (flatpickr writes the input either way).
+    const input = document.querySelector('#rfp-new-deadline-date') as HTMLInputElement & { _flatpickr: { setDate: (d: Date, f: boolean) => void } };
+    input._flatpickr.setDate(new Date(2026, 8, 20), true);
+    await waitFor(() => expect(screen.getByText('Must be before the deadline')).toBeInTheDocument());
+    expect(screen.getByLabelText('Questions close')).toHaveValue('09/23/2026');
+  });
+
+  it('will not go on with questions closing after the deadline', async () => {
+    const user = userEvent.setup();
+    render(<RfpFormPanel open rfp={null} onClose={vi.fn()} onSaved={vi.fn()} />);
+    await fill(user, screen.getByLabelText('RFP name'), 'Maintenance SIMPL');
+    await fill(user, screen.getByLabelText('Reference'), '27/2026/DGI');
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    await waitFor(() => expect(currentStep()).toBe('Deadline & submission'));
+    await setDeadline(new Date(2026, 8, 30));
+
+    const q = document.querySelector('#rfp-new-questions-date') as HTMLInputElement & { _flatpickr: { setDate: (d: Date, f: boolean) => void } };
+    q._flatpickr.setDate(new Date(2026, 9, 2), true);
+
+    await waitFor(() => expect(screen.getByText('Must be before the deadline')).toBeInTheDocument());
+    // Carbon applies `disableSubmit` from an effect, a render after the field.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled());
+  });
+
   it('will not leave the deadline step without one', async () => {
     const user = userEvent.setup();
     render(<RfpFormPanel open rfp={null} onClose={vi.fn()} onSaved={vi.fn()} />);

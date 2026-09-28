@@ -11,7 +11,7 @@ import type { RfpDetail, RfpDocument, RfpItem, RfpItemVerification, RfpPerson, R
 vi.mock('../../api/rfps', () => ({
   rfpsApi: {
     getAll: vi.fn(), getById: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn(),
-    uploadDocument: vi.fn(), deleteDocument: vi.fn(), getCatalogue: vi.fn(),
+    uploadDocument: vi.fn(), deleteDocument: vi.fn(), getCatalogue: vi.fn(), getPeople: vi.fn(),
     createLot: vi.fn(), updateLot: vi.fn(), deleteLot: vi.fn(),
     createFolder: vi.fn(), deleteFolder: vi.fn(),
     createItem: vi.fn(), updateItem: vi.fn(), deleteItem: vi.fn(), uploadItemDocument: vi.fn(),
@@ -90,6 +90,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   useAuthStore.setState({ user: { id: 'me', email: 'walid@powerm.ma', name: 'Walid', avatarUrl: null } });
   vi.mocked(rfpsApi.getCatalogue).mockResolvedValue(axiosOk({ data: [] }) as never);
+  vi.mocked(rfpsApi.getPeople).mockResolvedValue(axiosOk({ data: [] }) as never);
 });
 
 describe('a piece row', () => {
@@ -250,8 +251,17 @@ describe('the verifiers', () => {
     expect(await screen.findByText('2 awaiting your verification')).toBeInTheDocument();
   });
 
+  it('shows no verifiers line on a tender nobody else can open', async () => {
+    serve(makeRfp(piece(), [], { _count: { shares: 0 } }));
+    renderPage();
+
+    await screen.findByRole('heading', { name: 'Maintenance SIMPL' });
+    expect(screen.queryByText('Verifiers')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Add verifiers' })).toBeNull();
+  });
+
   it('lets the owner choose them among the people the tender is shared with', async () => {
-    serve(makeRfp(piece(), []));
+    serve(makeRfp(piece(), [], { _count: { shares: 1 } }));
     vi.mocked(rfpsApi.getRfpShares).mockResolvedValue(axiosOk({ data: [{ id: 's1', createdAt: '', sharedWith: SALMA }] }) as never);
     vi.mocked(rfpsApi.setVerifiers).mockResolvedValue(axiosOk({ data: [] }) as never);
     const user = userEvent.setup();
