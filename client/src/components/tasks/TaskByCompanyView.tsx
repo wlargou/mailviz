@@ -18,7 +18,7 @@ import {
   Tag,
   Toggle,
 } from '@carbon/react';
-import { Add, ChevronRight, Email, WarningFilled } from '@carbon/icons-react';
+import { ChevronRight, Email, WarningFilled } from '@carbon/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { format, isToday, isTomorrow } from 'date-fns';
 import { tasksApi, type TaskCompanyGroup, type TaskCompanyMeta, type TaskGroupSort } from '../../api/tasks';
@@ -42,7 +42,6 @@ interface TaskByCompanyViewProps {
   labels: Label[];
   onEdit: (taskId: string) => void;
   onDelete: (task: Task) => void;
-  onCreateNew: () => void;
 }
 
 /** Which subset of the returned tasks the chips are narrowing to. */
@@ -100,8 +99,8 @@ function dueLabel(iso: string): string {
  * Built on the same Carbon table primitives as the List View — the same
  * `TableContainer` / `TableToolbar` / `TableExpandRow` — so the two tabs read
  * as one component with a different shape rather than two designs. The toolbar
- * carries what the List View's does: search, the shared filter flyout, and the
- * New Task button.
+ * carries what the List View's does: search and the shared filter flyout. New
+ * task is in the page header, where every view has it.
  *
  * The structure Carbon does NOT provide is the second level. Its expandable
  * variant expands one level, so the task rows are a nested table inside each
@@ -115,7 +114,7 @@ function dueLabel(iso: string): string {
  * given a hierarchy; sorting here is a server concern because the server holds
  * every group. The primitives give identical styling without pretending.
  */
-export function TaskByCompanyView({ labels, onEdit, onDelete, onCreateNew }: TaskByCompanyViewProps) {
+export function TaskByCompanyView({ labels, onEdit, onDelete }: TaskByCompanyViewProps) {
   const navigate = useNavigate();
   const addNotification = useUIStore((s) => s.addNotification);
 
@@ -348,9 +347,6 @@ export function TaskByCompanyView({ labels, onEdit, onDelete, onCreateNew }: Tas
             onToggle={setIncludeCompleted}
           />
         </TableFilterFlyout>
-        <Button renderIcon={Add} onClick={onCreateNew}>
-          New Task
-        </Button>
       </TableToolbarContent>
     </TableToolbar>
   );

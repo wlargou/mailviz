@@ -279,7 +279,7 @@ export function CustomersPage() {
                         </TableFilterFlyout>
                       )}
                       <Button renderIcon={Add} onClick={() => setCreateOpen(true)}>
-                        New Company
+                        New company
                       </Button>
                     </TableToolbarContent>
                   </TableToolbar>

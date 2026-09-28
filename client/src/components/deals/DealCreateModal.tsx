@@ -100,7 +100,7 @@ export function DealCreateModal({ open, onClose, onCreated, editDeal }: DealCrea
     <SidePanel
       open={open}
       onRequestClose={() => { resetForm(); onClose(); }}
-      title={editDeal ? 'Edit Deal' : 'New Deal'}
+      title={editDeal ? 'Edit deal' : 'New deal'}
       subtitle={editDeal ? 'Update deal registration details' : 'Register a new partner deal'}
       size="md"
       actions={[

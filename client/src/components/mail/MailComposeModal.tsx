@@ -697,7 +697,7 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, dr
   };
 
   const panelTitle =
-    mode === 'new' ? 'New Email'
+    mode === 'new' ? 'New email'
     : mode === 'draft' ? 'Draft'
     : mode === 'reply' ? 'Reply'
     : mode === 'replyAll' ? 'Reply All'

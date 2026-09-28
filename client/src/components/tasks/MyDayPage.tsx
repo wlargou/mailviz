@@ -86,7 +86,7 @@ export function MyDayPage() {
           <p className="page-header__subtitle">{format(new Date(), 'EEEE, MMMM d')}</p>
         </div>
         <Button renderIcon={Add} onClick={() => setCreateOpen(true)}>
-          New Task
+          New task
         </Button>
       </div>
 

@@ -119,7 +119,7 @@ export function CalendarPage() {
       <div className="page-header">
         <div className="page-header__info">
           <h1>Calendar</h1>
-          <p className="page-header__subtitle">Manage your schedule and events</p>
+          <p className="page-header__subtitle">Meetings, and the deadlines that fall between them</p>
         </div>
       </div>
 

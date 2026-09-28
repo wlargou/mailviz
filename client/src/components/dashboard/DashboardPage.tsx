@@ -128,10 +128,10 @@ export function DashboardPage() {
           <p className="page-header__subtitle">Overview of your CRM activity</p>
         </div>
         <MenuButton label="Create" menuAlignment="bottom-end">
-          <MenuItem label="New Email" renderIcon={EmailIcon} onClick={() => setShowCompose(true)} />
-          <MenuItem label="New Task" renderIcon={TaskComplete} onClick={() => setShowCreateTask(true)} />
-          <MenuItem label="New Event" renderIcon={CalendarIcon} onClick={() => setShowCreateEvent(true)} />
-          <MenuItem label="New Deal" renderIcon={Partnership} onClick={() => setShowCreateDeal(true)} />
+          <MenuItem label="New email" renderIcon={EmailIcon} onClick={() => setShowCompose(true)} />
+          <MenuItem label="New task" renderIcon={TaskComplete} onClick={() => setShowCreateTask(true)} />
+          <MenuItem label="New event" renderIcon={CalendarIcon} onClick={() => setShowCreateEvent(true)} />
+          <MenuItem label="New deal" renderIcon={Partnership} onClick={() => setShowCreateDeal(true)} />
         </MenuButton>
       </div>
 
@@ -168,7 +168,7 @@ export function DashboardPage() {
           <Column lg={8} md={4} sm={4}>
             <Tile className="card">
               <div className="card__header">
-                <h4 className="card__title">Expiring Deal Registrations</h4>
+                <h4 className="card__title">Expiring deal registrations</h4>
               </div>
               <div className="card__content">
                 <ExpiringDeals deals={stats?.expiringDeals} loading={loading} />

@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { useCallback, useEffect, useState } from 'react';
 import { Button, MenuButton, MenuItem, MenuItemDivider, Modal, TextInput } from '@carbon/react';
 import { Save } from '@carbon/icons-react';
@@ -110,8 +111,14 @@ export function TaskViewsMenu() {
         Save view
       </Button>
 
+      {/*
+        Mounted only while open, and on <body>: a closed Carbon Modal stays in
+        the DOM, and inside the table toolbar it measured 80px wider than the
+        page — focus moving into a menu then scrolled the whole page sideways.
+      */}
+      {saveOpen && createPortal(
       <Modal
-        open={saveOpen}
+        open
         size="xs"
         modalHeading="Save the current view"
         primaryButtonText={busy ? 'Saving…' : 'Save'}
@@ -132,7 +139,9 @@ export function TaskViewsMenu() {
           maxLength={80}
         />
         <p className="modal-form__helper">{describeView(activeFilters, sortBy, sortOrder)}</p>
-      </Modal>
+      </Modal>,
+      document.body,
+      )}
     </>
   );
 }

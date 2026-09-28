@@ -237,7 +237,7 @@ export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreat
         description="Try adjusting your filters or create a new task"
         action={
           <Button kind="primary" size="sm" renderIcon={Add} onClick={onCreateNew}>
-            New Task
+            New task
           </Button>
         }
       />
@@ -365,9 +365,6 @@ export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreat
                     size="sm"
                   />
                 </TableFilterFlyout>
-                <Button renderIcon={Add} onClick={onCreateNew}>
-                  New Task
-                </Button>
               </TableToolbarContent>
             </TableToolbar>
             <Table {...getTableProps()} size="lg">

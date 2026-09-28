@@ -64,7 +64,7 @@ export function TaskCreateModal({ open, onClose, onCreated, labels }: TaskCreate
     <SidePanel
       open={open}
       onRequestClose={() => { resetForm(); onClose(); }}
-      title="Create New Task"
+      title="New task"
       subtitle="Add a task to track your work"
       size="md"
       actions={[
