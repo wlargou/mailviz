@@ -4,6 +4,7 @@ import { ContactDuplicatesPage } from '../components/contacts/ContactDuplicatesP
 import { SnoozeModal } from '../components/mail/SnoozeModal';
 import { ThreadDetail } from '../components/mail/ThreadDetail';
 import { MailPage } from '../components/mail/MailPage';
+import { RfpsPage } from '../components/rfps/RfpsPage';
 import { SidePanel } from '@carbon/ibm-products';
 import { emailsApi } from '../api/emails';
 import { contactsApi as mailContactsApi } from '../api/contacts';
@@ -15,7 +16,7 @@ import { OnboardingSettings } from '../components/settings/OnboardingSettings';
 import { EmptyState } from '../components/shared/EmptyState';
 import { Button as CarbonButton } from '@carbon/react';
 import { Calendar } from '@carbon/icons-react';
-import { contactsApi } from '../api/customers';
+import { contactsApi, customersApi } from '../api/customers';
 import { templatesApi } from '../api/templates';
 import { onboardingApi } from '../api/onboarding';
 import type { DuplicateGroup } from '../types/customer';
@@ -143,6 +144,14 @@ const PREVIEW_LIST = [
   { threadId: 't5', messageCount: 2, unreadCount: 0, latestEmail: threadMessage(7, { id: 'l5', subject: 'Deal reg. extension 71523004', from: 'partner@example.test', fromName: 'Red Hat Partner', snippet: 'Your extension request has been received.', receivedAt: new Date(Date.now() - 6 * 86_400_000).toISOString() }) },
 ];
 
+/** The register: one tender at risk two days out, one comfortable, one won. */
+const DAY_MS = 86_400_000;
+const PREVIEW_RFPS = [
+  { id: 'r1', name: 'Refonte de la plateforme matérielle AIX', reference: '70/AOO/BKAM/2026', customerId: 'c1', customer: { id: 'c1', name: 'BKAM', logoUrl: null }, deadlineAt: new Date(Date.now() + 2 * DAY_MS).toISOString(), createdAt: new Date(Date.now() - 20 * DAY_MS).toISOString(), submissionFormat: 'PORTAL', portalUrl: 'https://example.test', isGoe: true, budget: 31666500, status: 'WORKING', notes: null, userId: 'u1', updatedAt: '', documents: [{ id: 'd1' }, { id: 'd2' }], readiness: { ready: 0, total: 10 } },
+  { id: 'r2', name: 'Maintenance et support SIMPL', reference: '27/2026/DGI', customerId: null, customer: null, deadlineAt: new Date(Date.now() + 53 * DAY_MS).toISOString(), createdAt: new Date(Date.now() - 10 * DAY_MS).toISOString(), submissionFormat: 'PAPER', portalUrl: null, isGoe: false, budget: null, status: 'OPEN', notes: null, userId: 'u1', updatedAt: '', documents: [], readiness: { ready: 12, total: 35 } },
+  { id: 'r3', name: 'Acquisition de serveurs IBM POWER', reference: 'CONSULT_2946', customerId: null, customer: null, deadlineAt: new Date(Date.now() - 40 * DAY_MS).toISOString(), createdAt: new Date(Date.now() - 90 * DAY_MS).toISOString(), submissionFormat: 'PORTAL', portalUrl: null, isGoe: true, budget: 2150000, status: 'WON', notes: null, userId: 'u1', updatedAt: '', documents: [], readiness: { ready: 9, total: 9 } },
+];
+
 const PREVIEW_THREAD: EmailMessage[] = [
   threadMessage(1, { body: '<div>Bonjour, Faisant suite à notre dernier point, nous vous remercions de bien vouloir nous transmettre le fichier PEP comme convenu.</div><div>Cordialement,</div>' }),
   threadMessage(2, { from: 'me@powerm.test', fromName: 'L.walid (PowerM)', to: ['h.gadialami@example.test'], labelIds: ['SENT'], snippet: 'Bonjour Ssi Hicham, Je partage avec vous le plan d’action prévu : Phase 1…' }),
@@ -179,6 +188,13 @@ function stubApis() {
   emailsApi.getReminders = async () =>
     ({ data: { data: [{ id: 'r1', threadId: 't5', kind: 'snooze', state: 'armed', remindAt: new Date(Date.now() + 2 * 86_400_000).toISOString(), armedAt: '', wasInInbox: true, resolution: null }] } }) as never;
   emailsApi.getRepliesOwed = async () => ({ data: { data: [] } }) as never;
+  // The register's form panel mounts a company picker; unstubbed, its 401
+  // sends the preview to /login.
+  customersApi.getAll = async () =>
+    ({ data: { data: [], meta: { page: 1, limit: 20, total: 0, totalPages: 0 } } }) as never;
+  authApi.getUsers = async () => ({ data: { data: [] } }) as never;
+  rfpsApi.getAll = async () =>
+    ({ data: { data: PREVIEW_RFPS, meta: { page: 1, limit: 20, total: 3, totalPages: 1 } } }) as never;
   contactsApi.getDuplicates = async () =>
     ({ data: { data: DUPLICATE_GROUPS } }) as never;
   contactsApi.merge = async () =>
@@ -257,7 +273,7 @@ function stubApis() {
     }) as never;
 }
 
-type Screen = 'duplicates' | 'templates' | 'snooze' | 'onboarding-tile' | 'empty' | 'thread' | 'mail';
+type Screen = 'duplicates' | 'templates' | 'snooze' | 'onboarding-tile' | 'empty' | 'thread' | 'mail' | 'rfps';
 
 export function ComponentPreview() {
   /**
@@ -300,7 +316,7 @@ export function ComponentPreview() {
           }}
         >
           <ContentSwitcher
-            selectedIndex={['duplicates', 'templates', 'snooze', 'onboarding-tile', 'empty', 'thread', 'mail'].indexOf(
+            selectedIndex={['duplicates', 'templates', 'snooze', 'onboarding-tile', 'empty', 'thread', 'mail', 'rfps'].indexOf(
               screen
             )}
             onChange={({ name }) => setScreen(name as Screen)}
@@ -313,6 +329,7 @@ export function ComponentPreview() {
             <Switch name="empty" text="Empty states" />
             <Switch name="thread" text="Thread" />
             <Switch name="mail" text="Mail list" />
+            <Switch name="rfps" text="Tenders" />
           </ContentSwitcher>
           <Button size="sm" kind="tertiary" onClick={() => setTheme(theme === 'g100' ? 'g10' : 'g100')}>
             {theme}
@@ -361,6 +378,11 @@ export function ComponentPreview() {
           {screen === 'onboarding-tile' && (
             <div style={{ padding: '2rem', maxWidth: '44rem' }}>
               <OnboardingSettings />
+            </div>
+          )}
+          {screen === 'rfps' && (
+            <div style={{ padding: '1rem 2rem' }}>
+              <RfpsPage embedded />
             </div>
           )}
           {screen === 'mail' && (

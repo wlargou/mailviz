@@ -9,7 +9,7 @@ vi.mock('react-router-dom', async () => {
 });
 import userEvent from '@testing-library/user-event';
 import { AxiosHeaders, type AxiosResponse } from 'axios';
-import { RfpsPage, deadlineTone } from './RfpsPage';
+import { RfpsPage, deadlineTone, deadlineWhen } from './RfpsPage';
 import { rfpsApi } from '../../api/rfps';
 import { useAuthStore } from '../../store/authStore';
 import type { Rfp } from '../../types/rfp';
@@ -104,6 +104,14 @@ beforeEach(() => {
  * stop when the tender does: a bid won last month must not sit in the table
  * coloured like a missed deadline.
  */
+describe('deadlineWhen', () => {
+  it('reads as weekday, date and time, with the year only when it is not this one', () => {
+    const now = new Date(2026, 8, 28, 9, 0);
+    expect(deadlineWhen(new Date(2026, 8, 30, 11, 0).toISOString(), now)).toBe('Wed 30 Sep · 11:00');
+    expect(deadlineWhen(new Date(2027, 0, 5, 9, 30).toISOString(), now)).toBe('Tue 5 Jan 2027 · 09:30');
+  });
+});
+
 describe('deadlineTone', () => {
   const now = new Date('2026-09-01T09:00:00.000Z').getTime();
 
@@ -145,6 +153,10 @@ describe('RfpsPage', () => {
     const behind = (await screen.findByText('BEHIND/1')).closest('tr')!;
     expect(within(behind).getByLabelText('1 of 10 pieces ready')).toBeInTheDocument();
     expect(within(behind).getByText('▲ At risk').closest('.rfp-risk')).toHaveAttribute('title', '10% ready with 80% of the time used');
+    // Beside the readiness it is about, not stacked under the deadline.
+    const readyCell = within(behind).getByLabelText('1 of 10 pieces ready').closest('td')!;
+    expect(within(readyCell).getByText('▲ At risk')).toBeInTheDocument();
+    expect(within(behind).getByText(/^in 2 days$/).closest('td')).not.toHaveTextContent('At risk');
     const fine = screen.getByText('FINE/1').closest('tr')!;
     expect(within(fine).getByLabelText('6 of 10 pieces ready')).toBeInTheDocument();
     expect(within(fine).queryByText('▲ At risk')).toBeNull();
@@ -159,9 +171,12 @@ describe('RfpsPage', () => {
     renderPage();
 
     const live = (await screen.findByText('LIVE/1')).closest('tr')!;
-    expect(within(live).getByText(/^in 2 days$|^in 3 days$/)).toBeInTheDocument();
+    const distance = within(live).getByText(/^in 2 days$|^in 3 days$/);
+    // How far, then when, in the same cell.
+    expect(distance.closest('td')).toHaveTextContent(deadlineWhen(inTwoDays));
     const won = screen.getByText('WON/1').closest('tr')!;
     expect(within(won).queryByText(/^in \d+ days$|tomorrow|late$/)).toBeNull();
+    expect(within(won).getByText(deadlineWhen(inTwoDays))).toBeInTheDocument();
   });
 
   it('arrives from global search with the query in place, across every tender', async () => {
@@ -222,8 +237,8 @@ describe('RfpsPage', () => {
     // inside each action button's description.
     const row = (await screen.findByText('70/AOO/BKAM/2026')).closest('tr')!;
     expect(within(row).getByRole('button', { name: 'Refonte de la plateforme matérielle AIX' })).toBeInTheDocument();
-    // The year only when it is not this one.
-    expect(within(row).getByText(/^9 Dec( 2026)?$/)).toBeInTheDocument();
+    // Weekday, date and time — the year only when it is not this one.
+    expect(within(row).getByText(/^\w{3} 9 Dec( 2026)? · \d{2}:\d{2}$/)).toBeInTheDocument();
     // The buying organisation — a tender is recognised by who it is from at
     // least as often as by its reference.
     expect(within(row).getByText('Bank Al-Maghrib')).toBeInTheDocument();
