@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { HeaderGlobalAction } from '@carbon/react';
 import {
@@ -10,11 +10,15 @@ import {
   Partnership,
   Share,
   UserFollow,
+  ChevronDown,
+  ChevronRight,
+  DocumentMultiple_01,
 } from '@carbon/icons-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useNotificationStore } from '../../store/notificationStore';
 import type { AppNotification } from '../../api/notifications';
 import { decodeEntities } from '../../utils/text';
+import { groupNotifications, groupTarget, notificationTarget } from '../../utils/notificationGroups';
 
 // Icon mapping for notification types using Carbon icons
 function getNotificationIcon(type: string) {
@@ -25,6 +29,7 @@ function getNotificationIcon(type: string) {
   if (type.startsWith('TASK')) return <Task size={size} />;
   if (type.startsWith('EVENT')) return <Calendar size={size} />;
   if (type.startsWith('DEAL')) return <Partnership size={size} />;
+  if (type.startsWith('RFP')) return <DocumentMultiple_01 size={size} />;
   return <Notification size={size} />;
 }
 
@@ -81,27 +86,61 @@ export function NotificationBell() {
     (notification: AppNotification) => {
       markRead(notification.id);
       closePanel();
-
-      switch (notification.entityType) {
-        case 'email':
-          navigate('/mail');
-          break;
-        case 'task':
-          // Straight to the task's panel when the notification names one —
-          // a mention or a comment is about a specific task, not the list.
-          navigate(notification.entityId ? `/tasks?task=${notification.entityId}` : '/tasks');
-          break;
-        case 'deal':
-          navigate('/deals');
-          break;
-        case 'event':
-          navigate('/calendar');
-          break;
-        default:
-          break;
-      }
+      const target = notificationTarget(notification);
+      if (target) navigate(target);
     },
     [markRead, closePanel, navigate]
+  );
+
+  const sections = useMemo(() => groupNotifications(notifications), [notifications]);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggleGroup = (key: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
+  const renderItem = (n: AppNotification, nested = false) => (
+    <div
+      key={n.id}
+      className={`notification-item${!n.isRead ? ' notification-item--unread' : ''}${nested ? ' notification-item--nested' : ''}`}
+      onClick={() => handleNotificationClick(n)}
+    >
+      <div
+        className="notification-item__indicator"
+        style={{ borderLeftColor: getNotificationColor(n.type) }}
+      />
+      {!nested && (
+        <div className="notification-item__icon">
+          {getNotificationIcon(n.type)}
+        </div>
+      )}
+      <div className="notification-item__content">
+        <span className="notification-item__title">{decodeEntities(n.title)}</span>
+        {n.message && (
+          <span className="notification-item__message">
+            {n.message}
+          </span>
+        )}
+        <span className="notification-item__time">
+          {formatDistanceToNow(new Date(n.createdAt), {
+            addSuffix: true,
+          })}
+        </span>
+      </div>
+      <button
+        className="notification-item__dismiss"
+        onClick={(e) => {
+          e.stopPropagation();
+          dismiss(n.id);
+        }}
+        title="Dismiss"
+      >
+        <Close size={14} />
+      </button>
+    </div>
   );
 
   return (
@@ -153,43 +192,81 @@ export function NotificationBell() {
                 <p>No notifications</p>
               </div>
             ) : (
-              notifications.map((n) => (
-                <div
-                  key={n.id}
-                  className={`notification-item${!n.isRead ? ' notification-item--unread' : ''}`}
-                  onClick={() => handleNotificationClick(n)}
-                >
-                  <div
-                    className="notification-item__indicator"
-                    style={{ borderLeftColor: getNotificationColor(n.type) }}
-                  />
-                  <div className="notification-item__icon">
-                    {getNotificationIcon(n.type)}
-                  </div>
-                  <div className="notification-item__content">
-                    <span className="notification-item__title">{decodeEntities(n.title)}</span>
-                    {n.message && (
-                      <span className="notification-item__message">
-                        {n.message}
-                      </span>
-                    )}
-                    <span className="notification-item__time">
-                      {formatDistanceToNow(new Date(n.createdAt), {
-                        addSuffix: true,
-                      })}
-                    </span>
-                  </div>
-                  <button
-                    className="notification-item__dismiss"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      dismiss(n.id);
-                    }}
-                    title="Dismiss"
-                  >
-                    <Close size={14} />
-                  </button>
-                </div>
+              sections.map((section) => (
+                <section key={section.label} className="notification-section" aria-label={section.label}>
+                  <h5 className="notification-section__label">{section.label}</h5>
+                  {section.rows.map((row) => {
+                    if (row.kind === 'single') return renderItem(row.notification);
+                    const open = expanded.has(row.key);
+                    const newest = row.items[0];
+                    const unread = row.items.some((n) => !n.isRead);
+                    const target = groupTarget(row.type);
+                    return (
+                      <div key={row.key} className="notification-group">
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          aria-expanded={open}
+                          className={`notification-item notification-item--group${unread ? ' notification-item--unread' : ''}`}
+                          onClick={() => toggleGroup(row.key)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              toggleGroup(row.key);
+                            }
+                          }}
+                        >
+                          <div
+                            className="notification-item__indicator"
+                            style={{ borderLeftColor: getNotificationColor(row.type) }}
+                          />
+                          <div className="notification-item__icon">
+                            {getNotificationIcon(row.type)}
+                          </div>
+                          <div className="notification-item__content">
+                            <span className="notification-item__title">{row.title}</span>
+                            <span className="notification-item__message">
+                              Latest: {decodeEntities(newest.title)}
+                            </span>
+                            <span className="notification-item__time">
+                              {formatDistanceToNow(new Date(newest.createdAt), { addSuffix: true })}
+                            </span>
+                          </div>
+                          <span className="notification-item__chevron" aria-hidden>
+                            {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                          </span>
+                          <button
+                            className="notification-item__dismiss"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              row.items.forEach((n) => dismiss(n.id));
+                            }}
+                            title={`Dismiss all ${row.items.length}`}
+                          >
+                            <Close size={14} />
+                          </button>
+                        </div>
+                        {open && (
+                          <div className="notification-group__items">
+                            {row.items.map((n) => renderItem(n, true))}
+                            {target && (
+                              <button
+                                className="notification-panel__link notification-group__open"
+                                onClick={() => {
+                                  row.items.forEach((n) => { if (!n.isRead) markRead(n.id); });
+                                  closePanel();
+                                  navigate(target);
+                                }}
+                              >
+                                Open the list
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </section>
               ))
             )}
           </div>

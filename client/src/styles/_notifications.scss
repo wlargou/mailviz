@@ -176,3 +176,40 @@
     color: var(--cds-text-primary);
   }
 }
+
+// Day sections, and repeats folded into one row — see utils/notificationGroups.
+.notification-section__label {
+  @include type.type-style('label-01');
+  color: var(--cds-text-secondary);
+  padding: $spacing-03 $spacing-05 $spacing-02;
+  margin: 0;
+  background: var(--cds-layer-01);
+  border-bottom: 1px solid var(--cds-border-subtle);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.notification-item__chevron {
+  display: flex;
+  align-self: center;
+  color: var(--cds-icon-secondary);
+  flex-shrink: 0;
+}
+
+.notification-item--group:focus-visible {
+  outline: 2px solid var(--cds-focus);
+  outline-offset: -2px;
+}
+
+.notification-item--nested {
+  padding-left: calc(#{$spacing-05} + #{$spacing-07});
+}
+
+.notification-group__open {
+  display: block;
+  padding: $spacing-03 $spacing-05 $spacing-03 calc(#{$spacing-05} + #{$spacing-07});
+  border-bottom: 1px solid var(--cds-border-subtle);
+  width: 100%;
+  text-align: start;
+}
