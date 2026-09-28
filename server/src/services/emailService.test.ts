@@ -638,6 +638,23 @@ describe('emailService — Gmail categories', () => {
     expect(await threadsFor('spam')).toHaveLength(6);
   });
 
+  it('files uncategorised machine mail under Updates, not Primary', async () => {
+    const { alice } = await createTwoUsers();
+    await createEmail(alice.id, { threadId: 't-person', labelIds: inbox() });
+    await createEmail(alice.id, { threadId: 't-alert', isAutomated: true, labelIds: inbox() });
+    await createEmail(alice.id, { threadId: 't-alert-personal', isAutomated: true, labelIds: inbox('CATEGORY_PERSONAL') });
+    await createEmail(alice.id, { threadId: 't-updates', labelIds: inbox('CATEGORY_UPDATES') });
+    // Gmail's own verdict wins: automated promotions stay in Promotions.
+    await createEmail(alice.id, { threadId: 't-promo-bot', isAutomated: true, labelIds: inbox('CATEGORY_PROMOTIONS') });
+
+    const threadsFor = async (category: string) =>
+      (await emailService.findAllThreads({ folder: 'inbox', category }, alice.id)).data.map((t) => t.threadId).sort();
+
+    expect(await threadsFor('primary')).toEqual(['t-person']);
+    expect(await threadsFor('updates')).toEqual(['t-alert', 't-alert-personal', 't-updates']);
+    expect(await threadsFor('promotions')).toEqual(['t-promo-bot']);
+  });
+
   it('counts unread inbox threads per category — the caller\'s and shared, not read, trashed or archived', async () => {
     const { alice, bob } = await createTwoUsers();
     // Two unread messages in one thread: one thread, not two.
@@ -654,11 +671,14 @@ describe('emailService — Gmail categories', () => {
     await createEmail(bob.id, { threadId: 'bob-shared-updates', isRead: false, labelIds: inbox('CATEGORY_UPDATES') });
     await shareThreadWith('bob-shared-updates', bob.id, alice.id);
 
+    // Unread machine mail: counted under Updates, where its list shows it.
+    await createEmail(alice.id, { threadId: 't-alert', isRead: false, isAutomated: true, labelIds: inbox() });
+
     expect(await emailService.categoryCounts(alice.id)).toEqual({
       primary: 2,
       social: 1,
       promotions: 0,
-      updates: 1,
+      updates: 2,
       forums: 0,
     });
   });

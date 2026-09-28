@@ -29,6 +29,7 @@ import { canAccessTask, getSharedThreadIds, canAccessThread } from '../utils/acc
 import { auditService } from './auditService.js';
 import { notificationService } from './notificationService.js';
 import { snoozeService } from './snoozeService.js';
+import { classifyContactKind } from '../utils/contactKind.js';
 import { categoryFilter, isMailCategory, MAIL_CATEGORIES, type MailCategory } from '../utils/mailCategories.js';
 import { mergeEngagement } from '../utils/contactEngagement.js';
 import { decodeEntities, decodeThenEscape } from '../utils/htmlEntities.js';
@@ -683,6 +684,8 @@ export const emailService = {
       hasAttachment,
       sizeEstimate: msg.sizeEstimate || null,
       labelIds,
+      // Outbound mail is the user's own, never a machine's.
+      isAutomated: !isOutbound && classifyContactKind({ email: fromEmail }) === 'automated',
       customerId,
       syncedAt: new Date(),
     };

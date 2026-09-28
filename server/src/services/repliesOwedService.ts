@@ -24,10 +24,26 @@ export function addressOf(from: string): string {
 }
 
 /**
+ * Calendar mail: an invitation or an RSVP is answered from the calendar, not
+ * by writing back. Gmail's English and French subject prefixes, colon and all
+ * — "Invitation à l'événement …" without one is a marketing mail, not this.
+ */
+const CALENDAR_SUBJECT = /^((updated )?invitation( with note)?|invitation mise à jour|accepted|declined|tentatively accepted|accepté|refusé|acceptée provisoirement|canceled event|cancelled event|événement annulé|new event|nouvel événement)( \([^)]*\))?:/i;
+
+/** Out-of-office replies, which want nothing back. */
+const AUTO_REPLY_SUBJECT = /^(automatic reply|auto(-| )?reply|out of (the )?office|réponse automatique|absence|absent)\b/i;
+
+/** Display names that are a machine, whatever address it sends from. */
+const SYSTEM_NAMES = new Set(['root', 'cron', 'daemon', 'mailer-daemon', 'postmaster', 'nobody']);
+
+/**
  * Threads where a person is waiting on the user.
  *
- * The latest message in the thread came from someone else — not a list, not
- * an automated sender, not a Promotions/Updates/Social/Forums mail — it was
+ * The latest message in the thread came from someone else — a person, not a
+ * list, not an automated sender, not a shared mailbox (a support@ desk has
+ * its own ticketing tool: 1,147 "New ticket has been created" mails came
+ * from one), not a Promotions/Updates/Social/Forums mail, not a calendar
+ * invitation or an out-of-office reply — it was
  * addressed to the user directly, it is still in the inbox, and it arrived in
  * the last two weeks. That is what "7 people are waiting on you" means; the
  * mail badge used to count 11,000 unread messages instead, which is a
@@ -67,7 +83,10 @@ export async function repliesOwed(userId: string, now = new Date()): Promise<Rep
       if (m.label_ids.some((l) => CATEGORY_LABEL_SET.has(l))) return false;
       const sender = addressOf(m.from);
       if (own.has(sender)) return false;
-      if (classifyContactKind({ email: sender }) === 'automated') return false;
+      if (classifyContactKind({ email: sender }) !== 'person') return false;
+      if (SYSTEM_NAMES.has((m.from_name ?? '').trim().toLowerCase())) return false;
+      if (CALENDAR_SUBJECT.test(m.subject.trim())) return false;
+      if (AUTO_REPLY_SUBJECT.test(m.subject.trim())) return false;
       // Directly to the user — not a CC, not a list they are on.
       return m.to.some((t) => own.has(addressOf(t)));
     })

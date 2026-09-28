@@ -7,7 +7,7 @@ const NOW = new Date('2026-09-28T09:00:00Z');
 const hoursAgo = (h: number) => new Date(NOW.getTime() - h * 3_600_000);
 
 let n = 0;
-async function mail(userId: string, over: { thread: string; from: string; to?: string[]; at: Date; labels?: string[]; archived?: boolean; trashed?: boolean; subject?: string }) {
+async function mail(userId: string, over: { thread: string; from: string; to?: string[]; at: Date; labels?: string[]; archived?: boolean; trashed?: boolean; subject?: string; fromName?: string }) {
   return prisma.email.create({
     data: {
       userId,
@@ -15,6 +15,7 @@ async function mail(userId: string, over: { thread: string; from: string; to?: s
       threadId: over.thread,
       subject: over.subject ?? over.thread,
       from: over.from,
+      fromName: over.fromName ?? null,
       to: over.to ?? [],
       receivedAt: over.at,
       labelIds: over.labels ?? ['INBOX'],
@@ -64,6 +65,21 @@ describe('repliesOwed', () => {
     await mail(alice.id, { thread: 'kept', from: 'omar@bkam.ma', to: [me], at: hoursAgo(2) });
 
     expect((await repliesOwed(alice.id, NOW)).map((o) => o.threadId)).toEqual(['kept']);
+  });
+
+  it('ignores shared mailboxes, cron mail, calendar invitations and out-of-office replies — but not a subject that merely starts alike', async () => {
+    const { alice } = await createTwoUsers();
+    const me = alice.email;
+    await mail(alice.id, { thread: 'desk', from: 'support@power-maroc.freshdesk.com', to: [me], at: hoursAgo(2), subject: 'New ticket has been created' });
+    await mail(alice.id, { thread: 'cron', from: 'ess.dgm@marocmeteo.ma', fromName: 'root', to: [me], at: hoursAgo(2), subject: 'TSM report' });
+    await mail(alice.id, { thread: 'invite', from: 'ismail.nair@powerm.ma', to: [me], at: hoursAgo(2), subject: 'Invitation: DGI LinuxOne TDA @ Mon Sep 14, 2026' });
+    await mail(alice.id, { thread: 'rsvp', from: 'omar@bkam.ma', to: [me], at: hoursAgo(2), subject: 'Accepté: Comité projet' });
+    await mail(alice.id, { thread: 'updated', from: 'omar@bkam.ma', to: [me], at: hoursAgo(2), subject: 'Updated invitation with note: Comité' });
+    await mail(alice.id, { thread: 'ooo', from: 'saad@powerm.ma', to: [me], at: hoursAgo(2), subject: 'Réponse automatique : Point de suivi' });
+    await mail(alice.id, { thread: 'ooo-en', from: 'saad@powerm.ma', to: [me], at: hoursAgo(2), subject: 'Automatic reply: Weekly sync' });
+    await mail(alice.id, { thread: 'talk', from: 'omar@bkam.ma', to: [me], at: hoursAgo(2), subject: 'Invitation à notre séminaire' });
+
+    expect((await repliesOwed(alice.id, NOW)).map((o) => o.threadId)).toEqual(['talk']);
   });
 
   it('survives a message with no recipients or labels recorded', async () => {

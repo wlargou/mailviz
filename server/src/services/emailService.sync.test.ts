@@ -1191,6 +1191,30 @@ describe('emailService.upsertMessage — own-domain filing', () => {
   });
 });
 
+describe('emailService.upsertMessage — mail from machines', () => {
+  // Flagged so it leaves Primary for Updates; see utils/mailCategories.
+  it('flags an automated sender, and not a person or the account itself', async () => {
+    // An account whose own address reads like a machine: its sent mail is
+    // still the user's, never automated.
+    const user = await createUser({ email: 'noreply@powerm.ma' });
+    await createGoogleAuth(user.id);
+    stubMessagesListPages(gmail, [['bot1', 'person1', 'own1']]);
+    stubMessagesGet(gmail, [
+      { id: 'bot1', from: 'notifications@saas.io', to: ['noreply@powerm.ma'], subject: 'Your export is ready' },
+      { id: 'person1', from: 'nadia@lydec.co.ma', to: ['noreply@powerm.ma'], subject: 'Renewal' },
+      { id: 'own1', from: 'noreply@powerm.ma', to: ['nadia@lydec.co.ma'], subject: 'Re: Renewal' },
+    ]);
+
+    await emailService.syncFromGmail(user.id);
+
+    const flags = Object.fromEntries(
+      (await prisma.email.findMany({ where: { userId: user.id }, select: { gmailMessageId: true, isAutomated: true } }))
+        .map((e) => [e.gmailMessageId, e.isAutomated]),
+    );
+    expect(flags).toEqual({ bot1: true, person1: false, own1: false });
+  });
+});
+
 describe('emailService.upsertMessage — what may become a company', () => {
   it('creates no company or contact for mail that arrived via a mailing list', async () => {
     const user = await createUser();

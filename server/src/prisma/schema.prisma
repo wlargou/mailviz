@@ -552,6 +552,10 @@ model Email {
   hasAttachment  Boolean   @default(false) @map("has_attachment")
   sizeEstimate   Int?      @map("size_estimate")
   labelIds       String[]  @map("label_ids")
+  /// The sender is a machine (noreply@, notifications@ …), by the same rule
+  /// as `Contact.kind`. Set at sync; such mail is filed under Updates rather
+  /// than Primary when Gmail gave it no category of its own.
+  isAutomated    Boolean   @default(false) @map("is_automated")
   syncedAt       DateTime? @map("synced_at")
   createdAt      DateTime  @default(now()) @map("created_at")
 
