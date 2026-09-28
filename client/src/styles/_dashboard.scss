@@ -575,7 +575,8 @@ td.table-cell--center .cds--tag {
     border-left-color: var(--cds-support-error);
   }
   &--high {
-    border-left-color: var(--cds-support-warning);
+    // Not support-warning: in g100 it is the same yellow as Medium's.
+    border-left-color: var(--cds-support-caution-major);
   }
   &--medium {
     border-left-color: var(--cds-support-caution-minor);
