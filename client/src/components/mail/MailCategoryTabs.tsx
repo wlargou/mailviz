@@ -30,7 +30,7 @@ export function MailCategoryTabs({ categories, selected, counts, onSelect, onCus
               <Tab key={category}>
                 {MAIL_CATEGORY_LABELS[category]}
                 {count > 0 && (
-                  <span className="mail-category-tabs__count" aria-label={`${count} unread`}>{count > 999 ? '999+' : count}</span>
+                  <span className="mail-category-tabs__count" aria-label={`${count} unread`}>{count > 99 ? '99+' : count}</span>
                 )}
               </Tab>
             );

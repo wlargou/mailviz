@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { TextInput, Button, InlineLoading, Tag, DatePicker, DatePickerInput, TimePicker, ComboBox } from '@carbon/react';
 import { Tearsheet } from '@carbon/ibm-products';
-import { SendAlt, Attachment, Close, Time, Save } from '@carbon/icons-react';
+import { SendAlt, Attachment, Close, Time, Save, OverflowMenuHorizontal } from '@carbon/icons-react';
 import DOMPurify from 'dompurify';
 import { format } from 'date-fns';
 import { emailsApi } from '../../api/emails';
@@ -9,6 +9,8 @@ import { draftsApi } from '../../api/drafts';
 import { authApi } from '../../api/auth';
 import { templatesApi } from '../../api/templates';
 import { useUIStore } from '../../store/uiStore';
+import { useAuthStore } from '../../store/authStore';
+import { replyRecipients } from '../../utils/replyRecipients';
 import { TiptapEditor } from './TiptapEditor';
 import { ComposeToolbar } from './ComposeToolbar';
 import { RecipientInput } from './RecipientInput';
@@ -82,10 +84,19 @@ interface MailComposeModalProps {
   draft?: DraftDetail | null;
   /** Fired after a draft is saved or sent so the Drafts folder can refresh. */
   onDraftChanged?: () => void;
+  /**
+   * Your addresses as the thread shows them. A reply to your own message
+   * goes to the people you wrote to, and none of these is prefilled as a
+   * recipient — the form used to put your own address in To.
+   */
+  ownAddresses?: Set<string>;
 }
 
-export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, draft, onDraftChanged }: MailComposeModalProps) {
+export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, draft, onDraftChanged, ownAddresses }: MailComposeModalProps) {
   const addNotification = useUIStore((s) => s.addNotification);
+  const userEmail = useAuthStore((s) => s.user?.email);
+  /** The quoted original under a reply or forward starts folded, as in the reader. */
+  const [showQuoted, setShowQuoted] = useState(false);
   const editorRef = useRef<Editor | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
@@ -158,18 +169,12 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, dr
       setBcc([]);
       setSubject('');
       setShowBcc(false);
-    } else if (mode === 'reply' && replyToEmail) {
-      setTo([replyToEmail.from]);
-      setCc([]);
-      setBcc([]);
-      setSubject(decodeEntities(replyToEmail.subject.match(/^Re:/i) ? replyToEmail.subject : `Re: ${replyToEmail.subject}`));
-      setShowBcc(false);
-    } else if (mode === 'replyAll' && replyToEmail) {
-      setTo([replyToEmail.from]);
-      const allCc = [...replyToEmail.to, ...replyToEmail.cc].filter(
-        (e) => e.toLowerCase() !== replyToEmail.from.toLowerCase()
-      );
-      setCc([...new Set(allCc.map((e) => e.toLowerCase()))]);
+    } else if ((mode === 'reply' || mode === 'replyAll') && replyToEmail) {
+      const own = new Set(ownAddresses ?? []);
+      if (userEmail) own.add(userEmail.toLowerCase());
+      const recipients = replyRecipients(replyToEmail, mode === 'replyAll', own);
+      setTo(recipients.to);
+      setCc(recipients.cc);
       setBcc([]);
       setSubject(decodeEntities(replyToEmail.subject.match(/^Re:/i) ? replyToEmail.subject : `Re: ${replyToEmail.subject}`));
       setShowBcc(false);
@@ -191,6 +196,9 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, dr
         );
       }
     }
+    setShowQuoted(false);
+    // ownAddresses and userEmail seed a fresh form; they do not reset one.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, mode, replyToEmail, draft]);
 
   // Seed the editor once it exists: with the draft's own body when one was
@@ -429,10 +437,12 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, dr
       ? `${replyToEmail.fromName} &lt;${replyToEmail.from}&gt;`
       : replyToEmail.from;
 
+    const body = replyToEmail.body || replyToEmail.snippet || '';
+    // Gmail's markup, as the server sends it: recipients' clients fold it.
     if (mode === 'forward') {
-      return `<div class="compose-quoted"><p>---------- Forwarded message ----------<br>From: ${sender}<br>Date: ${date}<br>Subject: ${replyToEmail.subject}<br>To: ${replyToEmail.to.join(', ')}</p>${replyToEmail.body || replyToEmail.snippet || ''}</div>`;
+      return `<div class="gmail_quote"><div class="gmail_attr">---------- Forwarded message ---------<br>From: ${sender}<br>Date: ${date}<br>Subject: ${replyToEmail.subject}<br>To: ${replyToEmail.to.join(', ')}<br></div><br><br>${body}</div>`;
     }
-    return `<div class="compose-quoted"><p>On ${date}, ${sender} wrote:</p>${replyToEmail.body || replyToEmail.snippet || ''}</div>`;
+    return `<div class="gmail_quote"><div class="gmail_attr">On ${date}, ${sender} wrote:<br></div><blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex">${body}</blockquote></div>`;
   }, [replyToEmail, mode]);
 
   const isUploading = attachments.some((a) => a.status === 'reading');
@@ -800,6 +810,9 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, dr
           and it keeps the whole interaction to a click and a keystroke inside
           the compose window instead of covering it with a second layer.
         */}
+        {/* Only when there is something to insert: an empty, disabled
+            "No templates saved yet" box sat in every compose window. */}
+        {templates.length > 0 && (
         <div className="compose-templates">
           <ComboBox<EmailTemplate>
             // Remounted after each insert: the picker is a command, not a
@@ -809,13 +822,9 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, dr
             className="compose-templates__picker"
             size="sm"
             titleText="Templates"
-            placeholder={templates.length > 0 ? 'Insert a template or snippet' : 'No templates saved yet'}
-            helperText={
-              templates.length > 0
-                ? 'Inserted at the cursor — nothing you have written is replaced'
-                : 'Create them under Settings → Email Templates'
-            }
-            disabled={templates.length === 0 || insertingTemplate}
+            placeholder="Insert a template or snippet"
+            helperText="Inserted at the cursor — nothing you have written is replaced"
+            disabled={insertingTemplate}
             items={templates}
             selectedItem={null}
             itemToString={(item: EmailTemplate | null) =>
@@ -829,6 +838,7 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, dr
           />
           {insertingTemplate && <InlineLoading description="Inserting..." />}
         </div>
+        )}
 
         <ComposeToolbar editor={editorInstance} onAttach={() => fileInputRef.current?.click()} />
         <TiptapEditor editorRef={editorRef} onEditorReady={setEditorInstance} placeholder="Write your message..." />
@@ -920,10 +930,25 @@ export function MailComposeModal({ open, onClose, onSent, mode, replyToEmail, dr
         )}
 
         {replyToEmail && (mode === 'reply' || mode === 'replyAll' || mode === 'forward') && (
-          <div
-            className="compose-quoted"
-            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(getQuotedHtml()) }}
-          />
+          <div className="compose-quoted-wrap">
+            <Button
+              kind="ghost"
+              size="sm"
+              renderIcon={OverflowMenuHorizontal}
+              aria-expanded={showQuoted}
+              onClick={() => setShowQuoted((v) => !v)}
+            >
+              {showQuoted
+                ? mode === 'forward' ? 'Hide the forwarded message' : 'Hide quoted history'
+                : mode === 'forward' ? 'Show the forwarded message' : 'Show quoted history'}
+            </Button>
+            {showQuoted && (
+              <div
+                className="compose-quoted"
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(getQuotedHtml()) }}
+              />
+            )}
+          </div>
         )}
       </div>
     </Tearsheet>

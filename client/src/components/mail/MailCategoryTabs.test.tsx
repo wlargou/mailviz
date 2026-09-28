@@ -9,13 +9,13 @@ import { MailCategoryTabs } from './MailCategoryTabs';
  * something unread, and hand back the category id on a click.
  */
 describe('MailCategoryTabs', () => {
-  const counts = { primary: 3, social: 0, promotions: 1200, updates: 7, forums: 0 };
+  const counts = { primary: 3, social: 0, promotions: 1200, updates: 99, forums: 0 };
 
-  it('shows the given tabs, with a badge only for unread, capped at 999+', () => {
+  it('shows the given tabs, with a badge only for unread, capped at 99+ like every badge', () => {
     render(<MailCategoryTabs categories={['primary', 'promotions', 'updates']} selected="updates" counts={counts} onSelect={vi.fn()} onCustomize={vi.fn()} />);
 
     const tabs = screen.getAllByRole('tab');
-    expect(tabs.map((t) => t.textContent)).toEqual(['Primary3', 'Promotions999+', 'Updates7']);
+    expect(tabs.map((t) => t.textContent)).toEqual(['Primary3', 'Promotions99+', 'Updates99']);
     expect(screen.queryByRole('tab', { name: /Social/ })).toBeNull();
     expect(screen.getByRole('tab', { name: /Updates/ })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tab', { name: /Primary/ })).toHaveAttribute('aria-selected', 'false');

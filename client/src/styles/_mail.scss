@@ -514,8 +514,10 @@
       font-weight: 600;
     }
 
+    // Bold says unread; the edge says why it matters. Colouring the
+    // subject too made every unread line look like a link.
     .thread-item__subject-inline {
-      color: var(--cds-link-primary);
+      color: var(--cds-text-primary);
     }
 
     &:hover {
@@ -531,9 +533,6 @@
     border-bottom: 1px solid
       color-mix(in srgb, var(--cds-support-warning) 15%, transparent);
 
-    .thread-item__subject-inline {
-      color: var(--cds-support-warning);
-    }
 
     &:hover {
       background: color-mix(in srgb, var(--cds-support-warning) 8%, transparent);
@@ -550,9 +549,6 @@
     border-bottom: 1px solid
       color-mix(in srgb, var(--accent-internal) 15%, transparent);
 
-    .thread-item__subject-inline {
-      color: var(--accent-internal);
-    }
 
     &:hover {
       background: color-mix(in srgb, var(--accent-internal) 8%, transparent);
@@ -680,9 +676,9 @@
   flex: 1;
   font-size: 0.8125rem;
   font-weight: 500;
-  // Carbon already bakes a fallback into --cds-border-strong, so the literal
-  // #8d8d8d that used to sit here was dead weight.
-  color: var(--cds-border-strong);
+  // A text token: this was --cds-border-strong, a border colour, and read
+  // at a contrast below what body text needs.
+  color: var(--cds-text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -812,65 +808,85 @@
 }
 
 
-// Thread detail (inside SidePanel)
+// Thread detail (inside SidePanel) — see ThreadDetail.
 .thread-detail {
   display: flex;
   flex-direction: column;
-  gap: $spacing-05;
-}
-
-// The company tag stays in the panel's flow, first thing under the title.
-// It used to be `position: fixed` into the header's top-right corner, where
-// it sat on the SidePanel's close button and under its tooltip.
-.thread-detail__company {
-  display: flex;
-}
-
-.thread-detail__messages {
-  display: flex;
-  flex-direction: column;
   gap: $spacing-04;
 }
 
-// Message bubble
-.message-bubble {
-  border: 1px solid var(--cds-border-subtle);
-  border-radius: 4px;
-  overflow: hidden;
+// One toolbar for the conversation, pinned while the messages scroll.
+.thread-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: $spacing-02;
+  padding: $spacing-02 0;
+  // The panel's own surface, so it reads as the panel's header rather than a
+  // band — the contextual --cds-layer is one step lighter inside a SidePanel.
+  background: var(--cds-layer-01);
+  border-bottom: 1px solid var(--cds-border-subtle);
+}
 
-  &--unread {
-    box-shadow: inset 3px 0 0 var(--cds-link-primary);
+.thread-toolbar__divider {
+  width: 1px;
+  height: 1.25rem;
+  margin: 0 $spacing-02;
+  background: var(--cds-border-subtle);
+}
+
+.thread-toolbar__company {
+  margin-left: auto;
+}
+
+.thread-messages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--cds-border-subtle);
+}
+
+// A message: one line when closed, a card when open.
+.message-card {
+  border-bottom: 1px solid var(--cds-border-subtle);
+
+  &--open {
+    background: var(--cds-layer-01);
+  }
+
+  &--unread .message-card__header {
+    box-shadow: inset 3px 0 0 var(--cds-interactive);
   }
 }
 
-.message-bubble__header {
+.message-card__header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: $spacing-04 $spacing-05;
-  cursor: pointer;
   gap: $spacing-04;
-  overflow: hidden;
+  padding: $spacing-03 $spacing-04;
+  cursor: pointer;
+  min-width: 0;
 
   &:hover {
     background: var(--cds-layer-hover);
   }
+
+  &:focus-visible {
+    outline: 2px solid var(--cds-focus);
+    outline-offset: -2px;
+  }
 }
 
-.message-bubble__sender {
-  display: flex;
-  align-items: center;
-  gap: $spacing-03;
-  min-width: 0;
-  flex: 1;
-}
-
-.message-bubble__avatar-link {
+.message-card__avatar {
   all: unset;
   cursor: pointer;
   border-radius: 50%;
-  transition: box-shadow 0.15s;
   flex-shrink: 0;
+  transition: box-shadow 0.15s;
 
   &:hover {
     box-shadow: 0 0 0 2px var(--cds-link-primary);
@@ -881,85 +897,129 @@
   }
 }
 
-.message-bubble__sender-info {
+.message-card__who {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  flex: 1;
 }
 
-.message-bubble__sender-name {
+.message-card__sender {
   @include type.type-style('body-compact-01');
-  font-weight: 500;
+  display: flex;
+  align-items: baseline;
+  gap: $spacing-03;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+
+  &--unread {
+    font-weight: 600;
+  }
+}
+
+.message-card__address {
+  @include type.type-style('label-01');
+  color: var(--cds-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.message-card__snippet {
+  @include type.type-style('label-01');
+  color: var(--cds-text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.message-bubble__sender-email {
+.message-card__recipients {
   @include type.type-style('label-01');
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-02;
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
   color: var(--cds-text-secondary);
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+
+  &:hover {
+    color: var(--cds-text-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--cds-focus);
+  }
 }
 
-.message-bubble__actions {
+.message-card__side {
   display: flex;
   align-items: center;
   gap: $spacing-02;
   flex-shrink: 0;
-
-  // Ensure Carbon tooltip popovers escape scrollable containers
-  .cds--popover-container {
-    position: static;
-  }
-
-  .cds--popover {
-    position: fixed;
-    z-index: 9100;
-  }
 }
 
-.message-bubble__date {
+.message-card__star {
+  color: var(--cds-support-caution-minor);
+}
+
+.message-card__date {
   @include type.type-style('label-01');
   color: var(--cds-text-secondary);
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
-.message-bubble__body {
-  padding: $spacing-03 $spacing-05 $spacing-05;
+.message-card__body {
+  padding: 0 $spacing-05 $spacing-05 calc(#{$spacing-04} + 2rem + #{$spacing-04});
   display: flex;
   flex-direction: column;
   gap: $spacing-03;
 }
 
-.message-bubble__meta {
-  background: var(--cds-layer-02);
-  border-radius: 4px;
-  padding: $spacing-03 $spacing-04;
-  display: flex;
-  flex-direction: column;
-  gap: $spacing-02;
+.message-card__meta {
   @include type.type-style('label-01');
-  margin-bottom: $spacing-02;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: $spacing-01 $spacing-04;
+  margin: 0;
+  padding: $spacing-03 $spacing-04;
+  background: var(--cds-layer-02);
+
+  dt {
+    color: var(--cds-text-secondary);
+  }
+
+  dd {
+    margin: 0;
+    color: var(--cds-text-primary);
+    word-break: break-word;
+  }
 }
 
-.message-bubble__meta-row {
-  display: flex;
-  gap: $spacing-03;
-  line-height: 1.4;
-}
-
-.message-bubble__meta-label {
+.message-card__plain {
+  @include type.type-style('body-compact-01');
   color: var(--cds-text-secondary);
-  min-width: 2rem;
-  flex-shrink: 0;
-  font-weight: 500;
+  margin: 0;
 }
 
-.message-bubble__meta-value {
-  color: var(--cds-text-primary);
-  word-break: break-word;
+// The quoted history, folded — see utils/mailQuotes.
+.message-card__html[data-quotes='hidden'] [data-mv-quoted] {
+  display: none !important;
 }
 
-.message-bubble__body--html {
+.message-card__quotes {
+  align-self: flex-start;
+}
+
+.message-card__html {
   font-family: 'IBM Plex Sans', 'Helvetica Neue', Arial, sans-serif;
   @include type.type-style('body-compact-01');
   line-height: 1.6;
@@ -970,13 +1030,13 @@
 
   p, div { margin-bottom: 0.25em; }
 
-  // Force text color on all inline-styled email HTML elements
+  // Mail is written for white paper; the reader is dark, so its text takes
+  // the theme's colour and its backgrounds go.
   * {
     color: var(--cds-text-primary) !important;
     background-color: transparent !important;
   }
 
-  // Link styling — visible, underlined, clickable
   a {
     color: var(--cds-link-primary) !important;
     text-decoration: underline;
@@ -998,7 +1058,6 @@
   pre {
     background: var(--cds-layer-02) !important;
     padding: $spacing-04;
-    border-radius: 4px;
     overflow-x: auto;
     @include type.type-style('body-compact-01');
   }
@@ -1016,20 +1075,35 @@
   }
 }
 
-.message-bubble__snippet {
-  @include type.type-style('body-compact-01');
-  color: var(--cds-text-secondary);
-  margin: 0;
+// "3 earlier messages" — the middle of a long thread, one line.
+.thread-gap {
+  border-bottom: 1px solid var(--cds-border-subtle);
 }
 
-.message-bubble__collapsed {
-  padding: $spacing-04 $spacing-05 $spacing-04;
+.thread-gap__button {
   @include type.type-style('label-01');
-  color: var(--cds-text-secondary);
+  width: 100%;
+  padding: $spacing-03 $spacing-04;
+  border: 0;
+  background: var(--cds-layer-01);
+  color: var(--cds-link-primary);
+  text-align: center;
   cursor: pointer;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+
+  &:hover {
+    background: var(--cds-layer-hover);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--cds-focus);
+    outline-offset: -2px;
+  }
+}
+
+.thread-reply-bar {
+  display: flex;
+  gap: $spacing-03;
+  padding: $spacing-03 0 $spacing-05;
 }
 
 .message-bubble__attachments {
@@ -1119,4 +1193,10 @@
     max-inline-size: none;
     width: 100%;
   }
+}
+
+// An icon inside a small Tag — Carbon's Tag ignores renderIcon at size sm.
+.tag-inline-icon {
+  margin-right: $spacing-02;
+  vertical-align: -2px;
 }

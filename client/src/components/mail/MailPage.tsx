@@ -3,6 +3,7 @@ import { isAxiosError } from 'axios';
 import {
   Pagination,
   Button,
+  IconButton,
   Tag,
   DismissibleTag,
   InlineLoading,
@@ -37,6 +38,13 @@ import type { MailFilters } from './MailSearchBar';
 import type { ComposeMode, DraftDetail, DraftListItem, EmailReminder, EmailThread, ReminderKind, ReplyOwed } from '../../types/email';
 import type { PaginationMeta } from '../../types/api';
 import { decodeEntities } from '../../utils/text';
+import { mailListDate } from '../../utils/dates';
+import { sentTo } from '../../utils/mailList';
+
+/** An icon as a child of IconButton, from the same references `renderIcon` took. */
+function Glyph({ icon: Icon }: { icon: React.ComponentType }) {
+  return <Icon />;
+}
 
 const defaultFilters: MailFilters = {
   search: '',
@@ -103,6 +111,8 @@ export function MailPage() {
     () => searchParams.get('thread')
   );
   // `?compose=1` opens a new message — the command palette's "New email".
+  // The reader's subject, for a thread opened by link and not on this page.
+  const [loadedSubject, setLoadedSubject] = useState<string | null>(null);
   const [composeOpen, setComposeOpen] = useState(() => searchParams.get('compose') === '1');
   const [composeMode, setComposeMode] = useState<ComposeMode>('new');
   const [composeDraft, setComposeDraft] = useState<DraftDetail | null>(null);
@@ -527,7 +537,9 @@ export function MailPage() {
                   : t
               ));
             }
-            await emailsApi.archive(emailId);
+            // The whole thread: archiving the newest message alone left older
+            // ones in the Inbox, and the refetch brought the row straight back.
+            await emailsApi.batchArchive([emailId]);
             addNotification({ kind: 'success', title: 'Archived' });
           }
           break;
@@ -555,7 +567,7 @@ export function MailPage() {
                   : t
               ));
             }
-            await emailsApi.trash(emailId);
+            await emailsApi.batchTrash([emailId]);
             addNotification({ kind: 'success', title: 'Moved to trash' });
           }
           break;
@@ -961,11 +973,55 @@ export function MailPage() {
                   </span>
                 </div>
                 <div className="bulk-action-bar__actions">
-                  <Button kind="ghost" size="sm" hasIconOnly iconDescription="Mark as read" renderIcon={CheckmarkOutline} onClick={() => handleBulkAction('read')} disabled={bulkLoading || selectedIds.size === 0} />
-                  <Button kind="ghost" size="sm" hasIconOnly iconDescription="Mark as unread" renderIcon={EmailIcon} onClick={() => handleBulkAction('unread')} disabled={bulkLoading || selectedIds.size === 0} />
-                  <Button kind="ghost" size="sm" hasIconOnly iconDescription="Archive" renderIcon={Archive} onClick={() => handleBulkAction('archive')} disabled={bulkLoading || selectedIds.size === 0} />
-                  <Button kind="ghost" size="sm" hasIconOnly iconDescription="Trash" renderIcon={TrashCan} onClick={() => handleBulkAction('trash')} disabled={bulkLoading || selectedIds.size === 0} />
-                  <Button kind="ghost" size="sm" hasIconOnly iconDescription="Exit select mode" renderIcon={Close} onClick={clearSelection} />
+                  <IconButton
+                    kind="ghost"
+                    size="sm"
+                    onClick={() => handleBulkAction('read')}
+                    disabled={bulkLoading || selectedIds.size === 0}
+                    autoAlign
+                    label="Mark as read"
+                  >
+                    <Glyph icon={CheckmarkOutline} />
+                  </IconButton>
+                  <IconButton
+                    kind="ghost"
+                    size="sm"
+                    onClick={() => handleBulkAction('unread')}
+                    disabled={bulkLoading || selectedIds.size === 0}
+                    autoAlign
+                    label="Mark as unread"
+                  >
+                    <Glyph icon={EmailIcon} />
+                  </IconButton>
+                  <IconButton
+                    kind="ghost"
+                    size="sm"
+                    onClick={() => handleBulkAction('archive')}
+                    disabled={bulkLoading || selectedIds.size === 0}
+                    autoAlign
+                    label="Archive"
+                  >
+                    <Glyph icon={Archive} />
+                  </IconButton>
+                  <IconButton
+                    kind="ghost"
+                    size="sm"
+                    onClick={() => handleBulkAction('trash')}
+                    disabled={bulkLoading || selectedIds.size === 0}
+                    autoAlign
+                    label="Trash"
+                  >
+                    <Glyph icon={TrashCan} />
+                  </IconButton>
+                  <IconButton
+                    kind="ghost"
+                    size="sm"
+                    onClick={clearSelection}
+                    autoAlign
+                    label="Exit select mode"
+                  >
+                    <Glyph icon={Close} />
+                  </IconButton>
                 </div>
               </div>
             )}
@@ -1017,7 +1073,9 @@ export function MailPage() {
                     >
                     <div className="thread-item__top">
                       <span className="thread-item__sender">
-                        {decodeEntities(e.contactName || e.fromName || e.from)}
+                        {/* Your own mail names who it went to — the Sent folder
+                            read "Largou Walid" on every row. */}
+                        {e.labelIds?.includes('SENT') ? sentTo(e) : decodeEntities(e.contactName || e.fromName || e.from)}
                       </span>
                       <span className="thread-item__subject-inline">{decodeEntities(e.subject)}</span>
                       <div className="thread-item__right">
@@ -1027,79 +1085,79 @@ export function MailPage() {
                           {thread.messageCount > 1 && (
                             <Tag size="sm" type="cool-gray">{thread.messageCount}</Tag>
                           )}
-                          <span>{formatDistanceToNow(new Date(e.receivedAt), { addSuffix: true })}</span>
+                          <span title={format(new Date(e.receivedAt), 'EEEE d MMMM yyyy, HH:mm')}>{mailListDate(e.receivedAt)}</span>
                         </span>
                       </div>
                       <div className="thread-item__actions">
-                        <Button
+                        <IconButton
                           kind="ghost"
                           size="sm"
-                          hasIconOnly
-                          iconDescription={e.isStarred ? 'Unstar' : 'Star'}
-                          renderIcon={e.isStarred ? StarFilled : Star}
                           className={e.isStarred ? 'thread-action--starred' : ''}
                           onClick={(ev: React.MouseEvent) => handleThreadAction('star', thread, ev)}
-                        />
-                        <Button
+                          autoAlign
+                          label={e.isStarred ? 'Unstar' : 'Star'}
+                        >
+                          <Glyph icon={e.isStarred ? StarFilled : Star} />
+                        </IconButton>
+                        {/* Archive, not "Reply All": that button only opened
+                            the thread, and archiving had no row action at all. */}
+                        <IconButton
                           kind="ghost"
                           size="sm"
-                          hasIconOnly
-                          iconDescription="Reply All"
-                          renderIcon={ReplyAll}
-                          onClick={(ev: React.MouseEvent) => {
-                            ev.stopPropagation();
-                            setSelectedThread(thread.threadId);
-                          }}
-                        />
-                        <Button
+                          onClick={(ev: React.MouseEvent) => handleThreadAction('archive', thread, ev)}
+                          autoAlign
+                          label={e.isArchived ? 'Move to Inbox' : 'Archive'}
+                        >
+                          <Glyph icon={e.isArchived ? Undo : Archive} />
+                        </IconButton>
+                        <IconButton
                           kind="ghost"
                           size="sm"
-                          hasIconOnly
-                          iconDescription={e.isTrashed ? 'Restore' : 'Trash'}
-                          renderIcon={e.isTrashed ? Undo : TrashCan}
                           onClick={(ev: React.MouseEvent) => handleThreadAction('trash', thread, ev)}
-                        />
-                        <Button
+                          autoAlign
+                          label={e.isTrashed ? 'Restore' : 'Trash'}
+                        >
+                          <Glyph icon={e.isTrashed ? Undo : TrashCan} />
+                        </IconButton>
+                        <IconButton
                           kind="ghost"
                           size="sm"
-                          hasIconOnly
-                          iconDescription={isUnread ? 'Mark as read' : 'Mark as unread'}
-                          renderIcon={isUnread ? EmailIcon : EmailNew}
                           onClick={(ev: React.MouseEvent) => handleThreadAction('readToggle', thread, ev)}
-                        />
-                        <Button
+                          autoAlign
+                          label={isUnread ? 'Mark as read' : 'Mark as unread'}
+                        >
+                          <Glyph icon={isUnread ? EmailIcon : EmailNew} />
+                        </IconButton>
+                        <IconButton
                           kind="ghost"
                           size="sm"
-                          hasIconOnly
-                          iconDescription={snoozedUntil ? 'Unsnooze now' : 'Snooze or follow up'}
-                          renderIcon={snoozedUntil ? AlarmSubtract : Snooze}
-                          onClick={(ev: React.MouseEvent) => {
-                            ev.stopPropagation();
-                            if (snoozedUntil) cancelReminder(snoozedUntil);
-                            else setSnoozeTarget(thread);
-                          }}
-                        />
-                        <Button
+                          onClick={(ev: React.MouseEvent) => {                             ev.stopPropagation();                             if (snoozedUntil) cancelReminder(snoozedUntil);                             else setSnoozeTarget(thread);                           }}
+                          autoAlign
+                          label={snoozedUntil ? 'Unsnooze now' : 'Snooze or follow up'}
+                        >
+                          <Glyph icon={snoozedUntil ? AlarmSubtract : Snooze} />
+                        </IconButton>
+                        <IconButton
                           kind="ghost"
                           size="sm"
-                          hasIconOnly
-                          iconDescription="Convert to task"
-                          renderIcon={Task}
-                          onClick={(ev: React.MouseEvent) => {
-                            ev.stopPropagation();
-                            setConvertEmail(thread);
-                          }}
-                        />
+                          onClick={(ev: React.MouseEvent) => {                             ev.stopPropagation();                             setConvertEmail(thread);                           }}
+                          autoAlign
+                          label="Convert to task"
+                        >
+                          <Glyph icon={Task} />
+                        </IconButton>
                       </div>
                     </div>
                     <div className="thread-item__snippet">{decodeEntities(e.snippet)}</div>
                     <div className="thread-item__tags">
                       {currentUser && e.userId !== currentUser.id && (
-                        <Tag size="sm" type="purple" renderIcon={Share}>Shared</Tag>
+                        // The icon in the children: Carbon's Tag ignores renderIcon at size sm.
+                        <Tag size="sm" type="purple"><Share size={12} className="tag-inline-icon" />Shared</Tag>
                       )}
                       {snoozedUntil && (
-                        <Tag size="sm" type="teal" renderIcon={Snooze}>
-                          {`Back ${format(new Date(snoozedUntil.remindAt), 'EEE d MMM, h:mm a')}`}
+                        <Tag size="sm" type="teal">
+                          <Snooze size={12} className="tag-inline-icon" />
+                          {`Back ${format(new Date(snoozedUntil.remindAt), 'EEE d MMM, HH:mm')}`}
                         </Tag>
                       )}
                       {followUp && (
@@ -1143,7 +1201,7 @@ export function MailPage() {
       <SidePanel
         open={!!selectedThread}
         onRequestClose={() => setSelectedThread(null)}
-        title={decodeEntities(selectedThreadData?.latestEmail.subject ?? selectedOwed?.subject) || 'Thread'}
+        title={decodeEntities(selectedThreadData?.latestEmail.subject ?? selectedOwed?.subject) || loadedSubject || 'Thread'}
         size="lg"
         className="mail-page__side-panel"
       >
@@ -1151,6 +1209,9 @@ export function MailPage() {
           <ThreadDetail
             threadId={selectedThread}
             onEmailAction={() => fetchThreads(true)}
+            // Archived, trashed, snoozed or marked unread: back to the list.
+            onThreadGone={() => setSelectedThread(null)}
+            onLoaded={setLoadedSubject}
           />
         )}
       </SidePanel>

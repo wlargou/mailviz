@@ -2,6 +2,14 @@ import { useState } from 'react';
 import { Button, ContentSwitcher, Switch, Theme } from '@carbon/react';
 import { ContactDuplicatesPage } from '../components/contacts/ContactDuplicatesPage';
 import { SnoozeModal } from '../components/mail/SnoozeModal';
+import { ThreadDetail } from '../components/mail/ThreadDetail';
+import { MailPage } from '../components/mail/MailPage';
+import { SidePanel } from '@carbon/ibm-products';
+import { emailsApi } from '../api/emails';
+import { contactsApi as mailContactsApi } from '../api/contacts';
+import { rfpsApi } from '../api/rfps';
+import { authApi } from '../api/auth';
+import type { EmailMessage } from '../types/email';
 import { TemplateSettings } from '../components/settings/TemplateSettings';
 import { OnboardingSettings } from '../components/settings/OnboardingSettings';
 import { EmptyState } from '../components/shared/EmptyState';
@@ -106,7 +114,71 @@ const DUPLICATE_GROUPS: DuplicateGroup[] = [
   },
 ];
 
+/**
+ * A thread shaped like the one that exposed the reader's problems: replies
+ * from Outlook on the web and from Gmail, each quoting the whole history,
+ * the last one your own, a long middle, and an attachment.
+ */
+const OUTLOOK_QUOTE = `<div id="appendonsend"></div><hr style="display:inline-block;width:98%"><div id="divRplyFwdMsg" dir="ltr"><b>De :</b> GADI-ALAMI HICHAM &lt;h.gadialami@example.test&gt;<br><b>Envoyé :</b> jeudi 24 septembre 2026 17:01<br><b>Objet :</b> RE: Projet Migration // Fichier PEP XML</div><div>Bonjour, Faisant suite à notre dernier point, nous vous remercions de bien vouloir nous transmettre le fichier PEP comme convenu.</div><div>Cordialement,</div>`;
+function threadMessage(n: number, over: Partial<EmailMessage>): EmailMessage {
+  return {
+    id: `m${n}`, gmailMessageId: `g${n}`, threadId: 'preview-thread', userId: 'u1',
+    subject: 'RE: Projet Migration // Fichier PEP XML',
+    from: 'h.gadialami@example.test', fromName: 'GADI-ALAMI HICHAM',
+    to: ['me@powerm.test'], cc: ['t.eljallab@example.test', 'm.aitelhaj@example.test', 'zaki.mastour@powerm.test'],
+    snippet: 'Bonjour, Faisant suite à notre dernier point, nous vous remercions de bien vouloir…',
+    body: null, receivedAt: new Date(Date.now() - (9 - n) * 86_400_000).toISOString(),
+    isRead: true, isStarred: false, isArchived: false, isTrashed: false, hasAttachment: false,
+    sizeEstimate: null, labelIds: ['INBOX'], customerId: 'c1',
+    customer: { id: 'c1', name: 'Attijariwafa', domain: 'example.test', logoUrl: null },
+    attachments: [], syncedAt: null, createdAt: '', ...over,
+  } as EmailMessage;
+}
+/** Inbox rows: unread, VIP, internal, sent, shared and snoozed, with real-length text. */
+const PREVIEW_LIST = [
+  { threadId: 't1', messageCount: 5, unreadCount: 1, latestEmail: threadMessage(7, { id: 'l1', isRead: false, subject: 'RE: [Audit Data Platform] Point de synchronisation', from: 'mouna.kaouni@example.test', fromName: 'Mouna Kaouni', hasAttachment: true, customer: { id: 'c1', name: 'Atlascs', domain: 'x', logoUrl: null, isVip: true }, snippet: "Bonjour à tous, J'espère que vous allez bien. Merci de trouver ci-joint le document 'intégration avec Keycloak' mis à jour.", receivedAt: new Date(Date.now() - 20 * 60_000).toISOString() }) },
+  { threadId: 't2', messageCount: 1, unreadCount: 1, latestEmail: threadMessage(7, { id: 'l2', isRead: false, subject: 'Projet S3 : Atelier d’architecture - Télécom/Secops', from: 'harti@powerm.test', fromName: 'HARTI MOHAMMED', customer: { id: 'c2', name: 'Powerm', domain: 'x', logoUrl: null, isInternal: true }, snippet: 'Réunion Microsoft Teams — Rejoindre la réunion maintenant', receivedAt: new Date(Date.now() - 50 * 60_000).toISOString() }) },
+  { threadId: 't3', messageCount: 3, unreadCount: 0, latestEmail: threadMessage(7, { id: 'l3', subject: 'RE: Projet Migration // Fichier PEP XML', from: 'me@powerm.test', fromName: 'L.walid (PowerM)', labelIds: ['SENT'], to: ['GADI-ALAMI HICHAM <h.gadialami@example.test>'], cc: ['t.eljallab@example.test', 'm.aitelhaj@example.test'], snippet: 'Bonjour Ssi Hicham, Bien reçu, je vous prie de nous communiquer deux créneaux…', receivedAt: new Date(Date.now() - 3 * 3_600_000).toISOString() }) },
+  { threadId: 't4', messageCount: 1, unreadCount: 0, latestEmail: threadMessage(7, { id: 'l4', subject: 'Offre de prix - Redhat - la poste', from: 'imane@powerm.test', fromName: 'Imane Elkhabir', userId: 'someone-else', snippet: 'TR: Offre de prix — veuillez trouver ci-joint notre offre', receivedAt: new Date(Date.now() - 26 * 3_600_000).toISOString() }) },
+  { threadId: 't5', messageCount: 2, unreadCount: 0, latestEmail: threadMessage(7, { id: 'l5', subject: 'Deal reg. extension 71523004', from: 'partner@example.test', fromName: 'Red Hat Partner', snippet: 'Your extension request has been received.', receivedAt: new Date(Date.now() - 6 * 86_400_000).toISOString() }) },
+];
+
+const PREVIEW_THREAD: EmailMessage[] = [
+  threadMessage(1, { body: '<div>Bonjour, Faisant suite à notre dernier point, nous vous remercions de bien vouloir nous transmettre le fichier PEP comme convenu.</div><div>Cordialement,</div>' }),
+  threadMessage(2, { from: 'me@powerm.test', fromName: 'L.walid (PowerM)', to: ['h.gadialami@example.test'], labelIds: ['SENT'], snippet: 'Bonjour Ssi Hicham, Je partage avec vous le plan d’action prévu : Phase 1…' }),
+  threadMessage(3, { snippet: 'Merci, nous revenons vers vous rapidement.' }),
+  threadMessage(4, { from: 'me@powerm.test', fromName: 'L.walid (PowerM)', to: ['h.gadialami@example.test'], labelIds: ['SENT'], snippet: 'Bonjour Ssi Hicham, Merci de trouver ci-joint les deux fichiers xml.' }),
+  threadMessage(5, { snippet: 'Bien reçu, nous lançons les tests.' }),
+  threadMessage(6, {
+    snippet: 'Bonjour Ssi Walid, Veuillez trouver ci-dessous les infos demandées : Avant la récupération de la RAM…',
+    hasAttachment: true,
+    attachments: [{ id: 'a1', emailId: 'm6', gmailAttachmentId: 'ga1', filename: 'HMC1-lscodpool-PEP_BDI.txt', mimeType: 'text/plain', size: 18_432 } as never],
+    body: `<div>Bonjour Ssi Walid,</div><div>Veuillez trouver ci-dessous les infos demandées : Avant la récupération de la RAM, # HMC1 lscodpool -p PEP_BDI --level pool</div><div class="gmail_quote"><div class="gmail_attr">On Thu, Sep 24, 2026, L.walid wrote:<br></div><blockquote class="gmail_quote">Je partage avec vous le plan d’action prévu : Phase 1 : Pool Legacy…</blockquote></div>`,
+  }),
+  threadMessage(7, {
+    from: 'me@powerm.test', fromName: null, to: ['h.gadialami@example.test'], labelIds: ['SENT'],
+    snippet: 'Bonjour Ssi Hicham, Bien reçu, je vous prie de nous communiquer deux créneaux…',
+    body: `<div class="elementToProof">Bonjour Ssi Hicham,</div><div class="elementToProof">Bien reçu, je vous prie de nous communiquer deux créneaux à proposer au support IBM pour l’application des XML Legacy.</div><div>Cordialement,</div>${OUTLOOK_QUOTE}`,
+  }),
+];
+
 function stubApis() {
+  emailsApi.getThread = async () => ({ data: { data: PREVIEW_THREAD } }) as never;
+  emailsApi.getMessage = async (id: string) =>
+    ({ data: { data: PREVIEW_THREAD.find((m) => m.id === id) ?? PREVIEW_THREAD[0] } }) as never;
+  emailsApi.markAsRead = async () => ({ data: {} }) as never;
+  emailsApi.getThreadShares = async () => ({ data: { data: [] } }) as never;
+  mailContactsApi.lookupByEmail = async () => ({ data: { data: null } }) as never;
+  rfpsApi.getThreadTenders = async () =>
+    ({ data: { data: { linked: [], suggested: [{ id: 'r1', name: 'Refonte AIX', reference: '70/AOO/BKAM/2026', status: 'WORKING' }] } } }) as never;
+  authApi.getSignature = async () => ({ data: { data: { signature: '' } } }) as never;
+  emailsApi.getThreads = async () =>
+    ({ data: { data: PREVIEW_LIST, meta: { total: 32698, page: 1, limit: 20, totalPages: 1635 } } }) as never;
+  emailsApi.getCategoryCounts = async () =>
+    ({ data: { data: { primary: 1321, social: 2, promotions: 4210, updates: 999, forums: 508 } } }) as never;
+  emailsApi.getReminders = async () =>
+    ({ data: { data: [{ id: 'r1', threadId: 't5', kind: 'snooze', state: 'armed', remindAt: new Date(Date.now() + 2 * 86_400_000).toISOString(), armedAt: '', wasInInbox: true, resolution: null }] } }) as never;
+  emailsApi.getRepliesOwed = async () => ({ data: { data: [] } }) as never;
   contactsApi.getDuplicates = async () =>
     ({ data: { data: DUPLICATE_GROUPS } }) as never;
   contactsApi.merge = async () =>
@@ -185,7 +257,7 @@ function stubApis() {
     }) as never;
 }
 
-type Screen = 'duplicates' | 'templates' | 'snooze' | 'onboarding-tile' | 'empty';
+type Screen = 'duplicates' | 'templates' | 'snooze' | 'onboarding-tile' | 'empty' | 'thread' | 'mail';
 
 export function ComponentPreview() {
   /**
@@ -228,7 +300,7 @@ export function ComponentPreview() {
           }}
         >
           <ContentSwitcher
-            selectedIndex={['duplicates', 'templates', 'snooze', 'onboarding-tile', 'empty'].indexOf(
+            selectedIndex={['duplicates', 'templates', 'snooze', 'onboarding-tile', 'empty', 'thread', 'mail'].indexOf(
               screen
             )}
             onChange={({ name }) => setScreen(name as Screen)}
@@ -239,6 +311,8 @@ export function ComponentPreview() {
             <Switch name="snooze" text="Snooze" />
             <Switch name="onboarding-tile" text="Setup tile" />
             <Switch name="empty" text="Empty states" />
+            <Switch name="thread" text="Thread" />
+            <Switch name="mail" text="Mail list" />
           </ContentSwitcher>
           <Button size="sm" kind="tertiary" onClick={() => setTheme(theme === 'g100' ? 'g10' : 'g100')}>
             {theme}
@@ -288,6 +362,18 @@ export function ComponentPreview() {
             <div style={{ padding: '2rem', maxWidth: '44rem' }}>
               <OnboardingSettings />
             </div>
+          )}
+          {screen === 'mail' && (
+            <div style={{ padding: '1rem 2rem', height: 'calc(100vh - 4rem)' }}>
+              <MailPage />
+            </div>
+          )}
+          {screen === 'thread' && (
+            // The reader in the panel the Mail page uses, transform and all —
+            // the containing block that misplaced every tooltip.
+            <SidePanel open onRequestClose={() => setScreen('empty')} title="RE: Projet Migration // Fichier PEP XML" size="lg" className="mail-page__side-panel">
+              <ThreadDetail threadId="preview-thread" />
+            </SidePanel>
           )}
           {screen === 'snooze' && (
             <SnoozeModal
