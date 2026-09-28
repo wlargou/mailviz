@@ -56,6 +56,7 @@ vi.mock('../../store/uiStore', () => ({
 }));
 
 vi.mock('./ConvertToTaskModal', () => ({ ConvertToTaskModal: () => null }));
+vi.mock('./ThreadTenders', () => ({ ThreadTenders: () => null }));
 vi.mock('../shared/AttachmentPreviewModal', () => ({
   AttachmentPreviewModal: ({ open, items, index }: { open: boolean; items: Array<{ file: { filename: string } }>; index: number }) =>
     open && items[index] ? <div data-testid="attachment-preview">{items[index].file.filename}</div> : null,

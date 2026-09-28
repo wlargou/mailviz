@@ -952,3 +952,36 @@
 .rfp-risk {
   display: inline-flex;
 }
+
+// Correspondence: mail filed under the tender.
+.rfp-mail {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--cds-layer-01);
+}
+
+.rfp-mail__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: $spacing-04;
+  padding: $spacing-03 $spacing-05;
+  border-bottom: 1px solid var(--cds-border-subtle);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--cds-layer-hover-01);
+  }
+}
+
+.rfp-mail__what {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+
+  small {
+    @include type.type-style('label-01');
+    color: var(--cds-text-secondary);
+  }
+}

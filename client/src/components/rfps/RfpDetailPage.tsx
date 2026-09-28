@@ -28,6 +28,7 @@ import { RfpFormPanel } from './RfpFormPanel';
 import { RfpDocuments } from './RfpDocuments';
 import { RfpLotsSection } from './RfpLotsSection';
 import { RfpResponseSection } from './RfpResponseSection';
+import { RfpCorrespondence } from './RfpCorrespondence';
 import { RfpVerifiersModal } from './RfpVerifiersModal';
 import { PersonAvatar } from './RfpPeople';
 import { deadlineTone } from './RfpsPage';
@@ -309,6 +310,7 @@ export function RfpDetailPage() {
           <Tab>Response ({ready}/{total})</Tab>
           <Tab>Lots ({rfp.lots.length})</Tab>
           <Tab>Tender documents ({rfp.documents.length})</Tab>
+          <Tab>Correspondence</Tab>
         </TabList>
         <TabPanels>
           <TabPanel className="rfp-detail__panel">
@@ -327,6 +329,9 @@ export function RfpDetailPage() {
               </div>
               <RfpDocuments rfpId={rfp.id} documents={rfp.documents} onUploaded={refresh} />
             </section>
+          </TabPanel>
+          <TabPanel className="rfp-detail__panel">
+            <RfpCorrespondence rfpId={rfp.id} />
           </TabPanel>
         </TabPanels>
       </Tabs>

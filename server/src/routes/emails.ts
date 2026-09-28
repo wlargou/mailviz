@@ -1,5 +1,6 @@
 import type { Req } from '../types/http.js';
 import { repliesOwed } from '../services/repliesOwedService.js';
+import { rfpThreadService } from '../services/rfpThreadService.js';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { emailController } from '../controllers/emailController.js';
@@ -68,6 +69,14 @@ router.put('/drafts/:id', draftLimiter, validate(saveDraftSchema), draftControll
 router.delete('/drafts/:id', draftController.remove);
 router.post('/drafts/:id/send', sendLimiter, validate(sendDraftSchema), draftController.send);
 
+// The tenders this thread is filed under, and those it quotes.
+router.get('/threads/:threadId/tenders', async (req, res, next) => {
+  try {
+    res.json({ data: await rfpThreadService.forThread((req as Req).user!.id, String(req.params.threadId)) });
+  } catch (err) {
+    next(err);
+  }
+});
 router.get('/threads/:threadId', emailController.findThread);
 router.post('/threads/:threadId/share', emailController.shareThread);
 router.delete('/threads/:threadId/shares/:recipientId', emailController.unshareThread);
