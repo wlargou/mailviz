@@ -122,3 +122,26 @@ describe('piece owners and due dates', () => {
     expect((await prisma.rfpFolderItem.findUniqueOrThrow({ where: { id: other.itemId } })).assigneeId).toBe(bob.id);
   });
 });
+
+describe('people on a tender', () => {
+  it('lists the owner, then whoever it is shared with — to any of them, and to no one else', async () => {
+    const { alice, bob } = await createTwoUsers();
+    const outsider = await createUser();
+    const rfp = await rfpService.create(alice.id, base());
+    await prisma.rfpShare.create({ data: { rfpId: rfp.id, sharedByUserId: alice.id, sharedWithUserId: bob.id } });
+
+    // Read by the recipient: the share list is the owner's, this is not.
+    const people = await composition.people(bob.id, rfp.id);
+    expect(people.map((p) => p.id)).toEqual([alice.id, bob.id]);
+
+    await expect(composition.people(outsider.id, rfp.id)).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('counts the shares on the detail', async () => {
+    const { alice, bob } = await createTwoUsers();
+    const rfp = await rfpService.create(alice.id, base());
+    expect((await rfpService.findById(alice.id, rfp.id))._count.shares).toBe(0);
+    await prisma.rfpShare.create({ data: { rfpId: rfp.id, sharedByUserId: alice.id, sharedWithUserId: bob.id } });
+    expect((await rfpService.findById(alice.id, rfp.id))._count.shares).toBe(1);
+  });
+});

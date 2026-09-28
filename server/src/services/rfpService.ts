@@ -35,6 +35,9 @@ const rfpIncludes = {
 const rfpDetailIncludes = {
   ...rfpIncludes,
   lots: { orderBy: { number: 'asc' } as const },
+  // Whether anyone else can open it — the verifiers line is only worth
+  // showing then.
+  _count: { select: { shares: true } },
   verifiers: { include: { user: { select: { id: true, name: true, email: true, avatarUrl: true } } }, orderBy: { createdAt: 'asc' } as const },
   folders: {
     orderBy: [{ position: 'asc' }, { createdAt: 'asc' }] as Prisma.RfpFolderOrderByWithRelationInput[],

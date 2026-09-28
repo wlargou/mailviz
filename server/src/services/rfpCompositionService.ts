@@ -227,6 +227,21 @@ export const rfpCompositionService = {
     await unlinkAll(keys);
   },
 
+  /**
+   * Everyone who can open the tender — its owner, then whoever it is shared
+   * with. Who a piece can be assigned to. Readable by any of them, unlike the
+   * share list itself, which is the owner's.
+   */
+  async people(userId: string, rfpId: string) {
+    await assertAccess(userId, rfpId);
+    const person = { select: { id: true, name: true, email: true, avatarUrl: true } } as const;
+    const rfp = await prisma.rfp.findUniqueOrThrow({
+      where: { id: rfpId },
+      select: { user: person, shares: { select: { sharedWith: person }, orderBy: { createdAt: 'asc' } } },
+    });
+    return [rfp.user, ...rfp.shares.map((s) => s.sharedWith)];
+  },
+
   // ── Pieces ──────────────────────────────────────────────────────────────
 
   async createItem(userId: string, rfpId: string, folderId: string, data: { title: string }) {
