@@ -1617,3 +1617,35 @@ describe('taskService.findGroupedByCompany — sorting', () => {
     }
   });
 });
+
+describe('taskService.findAll — open tasks', () => {
+  it("leaves out tasks in the account's finished statuses, whatever they are named", async () => {
+    const { alice } = await createTwoUsers();
+    await seedTaskStatuses(alice.id);
+    // A second finished status, as an account can define one.
+    await prisma.taskStatus.create({ data: { userId: alice.id, name: 'SHIPPED', label: 'Shipped', color: '#000', position: 9, isTerminal: true } });
+    const open = await createTask(alice.id, { title: 'open one' });
+    const done = await createTask(alice.id, { title: 'done one' });
+    const shipped = await createTask(alice.id, { title: 'shipped one' });
+    await prisma.task.update({ where: { id: done.id }, data: { status: 'DONE' } });
+    await prisma.task.update({ where: { id: shipped.id }, data: { status: 'SHIPPED' } });
+
+    const ids = (await taskService.findAll(alice.id, { open: 'true' })).data.map((t) => t.id);
+
+    expect(ids).toEqual([open.id]);
+    // Without it, everything — the list's "All tasks".
+    expect((await taskService.findAll(alice.id, {})).data).toHaveLength(3);
+  });
+
+  it('yields to an explicit status: asking for Done is asking for finished ones', async () => {
+    const { alice } = await createTwoUsers();
+    await seedTaskStatuses(alice.id);
+    const done = await createTask(alice.id, { title: 'done one' });
+    await prisma.task.update({ where: { id: done.id }, data: { status: 'DONE' } });
+    await createTask(alice.id, { title: 'open one' });
+
+    const ids = (await taskService.findAll(alice.id, { open: 'true', status: 'DONE' })).data.map((t) => t.id);
+
+    expect(ids).toEqual([done.id]);
+  });
+});

@@ -84,6 +84,12 @@ const ownershipItems = [
   { id: 'owned', text: 'Owned by me' },
 ];
 
+/** Open by default — see `showFinished` in the task store. */
+const SHOW_ITEMS = [
+  { id: 'open', text: 'Open tasks' },
+  { id: 'all', text: 'All tasks, finished too' },
+];
+
 interface TaskListViewProps {
   tasks: Task[];
   loading: boolean;
@@ -187,6 +193,7 @@ export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreat
   ];
 
   const activeFilterCount =
+    (filters.showFinished === 'true' ? 1 : 0) +
     (filters.status ? 1 : 0) +
     (filters.priority ? 1 : 0) +
     (filters.labelId ? 1 : 0) +
@@ -294,6 +301,19 @@ export function TaskListView({ tasks, loading, labels, onEdit, onDelete, onCreat
                   activeFilterCount={activeFilterCount}
                   onReset={resetFilters}
                 >
+                  <Dropdown
+                    id="filter-show"
+                    titleText="Show"
+                    label="Open tasks"
+                    items={SHOW_ITEMS}
+                    itemToString={(item: { id: string; text: string } | null) => item?.text || ''}
+                    selectedItem={SHOW_ITEMS.find((s) => s.id === (filters.showFinished === 'true' ? 'all' : 'open'))}
+                    onChange={({ selectedItem }: { selectedItem: { id: string; text: string } | null }) =>
+                      setFilter('showFinished', selectedItem?.id === 'all' ? 'true' : undefined)
+                    }
+                    helperText={filters.status ? 'A chosen status overrides this' : undefined}
+                    size="sm"
+                  />
                   <Dropdown
                     id="filter-status"
                     titleText="Status"

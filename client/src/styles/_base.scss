@@ -80,31 +80,6 @@ body {
   box-shadow: none;
 }
 
-// Sidebar animated logo (rendered inside Carbon SideNav)
-.sidebar-logo-container {
-  position: absolute;
-  bottom: 1rem;
-  left: 50%;
-  transform: translateX(-50%);
-  opacity: 0.7;
-  pointer-events: none;
-  animation: sidebar-logo-float 10s ease-in-out infinite;
-  // Fades with the rail rather than being clipped by it. At 140px in a 48px rail
-  // the mark was sliced down the middle, which read as a rendering fault.
-  transition: opacity 150ms ease;
-}
-
-// Hidden while the nav is a rail, and restored when the rail expands on hover so
-// the decoration follows the panel rather than the toggle state.
-.cds--side-nav--rail:not(.cds--side-nav--expanded) .sidebar-logo-container {
-  opacity: 0;
-}
-
-@keyframes sidebar-logo-float {
-  0%, 100% { transform: translateX(-50%) translateY(0); }
-  50% { transform: translateX(-50%) translateY(-8px); }
-}
-
 // Header logo + text alignment
 .mailviz-header-name {
   display: inline-flex !important;

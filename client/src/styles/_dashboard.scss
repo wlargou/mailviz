@@ -214,6 +214,13 @@
   color: var(--cds-text-secondary);
 }
 
+// The sections with nothing in them, named in one quiet line at the end.
+.my-day__quiet {
+  @include type.type-style('body-compact-01');
+  color: var(--cds-text-secondary);
+  margin: 0;
+}
+
 .my-day__empty {
   display: flex;
   flex-direction: column;
@@ -1054,3 +1061,14 @@ td.table-cell--center .cds--tag {
   padding: $spacing-03 0;
 }
 
+
+// A heading for each day in "Upcoming events".
+.upcoming-events__day {
+  @include type.type-style('label-01');
+  color: var(--cds-text-secondary);
+  margin: $spacing-04 0 $spacing-02;
+
+  &:first-child {
+    margin-top: 0;
+  }
+}
