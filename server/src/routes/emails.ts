@@ -52,6 +52,7 @@ router.get('/replies-owed', async (req, res, next) => {
     next(err);
   }
 });
+router.get('/suggest', emailController.suggest);
 router.get('/unread-count', emailController.getUnreadCount);
 router.get('/category-counts', emailController.getCategoryCounts);
 router.get('/sync-status', emailController.getSyncStatus);

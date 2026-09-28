@@ -34,6 +34,7 @@ import { replyRecipients } from '../utils/replyRecipients.js';
 import { replyQuote, forwardQuote } from '../utils/mailQuote.js';
 import { fromHeader } from './senderIdentity.js';
 import { ownAddresses } from './repliesOwedService.js';
+import { queryWords } from '../utils/searchTerms.js';
 import { categoryFilter, isMailCategory, MAIL_CATEGORIES, type MailCategory } from '../utils/mailCategories.js';
 import { mergeEngagement } from '../utils/contactEngagement.js';
 import { decodeEntities, decodeThenEscape } from '../utils/htmlEntities.js';
@@ -759,8 +760,8 @@ export const emailService = {
     const ownershipFilter: Prisma.EmailWhereInput = sharedThreadIds.length > 0
       ? { OR: [{ userId }, { threadId: { in: sharedThreadIds } }] }
       : { userId };
-    // The ownership filter lives under `AND` so that the search branch below,
-    // which assigns `where.OR`, cannot clobber it. Spreading it here instead
+    // The ownership filter lives under `AND` so that no branch below can
+    // clobber it. The search branch once assigned `where.OR` over it, which
     // leaked every user's mail to anyone who had a shared thread and searched.
     //
     // `andFilters` is the same array `where.AND` points at: any branch that
@@ -830,6 +831,20 @@ export const emailService = {
     if (query.to) {
       where.to = { has: query.to.toLowerCase() };
     }
+    // Mail with one person on it, whichever way it went: from them, or to, cc
+    // or bcc them. The search box applies it when a person is picked; `from`
+    // alone left out everything the user had sent them.
+    if (query.participant?.trim()) {
+      const address = query.participant.trim().toLowerCase();
+      andFilters.push({
+        OR: [
+          { from: { equals: address, mode: 'insensitive' } },
+          { to: { has: address } },
+          { cc: { has: address } },
+          { bcc: { has: address } },
+        ],
+      });
+    }
     if (query.subject) {
       where.subject = { contains: query.subject, mode: 'insensitive' };
     }
@@ -842,13 +857,17 @@ export const emailService = {
     if (query.contactEmail) {
       where.from = query.contactEmail;
     }
-    if (query.search) {
-      where.OR = [
-        { subject: { contains: query.search, mode: 'insensitive' } },
-        { from: { contains: query.search, mode: 'insensitive' } },
-        { fromName: { contains: query.search, mode: 'insensitive' } },
-        { snippet: { contains: query.search, mode: 'insensitive' } },
-      ];
+    // Every word, anywhere in the message — see queryWords. One OR per word,
+    // pushed onto AND: assigning `where.OR` is what once dropped ownership.
+    for (const word of queryWords(query.search ?? '')) {
+      andFilters.push({
+        OR: [
+          { subject: { contains: word, mode: 'insensitive' } },
+          { from: { contains: word, mode: 'insensitive' } },
+          { fromName: { contains: word, mode: 'insensitive' } },
+          { snippet: { contains: word, mode: 'insensitive' } },
+        ],
+      });
     }
 
     // P1: Get distinct threads with counts — eliminates N+1 queries

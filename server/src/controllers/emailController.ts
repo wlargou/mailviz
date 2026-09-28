@@ -2,14 +2,25 @@ import { Response, NextFunction } from 'express';
 import type { Req } from "../types/http.js";
 import { emailService } from '../services/emailService.js';
 import { draftService } from '../services/draftService.js';
+import { suggestMail } from '../services/mailSuggestService.js';
 import { isSyncInProgressFor, runManualSync } from '../jobs/emailSyncScheduler.js';
 
 export const emailController = {
   async findAllThreads(req: Req, res: Response, next: NextFunction) {
     try {
-      const { search, customerId, contactEmail, isRead, hasAttachment, folder, category, from, to, subject, dateAfter, dateBefore, page, limit } = req.query as Record<string, string>;
-      const result = await emailService.findAllThreads({ search, customerId, contactEmail, isRead, hasAttachment, folder, category, from, to, subject, dateAfter, dateBefore, page, limit }, req.user!.id);
+      const { search, customerId, contactEmail, isRead, hasAttachment, folder, category, from, to, participant, subject, dateAfter, dateBefore, page, limit } = req.query as Record<string, string>;
+      const result = await emailService.findAllThreads({ search, customerId, contactEmail, isRead, hasAttachment, folder, category, from, to, participant, subject, dateAfter, dateBefore, page, limit }, req.user!.id);
       res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  /** People and threads for the Mail search box, as the user types. */
+  async suggest(req: Req, res: Response, next: NextFunction) {
+    try {
+      const q = typeof req.query.q === 'string' ? req.query.q.slice(0, 100) : '';
+      res.json({ data: await suggestMail(req.user!.id, q) });
     } catch (err) {
       next(err);
     }
