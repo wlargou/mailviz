@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma.js';
+import { RFP_TERMINAL_STATUSES } from '../utils/rfp.js';
 
 interface SearchResults {
   emails: Array<{
@@ -48,16 +49,38 @@ interface SearchResults {
     partner: { name: string } | null;
     customer: { id: string; name: string } | null;
   }>;
+  rfps: Array<{
+    id: string;
+    name: string;
+    reference: string;
+    status: string;
+    deadlineAt: Date;
+    customer: { id: string; name: string } | null;
+  }>;
 }
 
-const EMPTY: SearchResults = { emails: [], tasks: [], events: [], customers: [], contacts: [], deals: [] };
+const EMPTY: SearchResults = { emails: [], tasks: [], events: [], customers: [], contacts: [], deals: [], rfps: [] };
+
+type RfpHit = SearchResults['rfps'][number];
+
+/**
+ * Live tenders first, nearest deadline first — the one closing on Wednesday
+ * is what someone typing "BKAM" is after. Then the rest, most recent first.
+ */
+export function rankRfps(rfps: RfpHit[], now = new Date()): RfpHit[] {
+  const live = (r: RfpHit) => !(RFP_TERMINAL_STATUSES as readonly string[]).includes(r.status) && r.deadlineAt >= now;
+  return [
+    ...rfps.filter(live).sort((a, b) => a.deadlineAt.getTime() - b.deadlineAt.getTime()),
+    ...rfps.filter((r) => !live(r)).sort((a, b) => b.deadlineAt.getTime() - a.deadlineAt.getTime()),
+  ];
+}
 
 export const searchService = {
   async search(query: string, userId: string): Promise<SearchResults> {
     const q = query.trim();
     if (q.length < 2) return EMPTY;
 
-    const [emails, tasks, events, customers, contacts, deals] = await Promise.all([
+    const [emails, tasks, events, customers, contacts, deals, rfpRows] = await Promise.all([
       // Emails — distinct by threadId, newest first, exclude trashed
       prisma.email.findMany({
         where: {
@@ -189,8 +212,37 @@ export const searchService = {
         orderBy: { createdAt: 'desc' },
         take: 4,
       }),
+
+      // RFPs — name, the buyer's reference, notes, and the buyer's name.
+      // Owned only, like every other branch here. More than four are read so
+      // the live ones can be ranked first before cutting to four.
+      prisma.rfp.findMany({
+        where: {
+          AND: [
+            { userId },
+            {
+              OR: [
+                { name: { contains: q, mode: 'insensitive' } },
+                { reference: { contains: q, mode: 'insensitive' } },
+                { notes: { contains: q, mode: 'insensitive' } },
+                { customer: { name: { contains: q, mode: 'insensitive' } } },
+              ],
+            },
+          ],
+        },
+        select: {
+          id: true,
+          name: true,
+          reference: true,
+          status: true,
+          deadlineAt: true,
+          customer: { select: { id: true, name: true } },
+        },
+        orderBy: { deadlineAt: 'desc' },
+        take: 12,
+      }),
     ]);
 
-    return { emails, tasks, events, customers, contacts, deals };
+    return { emails, tasks, events, customers, contacts, deals, rfps: rankRfps(rfpRows).slice(0, 4) };
   },
 };

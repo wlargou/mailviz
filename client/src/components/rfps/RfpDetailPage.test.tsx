@@ -107,6 +107,19 @@ beforeEach(() => {
 });
 
 describe('RfpDetailPage', () => {
+  it('counts down to a live deadline, and not to a finished one', async () => {
+    const deadlineAt = new Date(Date.now() + 5 * 86_400_000).toISOString();
+    serve(makeRfp({ deadlineAt }));
+    const { unmount } = renderPage();
+    expect(await screen.findByText(/^in 5 days · \w+day$/)).toBeInTheDocument();
+    unmount();
+
+    serve(makeRfp({ deadlineAt, status: 'WON' }));
+    renderPage();
+    await screen.findByRole('heading', { name: 'Maintenance SIMPL' });
+    expect(screen.queryByText(/in 5 days/)).toBeNull();
+  });
+
   it('shows the tender, and how much of the response is ready', async () => {
     serve(makeRfp());
     renderPage();

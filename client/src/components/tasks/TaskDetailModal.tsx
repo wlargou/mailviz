@@ -40,6 +40,7 @@ import { useUIStore } from '../../store/uiStore';
 import type { Task, Label, TaskPriority, TaskStatus, TaskStatusConfig } from '../../types/task';
 import { decodeEntities } from '../../utils/text';
 import { useTaskStore } from '../../store/taskStore';
+import { shortDate } from '../../utils/dates';
 
 const priorityItems = [
   { id: 'LOW', text: 'Low' },
@@ -560,7 +561,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, onOpenTask, 
               <>
                 Previous occurrence:{' '}
                 <button type="button" className="task-parent-crumb--link task-occurrences__link" onClick={() => onOpenTask?.(task.recurrencePrevious!.id)} disabled={!onOpenTask}>
-                  {task.recurrencePrevious.dueDate ? format(new Date(task.recurrencePrevious.dueDate), 'MMM d, yyyy') : 'undated'}
+                  {task.recurrencePrevious.dueDate ? shortDate(task.recurrencePrevious.dueDate) : 'undated'}
                 </button>
               </>
             )}
@@ -569,7 +570,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdated, onOpenTask, 
               <>
                 Next occurrence:{' '}
                 <button type="button" className="task-parent-crumb--link task-occurrences__link" onClick={() => onOpenTask?.(task.recurrenceNext!.id)} disabled={!onOpenTask}>
-                  {task.recurrenceNext.dueDate ? format(new Date(task.recurrenceNext.dueDate), 'MMM d, yyyy') : 'undated'}
+                  {task.recurrenceNext.dueDate ? shortDate(task.recurrenceNext.dueDate) : 'undated'}
                 </button>
               </>
             )}

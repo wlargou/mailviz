@@ -1,7 +1,8 @@
+import { Fragment } from 'react';
 import { SkeletonText, Button } from '@carbon/react';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, ArrowRight, Launch } from '@carbon/icons-react';
-import { format, isToday } from 'date-fns';
+import { format, isToday, isTomorrow } from 'date-fns';
 import type { DashboardStats } from '../../types/dashboard';
 import { EmptyState } from '../shared/EmptyState';
 
@@ -9,6 +10,13 @@ interface UpcomingEventsProps {
   stats: DashboardStats | null;
   loading: boolean;
   onEventClick?: (eventId: string) => void;
+}
+
+/** "Today", "Tomorrow", then the weekday and date. */
+export function eventDayLabel(date: Date): string {
+  if (isToday(date)) return 'Today';
+  if (isTomorrow(date)) return 'Tomorrow';
+  return format(date, 'EEEE d MMM');
 }
 
 export function UpcomingEvents({ stats, loading, onEventClick }: UpcomingEventsProps) {
@@ -41,16 +49,21 @@ export function UpcomingEvents({ stats, loading, onEventClick }: UpcomingEventsP
 
   return (
     <div className="upcoming-events">
-      {upcomingEvents.slice(0, 5).map((event) => {
+      {upcomingEvents.slice(0, 5).map((event, i, shown) => {
         const startDate = new Date(event.startTime);
         const today = isToday(startDate);
         const openEvent = () => (onEventClick ? onEventClick(event.id) : navigate('/calendar'));
+        // A heading each time the day changes. Without one, today's 11:30
+        // was followed by tomorrow's 11:00 and read as a sorting bug.
+        const day = eventDayLabel(startDate);
+        const newDay = i === 0 || eventDayLabel(new Date(shown[i - 1].startTime)) !== day;
 
         return (
-          // Stays a div with role="button" rather than a real <button>: the row
-          // can contain a nested "Join" Button and buttons cannot be nested.
+          <Fragment key={event.id}>
+          {newDay && <h5 className="upcoming-events__day">{day}</h5>}
+          {/* Stays a div with role="button" rather than a real <button>: the
+              row can contain a nested "Join" Button and buttons cannot nest. */}
           <div
-            key={event.id}
             role="button"
             tabIndex={0}
             aria-label={`${event.title}, ${event.isAllDay ? 'all day' : format(startDate, 'h:mm a')}`}
@@ -88,6 +101,7 @@ export function UpcomingEvents({ stats, loading, onEventClick }: UpcomingEventsP
               </Button>
             )}
           </div>
+          </Fragment>
         );
       })}
       <Button kind="ghost" size="sm" renderIcon={ArrowRight} onClick={() => navigate('/calendar')} className="recent-activity__view-all">

@@ -269,6 +269,18 @@ describe('dashboardService.getStats — tasks', () => {
     ]);
   });
 
+  it('lists only open tasks among the recent ones', async () => {
+    const { alice } = await createTwoUsers();
+    await seedTaskStatuses(alice.id);
+    const open = await createTask(alice.id, { title: 'still to do' });
+    const done = await createTask(alice.id, { title: 'finished' });
+    await prisma.task.update({ where: { id: done.id }, data: { status: 'DONE', createdAt: new Date(Date.now() + 60_000) } });
+
+    const { tasks } = await dashboardService.getStats(await inMachineZone(alice.id));
+
+    expect(tasks.recentTasks.map((t) => t.id)).toEqual([open.id]);
+  });
+
   /**
    * `recentTasks` flattens the TaskLabel join rows into plain labels. The
    * dashboard renders label chips straight from this — leave the join rows in

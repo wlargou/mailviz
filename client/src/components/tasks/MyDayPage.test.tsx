@@ -98,13 +98,15 @@ describe('MyDayPage', () => {
     useTaskStore.setState({ tasksVersion: 0 });
   });
 
-  it('renders the buckets with their counts and an empty line for a quiet one', async () => {
+  it('renders the buckets with tasks, and names the empty ones in one line instead of a section each', async () => {
     vi.mocked(tasksApi.getMyDay).mockResolvedValue(axiosOk({ data: DAY, meta: { timezone: 'UTC', today: '', total: 2 } }));
     renderPage();
 
     expect(await screen.findByRole('button', { name: 'Chase the NDA' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /Overdue/ })).toHaveTextContent('1');
     expect(screen.getByRole('heading', { name: /Due today/ })).toHaveTextContent('1');
+    // No heading, count and paragraph for a section with nothing in it.
+    expect(screen.queryByRole('heading', { name: /Starting today/ })).toBeNull();
     expect(screen.getByText('Nothing starts today.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Plan Q4' })).toBeInTheDocument();
     expect(screen.getByText('Acme')).toBeInTheDocument();

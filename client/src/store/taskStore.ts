@@ -13,6 +13,12 @@ interface TaskFilters {
   ownership?: TaskOwnership;
   /** 'true' = only tasks with an unfinished blocker; 'false' = only tasks without one. */
   blocked?: string;
+  /**
+   * 'true' = finished tasks too. Unset is the default, open tasks only: the
+   * list used to interleave Done with To do, so what was left to do had to be
+   * picked out of what was already finished.
+   */
+  showFinished?: string;
   sortBy: string;
   sortOrder: string;
 }
@@ -92,6 +98,9 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       if (filters.labelId) params.labelId = filters.labelId;
       if (filters.ownership) params.ownership = filters.ownership;
       if (filters.blocked) params.blocked = filters.blocked;
+      // Open only unless asked; a chosen status speaks for itself (the server
+      // ignores `open` beside one, and so does this).
+      if (filters.showFinished !== 'true' && !filters.status) params.open = 'true';
       if (filters.overdue) {
         params.dueBefore = new Date().toISOString();
         // Exclude completed tasks for overdue filter
@@ -136,6 +145,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         labelId: typeof filters.labelId === 'string' ? filters.labelId : undefined,
         ownership: filters.ownership === 'shared' || filters.ownership === 'owned' ? filters.ownership : undefined,
         blocked: typeof filters.blocked === 'string' ? filters.blocked : undefined,
+        showFinished: filters.showFinished === 'true' || filters.showFinished === true ? 'true' : undefined,
         overdue: filters.overdue === true || filters.overdue === 'true' ? true : undefined,
         sortBy: sortBy || defaultFilters.sortBy,
         sortOrder: sortOrder || defaultFilters.sortOrder,

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { ContactsPage } from './ContactsPage';
 import { contactsApi } from '../../api/customers';
 import type { Contact } from '../../types/customer';
@@ -432,5 +432,44 @@ describe('ContactsPage', () => {
       expect(screen.getByRole('searchbox')).toHaveValue('zzz');
       expect(screen.queryByRole('heading', { name: 'No contacts yet' })).not.toBeInTheDocument();
     });
+  });
+});
+
+describe('ContactsPage — rows', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockContacts();
+  });
+
+  function renderRouted() {
+    return render(
+      <MemoryRouter initialEntries={['/contacts']}>
+        <Routes>
+          <Route path="/contacts" element={<ContactsPage />} />
+          <Route path="/contacts/:id" element={<p>contact page</p>} />
+          <Route path="/customers/:id" element={<p>company page</p>} />
+        </Routes>
+      </MemoryRouter>
+    );
+  }
+
+  it('opens a contact from anywhere on its row', async () => {
+    const user = userEvent.setup();
+    renderRouted();
+
+    await user.click(await screen.findByText('sara@dell.com'));
+
+    expect(await screen.findByText('contact page')).toBeInTheDocument();
+  });
+
+  it('opens the company from its tag, not the contact behind it', async () => {
+    const user = userEvent.setup();
+    renderRouted();
+
+    const row = (await screen.findByText('sara@dell.com')).closest('tr')!;
+    await user.click(within(row).getByText('DELL'));
+
+    expect(await screen.findByText('company page')).toBeInTheDocument();
+    expect(screen.queryByText('contact page')).toBeNull();
   });
 });

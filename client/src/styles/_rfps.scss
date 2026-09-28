@@ -9,6 +9,14 @@
   white-space: nowrap;
 }
 
+// "in 2 days" under the date — the distance is what a reader acts on.
+.rfp-deadline__left {
+  @include type.type-style('helper-text-01');
+  display: block;
+  font-weight: 400;
+  color: var(--cds-text-secondary);
+}
+
 .rfp-deadline__time {
   @include type.type-style('label-01');
   color: var(--cds-text-secondary);
@@ -748,4 +756,9 @@
   flex-wrap: wrap;
   gap: $spacing-03;
   margin-block-start: $spacing-03;
+}
+
+// The buyer, in a row that itself opens the tender: a quieter link.
+.rfp-company-cell {
+  font-weight: 400;
 }

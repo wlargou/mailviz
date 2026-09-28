@@ -25,6 +25,11 @@ import { notificationService } from './notificationService.js';
 interface TaskQueryParams {
   status?: string;
   statusNot?: string;
+  /**
+   * 'true' = only tasks not in one of the account's finished statuses. Ignored
+   * when `status` names one: asking for Done tasks is asking for finished ones.
+   */
+  open?: string;
   priority?: string;
   search?: string;
   labelId?: string;
@@ -344,6 +349,10 @@ export const taskService = {
     }
     if (query.statusNot) {
       where.status = { not: query.statusNot };
+    }
+    if (query.open === 'true' && !query.status) {
+      // Under AND, beside ownership — `where.status` may already hold statusNot.
+      andFilters.push({ status: { notIn: await terminalStatusNames(userId) } });
     }
     if (query.priority) {
       where.priority = query.priority as Prisma.EnumTaskPriorityFilter;

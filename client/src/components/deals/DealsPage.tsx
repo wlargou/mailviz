@@ -34,6 +34,7 @@ import type { PaginationMeta } from '../../types/api';
 import { format, isPast } from 'date-fns';
 import { toolbarSearchValue } from '../../utils/carbonSearch';
 import { useTableSort } from '../../hooks/useTableSort';
+import { shortDate } from '../../utils/dates';
 
 /** Restrict the list to deals the user does not own ('shared') or does own ('owned'). */
 type DealOwnership = 'shared' | 'owned';
@@ -331,10 +332,10 @@ export function DealsPage() {
                             {deal.expiryDate ? (
                               isPast(new Date(deal.expiryDate)) ? (
                                 <span className="deal-expiry--expired">
-                                  {format(new Date(deal.expiryDate), 'MMM d, yyyy')}
+                                  {shortDate(deal.expiryDate)}
                                 </span>
                               ) : (
-                                format(new Date(deal.expiryDate), 'MMM d, yyyy')
+                                shortDate(deal.expiryDate)
                               )
                             ) : (
                               '—'

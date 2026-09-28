@@ -8,13 +8,14 @@ import {
   Search as SearchIcon,
   User,
   Partnership,
+  Document as DocumentIcon,
 } from '@carbon/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { formatDistanceToNow, format } from 'date-fns';
 import { searchApi, type SearchResults } from '../../api/search';
 import { decodeEntities } from '../../utils/text';
 
-type Category = 'emails' | 'tasks' | 'events' | 'customers' | 'contacts' | 'deals';
+type Category = 'rfps' | 'emails' | 'tasks' | 'events' | 'customers' | 'contacts' | 'deals';
 
 interface Scope {
   id: string;
@@ -23,6 +24,7 @@ interface Scope {
 
 const SCOPES: Scope[] = [
   { id: 'all', text: 'All' },
+  { id: 'rfps', text: 'RFPs' },
   { id: 'emails', text: 'Emails' },
   { id: 'tasks', text: 'Tasks' },
   { id: 'events', text: 'Events' },
@@ -40,6 +42,7 @@ interface FlatResult {
 }
 
 const CATEGORY_META: Record<Category, { icon: typeof Email; label: string }> = {
+  rfps: { icon: DocumentIcon, label: 'RFP results' },
   emails: { icon: Email, label: 'Email results' },
   tasks: { icon: Task, label: 'Task results' },
   events: { icon: Calendar, label: 'Event results' },
@@ -48,9 +51,15 @@ const CATEGORY_META: Record<Category, { icon: typeof Email; label: string }> = {
   deals: { icon: Partnership, label: 'Deal results' },
 };
 
+/**
+ * RFPs first: a tender closing this week is the thing most worth finding,
+ * and search used not to look at them at all.
+ */
+const CATEGORY_ORDER: Category[] = ['rfps', 'emails', 'tasks', 'events', 'customers', 'contacts', 'deals'];
+
 function flattenResults(results: SearchResults, scopeIds: string[]): FlatResult[] {
   const flat: FlatResult[] = [];
-  const allCategories: Category[] = ['emails', 'tasks', 'events', 'customers', 'contacts', 'deals'];
+  const allCategories: Category[] = CATEGORY_ORDER;
   // If 'all' is selected or no scopes selected, show everything
   const cats = scopeIds.length === 0 || scopeIds.includes('all')
     ? allCategories
@@ -58,7 +67,18 @@ function flattenResults(results: SearchResults, scopeIds: string[]): FlatResult[
 
   for (const cat of cats) {
     if (!results[cat]) continue;
-    if (cat === 'emails') {
+    if (cat === 'rfps') {
+      for (const rfp of results.rfps) {
+        flat.push({
+          category: 'rfps', icon: DocumentIcon,
+          label: rfp.name,
+          sublabel: [rfp.reference, rfp.customer?.name, `due ${formatDistanceToNow(new Date(rfp.deadlineAt), { addSuffix: true })}`]
+            .filter(Boolean)
+            .join(' · '),
+          navigateTo: `/rfps/${rfp.id}`,
+        });
+      }
+    } else if (cat === 'emails') {
       for (const email of results.emails) {
         flat.push({
           category: 'emails', icon: Email,
@@ -225,6 +245,7 @@ export function GlobalSearch() {
   const handleViewAll = useCallback((cat: Category) => {
     const searchParam = encodeURIComponent(query.trim());
     const paths: Record<Category, string> = {
+      rfps: `/rfps?search=${searchParam}`,
       emails: `/mail?search=${searchParam}`,
       tasks: `/tasks?search=${searchParam}`,
       events: `/calendar?search=${searchParam}`,
@@ -278,7 +299,7 @@ export function GlobalSearch() {
     return () => document.removeEventListener('mousedown', handleMouseDown);
   }, []);
 
-  const allCategories: Category[] = ['emails', 'tasks', 'events', 'customers', 'contacts', 'deals'];
+  const allCategories: Category[] = CATEGORY_ORDER;
   const categories: Category[] = results
     ? (selectedScope.id === 'all'
         ? allCategories

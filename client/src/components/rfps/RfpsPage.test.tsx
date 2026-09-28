@@ -75,6 +75,21 @@ function renderPage() {
   );
 }
 
+/** Open a row's "⋯" menu — its actions live there, not as icons on the row. */
+async function openActions(user: ReturnType<typeof userEvent.setup>, name = /Refonte/) {
+  await user.click(await screen.findByRole('button', { name: new RegExp(`Actions for .*${name.source}`) }));
+}
+
+/**
+ * The open menu's items, by label. `hidden: true` because Carbon keeps its
+ * floating menu `visibility: hidden` in jsdom, which cannot measure where to
+ * place it — the items are there and clickable, just not "visible".
+ */
+const menuItems = async () => (await screen.findAllByRole('menuitem', { hidden: true })).map((m) => m.textContent?.trim());
+// By text: a hidden element's accessible name computes to "".
+const menuItem = async (label: string) =>
+  (await screen.findAllByRole('menuitem', { hidden: true })).find((m) => m.textContent?.trim() === label)!;
+
 function serve(rfps: Rfp[]) {
   vi.mocked(rfpsApi.getAll).mockResolvedValue(axiosOk({ data: rfps, meta: { page: 1, limit: 20, total: rfps.length, totalPages: 1 } }) as never);
 }
@@ -109,6 +124,56 @@ describe('deadlineTone', () => {
 });
 
 describe('RfpsPage', () => {
+  it('says how far each live deadline is, and not for a finished tender', async () => {
+    const inTwoDays = new Date(Date.now() + 2 * 86_400_000 + 3_600_000).toISOString();
+    serve([
+      makeRfp({ id: 'live', reference: 'LIVE/1', deadlineAt: inTwoDays }),
+      makeRfp({ id: 'won', reference: 'WON/1', deadlineAt: inTwoDays, status: 'WON' }),
+    ]);
+    renderPage();
+
+    const live = (await screen.findByText('LIVE/1')).closest('tr')!;
+    expect(within(live).getByText(/^in 2 days$|^in 3 days$/)).toBeInTheDocument();
+    const won = screen.getByText('WON/1').closest('tr')!;
+    expect(within(won).queryByText(/^in \d+ days$|tomorrow|late$/)).toBeNull();
+  });
+
+  it('arrives from global search with the query in place, across every tender', async () => {
+    // "View all" from the header lands here; the register's usual Open scope
+    // would hide last year's tender the search was after.
+    serve([makeRfp()]);
+    render(
+      <MemoryRouter initialEntries={['/rfps?search=BKAM']}>
+        <RfpsPage />
+      </MemoryRouter>
+    );
+
+    await screen.findByText('70/AOO/BKAM/2026');
+    const params = vi.mocked(rfpsApi.getAll).mock.calls.at(-1)![0]!;
+    expect(params.search).toBe('BKAM');
+    expect(params.scope).toBeUndefined();
+    expect(screen.getByRole('searchbox')).toHaveValue('BKAM');
+  });
+
+  it('opens a tender from anywhere on its row, but not from the controls in it', async () => {
+    serve([makeRfp()]);
+    const user = userEvent.setup();
+    renderPage();
+
+    const row = (await screen.findByText('70/AOO/BKAM/2026')).closest('tr')!;
+    await user.click(within(row).getByText('70/AOO/BKAM/2026'));
+    expect(navigateSpy).toHaveBeenLastCalledWith('/rfps/r1');
+
+    // The buyer opens the buyer; the menu opens the menu.
+    navigateSpy.mockClear();
+    await user.click(within(row).getByRole('button', { name: 'Bank Al-Maghrib' }));
+    expect(navigateSpy).toHaveBeenCalledTimes(1);
+    expect(navigateSpy).toHaveBeenLastCalledWith('/customers/c1');
+    navigateSpy.mockClear();
+    await openActions(user);
+    expect(navigateSpy).not.toHaveBeenCalled();
+  });
+
   it("opens a tender's page from its name", async () => {
     // The page is where the response is prepared; the edit panel only
     // changes what the tender is, so the name no longer opens it.
@@ -131,7 +196,8 @@ describe('RfpsPage', () => {
     // inside each action button's description.
     const row = (await screen.findByText('70/AOO/BKAM/2026')).closest('tr')!;
     expect(within(row).getByRole('button', { name: 'Refonte de la plateforme matérielle AIX' })).toBeInTheDocument();
-    expect(within(row).getByText('9 Dec 2026')).toBeInTheDocument();
+    // The year only when it is not this one.
+    expect(within(row).getByText(/^9 Dec( 2026)?$/)).toBeInTheDocument();
     // The buying organisation — a tender is recognised by who it is from at
     // least as often as by its reference.
     expect(within(row).getByText('Bank Al-Maghrib')).toBeInTheDocument();
@@ -225,7 +291,8 @@ describe('RfpsPage', () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(await screen.findByRole('button', { name: /Delete Refonte/ }));
+    await openActions(user);
+    await user.click(await menuItem('Delete'));
     expect(await screen.findByText(/Its 2 documents will be deleted too/)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Delete' }));
@@ -244,23 +311,24 @@ describe('RfpsPage', () => {
 describe('RfpsPage — shared tenders', () => {
   it('badges a tender owned by someone else and withholds the owner-only actions', async () => {
     serve([makeRfp({ userId: 'colleague', user: { id: 'colleague', name: 'Sam', email: 'sam@test' } })]);
+    const user = userEvent.setup();
     renderPage();
 
     const row = (await screen.findByText('70/AOO/BKAM/2026')).closest('tr')!;
     expect(within(row).getByText('Shared')).toBeInTheDocument();
-    expect(within(row).getByRole('button', { name: /Edit / })).toBeInTheDocument();
-    expect(within(row).queryByRole('button', { name: /Share / })).toBeNull();
-    expect(within(row).queryByRole('button', { name: /Delete / })).toBeNull();
+    await openActions(user);
+    expect(await menuItems()).toEqual(['Edit']);
   });
 
   it('offers sharing and deleting on your own, without a badge', async () => {
     serve([makeRfp()]);
+    const user = userEvent.setup();
     renderPage();
 
     const row = (await screen.findByText('70/AOO/BKAM/2026')).closest('tr')!;
     expect(within(row).queryByText('Shared')).toBeNull();
-    expect(within(row).getByRole('button', { name: /Share / })).toBeInTheDocument();
-    expect(within(row).getByRole('button', { name: /Delete / })).toBeInTheDocument();
+    await openActions(user);
+    expect(await menuItems()).toEqual(['Edit', 'Share', 'Delete']);
   });
 
   it('opens the share dialog on the current recipients', async () => {
@@ -271,7 +339,8 @@ describe('RfpsPage — shared tenders', () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(await screen.findByRole('button', { name: /Share Refonte/ }));
+    await openActions(user);
+    await user.click(await menuItem('Share'));
 
     await waitFor(() => expect(rfpsApi.getRfpShares).toHaveBeenCalledWith('r1'));
     // The dialog shows a recipient's name when they have one, their email

@@ -117,6 +117,9 @@ export function DashboardPage() {
     }
   };
 
+  // While loading, keep the card: its skeleton holds the layout steady.
+  const hasExpiringDeals = loading || (stats?.expiringDeals?.length ?? 0) > 0;
+
   return (
     <div>
       <div className="page-header">
@@ -158,18 +161,22 @@ export function DashboardPage() {
           </Tile>
         </Column>
 
-        {/* Row 3: Expiring Deals + Recent Tasks */}
-        <Column lg={8} md={4} sm={4}>
-          <Tile className="card">
-            <div className="card__header">
-              <h4 className="card__title">Expiring Deal Registrations</h4>
-            </div>
-            <div className="card__content">
-              <ExpiringDeals deals={stats?.expiringDeals} loading={loading} />
-            </div>
-          </Tile>
-        </Column>
-        <Column lg={8} md={4} sm={4}>
+        {/* Row 3: Expiring Deals + Recent Tasks. With nothing expiring, the
+            deals card was a full-height tile around one line of text; it is
+            left out and the tasks take the row. */}
+        {hasExpiringDeals && (
+          <Column lg={8} md={4} sm={4}>
+            <Tile className="card">
+              <div className="card__header">
+                <h4 className="card__title">Expiring Deal Registrations</h4>
+              </div>
+              <div className="card__content">
+                <ExpiringDeals deals={stats?.expiringDeals} loading={loading} />
+              </div>
+            </Tile>
+          </Column>
+        )}
+        <Column lg={hasExpiringDeals ? 8 : 16} md={hasExpiringDeals ? 4 : 8} sm={4}>
           <Tile className="card">
             <div className="card__header">
               <h4 className="card__title">Recent Tasks</h4>

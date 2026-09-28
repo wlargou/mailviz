@@ -36,6 +36,7 @@ import { TaskProgressTags, TaskParentCrumb } from './TaskProgressTags';
 import { toolbarSearchValue, type TableToolbarSearchChangeEvent } from '../../utils/carbonSearch';
 import { decodeEntities } from '../../utils/text';
 import type { Label, Task } from '../../types/task';
+import { shortDate } from '../../utils/dates';
 
 interface TaskByCompanyViewProps {
   labels: Label[];
@@ -90,8 +91,7 @@ function dueLabel(iso: string): string {
   const date = new Date(iso);
   if (isToday(date)) return 'Today';
   if (isTomorrow(date)) return 'Tomorrow';
-  const sameYear = date.getFullYear() === new Date().getFullYear();
-  return format(date, sameYear ? 'MMM d' : 'MMM d, yyyy');
+  return shortDate(date);
 }
 
 /**
@@ -641,13 +641,13 @@ export function TaskByCompanyView({ labels, onEdit, onDelete, onCreateNew }: Tas
                                         <dt>Due</dt>
                                         <dd>
                                           {task.dueDate
-                                            ? format(new Date(task.dueDate), 'MMM d, yyyy')
+                                            ? shortDate(task.dueDate)
                                             : 'No due date'}
                                         </dd>
                                       </div>
                                       <div>
                                         <dt>Created</dt>
-                                        <dd>{format(new Date(task.createdAt), 'MMM d, yyyy')}</dd>
+                                        <dd>{shortDate(task.createdAt)}</dd>
                                       </div>
                                     </dl>
                                   </div>

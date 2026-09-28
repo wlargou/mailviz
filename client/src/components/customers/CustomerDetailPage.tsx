@@ -58,6 +58,7 @@ import { ThreadItemList } from '../shared/ThreadItemList';
 import { toolbarSearchValue } from '../../utils/carbonSearch';
 import { CompanyLogo } from '../shared/CompanyLogo';
 import { decodeEntities } from '../../utils/text';
+import { shortDate } from '../../utils/dates';
 
 const contactHeaders = [
   { key: 'name', header: 'Name' },
@@ -239,58 +240,46 @@ export function CustomerDetailPage() {
 
   return (
     <div>
+      {/* The name once, in the header — it used to appear as the page title,
+          again as a heading inside a tile, and a third time as the legal
+          name. Everything else about the company is one line of facts. */}
       <PageHeader
         title={customer?.name || 'Company'}
         breadcrumbs={[{ label: 'Companies', href: '/customers' }]}
+        actions={
+          <Button kind="tertiary" size="md" renderIcon={Edit} onClick={openEditCustomer}>
+            Edit
+          </Button>
+        }
       />
 
-      <Grid fullWidth>
-        <Column lg={16} md={8} sm={4} className="row-spacing">
-          <Tile>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-                  <CompanyLogo src={customer.logoUrl} name={customer.name} size="lg" />
-                  <h2 style={{ margin: 0 }}>{customer.name}</h2>
-                  <VipBadge
-                    isVip={customer.isVip}
-                    size={20}
-                    onToggle={async () => {
-                      try {
-                        const { data: res } = await customersApi.toggleVip(customer.id);
-                        setCustomer(res.data);
-                      } catch {
-                        addNotification({ kind: 'error', title: 'Failed to toggle VIP status' });
-                      }
-                    }}
-                  />
-                  <CategoryTag category={customer.category} />
-                </div>
-                {customer.company && (
-                  <p style={{ margin: '0 0 0.25rem', color: 'var(--cds-text-secondary)' }}>
-                    {customer.company}
-                  </p>
-                )}
-                <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
-                  {customer.domain && <Tag type="cool-gray" size="sm">{customer.domain}</Tag>}
-                  {customer.email && <span>{customer.email}</span>}
-                  {customer.phone && <span>{customer.phone}</span>}
-                  {customer.website && <span>{customer.website}</span>}
-                </div>
-                {customer.notes && (
-                  <p style={{ marginTop: '0.75rem', color: 'var(--cds-text-secondary)', fontSize: '0.875rem' }}>
-                    {customer.notes}
-                  </p>
-                )}
-              </div>
-              <Button kind="ghost" size="sm" renderIcon={Edit} onClick={openEditCustomer}>
-                Edit
-              </Button>
-            </div>
-          </Tile>
-        </Column>
+      <div className="company-meta">
+        <CompanyLogo src={customer.logoUrl} name={customer.name} size="lg" />
+        <VipBadge
+          isVip={customer.isVip}
+          size={20}
+          onToggle={async () => {
+            try {
+              const { data: res } = await customersApi.toggleVip(customer.id);
+              setCustomer(res.data);
+            } catch {
+              addNotification({ kind: 'error', title: 'Failed to toggle VIP status' });
+            }
+          }}
+        />
+        <CategoryTag category={customer.category} />
+        {/* Only when it says something the name does not. */}
+        {customer.company && customer.company.trim().toLowerCase() !== customer.name.trim().toLowerCase() && (
+          <span className="company-meta__item">{customer.company}</span>
+        )}
+        {customer.domain && <Tag type="cool-gray" size="sm">{customer.domain}</Tag>}
+        {customer.email && <span className="company-meta__item">{customer.email}</span>}
+        {customer.phone && <span className="company-meta__item">{customer.phone}</span>}
+        {customer.website && <span className="company-meta__item">{customer.website}</span>}
+      </div>
+      {customer.notes && <p className="company-meta__notes">{customer.notes}</p>}
 
-        <Column lg={16} md={8} sm={4}>
+      <div className="company-detail">
           <Tabs>
             <TabList aria-label="Customer details">
               <Tab renderIcon={UserMultiple}>Contacts ({contacts.length})</Tab>
@@ -374,7 +363,7 @@ export function CustomerDetailPage() {
                                   <TableCell><span style={{ cursor: 'pointer', fontWeight: 500 }} onClick={() => navigate('/tasks')}>{decodeEntities(task.title)}</span></TableCell>
                                   <TableCell><TaskStatusTag status={task.status} /></TableCell>
                                   <TableCell><PriorityBadge priority={task.priority} /></TableCell>
-                                  <TableCell>{task.dueDate ? format(new Date(task.dueDate), 'MMM d, yyyy') : '—'}</TableCell>
+                                  <TableCell>{task.dueDate ? shortDate(task.dueDate) : '—'}</TableCell>
                                 </TableRow>);
                               })}
                             </TableBody>
@@ -461,8 +450,7 @@ export function CustomerDetailPage() {
               </TabPanel>
             </TabPanels>
           </Tabs>
-        </Column>
-      </Grid>
+      </div>
 
       <ContactModal
         open={contactModalOpen}

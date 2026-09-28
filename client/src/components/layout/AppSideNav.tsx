@@ -5,7 +5,6 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useUIStore } from '../../store/uiStore';
 import { dashboardApi, type NavCounts } from '../../api/dashboard';
 import { useEmailWebSocket } from '../../hooks/useEmailWebSocket';
-import { MailvizLogo } from '../shared/MailvizLogo';
 
 function formatBadge(count: number): string {
   if (count >= 1000) return `${Math.floor(count / 1000)}k`;
@@ -155,9 +154,8 @@ export function AppSideNav() {
           Settings
         </SideNavLink>
       </SideNavItems>
-      <div className="sidebar-logo-container">
-        <MailvizLogo size={140} variant="animated" />
-      </div>
+      {/* No animated logo down here: it moved on every page, pulled the eye
+          from the work, and the header already carries the mark. */}
     </SideNav>
   );
 }

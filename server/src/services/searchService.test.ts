@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { searchService } from './searchService.js';
+import { rankRfps, searchService } from './searchService.js';
 import { prisma } from '../lib/prisma.js';
 import {
   createTwoUsers,
@@ -11,6 +11,7 @@ import {
   shareTaskWith,
   shareDealWith,
   shareThreadWith,
+  createRfp,
 } from '../test/factories.js';
 
 /**
@@ -160,7 +161,7 @@ describe('searchService.search — query handling', () => {
 
     for (const query of ['', ' ', 'a', '  z  ']) {
       const results = await searchService.search(query, alice.id);
-      expect(results).toEqual({ emails: [], tasks: [], events: [], customers: [], contacts: [], deals: [] });
+      expect(results).toEqual({ emails: [], tasks: [], events: [], customers: [], contacts: [], deals: [], rfps: [] });
     }
   });
 
@@ -368,5 +369,66 @@ describe('searchService.search — result shaping', () => {
 
     expect(results.emails.map((e) => e.subject)).toEqual(['Kestrel new', 'Kestrel old']);
     expect(results.customers.map((c) => c.name)).toEqual(['Kestrel Alpha', 'Kestrel Zulu']);
+  });
+});
+
+describe('searchService.search — RFPs', () => {
+  it('finds a tender by name, the buyer\'s reference, notes, and the buyer\'s name', async () => {
+    const { alice } = await createTwoUsers();
+    const bkam = await createCustomer(alice.id, { name: 'Bank Al-Maghrib' });
+    const byName = await createRfp(alice.id, { name: 'Refonte plateforme AIX', reference: 'R-1' });
+    const byRef = await createRfp(alice.id, { name: 'Maintenance', reference: '70/AOO/BKAM/2026' });
+    const byNotes = await createRfp(alice.id, { name: 'Support', reference: 'R-3', notes: 'Caution 630 000 DH, voir Kappa' });
+    const byBuyer = await createRfp(alice.id, { name: 'Stockage', reference: 'R-4' });
+    await prisma.rfp.update({ where: { id: byBuyer.id }, data: { customerId: bkam.id } });
+
+    const ids = async (q: string) => (await searchService.search(q, alice.id)).rfps.map((r) => r.id);
+
+    expect(await ids('plateforme aix')).toEqual([byName.id]);
+    expect(await ids('aoo/bkam')).toEqual([byRef.id]);
+    expect(await ids('kappa')).toEqual([byNotes.id]);
+    expect(await ids('al-maghrib')).toEqual([byBuyer.id]);
+    const hit = (await searchService.search('al-maghrib', alice.id)).rfps[0];
+    expect(hit.customer).toEqual({ id: bkam.id, name: 'Bank Al-Maghrib' });
+  });
+
+  it("returns only the caller's own tenders, like every other entity here", async () => {
+    const { alice, bob } = await createTwoUsers();
+    const mine = await createRfp(alice.id, { name: 'Zebra tender', reference: 'Z-1' });
+    const theirs = await createRfp(bob.id, { name: 'Zebra tender', reference: 'Z-1' });
+    // Shared with alice — still out: global search is owned-only by design.
+    await prisma.rfpShare.create({ data: { rfpId: theirs.id, sharedByUserId: bob.id, sharedWithUserId: alice.id } });
+
+    const results = await searchService.search('zebra', alice.id);
+
+    expect(results.rfps.map((r) => r.id)).toEqual([mine.id]);
+  });
+
+  it('puts live tenders first, nearest deadline first, then the rest, and keeps four', async () => {
+    const { alice } = await createTwoUsers();
+    const day = 86_400_000;
+    const at = (d: number) => new Date(Date.now() + d * day);
+    const later = await createRfp(alice.id, { name: 'Quartz A', reference: 'Q-1', deadlineAt: at(20) });
+    const soon = await createRfp(alice.id, { name: 'Quartz B', reference: 'Q-2', deadlineAt: at(2) });
+    const won = await createRfp(alice.id, { name: 'Quartz C', reference: 'Q-3', deadlineAt: at(5), status: 'WON' });
+    const past = await createRfp(alice.id, { name: 'Quartz D', reference: 'Q-4', deadlineAt: at(-3) });
+    await createRfp(alice.id, { name: 'Quartz E', reference: 'Q-5', deadlineAt: at(-30) });
+
+    const ids = (await searchService.search('quartz', alice.id)).rfps.map((r) => r.id);
+
+    // A won tender is finished even with its date ahead; the oldest is cut.
+    expect(ids).toEqual([soon.id, later.id, won.id, past.id]);
+  });
+});
+
+describe('rankRfps', () => {
+  it('orders live tenders by nearest deadline, then everything else by most recent', () => {
+    const now = new Date('2026-09-28T09:00:00Z');
+    const r = (id: string, deadline: string, status = 'OPEN') => ({ id, name: id, reference: id, status, deadlineAt: new Date(deadline), customer: null });
+    const ranked = rankRfps(
+      [r('old', '2026-01-01'), r('far', '2026-12-01'), r('lost', '2026-11-01', 'LOST'), r('near', '2026-09-30'), r('recent', '2026-09-01')],
+      now,
+    );
+    expect(ranked.map((x) => x.id)).toEqual(['near', 'far', 'lost', 'recent', 'old']);
   });
 });

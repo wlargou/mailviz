@@ -112,9 +112,10 @@ export const dashboardService = {
         WHERE user_id = ${userId}
       `,
 
-      // Recent tasks (needs include, can't be raw)
+      // Recent tasks (needs include, can't be raw). Open ones only: a card of
+      // things to act on listed a finished task beside the four overdue ones.
       prisma.task.findMany({
-        where: { userId },
+        where: { userId, status: { notIn: terminalNames } },
         take: 5,
         // `id` breaks the tie. Prisma maps DateTime to timestamp(3), so two
         // rows created in the same millisecond compare equal and Postgres is

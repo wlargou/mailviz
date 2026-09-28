@@ -109,56 +109,62 @@ export function MyDayPage() {
         <EmptyState title="Nothing on your plate today" description="No overdue, due or starting tasks. Enjoy it." />
       )}
 
-      {day && (
+      {day && (total > 0 || day.upcoming.length > 0) && (
         <div className="my-day__buckets">
           {BUCKETS.map((bucket) => {
             const tasks = day[bucket.key];
-            if (tasks.length === 0 && bucket.key === 'upcoming' && total === 0) return null;
+            // An empty section is a heading, a zero and a sentence of
+            // nothing — three of them took most of the screen. They are
+            // named once, together, at the end instead.
+            if (tasks.length === 0) return null;
             return (
               <section key={bucket.key} className="my-day__bucket" aria-labelledby={`my-day-${bucket.key}`}>
                 <h2 id={`my-day-${bucket.key}`} className="my-day__bucket-title">
                   {bucket.title}
                   <Tag size="sm" type={tasks.length > 0 ? bucket.tone : 'cool-gray'}>{tasks.length}</Tag>
                 </h2>
-                {tasks.length === 0 ? (
-                  <p className="my-day__empty">{bucket.empty}</p>
-                ) : (
-                  <ul className="my-day__list">
-                    {tasks.map((task) => {
-                      const label = decodeEntities(task.title);
-                      const date = bucket.key === 'startingToday' ? task.startDate : task.dueDate;
-                      return (
-                        <li key={task.id} className="my-day__row">
-                          <input
-                            type="checkbox"
-                            className="my-day__check"
-                            checked={false}
-                            disabled={!doneStatus}
-                            aria-label={`Mark done: ${label}`}
-                            title={doneStatus ? undefined : 'No status is marked as finished. Set one in Settings.'}
-                            onChange={() => void finish(task)}
-                          />
-                          <button type="button" className="my-day__title" onClick={() => setEditTaskId(task.id)}>
-                            {label}
-                          </button>
-                          <span className="my-day__meta">
-                            {task.customer && <span className="my-day__company">{task.customer.name}</span>}
-                            <PriorityBadge priority={task.priority} />
-                            {date && (
-                              <span className={`my-day__date${bucket.key === 'overdue' ? ' overdue-date' : ''}`}>
-                                {isToday(new Date(date)) ? format(new Date(date), 'HH:mm') === '00:00' ? 'Today' : format(new Date(date), 'HH:mm') : format(new Date(date), 'MMM d')}
-                              </span>
-                            )}
-                            <TaskProgressTags task={task} />
-                          </span>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
+                <ul className="my-day__list">
+                  {tasks.map((task) => {
+                    const label = decodeEntities(task.title);
+                    const date = bucket.key === 'startingToday' ? task.startDate : task.dueDate;
+                    return (
+                      <li key={task.id} className="my-day__row">
+                        <input
+                          type="checkbox"
+                          className="my-day__check"
+                          checked={false}
+                          disabled={!doneStatus}
+                          aria-label={`Mark done: ${label}`}
+                          title={doneStatus ? undefined : 'No status is marked as finished. Set one in Settings.'}
+                          onChange={() => void finish(task)}
+                        />
+                        <button type="button" className="my-day__title" onClick={() => setEditTaskId(task.id)}>
+                          {label}
+                        </button>
+                        <span className="my-day__meta">
+                          {task.customer && <span className="my-day__company">{task.customer.name}</span>}
+                          <PriorityBadge priority={task.priority} />
+                          {date && (
+                            <span className={`my-day__date${bucket.key === 'overdue' ? ' overdue-date' : ''}`}>
+                              {isToday(new Date(date)) ? format(new Date(date), 'HH:mm') === '00:00' ? 'Today' : format(new Date(date), 'HH:mm') : format(new Date(date), 'MMM d')}
+                            </span>
+                          )}
+                          <TaskProgressTags task={task} />
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
               </section>
             );
           })}
+          {BUCKETS.some((b) => day[b.key].length === 0) && (
+            <p className="my-day__quiet">
+              {BUCKETS.filter((b) => day[b.key].length === 0)
+                .map((b) => b.empty)
+                .join(' ')}
+            </p>
+          )}
         </div>
       )}
 

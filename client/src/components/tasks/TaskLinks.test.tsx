@@ -71,6 +71,7 @@ const RESULTS = {
   contacts: [{ id: 'sam', firstName: 'Sam', lastName: 'Lee', email: 'sam@acme.test', role: null, customerId: 'c', customer: { name: 'Acme' } }],
   deals: [{ id: 'deal-1', title: 'Acme renewal', status: 'APPROVED', expiryDate: null, partner: { name: 'HPE' }, customer: null }],
   events: [{ id: 'ev-1', title: 'Kickoff', startTime: '2026-09-10T09:00:00.000Z', endTime: '2026-09-10T10:00:00.000Z', location: null }],
+  rfps: [],
 };
 
 describe('TaskLinks', () => {

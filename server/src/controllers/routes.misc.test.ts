@@ -11,6 +11,7 @@ import {
   createEmail,
   createCustomer,
   createDealPartner,
+  createRfp,
 } from '../test/factories.js';
 
 // Only the status probe is stubbed; the scheduler's own behaviour is covered in
@@ -1027,7 +1028,7 @@ describe('GET /api/v1/search', () => {
 
     expect(res.status).toBe(200);
     expect(Object.keys(res.body.data).sort()).toEqual(
-      ['contacts', 'customers', 'deals', 'emails', 'events', 'tasks'].sort()
+      ['contacts', 'customers', 'deals', 'emails', 'events', 'rfps', 'tasks'].sort()
     );
   });
 
@@ -1054,6 +1055,7 @@ describe('GET /api/v1/search', () => {
     await createEmail(bob.id, { subject: `Email ${needle}` });
     await createCustomer(bob.id, { name: `Customer ${needle}` });
     await createEvent(bob.id, { title: `Event ${needle}` });
+    await createRfp(bob.id, { name: `Tender ${needle}`, reference: `REF-${needle}` });
 
     const res = await request(app)
       .get(`/api/v1/search?q=${needle}`)
@@ -1067,6 +1069,7 @@ describe('GET /api/v1/search', () => {
       customers: [],
       contacts: [],
       deals: [],
+      rfps: [],
     });
   });
 

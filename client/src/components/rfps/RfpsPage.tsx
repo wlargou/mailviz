@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   DataTable,
   Table,
@@ -17,8 +17,11 @@ import {
   DataTableSkeleton,
   Tag,
   Dropdown,
+  OverflowMenu,
+  OverflowMenuItem,
 } from '@carbon/react';
-import { Add, TrashCan, Edit, Launch, Attachment, Document, Share } from '@carbon/icons-react';
+import { Add, Launch, Attachment, Document } from '@carbon/icons-react';
+import { openRowOnClick } from '../../utils/rowOpen';
 import { format } from 'date-fns';
 import { RfpFormPanel } from './RfpFormPanel';
 import { AttachmentPreviewModal } from '../shared/AttachmentPreviewModal';
@@ -43,6 +46,7 @@ import {
 } from '../../types/rfp';
 import { toolbarSearchValue } from '../../utils/carbonSearch';
 import { useTableSort } from '../../hooks/useTableSort';
+import { shortDate, timeLeft } from '../../utils/dates';
 
 /**
  * `sortField` is the API field. Format, GOE and Documents are not ordered on:
@@ -104,10 +108,14 @@ export function RfpsPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const { params: sortParams, headerProps } = useTableSort('deadlineAt', 'asc');
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [urlParams] = useSearchParams();
+  // Arriving from global search: seeded with the query, and across every
+  // tender — a search for last year's BKAM tender must not come back empty
+  // because the register hides finished ones by default.
+  const [search, setSearch] = useState(() => urlParams.get('search') || '');
+  const [debouncedSearch, setDebouncedSearch] = useState(() => urlParams.get('search') || '');
   // The register keeps every tender for ever, so it opens on what is live.
-  const [scope, setScope] = useState<string>('open');
+  const [scope, setScope] = useState<string>(() => (urlParams.get('search') ? '__all__' : 'open'));
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
   const [selectedFormat, setSelectedFormat] = useState<string | null>(null);
   const [selectedGoe, setSelectedGoe] = useState<string | null>(null);
@@ -330,12 +338,19 @@ export function RfpsPage() {
                       {rfps.map((rfp) => {
                         const tone = deadlineTone(rfp.deadlineAt, rfp.status);
                         return (
-                          <TableRow key={rfp.id}>
+                          <TableRow
+                            key={rfp.id}
+                            className="table-row--clickable"
+                            onClick={openRowOnClick(() => navigate(`/rfps/${rfp.id}`))}
+                          >
                             <TableCell>
                               <span className={`rfp-deadline rfp-deadline--${tone}`}>
-                                {format(new Date(rfp.deadlineAt), 'd MMM yyyy')}
+                                {shortDate(rfp.deadlineAt, { dayFirst: true })}
                                 <span className="rfp-deadline__time">{format(new Date(rfp.deadlineAt), 'HH:mm')}</span>
                               </span>
+                              {!RFP_TERMINAL_STATUSES.includes(rfp.status) && (
+                                <span className={`rfp-deadline__left rfp-deadline--${tone}`}>{timeLeft(rfp.deadlineAt)}</span>
+                              )}
                             </TableCell>
                             <TableCell>
                               <span className="shared-title-cell">
@@ -347,12 +362,13 @@ export function RfpsPage() {
                             </TableCell>
                             <TableCell>
                               {rfp.customer ? (
-                                <span
-                                  className="customer-name-cell"
+                                <button
+                                  type="button"
+                                  className="table-title-button customer-name-cell rfp-company-cell"
                                   onClick={() => navigate(`/customers/${rfp.customer!.id}`)}
                                 >
                                   {rfp.customer.name}
-                                </span>
+                                </button>
                               ) : (
                                 <span className="rfp-muted">—</span>
                               )}
@@ -397,15 +413,19 @@ export function RfpsPage() {
                               )}
                             </TableCell>
                             <TableCell>
-                              <div className="table-row-actions">
-                                <Button kind="ghost" size="sm" hasIconOnly renderIcon={Edit} iconDescription={`Edit ${rfp.name}`} onClick={() => openEdit(rfp)} />
-                                {rfp.userId === currentUserId && (
-                                  <Button kind="ghost" size="sm" hasIconOnly renderIcon={Share} iconDescription={`Share ${rfp.name}`} onClick={() => handleOpenShare(rfp)} />
-                                )}
-                                {rfp.userId === currentUserId && (
-                                  <Button kind="ghost" size="sm" hasIconOnly renderIcon={TrashCan} iconDescription={`Delete ${rfp.name}`} onClick={() => setDeleteRfp(rfp)} />
-                                )}
-                              </div>
+                              <OverflowMenu flipped size="sm" iconDescription={`Actions for ${rfp.name}`}>
+                                {/* An array, not `{cond && <Item/>}`: Carbon's menu
+                                    renders no items at all when a child is `false`. */}
+                                {[
+                                  <OverflowMenuItem key="edit" itemText="Edit" onClick={() => openEdit(rfp)} />,
+                                  ...(rfp.userId === currentUserId
+                                    ? [
+                                        <OverflowMenuItem key="share" itemText="Share" onClick={() => handleOpenShare(rfp)} />,
+                                        <OverflowMenuItem key="delete" itemText="Delete" isDelete hasDivider onClick={() => setDeleteRfp(rfp)} />,
+                                      ]
+                                    : []),
+                                ]}
+                              </OverflowMenu>
                             </TableCell>
                           </TableRow>
                         );

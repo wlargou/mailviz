@@ -121,11 +121,38 @@ describe('taskStore', () => {
       limit: '20',
       sortBy: 'createdAt',
       sortOrder: 'desc',
+      // Open tasks by default.
+      open: 'true',
     });
     expect(useTaskStore.getState().tasks).toEqual([task]);
     // Without meta the pagination control has no total and cannot render the
     // page count.
     expect(useTaskStore.getState().meta).toEqual(meta);
+  });
+
+  it('asks for open tasks by default, and for everything once finished ones are shown', async () => {
+    mockTasks([]);
+    await useTaskStore.getState().fetchTasks();
+    expect(lastParams().open).toBe('true');
+
+    useTaskStore.getState().setFilter('showFinished', 'true');
+    await useTaskStore.getState().fetchTasks();
+    expect(lastParams()).not.toHaveProperty('open');
+  });
+
+  it('leaves a chosen status to speak for itself', async () => {
+    mockTasks([]);
+    useTaskStore.getState().setFilter('status', 'DONE');
+    await useTaskStore.getState().fetchTasks();
+    expect(lastParams()).toMatchObject({ status: 'DONE' });
+    expect(lastParams()).not.toHaveProperty('open');
+  });
+
+  it('carries "show finished" through a saved view, and back to open without it', () => {
+    useTaskStore.getState().applyView({ showFinished: 'true' }, 'createdAt', 'desc');
+    expect(useTaskStore.getState().filters.showFinished).toBe('true');
+    useTaskStore.getState().applyView({}, 'createdAt', 'desc');
+    expect(useTaskStore.getState().filters.showFinished).toBeUndefined();
   });
 
   it('forwards every active filter to the API', async () => {

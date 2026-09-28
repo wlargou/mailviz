@@ -16,8 +16,11 @@ import {
   DataTableSkeleton,
   Tag,
   Dropdown,
+  OverflowMenu,
+  OverflowMenuItem,
 } from '@carbon/react';
-import { Add, View, TrashCan } from '@carbon/icons-react';
+import { Add } from '@carbon/icons-react';
+import { openRowOnClick } from '../../utils/rowOpen';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CustomerCreateModal } from './CustomerCreateModal';
 import { ConfirmDeleteModal } from '../shared/ConfirmDeleteModal';
@@ -209,16 +212,21 @@ export function CustomersPage() {
                     </TableHead>
                   <TableBody>
                     {customers.map((customer) => (
-                      <TableRow key={customer.id}>
+                      <TableRow
+                        key={customer.id}
+                        className="table-row--clickable"
+                        onClick={openRowOnClick(() => navigate(`/customers/${customer.id}`))}
+                      >
                         <TableCell>
-                          <span
-                            className="customer-name-cell"
+                          <button
+                            type="button"
+                            className="table-title-button customer-name-cell"
                             onClick={() => navigate(`/customers/${customer.id}`)}
                           >
                             {customer.isVip && <VipBadge isVip size={16} />}
                             <CompanyLogo src={customer.logoUrl} name={customer.name} />
                             {customer.name}
-                          </span>
+                          </button>
                         </TableCell>
                         <TableCell>
                           <CategoryTag category={customer.category} />
@@ -233,24 +241,10 @@ export function CustomersPage() {
                           <Tag type="teal" size="sm">{customer._count?.emails ?? 0}</Tag>
                         </TableCell>
                         <TableCell>
-                          <div className="table-actions">
-                            <Button
-                              kind="ghost"
-                              size="sm"
-                              hasIconOnly
-                              renderIcon={View}
-                              iconDescription="View details"
-                              onClick={() => navigate(`/customers/${customer.id}`)}
-                            />
-                            <Button
-                              kind="danger--ghost"
-                              size="sm"
-                              hasIconOnly
-                              renderIcon={TrashCan}
-                              iconDescription="Delete"
-                              onClick={() => setDeleteCustomer(customer)}
-                            />
-                          </div>
+                          <OverflowMenu flipped size="sm" iconDescription={`Actions for ${customer.name}`}>
+                            <OverflowMenuItem itemText="Open" onClick={() => navigate(`/customers/${customer.id}`)} />
+                            <OverflowMenuItem itemText="Delete" isDelete hasDivider onClick={() => setDeleteCustomer(customer)} />
+                          </OverflowMenu>
                         </TableCell>
                       </TableRow>
                     ))}

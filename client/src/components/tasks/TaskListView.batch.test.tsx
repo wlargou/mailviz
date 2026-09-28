@@ -170,3 +170,43 @@ describe('TaskViewsMenu', () => {
     );
   });
 });
+
+describe('TaskListView — rows', () => {
+  beforeEach(() => {
+    vi.mocked(tasksApi.getViews).mockResolvedValue(axiosOk({ data: [] }));
+    useTaskStore.setState({ tasksVersion: 0, filters: { sortBy: 'createdAt', sortOrder: 'desc' } as never, meta: null });
+  });
+
+  function renderWith(onEdit = vi.fn(), onDelete = vi.fn()) {
+    render(<TaskListView tasks={TASKS} loading={false} labels={[]} onEdit={onEdit} onDelete={onDelete} onCreateNew={vi.fn()} />);
+    return { onEdit, onDelete };
+  }
+
+  it('opens a task from anywhere on its row, but not from its checkbox', async () => {
+    const { onEdit } = renderWith();
+    const row = (await screen.findByRole('button', { name: 'Beta' })).closest('tr')!;
+
+    // A cell that is not the title.
+    await userEvent.click(within(row).getByText('Medium'));
+    expect(onEdit).toHaveBeenCalledWith('b');
+
+    onEdit.mockClear();
+    await userEvent.click(within(row).getByRole('checkbox'));
+    expect(onEdit).not.toHaveBeenCalled();
+  });
+
+  it('keeps delete in the row menu, not on the row', async () => {
+    const { onDelete, onEdit } = renderWith();
+    const row = (await screen.findByRole('button', { name: 'Gamma' })).closest('tr')!;
+    expect(within(row).queryByRole('button', { name: 'Delete' })).toBeNull();
+
+    await userEvent.click(within(row).getByRole('button', { name: 'Actions for Gamma' }));
+    // Carbon's floating menu is `visibility: hidden` in jsdom (its accessible
+    // names compute to ""), so the item is picked from the menu by its text.
+    const items = await screen.findAllByRole('menuitem', { hidden: true });
+    await userEvent.click(items.find((m) => m.textContent?.trim() === 'Delete')!);
+
+    expect(onDelete).toHaveBeenCalledWith(expect.objectContaining({ id: 'c' }));
+    expect(onEdit).not.toHaveBeenCalled();
+  });
+});
