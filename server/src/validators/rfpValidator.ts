@@ -36,7 +36,13 @@ export const createFolderSchema = z.object({
 export const updateFolderSchema = z.object({ title: trimmed(255) });
 
 export const createItemSchema = z.object({ title: trimmed(500) });
+const isoDate = z.string().datetime({ offset: true });
+
 export const updateItemSchema = z.object({
+  /// Who prepares it: someone with access to the tender (checked in the service).
+  assigneeId: z.string().uuid().nullable().optional(),
+  /// The internal due date, ahead of the tender's deadline.
+  dueDate: isoDate.nullable().optional(),
   title: trimmed(500).optional(),
   status: rfpItemStatusSchema.optional(),
   notes: z.string().max(10000).nullable().optional().or(z.literal('')),
@@ -61,6 +67,10 @@ export const createRfpSchema = z.object({
   reference: trimmed(255),
   /// Required: a tender with no deadline is not something anyone can act on.
   deadlineAt: z.string().datetime({ offset: true }),
+  /// The Avis date — where the at-risk clock starts.
+  publishedAt: z.string().datetime({ offset: true }).nullable().optional(),
+  /// When questions to the buyer close; on or before the deadline.
+  questionsDeadlineAt: z.string().datetime({ offset: true }).nullable().optional(),
   submissionFormat: rfpSubmissionFormatSchema,
   /// Only meaningful with PORTAL, and `.url()` alone would accept
   /// `javascript:` — which reaches an href and a window.open on the client.

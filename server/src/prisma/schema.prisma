@@ -407,6 +407,7 @@ model User {
   rfpDocumentsUploaded RfpDocument[]          @relation("RfpDocumentUploader")
   rfpVerifierOf        RfpVerifier[]
   rfpVerifications     RfpItemVerification[]
+  rfpItemsAssigned     RfpFolderItem[]        @relation("RfpItemAssignee")
 
   createdAt DateTime    @default(now()) @map("created_at")
   updatedAt DateTime    @updatedAt @map("updated_at")
@@ -966,6 +967,12 @@ model Rfp {
   /// Date AND time: the deadline is an hour of a day ("09/09/2026 à 10H"),
   /// and the hour is when the sealed offers are opened in public.
   deadlineAt       DateTime @map("deadline_at")
+  /// When the buyer published it (the Avis date). The start of the clock the
+  /// at-risk rule measures readiness against; creation is the fallback.
+  publishedAt DateTime? @map("published_at")
+  /// When questions to the buyer close — seven days before the opening for a
+  /// public tender. The first deadline that passes silently.
+  questionsDeadlineAt DateTime? @map("questions_deadline_at")
   submissionFormat String   @default("PORTAL") @map("submission_format") @db.VarChar(20)
   /// Which portal. Every buyer runs its own — marchespublics.gov.ma,
   /// portailachats.bankalmaghrib.ma, portailachats.tangermed.ma — so the
@@ -1118,14 +1125,21 @@ model RfpFolderItem {
   status    String   @default("TODO") @db.VarChar(20)
   notes     String?  @db.Text
   position  Int      @default(0)
+  /// Who prepares it — verifiers say who checks, this says who produces.
+  /// Someone with access to the tender; cleared when they lose it.
+  assigneeId String?   @map("assignee_id")
+  /// The internal due date, ahead of the tender's own deadline.
+  dueDate    DateTime? @map("due_date")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   folder        RfpFolder             @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  assignee      User?                 @relation("RfpItemAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   documents     RfpDocument[]
   verifications RfpItemVerification[]
 
   @@index([folderId])
+  @@index([assigneeId, dueDate])
   @@map("rfp_folder_items")
 }
 

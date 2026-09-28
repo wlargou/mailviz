@@ -45,6 +45,7 @@ const rfpDetailIncludes = {
         include: {
           // Versions, oldest first: the last is the current one.
           documents: { orderBy: { version: 'asc' } as const, include: { uploadedBy: { select: { id: true, name: true, email: true, avatarUrl: true } } } },
+          assignee: { select: { id: true, name: true, email: true, avatarUrl: true } },
           verifications: { include: { user: { select: { id: true, name: true, email: true, avatarUrl: true } } }, orderBy: { createdAt: 'asc' } as const },
         },
       },
@@ -70,6 +71,25 @@ export function formatRfp(rfp: RfpRow) {
 /** The same conversion, for the tender and each of its lots. */
 export function formatRfpDetail(rfp: RfpDetailRow) {
   return { ...rfp, budget: toNumber(rfp.budget), lots: rfp.lots.map((l) => ({ ...l, budget: toNumber(l.budget) })) };
+}
+
+/**
+ * Pieces ready out of those that apply, per tender — what the register shows
+ * as "Ready" and weighs against the time left. One grouped query for the page
+ * rather than every tender's pieces.
+ */
+async function readinessOf(rfpIds: string[]): Promise<Map<string, { ready: number; total: number }>> {
+  if (rfpIds.length === 0) return new Map();
+  const rows = await prisma.$queryRaw<Array<{ rfp_id: string; ready: bigint; total: bigint }>>`
+    SELECT f.rfp_id,
+           COUNT(*) FILTER (WHERE i.status = 'READY') AS ready,
+           COUNT(*) FILTER (WHERE i.status <> 'NOT_APPLICABLE') AS total
+    FROM rfp_folder_items i
+    JOIN rfp_folders f ON f.id = i.folder_id
+    WHERE f.rfp_id IN (${Prisma.join(rfpIds)})
+    GROUP BY f.rfp_id
+  `;
+  return new Map(rows.map((r) => [r.rfp_id, { ready: Number(r.ready), total: Number(r.total) }]));
 }
 
 export interface RfpQueryParams {
@@ -126,11 +146,31 @@ async function ownedRfp(userId: string, id: string) {
 }
 
 /** The body as columns: '' means "cleared", absent means "leave alone". */
+/**
+ * Publication and the questions deadline come before the submission deadline.
+ * Checked against the merged values on an update, so moving the deadline
+ * earlier than an existing questions date is refused as well.
+ */
+function assertDateOrder(dates: { deadlineAt: Date; publishedAt: Date | null; questionsDeadlineAt: Date | null }) {
+  if (dates.publishedAt && dates.publishedAt > dates.deadlineAt) {
+    throw new AppError(400, 'PUBLISHED_AFTER_DEADLINE', 'The publication date must be before the deadline');
+  }
+  if (dates.questionsDeadlineAt && dates.questionsDeadlineAt > dates.deadlineAt) {
+    throw new AppError(400, 'QUESTIONS_AFTER_DEADLINE', 'Questions must close before the submission deadline');
+  }
+}
+
+const dateOrNull = (v: string | null | undefined) => (v ? new Date(v) : null);
+
 function writableFields(data: UpdateRfpInput) {
   const out: Prisma.RfpUncheckedUpdateInput = {};
   if (data.name !== undefined) out.name = data.name;
   if (data.reference !== undefined) out.reference = data.reference;
   if (data.deadlineAt !== undefined) out.deadlineAt = new Date(data.deadlineAt);
+  if (data.publishedAt !== undefined) out.publishedAt = data.publishedAt ? new Date(data.publishedAt) : null;
+  if (data.questionsDeadlineAt !== undefined) {
+    out.questionsDeadlineAt = data.questionsDeadlineAt ? new Date(data.questionsDeadlineAt) : null;
+  }
   if (data.submissionFormat !== undefined) out.submissionFormat = data.submissionFormat;
   if (data.portalUrl !== undefined) out.portalUrl = data.portalUrl || null;
   if (data.customerId !== undefined) out.customerId = data.customerId;
@@ -189,7 +229,11 @@ export const rfpService = {
       prisma.rfp.count({ where }),
     ]);
 
-    return { data: rfps.map(formatRfp), meta: paginationMeta(total, pagination) };
+    const readiness = await readinessOf(rfps.map((r) => r.id));
+    return {
+      data: rfps.map((r) => ({ ...formatRfp(r), readiness: readiness.get(r.id) ?? { ready: 0, total: 0 } })),
+      meta: paginationMeta(total, pagination),
+    };
   },
 
   async findById(userId: string, id: string) {
@@ -200,6 +244,11 @@ export const rfpService = {
 
   async create(userId: string, data: CreateRfpInput) {
     await assertCustomerOwnedBy(userId, data.customerId);
+    assertDateOrder({
+      deadlineAt: new Date(data.deadlineAt),
+      publishedAt: dateOrNull(data.publishedAt),
+      questionsDeadlineAt: dateOrNull(data.questionsDeadlineAt),
+    });
     try {
       // One transaction: a tender never exists without its lots, and the
       // budget total is written by the same unit of work that writes them.
@@ -210,6 +259,8 @@ export const rfpService = {
             name: data.name,
             reference: data.reference,
             deadlineAt: new Date(data.deadlineAt),
+            publishedAt: data.publishedAt ? new Date(data.publishedAt) : null,
+            questionsDeadlineAt: data.questionsDeadlineAt ? new Date(data.questionsDeadlineAt) : null,
             submissionFormat: data.submissionFormat,
             portalUrl: data.portalUrl || null,
             isGoe: data.isGoe ?? false,
@@ -246,6 +297,12 @@ export const rfpService = {
     // must not be able to repoint it at a company of their own, which the
     // include would then read back out to the owner.
     await assertCustomerOwnedBy(existing.userId, data.customerId);
+    assertDateOrder({
+      deadlineAt: data.deadlineAt !== undefined ? new Date(data.deadlineAt) : existing.deadlineAt,
+      publishedAt: data.publishedAt !== undefined ? dateOrNull(data.publishedAt) : existing.publishedAt,
+      questionsDeadlineAt:
+        data.questionsDeadlineAt !== undefined ? dateOrNull(data.questionsDeadlineAt) : existing.questionsDeadlineAt,
+    });
     try {
       const rfp = await prisma.rfp.update({ where: { id }, data: writableFields(data), include: rfpIncludes });
       auditService.log({ userId, action: 'RFP_UPDATED', entityType: 'rfp', entityId: id, details: { fields: Object.keys(data) } });
@@ -358,6 +415,11 @@ export const rfpService = {
       // actually the caller's to withdraw.
       if (count > 0) {
         await removeVerifiers(tx, rfpId, [recipientUserId]);
+        // Nor prepare it: their pieces go back to unassigned.
+        await tx.rfpFolderItem.updateMany({
+          where: { assigneeId: recipientUserId, folder: { rfpId } },
+          data: { assigneeId: null },
+        });
         await syncRfpItems(tx, rfpId);
       }
     });

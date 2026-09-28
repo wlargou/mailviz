@@ -290,6 +290,31 @@ describe('route auth gate', () => {
 
 // ── Calendar ─────────────────────────────────────────────────────────────────
 
+describe('GET /api/v1/calendar/deadlines', () => {
+  it('answers with the range, and is not swallowed by /:id', async () => {
+    const { alice } = await createTwoUsers();
+    await createRfp(alice.id, { name: 'Refonte AIX', reference: 'DL/1', deadlineAt: new Date('2026-11-20T10:00:00Z') });
+
+    const res = await request(app)
+      .get('/api/v1/calendar/deadlines?start=2026-11-01T00:00:00Z&end=2026-12-01T00:00:00Z')
+      .set('Cookie', cookieFor(alice.id));
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.map((d: { kind: string; title: string }) => [d.kind, d.title])).toEqual([['RFP_DEADLINE', 'Refonte AIX']]);
+  });
+
+  it('refuses a missing range', async () => {
+    const { alice } = await createTwoUsers();
+    const res = await request(app).get('/api/v1/calendar/deadlines').set('Cookie', cookieFor(alice.id));
+    expect(res.status).toBe(400);
+  });
+
+  it('requires a session', async () => {
+    const res = await request(app).get('/api/v1/calendar/deadlines?start=2026-11-01T00:00:00Z&end=2026-12-01T00:00:00Z');
+    expect(res.status).toBe(401);
+  });
+});
+
 describe('GET /api/v1/calendar', () => {
   it('returns only the caller\'s events', async () => {
     const { alice, bob } = await createTwoUsers();

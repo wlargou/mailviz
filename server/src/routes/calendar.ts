@@ -1,3 +1,5 @@
+import { deadlineService } from '../services/deadlineService.js';
+import type { Req } from '../types/http.js';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { calendarController } from '../controllers/calendarController.js';
@@ -27,6 +29,15 @@ const syncLimiter = rateLimit({
 router.get('/', calendarController.findAll);
 router.post('/sync', syncLimiter, calendarController.sync);
 router.get('/sync-status', calendarController.getSyncStatus);
+// Before `/:id`, or "deadlines" would be read as an event id.
+router.get('/deadlines', async (req, res, next) => {
+  try {
+    const data = await deadlineService.forRange((req as Req).user!.id, String(req.query.start ?? ''), String(req.query.end ?? ''));
+    res.json({ data });
+  } catch (err) {
+    next(err);
+  }
+});
 router.get('/:id', calendarController.findById);
 router.post('/', validate(createEventSchema), calendarController.create);
 router.patch('/:id', validate(updateEventSchema), calendarController.update);

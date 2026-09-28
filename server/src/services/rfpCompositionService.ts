@@ -243,10 +243,14 @@ export const rfpCompositionService = {
     userId: string,
     rfpId: string,
     itemId: string,
-    data: { title?: string; status?: RfpItemStatus; notes?: string | null }
+    data: { title?: string; status?: RfpItemStatus; notes?: string | null; assigneeId?: string | null; dueDate?: string | null }
   ) {
     await assertAccess(userId, rfpId);
     await itemOf(rfpId, itemId);
+    // Only someone who can open the tender can prepare a piece of it.
+    if (data.assigneeId && !(await canAccessRfp(rfpId, data.assigneeId))) {
+      throw new AppError(400, 'ASSIGNEE_WITHOUT_ACCESS', 'Assign the piece to the owner or someone the RFP is shared with');
+    }
     return prisma.$transaction(async (tx) => {
       // With verifiers, Ready is theirs to give; see rfpVerificationService.
       if (data.status === 'READY') await assertReadyAllowed(tx, rfpId, itemId);
@@ -256,6 +260,8 @@ export const rfpCompositionService = {
           ...(data.title !== undefined ? { title: data.title } : {}),
           ...(data.status !== undefined ? { status: data.status } : {}),
           ...(data.notes !== undefined ? { notes: data.notes || null } : {}),
+          ...(data.assigneeId !== undefined ? { assigneeId: data.assigneeId } : {}),
+          ...(data.dueDate !== undefined ? { dueDate: data.dueDate ? new Date(data.dueDate) : null } : {}),
         },
         include: { documents: true },
       });
