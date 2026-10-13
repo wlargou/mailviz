@@ -13,6 +13,8 @@ interface DealCreateModalProps {
   onClose: () => void;
   onCreated: () => void;
   editDeal?: Deal | null;
+  /** The company a new deal is for — "New deal" on a company's page. */
+  initialCustomerId?: string | null;
 }
 
 const statusItems: { id: DealStatus; text: string }[] = [
@@ -21,7 +23,7 @@ const statusItems: { id: DealStatus; text: string }[] = [
   { id: 'DECLINED', text: DEAL_STATUS_LABELS.DECLINED },
 ];
 
-export function DealCreateModal({ open, onClose, onCreated, editDeal }: DealCreateModalProps) {
+export function DealCreateModal({ open, onClose, onCreated, editDeal, initialCustomerId = null }: DealCreateModalProps) {
   const [title, setTitle] = useState('');
   const [partnerId, setPartnerId] = useState('');
   const [customerId, setCustomerId] = useState<string | null>(null);
@@ -62,8 +64,9 @@ export function DealCreateModal({ open, onClose, onCreated, editDeal }: DealCrea
       setNotes(editDeal.notes || '');
     } else {
       resetForm();
+      if (initialCustomerId) setCustomerId(initialCustomerId);
     }
-  }, [open, editDeal]);
+  }, [open, editDeal, initialCustomerId]);
 
   const handleSubmit = async () => {
     if (!title.trim() || !partnerId) return;
