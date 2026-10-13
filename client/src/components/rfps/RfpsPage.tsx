@@ -110,7 +110,7 @@ const goeItems = [
   { id: 'false', text: 'Private only' },
 ];
 
-/** `embedded`: inside Pursuits, which carries the page header. */
+/** `embedded`: inside the Deals page, which carries the page header. */
 export function RfpsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const [rfps, setRfps] = useState<Rfp[]>([]);
   const [loading, setLoading] = useState(true);

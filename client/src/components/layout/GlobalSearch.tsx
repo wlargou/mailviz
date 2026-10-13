@@ -135,7 +135,7 @@ function flattenResults(results: SearchResults, scopeIds: string[]): FlatResult[
             deal.customer?.name,
             deal.status.replace(/_/g, ' ').toLowerCase(),
           ].filter(Boolean).join(' · '),
-          navigateTo: '/pursuits?tab=deals',
+          navigateTo: '/deals?tab=deals',
         });
       }
     }
@@ -230,7 +230,7 @@ export function GlobalSearch() {
       events: `/calendar?search=${searchParam}`,
       customers: `/customers?search=${searchParam}`,
       contacts: `/contacts?search=${searchParam}`,
-      deals: `/deals?search=${searchParam}`,
+      deals: `/deals?tab=deals&search=${searchParam}`,
     };
     navigate(paths[cat]);
     handleClear();

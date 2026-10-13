@@ -61,7 +61,7 @@ export function AppSideNav() {
       <SideNavItems>
         {/*
           Built around the job rather than the tables: where the day starts,
-          then the work (mail, pursuits, tasks, calendar), then the records
+          then the work (mail, deals, tasks, calendar), then the records
           underneath, then what is for looking back or setting up.
         */}
         <SideNavLink renderIcon={Sunrise} isActive={location.pathname === '/'} onClick={() => navigate('/')}>
@@ -79,9 +79,9 @@ export function AppSideNav() {
         <SideNavLink
           renderIcon={Document}
           isActive={location.pathname.startsWith('/pursuits') || location.pathname.startsWith('/rfps') || location.pathname.startsWith('/deals')}
-          onClick={() => navigate('/pursuits')}
+          onClick={() => navigate('/deals')}
         >
-          Pursuits
+          Deals
           {counts.rfpsAtRisk > 0 && (
             <Tag size="sm" type="red" className="nav-badge" title={`${counts.rfpsAtRisk} at risk`}>
               {formatBadge(counts.rfpsAtRisk)}

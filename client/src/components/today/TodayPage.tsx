@@ -397,8 +397,8 @@ export function TodayPage({ now: nowProp }: { now?: Date } = {}) {
           <aside className="today-side" aria-label="What spans days">
             <section className="today-card" aria-labelledby="today-pursuits">
               <div className="today-card__top">
-                <h2 id="today-pursuits" className="today-card__label">Pursuits closing</h2>
-                <Button kind="ghost" size="sm" renderIcon={ArrowRight} onClick={() => navigate('/pursuits')}>All</Button>
+                <h2 id="today-pursuits" className="today-card__label">Deals closing</h2>
+                <Button kind="ghost" size="sm" renderIcon={ArrowRight} onClick={() => navigate('/deals')}>All</Button>
               </div>
               {today.pursuits.length === 0 ? (
                 <p className="today-muted">Nothing closes in the next two weeks.</p>

@@ -132,7 +132,7 @@ describe('TodayPage', () => {
 
   it('shows the pursuits closing, at risk, and who is waiting either way', async () => {
     renderAt(MORNING);
-    const pursuits = (await screen.findByRole('heading', { name: 'Pursuits closing' })).closest('section')!;
+    const pursuits = (await screen.findByRole('heading', { name: 'Deals closing' })).closest('section')!;
     expect(within(pursuits).getByText('▲ in 2 days')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Provisionnement OpenShift' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Deal reg. extension' })).toBeInTheDocument();

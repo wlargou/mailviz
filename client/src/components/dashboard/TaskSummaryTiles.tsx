@@ -70,7 +70,7 @@ export function TaskSummaryTiles({ stats, loading }: TaskSummaryTilesProps) {
       helper: 'readiness behind the clock',
       icon: Document,
       accentVar: '--cds-support-error',
-      onClick: () => navigate('/pursuits'),
+      onClick: () => navigate('/deals'),
     },
   ];
 
