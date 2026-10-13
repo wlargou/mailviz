@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { AxiosHeaders, type AxiosResponse } from 'axios';
 import { emailsApi } from '../../api/emails';
 import { tasksApi } from '../../api/tasks';
@@ -114,6 +114,25 @@ describe('TaskEmails', () => {
 
     await waitFor(() => expect(emailsApi.detachFromTask).toHaveBeenCalledWith('e1', 't1'));
     expect(onChanged).toHaveBeenCalled();
+  });
+
+  it('opens the email in its thread, in All mail — REGRESSION', async () => {
+    // It went to /mail and left you looking for the thread.
+    function Where() {
+      const loc = useLocation();
+      return <p data-testid="where">{loc.pathname + loc.search}</p>;
+    }
+    render(
+      <MemoryRouter initialEntries={['/tasks']}>
+        <Routes>
+          <Route path="/tasks" element={<TaskEmails task={makeTask({ emailLinks: [LINK] })} onChanged={vi.fn()} />} />
+          <Route path="/mail" element={<Where />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /^Quote request/ }));
+    expect(screen.getByTestId('where').textContent).toBe('/mail?folder=all&thread=thr');
   });
 
   it('searches mail and attaches a pick, hiding what is already linked', async () => {

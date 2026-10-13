@@ -10,6 +10,7 @@ import {
   MenuItem,
   MenuItemDivider,
   FeatureFlags,
+  CopyButton,
 } from '@carbon/react';
 import {
   StarFilled,
@@ -147,6 +148,40 @@ export function recipientsLine(msg: Pick<EmailMessage, 'to' | 'cc'>, own: Set<st
   return rest > 0 ? `to ${shown} and ${rest} other${rest === 1 ? '' : 's'}` : `to ${shown}`;
 }
 
+/**
+ * Links in mail open in a new tab. Followed in place, one replaced Mailviz
+ * itself, and the way back was a reload. Only web links: mailto and tel hand
+ * off to another app without leaving the page, and #anchors stay in the mail.
+ */
+export function openLinksElsewhere(e: React.MouseEvent<HTMLElement>) {
+  const link = (e.target as HTMLElement).closest?.('a[href]') as HTMLAnchorElement | null;
+  // The attribute as written: `link.href` resolves "#top" against the app.
+  if (!link || !/^https?:/i.test(link.getAttribute('href') ?? '')) return;
+  e.preventDefault();
+  window.open(link.href, '_blank', 'noopener,noreferrer');
+}
+
+/** An address with a button to copy it, shown on hover or focus — handy to paste elsewhere. */
+function Copyable({ address, children, iconOnly = false }: { address: string; children?: React.ReactNode; iconOnly?: boolean }) {
+  const bare = bareAddress(address);
+  return (
+    <span className="copyable">
+      {!iconOnly && (children ?? address)}
+      <CopyButton
+        className="copyable__button"
+        iconDescription={`Copy ${bare}`}
+        feedback="Copied"
+        align="top"
+        autoAlign
+        onClick={(e) => {
+          e.stopPropagation();
+          void navigator.clipboard?.writeText(bare).catch(() => {});
+        }}
+      />
+    </span>
+  );
+}
+
 function MessageBody({ msg, showQuotes, onToggleQuotes }: { msg: EmailMessage; showQuotes: boolean; onToggleQuotes: () => void }) {
   // Fold, then sanitise. The sanitiser's output is safe to parse once, and
   // folding parses and re-serialises it — done after, it would hand the page
@@ -161,6 +196,7 @@ function MessageBody({ msg, showQuotes, onToggleQuotes }: { msg: EmailMessage; s
       <div
         className="message-card__html"
         data-quotes={folded.folded && !showQuotes ? 'hidden' : 'shown'}
+        onClick={openLinksElsewhere}
         dangerouslySetInnerHTML={{ __html: folded.html }}
       />
       {folded.folded && (
@@ -625,7 +661,9 @@ export function ThreadDetail({ threadId, onEmailAction, onThreadGone, onLoaded }
                   <div className="message-card__who">
                     <span className={`message-card__sender${!msg.isRead ? ' message-card__sender--unread' : ''}`}>
                       {sender}
-                      {isExpanded && msg.fromName && <span className="message-card__address">{msg.from}</span>}
+                      {isExpanded && (msg.fromName
+                        ? <span className="message-card__address"><Copyable address={msg.from} /></span>
+                        : <Copyable address={msg.from} iconOnly />)}
                     </span>
                     {isExpanded ? (
                       <button
@@ -671,9 +709,9 @@ export function ThreadDetail({ threadId, onEmailAction, onThreadGone, onLoaded }
                     {detailsOpen.has(msg.id) && (
                       <dl className="message-card__meta">
                         <dt>From</dt>
-                        <dd>{msg.fromName ? `${decodeEntities(msg.fromName)} <${msg.from}>` : msg.from}</dd>
-                        {msg.to.length > 0 && (<><dt>To</dt><dd>{msg.to.join(', ')}</dd></>)}
-                        {msg.cc.length > 0 && (<><dt>Cc</dt><dd>{msg.cc.join(', ')}</dd></>)}
+                        <dd><Copyable address={msg.from}>{msg.fromName ? `${decodeEntities(msg.fromName)} <${msg.from}>` : msg.from}</Copyable></dd>
+                        {msg.to.length > 0 && (<><dt>To</dt><dd className="copyable-list">{msg.to.map((a) => <Copyable key={a} address={a} />)}</dd></>)}
+                        {msg.cc.length > 0 && (<><dt>Cc</dt><dd className="copyable-list">{msg.cc.map((a) => <Copyable key={a} address={a} />)}</dd></>)}
                         <dt>Date</dt>
                         <dd>{format(new Date(msg.receivedAt), 'EEEE d MMMM yyyy, HH:mm')}</dd>
                       </dl>

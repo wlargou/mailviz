@@ -109,7 +109,9 @@ export function TaskEmails({ task, onChanged }: TaskEmailsProps) {
               <button
                 type="button"
                 className="task-section__text task-section__text--link"
-                onClick={() => navigate('/mail')}
+                // To the thread itself, in All mail — it may be archived. This
+                // went to /mail and left you looking for it.
+                onClick={() => navigate(l.email.threadId ? `/mail?folder=all&thread=${encodeURIComponent(l.email.threadId)}` : '/mail')}
                 title="Open in Mail"
               >
                 {decodeEntities(l.email.subject)}

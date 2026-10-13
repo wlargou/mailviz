@@ -5,6 +5,11 @@ import { SnoozeModal } from '../components/mail/SnoozeModal';
 import { ThreadDetail } from '../components/mail/ThreadDetail';
 import { MailPage } from '../components/mail/MailPage';
 import { RfpsPage } from '../components/rfps/RfpsPage';
+import { AccountOverview } from '../components/customers/AccountOverview';
+import { tasksApi } from '../api/tasks';
+import { labelsApi } from '../api/labels';
+import { dealPartnersApi } from '../api/dealPartners';
+import { taskStatusesApi } from '../api/taskStatuses';
 import { SidePanel } from '@carbon/ibm-products';
 import { emailsApi } from '../api/emails';
 import { contactsApi as mailContactsApi } from '../api/contacts';
@@ -16,7 +21,7 @@ import { OnboardingSettings } from '../components/settings/OnboardingSettings';
 import { EmptyState } from '../components/shared/EmptyState';
 import { Button as CarbonButton } from '@carbon/react';
 import { Calendar } from '@carbon/icons-react';
-import { contactsApi, customersApi } from '../api/customers';
+import { contactsApi, customersApi, accountsApi } from '../api/customers';
 import { templatesApi } from '../api/templates';
 import { onboardingApi } from '../api/onboarding';
 import type { DuplicateGroup } from '../types/customer';
@@ -164,7 +169,12 @@ const PREVIEW_RFPS = [
 const PREVIEW_THREAD: EmailMessage[] = [
   threadMessage(1, { receivedAt: new Date(Date.now() - 20 * 86_400_000).toISOString(), body: '<div>Bonjour, Faisant suite à notre dernier point, nous vous remercions de bien vouloir nous transmettre le fichier PEP comme convenu.</div><div>Cordialement,</div>' }),
   threadMessage(2, { receivedAt: new Date(Date.now() - 19 * 86_400_000).toISOString(), from: 'me@powerm.test', fromName: 'L.walid (PowerM)', to: ['h.gadialami@example.test'], labelIds: ['SENT'], snippet: 'Bonjour Ssi Hicham, Je partage avec vous le plan d’action prévu : Phase 1…' }),
-  threadMessage(3, { receivedAt: new Date(Date.now() - 14 * 86_400_000).toISOString(), snippet: 'Merci, nous revenons vers vous rapidement.' }),
+  threadMessage(3, {
+    receivedAt: new Date(Date.now() - 14 * 86_400_000).toISOString(),
+    snippet: 'Merci, nous revenons vers vous rapidement.',
+    // Outlook's list markup, which counts on the browser's 40px list indent.
+    body: `<div class="WordSection1"><p class="MsoNormal">Bonjour,</p><p class="MsoNormal">Les objectifs de ce point sont :</p><ul style="margin-top:0cm" type="disc"><li class="MsoListParagraph" style="margin-left:-18.0pt;mso-list:l0 level1 lfo1">Initialisation du projet de déménagement</li><li class="MsoListParagraph" style="margin-left:-18.0pt;mso-list:l0 level1 lfo1">Discuter de l’approche générale</li><li class="MsoListParagraph" style="margin-left:-18.0pt;mso-list:l0 level1 lfo1">Identifier les parties prenantes</li></ul><p class="MsoNormal">Le planning : <a href="https://example.com/planning">voir le planning</a></p><p class="MsoNormal">Cordialement,</p></div>`,
+  }),
   threadMessage(4, { receivedAt: new Date(Date.now() - 13 * 86_400_000).toISOString(), from: 'me@powerm.test', fromName: 'L.walid (PowerM)', to: ['h.gadialami@example.test'], labelIds: ['SENT'], snippet: 'Bonjour Ssi Hicham, Merci de trouver ci-joint les deux fichiers xml.' }),
   threadMessage(5, { receivedAt: new Date(Date.now() - 5 * 86_400_000).toISOString(), isRead: false, snippet: 'Bien reçu, nous lançons les tests.' }),
   threadMessage(6, {
@@ -199,6 +209,30 @@ function stubApis() {
   emailsApi.getReminders = async () =>
     ({ data: { data: [{ id: 'r1', threadId: 't5', kind: 'snooze', state: 'armed', remindAt: new Date(Date.now() + 2 * 86_400_000).toISOString(), armedAt: '', wasInInbox: true, resolution: null }] } }) as never;
   emailsApi.getRepliesOwed = async () => ({ data: { data: [] } }) as never;
+  // The company page's overview: open tasks, a tender and a deal, its people.
+  accountsApi.overview = async () => ({ data: { data: {
+    lastTouchAt: new Date(Date.now() - 2 * DAY_MS).toISOString(),
+    weekly: Array.from({ length: 12 }, (_, i) => ({ weekStart: new Date(Date.now() - (11 - i) * 7 * DAY_MS).toISOString(), emails: [3, 4, 5, 1, 0, 1, 5, 7, 9, 8, 13, 9][i], meetings: 0 })),
+    open: {
+      tasks: [
+        { id: 't1', title: 'Re: Provisionnement MLFlow OpenShift AI / MLOPS', dueDate: new Date(Date.now() - 14 * DAY_MS).toISOString(), priority: 'MEDIUM', status: 'TODO' },
+        { id: 't2', title: 'Envoyer la matrice de câblage P86', dueDate: null, priority: 'HIGH', status: 'TODO' },
+      ],
+      taskCount: 2,
+      tenders: [{ id: 'r1', name: 'Refonte de la plateforme AIX', reference: '70/AOO', status: 'WORKING', deadlineAt: new Date(Date.now() + 2 * DAY_MS).toISOString() }],
+      deals: [{ id: 'd1', title: 'Registration MLOps', status: 'APPROVED', expiryDate: new Date(Date.now() + 40 * DAY_MS).toISOString(), partner: { name: 'Red Hat' } }],
+    },
+    keyPeople: [
+      { id: 'p1', name: 'Errahmouni Chouaib (Externe)', email: 'c@x', role: null, exchanges: 487, lastAt: new Date(Date.now() - 3 * DAY_MS).toISOString() },
+      { id: 'p2', name: 'GADI-ALAMI HICHAM', email: 'h@x', role: null, exchanges: 207, lastAt: new Date(Date.now() - 3 * DAY_MS).toISOString() },
+      { id: 'p3', name: 'EL JALLAB TARIK', email: 't@x', role: null, exchanges: 152, lastAt: new Date(Date.now() - 3 * DAY_MS).toISOString() },
+    ],
+  } } }) as never;
+  tasksApi.getById = async () => ({ data: { data: { id: 't1', title: 'Re: Provisionnement MLFlow OpenShift AI / MLOPS', description: 'Cluster + GPU pour la plateforme MLOps', priority: 'MEDIUM', customerId: 'c1', labels: [], estimatedMinutes: 60 } } }) as never;
+  labelsApi.getAll = async () => ({ data: { data: [] } }) as never;
+  dealPartnersApi.getAll = async () => ({ data: { data: [] } }) as never;
+  taskStatusesApi.getAll = async () => ({ data: { data: [{ id: 's1', name: 'TODO', label: 'To do', color: '#4589ff', position: 0, isTerminal: false, createdAt: '' }] } }) as never;
+  customersApi.getById = async () => ({ data: { data: { id: 'c1', name: 'Attijariwafa' } } }) as never;
   // The server's rule, roughly: every word somewhere in the name, address or subject.
   emailsApi.suggest = async (q: string) => {
     const words = q.toLowerCase().split(/\s+/).filter(Boolean);
@@ -301,7 +335,7 @@ function stubApis() {
     }) as never;
 }
 
-type Screen = 'duplicates' | 'templates' | 'snooze' | 'onboarding-tile' | 'empty' | 'thread' | 'mail' | 'rfps';
+type Screen = 'duplicates' | 'templates' | 'snooze' | 'onboarding-tile' | 'empty' | 'thread' | 'mail' | 'rfps' | 'account';
 
 export function ComponentPreview() {
   /**
@@ -358,6 +392,7 @@ export function ComponentPreview() {
             <Switch name="thread" text="Thread" />
             <Switch name="mail" text="Mail list" />
             <Switch name="rfps" text="Tenders" />
+            <Switch name="account" text="Company" />
           </ContentSwitcher>
           <Button size="sm" kind="tertiary" onClick={() => setTheme(theme === 'g100' ? 'g10' : 'g100')}>
             {theme}
@@ -406,6 +441,11 @@ export function ComponentPreview() {
           {screen === 'onboarding-tile' && (
             <div style={{ padding: '2rem', maxWidth: '44rem' }}>
               <OnboardingSettings />
+            </div>
+          )}
+          {screen === 'account' && (
+            <div style={{ padding: '1rem 2rem' }}>
+              <AccountOverview customerId="c1" onOpenTask={() => {}} />
             </div>
           )}
           {screen === 'rfps' && (

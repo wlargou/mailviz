@@ -523,6 +523,45 @@ describe('ThreadDetail — the timeline rail', () => {
   });
 });
 
+describe('ThreadDetail — links and addresses', () => {
+  it('opens a web link in a new tab, and leaves mailto and anchors alone', async () => {
+    const user = userEvent.setup();
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+    const withLinks = message('a', {
+      body: '<p><a href="https://example.com/offre">the offer</a> · <a href="mailto:x@acme.test">mail</a> · <a href="#top">top</a></p>',
+    });
+    vi.mocked(emailsApi.getThread).mockResolvedValue({ data: { data: [withLinks] } } as never);
+    vi.mocked(emailsApi.getMessage).mockResolvedValue({ data: { data: withLinks } } as never);
+    renderThread();
+
+    await user.click(await screen.findByRole('link', { name: 'the offer' }));
+    expect(open).toHaveBeenCalledWith('https://example.com/offre', '_blank', 'noopener,noreferrer');
+    await user.click(screen.getByRole('link', { name: 'mail' }));
+    await user.click(screen.getByRole('link', { name: 'top' }));
+    expect(open).toHaveBeenCalledTimes(1);
+    open.mockRestore();
+  });
+
+  it('copies an address, without the name around it', async () => {
+    const user = userEvent.setup();
+    const write = vi.spyOn(navigator.clipboard, 'writeText');
+    vi.mocked(emailsApi.getThread).mockResolvedValue({
+      data: { data: [message('a', { from: 'sam@acme.test', fromName: 'Sam', to: ['Omar Alami <omar@bkam.test>'] })] },
+    } as never);
+    renderThread();
+
+    await screen.findByText('body a');
+    await user.click(labelled('Copy sam@acme.test')[0]);
+    expect(write).toHaveBeenLastCalledWith('sam@acme.test');
+
+    // In the details, every recipient has their own.
+    await user.click(screen.getByRole('button', { name: /^to Omar Alami/ }));
+    await waitFor(() => expect(labelled('Copy omar@bkam.test')).toHaveLength(1));
+    await user.click(labelled('Copy omar@bkam.test')[0]);
+    expect(write).toHaveBeenLastCalledWith('omar@bkam.test');
+  });
+});
+
 describe('threadRows', () => {
   const m = (id: string, isRead = true) => message(id, { isRead }) as never;
   it('keeps the first, the last two, and anything open or unread', () => {

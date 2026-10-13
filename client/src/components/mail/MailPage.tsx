@@ -116,6 +116,12 @@ export function MailPage() {
   const [selectedThread, setSelectedThread] = useState<string | null>(
     () => searchParams.get('thread')
   );
+  // …and so does a link followed while Mail is already open (a search result,
+  // a task's email): the state above is read once, on the way in.
+  const threadParam = searchParams.get('thread');
+  useEffect(() => {
+    if (threadParam) setSelectedThread(threadParam);
+  }, [threadParam]);
   // `?compose=1` opens a new message — the command palette's "New email".
   // The reader's subject, for a thread opened by link and not on this page.
   const [loadedSubject, setLoadedSubject] = useState<string | null>(null);

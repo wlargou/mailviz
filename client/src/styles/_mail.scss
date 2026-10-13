@@ -1279,6 +1279,20 @@ $rail-track: 4rem;
     height: auto;
   }
 
+  // Carbon's reset takes lists' indent and bullets away, and mail counts on
+  // the browser's: Outlook writes `<li style="margin-left:-18pt">` inside a
+  // list it expects 40px in, so every item was pulled off the left edge and
+  // the start of each line cut ("ialisation du projet…").
+  ul,
+  ol {
+    margin: $spacing-03 0;
+    padding-left: 2.5rem;
+  }
+
+  ul { list-style: disc; }
+  ol { list-style: decimal; }
+  ul ul { list-style: circle; }
+
   blockquote {
     border-left: 3px solid var(--cds-border-subtle);
     margin: $spacing-03 0;
@@ -1304,6 +1318,47 @@ $rail-track: 4rem;
   hr {
     border-color: var(--cds-border-subtle) !important;
   }
+}
+
+// An address with its copy button, which shows on hover or focus.
+.copyable {
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-01;
+  min-width: 0;
+
+  .copyable__button {
+    width: 1.5rem;
+    height: 1.5rem;
+    min-height: 1.5rem;
+    padding: 0;
+    opacity: 0;
+    transition: opacity 110ms;
+
+    svg {
+      width: 0.875rem;
+      height: 0.875rem;
+    }
+  }
+
+  &:hover .copyable__button,
+  .copyable__button:focus-visible,
+  .copyable__button.cds--copy-btn--animating {
+    opacity: 1;
+  }
+
+  // No hover on a touch screen: always there.
+  @media (hover: none) {
+    .copyable__button {
+      opacity: 1;
+    }
+  }
+}
+
+.copyable-list {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: $spacing-04;
 }
 
 // "3 earlier messages" — the middle of a long thread, one line.
