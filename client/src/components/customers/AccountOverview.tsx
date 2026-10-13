@@ -1,16 +1,25 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, InlineLoading, SkeletonText, Tag } from '@carbon/react';
+import { Button, IconButton, InlineLoading, SkeletonText, Tag } from '@carbon/react';
+import { Add, Copy } from '@carbon/icons-react';
 import { differenceInCalendarDays, format } from 'date-fns';
 import { accountsApi, type AccountOverview as Overview, type AccountTimelineEntry } from '../../api/customers';
 import { PriorityBadge } from '../shared/PriorityBadge';
 import { decodeEntities } from '../../utils/text';
 import { timeLeft } from '../../utils/dates';
+import { tasksApi } from '../../api/tasks';
+import { labelsApi } from '../../api/labels';
+import { useUIStore } from '../../store/uiStore';
+import { TaskCreateModal } from '../tasks/TaskCreateModal';
+import { taskToForm, type TaskFormValues } from '../tasks/TaskFormFields';
+import { DealCreateModal } from '../deals/DealCreateModal';
+import type { Label } from '../../types/task';
 
 /**
  * How we are doing with this customer, in five seconds: the relationship
- * (last touch and twelve weeks of rhythm), what is open with them, and the
- * people who matter there — ranked by exchanges, not by the first letter of
+ * (last touch and twelve weeks of rhythm), the open tasks — a new one or a
+ * copy of one a click away — the open deals and tenders, and the people who
+ * matter there — ranked by exchanges, not by the first letter of
  * a generated name.
  */
 
@@ -50,6 +59,16 @@ export function AccountOverview({ customerId, onOpenTask, now = new Date() }: Pr
   const [data, setData] = useState<Overview | null>(null);
   const [failed, setFailed] = useState(false);
 
+  // The task panel: a new task for this company, or a copy of one of theirs.
+  const [taskPanel, setTaskPanel] = useState<{ customerId?: string; initial?: { title: string; form: TaskFormValues } } | null>(null);
+  const [dealOpen, setDealOpen] = useState(false);
+  const [labels, setLabels] = useState<Label[]>([]);
+  const addNotification = useUIStore((s) => s.addNotification);
+
+  const reload = useCallback(() => {
+    accountsApi.overview(customerId).then(({ data: res }) => setData(res.data)).catch(() => {});
+  }, [customerId]);
+
   useEffect(() => {
     let live = true;
     setData(null);
@@ -59,12 +78,26 @@ export function AccountOverview({ customerId, onOpenTask, now = new Date() }: Pr
     return () => { live = false; };
   }, [customerId]);
 
+  const openTaskPanel = (panel: NonNullable<typeof taskPanel>) => {
+    if (labels.length === 0) labelsApi.getAll().then(({ data: res }) => setLabels(res.data)).catch(() => {});
+    setTaskPanel(panel);
+  };
+
+  /** "Duplicate": the task panel, filled from the task — check it, then create it. */
+  const duplicateTask = async (id: string) => {
+    try {
+      const { data: res } = await tasksApi.getById(id);
+      openTaskPanel({ initial: { title: decodeEntities(res.data.title), form: taskToForm(res.data) } });
+    } catch {
+      addNotification({ kind: 'error', title: 'Could not open the task to copy' });
+    }
+  };
+
   if (failed) return null;
   if (!data) return <div className="account-overview"><SkeletonText paragraph lineCount={4} /></div>;
 
   const warmth = warmthOf(data.lastTouchAt, now);
   const peak = Math.max(1, ...data.weekly.map((w) => w.emails + w.meetings));
-  const nothingOpen = data.open.taskCount === 0 && data.open.tenders.length === 0 && data.open.deals.length === 0;
 
   return (
     <div className="account-overview">
@@ -90,10 +123,43 @@ export function AccountOverview({ customerId, onOpenTask, now = new Date() }: Pr
         <span className="account-muted">{data.weekly.length} weeks · mail and meetings</span>
       </section>
 
-      <section className="account-card" aria-labelledby="account-open">
-        <h2 id="account-open" className="account-card__label">Open with them</h2>
-        {nothingOpen ? (
-          <p className="account-muted">Nothing open — no task, tender or deal.</p>
+      <section className="account-card" aria-labelledby="account-tasks">
+        <div className="account-card__head">
+          <h2 id="account-tasks" className="account-card__label">Tasks</h2>
+          <Button kind="ghost" size="sm" renderIcon={Add} onClick={() => openTaskPanel({ customerId })}>New task</Button>
+        </div>
+        {data.open.tasks.length === 0 ? (
+          <p className="account-muted">No open task with them.</p>
+        ) : (
+          <ul className="account-list">
+            {data.open.tasks.map((t) => (
+              <li key={t.id} className="account-list__row">
+                <span className="account-list__main">
+                  <button type="button" className="today-link" onClick={() => onOpenTask(t.id)}>{decodeEntities(t.title)}</button>
+                  <span className="account-muted">
+                    <PriorityBadge priority={t.priority} />
+                    {t.dueDate && ` · due ${timeLeft(t.dueDate, now)}`}
+                  </span>
+                </span>
+                <IconButton kind="ghost" size="sm" autoAlign label="Duplicate" onClick={() => duplicateTask(t.id)}>
+                  <Copy />
+                </IconButton>
+              </li>
+            ))}
+            {data.open.taskCount > data.open.tasks.length && (
+              <li className="account-muted">+ {data.open.taskCount - data.open.tasks.length} more tasks</li>
+            )}
+          </ul>
+        )}
+      </section>
+
+      <section className="account-card" aria-labelledby="account-deals">
+        <div className="account-card__head">
+          <h2 id="account-deals" className="account-card__label">Deals</h2>
+          <Button kind="ghost" size="sm" renderIcon={Add} onClick={() => setDealOpen(true)}>New deal</Button>
+        </div>
+        {data.open.tenders.length === 0 && data.open.deals.length === 0 ? (
+          <p className="account-muted">No open tender or deal registration.</p>
         ) : (
           <ul className="account-list">
             {data.open.tenders.map((r) => (
@@ -104,22 +170,12 @@ export function AccountOverview({ customerId, onOpenTask, now = new Date() }: Pr
             ))}
             {data.open.deals.map((d) => (
               <li key={`d:${d.id}`}>
-                <button type="button" className="today-link today-link--strong" onClick={() => navigate('/pursuits?tab=deals')}>{d.title}</button>
-                <Tag size="sm" type="cool-gray">{d.expiryDate ? `deal · ${timeLeft(d.expiryDate, now)}` : 'deal'}</Tag>
+                <button type="button" className="today-link today-link--strong" onClick={() => navigate('/deals?tab=deals')}>{d.title}</button>
+                <Tag size="sm" type="cool-gray">
+                  {[d.partner?.name, d.expiryDate ? `expires ${timeLeft(d.expiryDate, now)}` : null].filter(Boolean).join(' · ') || 'deal'}
+                </Tag>
               </li>
             ))}
-            {data.open.tasks.map((t) => (
-              <li key={`t:${t.id}`}>
-                <button type="button" className="today-link" onClick={() => onOpenTask(t.id)}>{decodeEntities(t.title)}</button>
-                <span className="account-muted">
-                  <PriorityBadge priority={t.priority} />
-                  {t.dueDate && ` · due ${timeLeft(t.dueDate, now)}`}
-                </span>
-              </li>
-            ))}
-            {data.open.taskCount > data.open.tasks.length && (
-              <li className="account-muted">+ {data.open.taskCount - data.open.tasks.length} more tasks</li>
-            )}
           </ul>
         )}
       </section>
@@ -144,6 +200,16 @@ export function AccountOverview({ customerId, onOpenTask, now = new Date() }: Pr
           </ul>
         )}
       </section>
+
+      <TaskCreateModal
+        open={taskPanel !== null}
+        onClose={() => setTaskPanel(null)}
+        onCreated={reload}
+        labels={labels}
+        initialCustomerId={taskPanel?.customerId ?? null}
+        initial={taskPanel?.initial ?? null}
+      />
+      <DealCreateModal open={dealOpen} onClose={() => setDealOpen(false)} onCreated={reload} initialCustomerId={customerId} />
     </div>
   );
 }
@@ -190,7 +256,7 @@ export function AccountTimeline({
     if (e.kind === 'THREAD' && e.threadId) onOpenThread(e.threadId, e.title);
     else if (e.kind === 'TASK') onOpenTask(e.id);
     else if (e.kind === 'TENDER') navigate(`/rfps/${e.id}`);
-    else if (e.kind === 'DEAL') navigate('/pursuits?tab=deals');
+    else if (e.kind === 'DEAL') navigate('/deals?tab=deals');
     else if (e.kind === 'MEETING') navigate('/calendar');
   };
 

@@ -490,7 +490,7 @@ describe('TaskByCompanyView — the task row', () => {
     await user.click(screen.getByRole('button', { name: /Actions for Renewal/ }));
     await user.click(await screen.findByText('Open email'));
 
-    expect(navigate).toHaveBeenCalledWith('/mail?thread=thread-9');
+    expect(navigate).toHaveBeenCalledWith('/mail?folder=all&thread=thread-9');
   });
 
   it('disables Open email for a task that came from nowhere', async () => {

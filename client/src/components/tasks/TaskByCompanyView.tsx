@@ -266,7 +266,7 @@ export function TaskByCompanyView({ labels, onEdit, onDelete }: TaskByCompanyVie
 
   const openEmail = (task: Task) => {
     const threadId = task.emailLinks?.[0]?.email.threadId;
-    if (threadId) navigate(`/mail?thread=${encodeURIComponent(threadId)}`);
+    if (threadId) navigate(`/mail?folder=all&thread=${encodeURIComponent(threadId)}`);
   };
 
   const handleSearchChange = useCallback(

@@ -5,7 +5,9 @@ import { RfpsPage } from '../rfps/RfpsPage';
 import { DealsPage } from '../deals/DealsPage';
 
 /**
- * Pursuits: what you are trying to win, in one place.
+ * Deals: what you are trying to win, in one place — at /deals.
+ *
+ * Called Pursuits until 1.27; `/pursuits` still resolves here.
  *
  * A public tender and a partner deal registration are both an opportunity
  * with a buyer, a date that matters and a status — they sat in two nav
@@ -22,7 +24,7 @@ export function PursuitsPage() {
   return (
     <div>
       <PageHeader
-        title="Pursuits"
+        title="Deals"
         subtitle="Tenders and deal registrations — what you are trying to win, and by when"
       />
       <Tabs
@@ -35,7 +37,7 @@ export function PursuitsPage() {
           setParams(next, { replace: true });
         }}
       >
-        <TabList aria-label="Pursuit type" className="pursuits-tabs">
+        <TabList aria-label="Deal type" className="pursuits-tabs">
           <Tab>Tenders</Tab>
           <Tab>Deal registrations</Tab>
         </TabList>
@@ -48,10 +50,11 @@ export function PursuitsPage() {
   );
 }
 
-/** `/rfps` and `/deals` still resolve — bookmarks, search links — onto their tab. */
-export function PursuitsRedirect({ tab }: { tab: (typeof TABS)[number] }) {
+/** `/rfps` and `/pursuits` still resolve — bookmarks, search links — onto the page, and `/rfps` onto its tab. */
+export function PursuitsRedirect({ tab }: { tab?: (typeof TABS)[number] }) {
   const location = useLocation();
   const params = new URLSearchParams(location.search);
-  params.set('tab', tab);
-  return <Navigate to={`/pursuits?${params.toString()}`} replace />;
+  if (tab) params.set('tab', tab);
+  const query = params.toString();
+  return <Navigate to={`/deals${query ? `?${query}` : ''}`} replace />;
 }

@@ -5,14 +5,41 @@
 
 .account-overview {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  // Relationship, tasks, deals, people: four across, two on a laptop, one narrow.
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: $spacing-05;
   align-items: start;
   margin-bottom: $spacing-06;
 
-  @media (max-width: 66rem) {
+  @media (max-width: 90rem) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  @media (max-width: 50rem) {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+// A card's label with its action on the same line ("New task").
+.account-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-03;
+  min-height: 2rem;
+}
+
+// A row with its own action at the end ("Duplicate").
+.account-list__row {
+  display: flex;
+  align-items: center;
+  gap: $spacing-03;
+}
+
+.account-list__main {
+  display: grid;
+  flex: 1;
+  min-width: 0;
 }
 
 .account-card {

@@ -82,8 +82,8 @@ export function App() {
             {/* Above `/contacts/:id` — otherwise "duplicates" reads as an id. */}
             <Route path="/contacts/duplicates" element={<ContactDuplicatesPage />} />
             <Route path="/contacts/:id" element={<ContactDetailPage />} />
-            <Route path="/pursuits" element={<PursuitsPage />} />
-            <Route path="/deals" element={<PursuitsRedirect tab="deals" />} />
+            <Route path="/deals" element={<PursuitsPage />} />
+            <Route path="/pursuits" element={<PursuitsRedirect />} />
             <Route path="/rfps" element={<PursuitsRedirect tab="tenders" />} />
             <Route path="/rfps/:id" element={<RfpDetailPage />} />
             <Route path="/calendar" element={<CalendarPage />} />

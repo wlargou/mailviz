@@ -166,7 +166,7 @@ export function RfpDetailPage() {
       <PageHeader
         title={rfp.name}
         subtitle={[rfp.reference, rfp.customer?.name].filter(Boolean).join(' · ')}
-        breadcrumbs={[{ label: 'Pursuits', href: '/pursuits' }]}
+        breadcrumbs={[{ label: 'Deals', href: '/deals' }]}
         actions={
           // One primary action, one secondary, and Delete out of reach of a
           // stray click — three buttons in three styles said nothing about

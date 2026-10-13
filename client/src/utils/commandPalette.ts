@@ -25,7 +25,7 @@ export const PAGES: Array<{ label: string; href: string; words: string }> = [
   { label: 'Today', href: '/', words: 'today home dashboard my day' },
   { label: 'Mail', href: '/mail', words: 'mail inbox email' },
   { label: 'To reply', href: '/mail?folder=to-reply', words: 'reply replies owed waiting' },
-  { label: 'Pursuits', href: '/pursuits', words: 'pursuits tenders rfp rfps deals' },
+  { label: 'Deals', href: '/deals', words: 'deals pursuits tenders rfp rfps registrations' },
   { label: 'Tasks', href: '/tasks', words: 'tasks todo kanban' },
   { label: 'Calendar', href: '/calendar', words: 'calendar events meetings agenda' },
   { label: 'Companies', href: '/customers', words: 'companies accounts customers' },
@@ -40,8 +40,8 @@ export const ACTIONS: Array<{ label: string; href: string; words: string }> = [
   { label: 'New task', href: '/tasks?new=1', words: 'new task create add todo' },
   { label: 'New email', href: '/mail?compose=1', words: 'new email compose write mail message' },
   { label: 'New event', href: '/calendar?new=1', words: 'new event meeting create schedule' },
-  { label: 'New tender (RFP)', href: '/pursuits?tab=tenders&new=1', words: 'new rfp tender create register' },
-  { label: 'New deal registration', href: '/pursuits?tab=deals', words: 'new deal registration create' },
+  { label: 'New tender (RFP)', href: '/deals?tab=tenders&new=1', words: 'new rfp tender create register' },
+  { label: 'New deal registration', href: '/deals?tab=deals', words: 'new deal registration create' },
 ];
 
 function matches(words: string, q: string): boolean {
@@ -63,7 +63,7 @@ function entities(results: SearchResults, now: Date): PaletteItem[] {
     items.push({ id: `customer:${c.id}`, group: 'Go to', label: c.name, hint: 'Company', href: `/customers/${c.id}` });
   }
   for (const d of results.deals ?? []) {
-    items.push({ id: `deal:${d.id}`, group: 'Go to', label: d.title, hint: ['Deal', d.partner?.name, d.customer?.name].filter(Boolean).join(' · '), href: '/pursuits?tab=deals' });
+    items.push({ id: `deal:${d.id}`, group: 'Go to', label: d.title, hint: ['Deal', d.partner?.name, d.customer?.name].filter(Boolean).join(' · '), href: '/deals?tab=deals' });
   }
   for (const c of results.contacts ?? []) {
     items.push({

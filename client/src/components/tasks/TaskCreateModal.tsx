@@ -15,9 +15,11 @@ interface TaskCreateModalProps {
   labels: Label[];
   /** The company to start with — "New task for BKAM" from the palette. */
   initialCustomerId?: string | null;
+  /** A whole task to start from — "Duplicate". Wins over `initialCustomerId`. */
+  initial?: { title: string; form: TaskFormValues } | null;
 }
 
-export function TaskCreateModal({ open, onClose, onCreated, labels, initialCustomerId = null }: TaskCreateModalProps) {
+export function TaskCreateModal({ open, onClose, onCreated, labels, initialCustomerId = null, initial = null }: TaskCreateModalProps) {
   const taskChanged = useTaskStore((s) => s.taskChanged);
   const [title, setTitle] = useState('');
   const [form, setForm] = useState<TaskFormValues>(EMPTY_TASK_FORM);
@@ -37,9 +39,14 @@ export function TaskCreateModal({ open, onClose, onCreated, labels, initialCusto
   useEffect(() => {
     if (open) {
       fetchStatuses();
-      if (initialCustomerId) setForm((prev) => ({ ...prev, customerId: initialCustomerId }));
+      if (initial) {
+        setTitle(initial.title);
+        setForm(initial.form);
+      } else if (initialCustomerId) {
+        setForm((prev) => ({ ...prev, customerId: initialCustomerId }));
+      }
     }
-  }, [open, fetchStatuses, initialCustomerId]);
+  }, [open, fetchStatuses, initialCustomerId, initial]);
 
   const resetForm = () => {
     setTitle('');
@@ -67,8 +74,8 @@ export function TaskCreateModal({ open, onClose, onCreated, labels, initialCusto
     <SidePanel
       open={open}
       onRequestClose={() => { resetForm(); onClose(); }}
-      title="New task"
-      subtitle="Add a task to track your work"
+      title={initial ? 'Duplicate task' : 'New task'}
+      subtitle={initial ? 'A copy of the task — check it, then create it' : 'Add a task to track your work'}
       size="md"
       actions={[
         {

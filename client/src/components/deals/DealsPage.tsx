@@ -63,7 +63,7 @@ const headers = [
   { key: 'actions', header: '' },
 ];
 
-/** `embedded`: inside Pursuits, which carries the page header. */
+/** `embedded`: inside the Deals page, which carries the page header. */
 export function DealsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);

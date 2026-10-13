@@ -1,9 +1,9 @@
 import { Dropdown, DatePicker, DatePickerInput, MultiSelect, Slider, TextArea } from '@carbon/react';
 import { CompanyComboBox } from '../shared/CompanyComboBox';
-import type { CreateTaskInput, Label, TaskPriority, TaskStatus } from '../../types/task';
+import type { CreateTaskInput, Label, Task, TaskPriority, TaskStatus } from '../../types/task';
 import { buildRecurrenceOptions, buildRecurrenceRules, type RecurrencePresetId } from '../../utils/recurrence';
 import { REMINDER_OPTIONS, reminderFor, type ReminderPresetId } from '../../utils/reminders';
-import { EFFORT_STEPS, effortLabel, stepIndexToMinutes } from '../../utils/effort';
+import { EFFORT_STEPS, effortLabel, minutesToStepIndex, stepIndexToMinutes } from '../../utils/effort';
 
 /**
  * The body of a "new task" form, minus the title.
@@ -44,6 +44,22 @@ export const EMPTY_TASK_FORM: TaskFormValues = {
   labelIds: [],
   effortIndex: 0,
 };
+
+/**
+ * A task's content as the start of a new one — "Duplicate". What the work
+ * is (description, priority, company, labels, effort) carries over; when it
+ * is due, its reminders and repeats, and how far it got do not.
+ */
+export function taskToForm(task: Pick<Task, 'description' | 'priority' | 'customerId' | 'labels' | 'estimatedMinutes'>): TaskFormValues {
+  return {
+    ...EMPTY_TASK_FORM,
+    description: task.description ?? '',
+    priority: task.priority,
+    customerId: task.customerId,
+    labelIds: task.labels.map((l) => l.id),
+    effortIndex: minutesToStepIndex(task.estimatedMinutes),
+  };
+}
 
 /**
  * The request body for these values. Reminder and repeat are relative to the
