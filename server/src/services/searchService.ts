@@ -1,3 +1,4 @@
+import { mailSearchFilters } from './mailSearch.js';
 import { prisma } from '../lib/prisma.js';
 import { RFP_TERMINAL_STATUSES } from '../utils/rfp.js';
 
@@ -80,19 +81,12 @@ export const searchService = {
     const q = query.trim();
     if (q.length < 2) return EMPTY;
 
+    const mailFilters = await mailSearchFilters(q);
     const [emails, tasks, events, customers, contacts, deals, rfpRows] = await Promise.all([
       // Emails — distinct by threadId, newest first, exclude trashed
       prisma.email.findMany({
-        where: {
-          userId,
-          isTrashed: false,
-          OR: [
-            { subject: { contains: q, mode: 'insensitive' } },
-            { from: { contains: q, mode: 'insensitive' } },
-            { fromName: { contains: q, mode: 'insensitive' } },
-            { snippet: { contains: q, mode: 'insensitive' } },
-          ],
-        },
+        // The mail page's own matching: every word, in the body too.
+        where: { userId, isTrashed: false, AND: mailFilters },
         select: {
           id: true,
           threadId: true,

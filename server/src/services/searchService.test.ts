@@ -172,6 +172,14 @@ describe('searchService.search — query handling', () => {
     expect((await searchService.search('   zebra   ', alice.id)).tasks.map((t) => t.title)).toEqual(['Zebra task']);
   });
 
+  it('finds mail as the mail page does: every word, the body too, accents aside', async () => {
+    const { alice } = await createTwoUsers();
+    await createEmail(alice.id, { threadId: 't-hit', subject: 'Réunion', bodyText: 'Validé par Karim' });
+    await createEmail(alice.id, { threadId: 't-miss', subject: 'Reunion', bodyText: 'Pending' });
+
+    expect((await searchService.search('reunion karim', alice.id)).emails.map((e) => e.threadId)).toEqual(['t-hit']);
+  });
+
   it('matches at exactly two characters', async () => {
     const { alice } = await createTwoUsers();
     await createTask(alice.id, { title: 'QQ report' });

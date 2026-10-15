@@ -34,7 +34,8 @@ import { replyRecipients } from '../utils/replyRecipients.js';
 import { replyQuote, forwardQuote } from '../utils/mailQuote.js';
 import { fromHeader } from './senderIdentity.js';
 import { ownAddresses } from './repliesOwedService.js';
-import { queryWords } from '../utils/searchTerms.js';
+import { mailSearchFilters } from './mailSearch.js';
+import { bodyText } from '../utils/mailText.js';
 import { categoryFilter, isMailCategory, MAIL_CATEGORIES, type MailCategory } from '../utils/mailCategories.js';
 import { mergeEngagement } from '../utils/contactEngagement.js';
 import { decodeEntities, decodeThenEscape } from '../utils/htmlEntities.js';
@@ -668,6 +669,7 @@ export const emailService = {
     const inReplyToHeader = headers['in-reply-to'] || null;
     const referencesHeader = headers['references'] || null;
     const bccList = parseEmailList(headers['bcc']);
+    const text = bodyText(msg.payload);
 
     const emailData = {
       threadId: msg.threadId || null,
@@ -681,6 +683,9 @@ export const emailService = {
       inReplyTo: inReplyToHeader,
       references: referencesHeader,
       snippet: msg.snippet || null,
+      // For search. Only when the payload carries a body: a fetch without one
+      // must not blank text an earlier sync stored.
+      ...(text !== null && { bodyText: text }),
       receivedAt,
       isRead,
       isStarred,
@@ -857,18 +862,9 @@ export const emailService = {
     if (query.contactEmail) {
       where.from = query.contactEmail;
     }
-    // Every word, anywhere in the message — see queryWords. One OR per word,
+    // Every word, anywhere in the message — see mailSearch. One OR per word,
     // pushed onto AND: assigning `where.OR` is what once dropped ownership.
-    for (const word of queryWords(query.search ?? '')) {
-      andFilters.push({
-        OR: [
-          { subject: { contains: word, mode: 'insensitive' } },
-          { from: { contains: word, mode: 'insensitive' } },
-          { fromName: { contains: word, mode: 'insensitive' } },
-          { snippet: { contains: word, mode: 'insensitive' } },
-        ],
-      });
-    }
+    andFilters.push(...(await mailSearchFilters(query.search)));
 
     // P1: Get distinct threads with counts — eliminates N+1 queries
     const threadIds = await prisma.email.groupBy({
