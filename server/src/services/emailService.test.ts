@@ -377,6 +377,22 @@ describe('emailService.findAllThreads — pagination', () => {
     expect(seen.size).toBe(5);
   });
 
+  it('pages a search, newest first, and counts every matching thread — not the page, not the mailbox', async () => {
+    const { alice } = await createTwoUsers();
+    const base = new Date('2024-03-01T00:00:00.000Z').getTime();
+    for (let i = 0; i < 5; i++) {
+      await createEmail(alice.id, { threadId: `hit-${i}`, subject: 'Point', bodyText: `kestrel ${i}`, receivedAt: new Date(base + i * 60_000) });
+    }
+    await createEmail(alice.id, { threadId: 'miss', subject: 'Point', bodyText: 'nothing', receivedAt: new Date(base + 9 * 60_000) });
+
+    const pages = await Promise.all(['1', '2', '3'].map((page) =>
+      emailService.findAllThreads({ search: 'kestrel', limit: '2', page }, alice.id)));
+
+    expect(pages.map((p) => p.data.map((t) => t.threadId))).toEqual([['hit-4', 'hit-3'], ['hit-2', 'hit-1'], ['hit-0']]);
+    expect(pages.map((p) => p.meta.total)).toEqual([5, 5, 5]);
+    expect(pages[0].data[0].messageCount).toBe(1);
+  });
+
   it('caps limit at 100 — the review’s old limit=500 was never honoured', async () => {
     const { alice } = await createTwoUsers();
     await createEmail(alice.id, { subject: 'Only one' });

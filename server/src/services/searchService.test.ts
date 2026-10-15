@@ -366,6 +366,21 @@ describe('searchService.search — result shaping', () => {
     expect(emails[0].subject).toBe('Kestrel reply');
   });
 
+  it('still finds four threads when one busy thread holds the newest messages', async () => {
+    const { alice } = await createTwoUsers();
+    const now = Date.now();
+    for (let i = 0; i < 6; i++) {
+      await createEmail(alice.id, { threadId: 'busy', subject: `Kestrel ${i}`, receivedAt: new Date(now - i * 1000) });
+    }
+    for (let i = 0; i < 3; i++) {
+      await createEmail(alice.id, { threadId: `older-${i}`, subject: 'Kestrel', receivedAt: new Date(now - 60_000 * (i + 1)) });
+    }
+
+    const { emails } = await searchService.search('kestrel', alice.id);
+
+    expect(emails.map((e) => e.threadId)).toEqual(['busy', 'older-0', 'older-1', 'older-2']);
+  });
+
   it('orders mail newest first and customers alphabetically', async () => {
     const { alice } = await createTwoUsers();
     await createEmail(alice.id, { threadId: 'a', subject: 'Kestrel old', receivedAt: new Date(Date.now() - 120_000) });
