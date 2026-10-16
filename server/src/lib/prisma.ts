@@ -1,6 +1,11 @@
 import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from './prismaClient.js';
+import { PrismaClient, type Email } from './prismaClient.js';
 import { env } from '../config/env.js';
+
+const EMAIL_OMIT = { bodyText: true, searchHead: true, searchBody: true } as const;
+
+/** An email row as this client returns it: without mail search's columns. */
+export type EmailRow = Omit<Email, keyof typeof EMAIL_OMIT>;
 
 /**
  * Single shared PrismaClient instance to avoid opening multiple connection pools.
@@ -14,4 +19,8 @@ import { env } from '../config/env.js';
  */
 export const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: env.DATABASE_URL }),
+  // Mail search's columns: a message's whole text, twice over once folded.
+  // Nothing displays them, and every email row the API returns is spread from
+  // a query result, so they are left out unless a query asks for them.
+  omit: { email: EMAIL_OMIT },
 });

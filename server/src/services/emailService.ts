@@ -34,7 +34,8 @@ import { replyRecipients } from '../utils/replyRecipients.js';
 import { replyQuote, forwardQuote } from '../utils/mailQuote.js';
 import { fromHeader } from './senderIdentity.js';
 import { ownAddresses } from './repliesOwedService.js';
-import { queryWords } from '../utils/searchTerms.js';
+import { mailSearchFilters } from './mailSearch.js';
+import { bodyText } from '../utils/mailText.js';
 import { categoryFilter, isMailCategory, MAIL_CATEGORIES, type MailCategory } from '../utils/mailCategories.js';
 import { mergeEngagement } from '../utils/contactEngagement.js';
 import { decodeEntities, decodeThenEscape } from '../utils/htmlEntities.js';
@@ -668,6 +669,7 @@ export const emailService = {
     const inReplyToHeader = headers['in-reply-to'] || null;
     const referencesHeader = headers['references'] || null;
     const bccList = parseEmailList(headers['bcc']);
+    const text = bodyText(msg.payload);
 
     const emailData = {
       threadId: msg.threadId || null,
@@ -681,6 +683,9 @@ export const emailService = {
       inReplyTo: inReplyToHeader,
       references: referencesHeader,
       snippet: msg.snippet || null,
+      // For search. Only when the payload carries a body: a fetch without one
+      // must not blank text an earlier sync stored.
+      ...(text !== null && { bodyText: text }),
       receivedAt,
       isRead,
       isStarred,
@@ -857,29 +862,30 @@ export const emailService = {
     if (query.contactEmail) {
       where.from = query.contactEmail;
     }
-    // Every word, anywhere in the message — see queryWords. One OR per word,
+    // Every word, anywhere in the message — see mailSearch. One OR per word,
     // pushed onto AND: assigning `where.OR` is what once dropped ownership.
-    for (const word of queryWords(query.search ?? '')) {
-      andFilters.push({
-        OR: [
-          { subject: { contains: word, mode: 'insensitive' } },
-          { from: { contains: word, mode: 'insensitive' } },
-          { fromName: { contains: word, mode: 'insensitive' } },
-          { snippet: { contains: word, mode: 'insensitive' } },
-        ],
-      });
-    }
+    andFilters.push(...(await mailSearchFilters(query.search)));
 
     // P1: Get distinct threads with counts — eliminates N+1 queries
-    const threadIds = await prisma.email.groupBy({
+    const threadGroups = (page: boolean) => prisma.email.groupBy({
       by: ['threadId'],
       where,
       _count: { id: true },
       _max: { receivedAt: true },
       orderBy: { _max: { receivedAt: 'desc' } },
-      skip: pagination.skip,
-      take: pagination.limit,
+      ...(page && { skip: pagination.skip, take: pagination.limit }),
     });
+    /**
+     * With a search, the match is the expensive part: a word common in the
+     * mail has its every body read and rechecked, since a trigram index only
+     * narrows. So it runs once — every matching thread, paged here and counted
+     * by length — rather than once for the page and again for the total below.
+     * On 140k synthetic messages that halved a search for a word in 30% of them.
+     */
+    const searchedGroups = query.search?.trim() ? await threadGroups(false) : null;
+    const threadIds = searchedGroups
+      ? searchedGroups.slice(pagination.skip, pagination.skip + pagination.limit)
+      : await threadGroups(true);
 
     /**
      * How many threads match, for pagination.
@@ -905,8 +911,9 @@ export const emailService = {
      * the comments above record two occasions when this very filter was got
      * wrong.
      */
-    const totalGroupBy = await prisma.email.groupBy({ by: ['threadId'], where });
-    const total = totalGroupBy.length;
+    const total = searchedGroups
+      ? searchedGroups.length
+      : (await prisma.email.groupBy({ by: ['threadId'], where })).length;
 
     // P1: Batch-fetch latest email per thread + unread counts (2 queries instead of 2*N)
     const threadIdList = threadIds.map((t) => t.threadId).filter((id): id is string => id !== null);

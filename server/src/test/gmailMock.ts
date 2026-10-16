@@ -183,6 +183,8 @@ export interface FakeMessage {
   internalDate?: number;
   /** RFC 2919 `List-Id`, marking the message as distributed by a mailing list. */
   listId?: string;
+  /** A text/plain body. Without one the payload carries no body data. */
+  body?: string;
 }
 
 /** A `users.messages.get` payload, shaped the way Gmail returns `format: 'full'`. */
@@ -204,7 +206,11 @@ export function gmailMessage(msg: FakeMessage): gmail_v1.Schema$Message {
     snippet: msg.snippet ?? `Snippet for ${msg.id}`,
     internalDate: String(msg.internalDate ?? Date.UTC(2024, 0, 1)),
     sizeEstimate: 1024,
-    payload: { mimeType: 'text/plain', headers, body: { size: 0 } },
+    payload: {
+      mimeType: 'text/plain',
+      headers,
+      body: msg.body === undefined ? { size: 0 } : { size: msg.body.length, data: Buffer.from(msg.body).toString('base64url') },
+    },
   };
 }
 

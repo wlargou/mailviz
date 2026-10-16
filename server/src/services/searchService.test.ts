@@ -172,6 +172,14 @@ describe('searchService.search — query handling', () => {
     expect((await searchService.search('   zebra   ', alice.id)).tasks.map((t) => t.title)).toEqual(['Zebra task']);
   });
 
+  it('finds mail as the mail page does: every word, the body too, accents aside', async () => {
+    const { alice } = await createTwoUsers();
+    await createEmail(alice.id, { threadId: 't-hit', subject: 'Réunion', bodyText: 'Validé par Karim' });
+    await createEmail(alice.id, { threadId: 't-miss', subject: 'Reunion', bodyText: 'Pending' });
+
+    expect((await searchService.search('reunion karim', alice.id)).emails.map((e) => e.threadId)).toEqual(['t-hit']);
+  });
+
   it('matches at exactly two characters', async () => {
     const { alice } = await createTwoUsers();
     await createTask(alice.id, { title: 'QQ report' });
@@ -356,6 +364,21 @@ describe('searchService.search — result shaping', () => {
     expect(threadIds).toEqual(['chatty', 'quiet']);
     // Newest message in the thread represents it.
     expect(emails[0].subject).toBe('Kestrel reply');
+  });
+
+  it('still finds four threads when one busy thread holds the newest messages', async () => {
+    const { alice } = await createTwoUsers();
+    const now = Date.now();
+    for (let i = 0; i < 6; i++) {
+      await createEmail(alice.id, { threadId: 'busy', subject: `Kestrel ${i}`, receivedAt: new Date(now - i * 1000) });
+    }
+    for (let i = 0; i < 3; i++) {
+      await createEmail(alice.id, { threadId: `older-${i}`, subject: 'Kestrel', receivedAt: new Date(now - 60_000 * (i + 1)) });
+    }
+
+    const { emails } = await searchService.search('kestrel', alice.id);
+
+    expect(emails.map((e) => e.threadId)).toEqual(['busy', 'older-0', 'older-1', 'older-2']);
   });
 
   it('orders mail newest first and customers alphabetically', async () => {

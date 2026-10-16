@@ -248,6 +248,74 @@ describe('emailService.findAllThreads — search words', () => {
     const result = await emailService.findAllThreads({ search: 'omar alami' }, alice.id);
     expect(result.data.map((t) => t.threadId).sort()).toEqual(['t-mixed', 't-name']);
   });
+
+  const found = async (search: string, userId: string) =>
+    (await emailService.findAllThreads({ search }, userId)).data.map((t) => t.threadId).sort();
+
+  it('ignores accents and case, either way round', async () => {
+    const { alice } = await createTwoUsers();
+    await createEmail(alice.id, { threadId: 't-accent', subject: 'Échéance du dossier' });
+    await createEmail(alice.id, { threadId: 't-plain', subject: 'Echeance revue', fromName: 'Hélène Œuvray' });
+
+    expect(await found('echeance', alice.id)).toEqual(['t-accent', 't-plain']);
+    expect(await found('ÉCHÉANCE', alice.id)).toEqual(['t-accent', 't-plain']);
+    expect(await found('oeuvray helene', alice.id)).toEqual(['t-plain']);
+  });
+
+  it('finds a word in the body, from its start, accents aside', async () => {
+    const { alice } = await createTwoUsers();
+    await createEmail(alice.id, { threadId: 't-body', subject: 'Point', bodyText: "Merci pour l'échéance. Contact: ess.dgm@MarocMeteo.ma" });
+    await createEmail(alice.id, { threadId: 't-other', subject: 'Point', bodyText: 'Nothing relevant here' });
+
+    expect(await found('echeanc', alice.id)).toEqual(['t-body']);
+    expect(await found("l'échéance", alice.id)).toEqual(['t-body']);
+    expect(await found('marocme', alice.id)).toEqual(['t-body']);
+    expect(await found('ess.dgm@marocmeteo', alice.id)).toEqual(['t-body']);
+  });
+
+  it('matches the body by the start of a word, the header anywhere', async () => {
+    const { alice } = await createTwoUsers();
+    await createEmail(alice.id, { threadId: 't-body', subject: 'Point', bodyText: 'Our partner agreed' });
+    await createEmail(alice.id, { threadId: 't-head', subject: 'Re: departure', bodyText: '' });
+
+    // "art" is inside "partner" and "departure": only the subject counts.
+    expect(await found('art', alice.id)).toEqual(['t-head']);
+    expect(await found('partn', alice.id)).toEqual(['t-body']);
+  });
+
+  it('needs every word, each in the header or the body', async () => {
+    const { alice } = await createTwoUsers();
+    await createEmail(alice.id, { threadId: 't-both', subject: 'Budget 2027', bodyText: 'Validated by Karim' });
+    await createEmail(alice.id, { threadId: 't-half', subject: 'Budget 2027', bodyText: 'Pending' });
+
+    expect(await found('karim budget', alice.id)).toEqual(['t-both']);
+  });
+
+  it('does not find a word made of punctuation in every body', async () => {
+    const { alice } = await createTwoUsers();
+    await createEmail(alice.id, { threadId: 't-a', subject: 'Point', bodyText: 'some text' });
+
+    expect(await found('--', alice.id)).toEqual([]);
+  });
+
+  it('never finds another user’s mail by its body, shared threads aside — tenant isolation', async () => {
+    const { alice, bob } = await createTwoUsers();
+    await createEmail(bob.id, { threadId: 'bob-private', subject: 'Point', bodyText: 'Confidential zanzibar plan' });
+    await createEmail(bob.id, { threadId: 'bob-shared', subject: 'Point', bodyText: 'Shared zanzibar notes' });
+    await shareThreadWith('bob-shared', bob.id, alice.id);
+
+    expect(await found('zanzibar', alice.id)).toEqual(['bob-shared']);
+  });
+
+  it('never returns the search columns or the body text with the list', async () => {
+    const { alice } = await createTwoUsers();
+    await createEmail(alice.id, { threadId: 't-a', subject: 'Point', bodyText: 'the whole body' });
+
+    const [thread] = (await emailService.findAllThreads({ search: 'whole' }, alice.id)).data;
+    expect(thread.latestEmail).not.toHaveProperty('bodyText');
+    expect(thread.latestEmail).not.toHaveProperty('searchHead');
+    expect(thread.latestEmail).not.toHaveProperty('searchBody');
+  });
 });
 
 describe('emailService.findAllThreads — one person, either way', () => {
@@ -307,6 +375,22 @@ describe('emailService.findAllThreads — pagination', () => {
     }
 
     expect(seen.size).toBe(5);
+  });
+
+  it('pages a search, newest first, and counts every matching thread — not the page, not the mailbox', async () => {
+    const { alice } = await createTwoUsers();
+    const base = new Date('2024-03-01T00:00:00.000Z').getTime();
+    for (let i = 0; i < 5; i++) {
+      await createEmail(alice.id, { threadId: `hit-${i}`, subject: 'Point', bodyText: `kestrel ${i}`, receivedAt: new Date(base + i * 60_000) });
+    }
+    await createEmail(alice.id, { threadId: 'miss', subject: 'Point', bodyText: 'nothing', receivedAt: new Date(base + 9 * 60_000) });
+
+    const pages = await Promise.all(['1', '2', '3'].map((page) =>
+      emailService.findAllThreads({ search: 'kestrel', limit: '2', page }, alice.id)));
+
+    expect(pages.map((p) => p.data.map((t) => t.threadId))).toEqual([['hit-4', 'hit-3'], ['hit-2', 'hit-1'], ['hit-0']]);
+    expect(pages.map((p) => p.meta.total)).toEqual([5, 5, 5]);
+    expect(pages[0].data[0].messageCount).toBe(1);
   });
 
   it('caps limit at 100 — the review’s old limit=500 was never honoured', async () => {

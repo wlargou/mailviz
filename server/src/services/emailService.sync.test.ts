@@ -6,6 +6,7 @@ import { emailService } from './emailService.js';
 import { createUser, createTwoUsers, createEmail, createGoogleAuth } from '../test/factories.js';
 import {
   createGmailMock,
+  gmailMessage,
   gmailError,
   historyExpiredError,
   historyPage,
@@ -1214,6 +1215,29 @@ describe('emailService.upsertMessage — mail from machines', () => {
         .map((e) => [e.gmailMessageId, e.isAutomated]),
     );
     expect(flags).toEqual({ bot1: true, person1: false, own1: false, cron1: true });
+  });
+});
+
+describe('emailService.upsertMessage — body text for search', () => {
+  const stored = async (userId: string, id: string) =>
+    (await prisma.email.findFirstOrThrow({ where: { userId, gmailMessageId: id }, select: { bodyText: true } })).bodyText;
+
+  it('stores the body as text at sync, and a fetch without a body leaves it alone', async () => {
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+    stubMessagesListPages(gmail, [['m1', 'm2']]);
+    stubMessagesGet(gmail, [
+      { id: 'm1', subject: 'Budget', body: 'Validated by Karim\n> quoted history' },
+      { id: 'm2', subject: 'No body fetched' },
+    ]);
+
+    await emailService.syncFromGmail(user.id);
+    expect(await stored(user.id, 'm1')).toBe('Validated by Karim');
+    expect(await stored(user.id, 'm2')).toBeNull();
+
+    // The same message again, its payload this time without a body.
+    await emailService.upsertMessage(gmailMessage({ id: 'm1', subject: 'Budget' }), user.id);
+    expect(await stored(user.id, 'm1')).toBe('Validated by Karim');
   });
 });
 

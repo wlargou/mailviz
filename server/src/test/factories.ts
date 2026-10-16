@@ -120,6 +120,8 @@ export async function createEmail(
     /** RFC 5322 Message-ID — what a reply's In-Reply-To has to quote back. */
     messageId: string;
     references: string;
+    /** Plain body text, as the sync stores it for search. */
+    bodyText: string | null;
   }> = {}
 ) {
   const id = uniq();
@@ -142,6 +144,7 @@ export async function createEmail(
       ...(overrides.isAutomated !== undefined ? { isAutomated: overrides.isAutomated } : {}),
       ...(overrides.messageId !== undefined ? { messageId: overrides.messageId } : {}),
       ...(overrides.references !== undefined ? { references: overrides.references } : {}),
+      ...(overrides.bodyText !== undefined ? { bodyText: overrides.bodyText } : {}),
     },
   });
 }

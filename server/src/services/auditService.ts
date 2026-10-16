@@ -112,7 +112,7 @@ export type EntityType = 'email' | 'task' | 'task_template' | 'deal' | 'event' |
  * Anything that can write an audit row — the shared client or a transaction
  * client handed out by `prisma.$transaction`.
  */
-type AuditClient = Pick<Prisma.TransactionClient, 'auditLog'>;
+type AuditClient = Pick<typeof prisma, 'auditLog'>;
 
 interface AuditLogInput {
   userId: string;

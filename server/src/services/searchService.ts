@@ -1,3 +1,4 @@
+import { mailSearchFilters } from './mailSearch.js';
 import { prisma } from '../lib/prisma.js';
 import { RFP_TERMINAL_STATUSES } from '../utils/rfp.js';
 
@@ -80,19 +81,16 @@ export const searchService = {
     const q = query.trim();
     if (q.length < 2) return EMPTY;
 
+    const mailFilters = await mailSearchFilters(q);
     const [emails, tasks, events, customers, contacts, deals, rfpRows] = await Promise.all([
-      // Emails — distinct by threadId, newest first, exclude trashed
+      // Emails — newest first, one per thread, exclude trashed. The newest
+      // 40 messages and not `distinct`: Prisma takes distinct rows in memory,
+      // after fetching every match, while a LIMIT lets Postgres stop at the
+      // fortieth — the box searches as the user types, and a common prefix
+      // matched most of the mailbox.
       prisma.email.findMany({
-        where: {
-          userId,
-          isTrashed: false,
-          OR: [
-            { subject: { contains: q, mode: 'insensitive' } },
-            { from: { contains: q, mode: 'insensitive' } },
-            { fromName: { contains: q, mode: 'insensitive' } },
-            { snippet: { contains: q, mode: 'insensitive' } },
-          ],
-        },
+        // The mail page's own matching: every word, in the body too.
+        where: { userId, isTrashed: false, AND: mailFilters },
         select: {
           id: true,
           threadId: true,
@@ -103,9 +101,8 @@ export const searchService = {
           receivedAt: true,
         },
         orderBy: { receivedAt: 'desc' },
-        distinct: ['threadId'],
-        take: 4,
-      }),
+        take: 40,
+      }).then((rows) => rows.filter((e, i) => rows.findIndex((r) => r.threadId === e.threadId) === i).slice(0, 4)),
 
       // Tasks — search title and description
       prisma.task.findMany({
