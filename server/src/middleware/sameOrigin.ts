@@ -29,9 +29,9 @@ const UNCHECKED_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
  * Sandboxed frames, `file:` pages and other opaque origins send it, and none of
  * them is the app. The SPA's own writes never do: they are axios requests,
  * same-origin and in CORS mode, which carry the page's real origin. What would
- * send null is a native HTML form POST (or a beacon) from the page itself,
- * because the page is served with `Referrer-Policy: no-referrer` — so such a
- * write would be refused, and writes go through the axios client.
+ * send null is a native HTML form POST from the page itself, because the page
+ * is served with `Referrer-Policy: no-referrer` — so such a write would be
+ * refused, and writes go through the axios client.
  */
 export function sameOriginWrites(clientUrl: string, nodeEnv: string) {
   const isAppOrigin = appOriginCheck(clientUrl, nodeEnv);
