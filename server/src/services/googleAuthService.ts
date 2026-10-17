@@ -3,6 +3,15 @@ import jwt from 'jsonwebtoken';
 import { env } from '../config/env.js';
 import { encrypt, decrypt } from '../utils/encryption.js';
 import { prisma } from '../lib/prisma.js';
+import { wsEmitToUser } from '../websocket.js';
+import {
+  classifyAuthFailure,
+  classifyGoogleAuthError,
+  httpStatusOf,
+  TOKEN_UNREADABLE,
+  tokenUnreadableError,
+  type AuthErrorCode,
+} from '../utils/googleAuthError.js';
 
 /**
  * Exported so tests can assert against the same list the check uses. Hardcoding
@@ -15,6 +24,43 @@ export const SCOPES = [
   'https://www.googleapis.com/auth/userinfo.profile',
   'https://www.googleapis.com/auth/gmail.modify',
 ];
+
+// Google may answer with the short OpenID names for the two profile scopes.
+const SCOPE_ALIASES: Record<string, string> = {
+  email: 'https://www.googleapis.com/auth/userinfo.email',
+  profile: 'https://www.googleapis.com/auth/userinfo.profile',
+};
+
+/**
+ * The required scopes a stored grant lacks.
+ *
+ * Whole words, not `includes` on the string: `…/auth/calendar.readonly` would
+ * otherwise pass for `…/auth/calendar`. A null scope — rows from before the
+ * column was written — is taken as complete, as it always has been.
+ */
+export function missingScopes(granted: string | null): string[] {
+  if (!granted) return [];
+  const have = new Set(granted.split(/\s+/).filter(Boolean).map((s) => SCOPE_ALIASES[s] ?? s));
+  return SCOPES.filter((s) => !have.has(s));
+}
+
+/** What `google:auth` carries and `getStatus` reports: why Google refused the grant, and since when. */
+export interface GoogleAuthErrorState {
+  code: string;
+  at: Date | null;
+}
+
+/**
+ * The grant a piece of work started with: the stored refresh token, exactly as
+ * stored (ciphertext). Opaque — only ever compared with the column, never
+ * decrypted or logged. Null when the account has no connection.
+ *
+ * A refusal is recorded only while this is still what is stored. Without it a
+ * sync that read the old, dead grant and failed just after a Reconnect wrote
+ * the error back over the new one — and a working sync never clears it, so
+ * Settings said "Sync has stopped" for most of an hour while sync worked.
+ */
+export type GrantSnapshot = string | null;
 
 function createOAuth2Client() {
   return new google.auth.OAuth2(
@@ -38,6 +84,12 @@ interface ExchangeResult {
      */
     refreshToken?: string;
     expiryDate: number;
+    /**
+     * The scopes Google granted, space-separated, from the token response. A
+     * user can untick one on the consent screen, so this — not `SCOPES` — is
+     * what the grant can do.
+     */
+    scope?: string;
   };
 }
 
@@ -130,6 +182,7 @@ export const googleAuthService = {
         accessToken: tokens.access_token!,
         refreshToken: tokens.refresh_token ?? undefined,
         expiryDate: tokens.expiry_date!,
+        scope: tokens.scope ?? undefined,
       },
     };
   },
@@ -144,7 +197,11 @@ export const googleAuthService = {
     const authData = {
       accessToken: encrypt(tokens.accessToken),
       tokenExpiry: new Date(tokens.expiryDate),
-      scope: SCOPES.join(' '),
+      // What Google granted, not what was asked for: this used to be
+      // `SCOPES.join(' ')` whatever the user ticked, so a connection without
+      // Gmail read as complete and every Gmail call 403'd. Kept as stored when
+      // the response carries none rather than guessed.
+      ...(tokens.scope ? { scope: tokens.scope } : {}),
       userId,
       // Only when Google actually sent one. On a re-authorisation it does not,
       // and the stored token stays valid — overwriting it with undefined is what
@@ -172,6 +229,11 @@ export const googleAuthService = {
         data: { ...authData, refreshToken: encrypt(tokens.refreshToken), email: user?.email || null },
       });
     }
+
+    // A new refresh token is a new grant, so whatever Google refused before no
+    // longer applies. A login that brought none leaves the refused one in place
+    // — and with it the error, which the next sync would only write back.
+    if (tokens.refreshToken) await googleAuthService.clearAuthError(userId);
 
     // Auto-create/mark the user's own company as internal
     if (user?.email) {
@@ -218,9 +280,12 @@ export const googleAuthService = {
       return { connected: false };
     }
 
-    const needsReauth = auth.scope
-      ? !SCOPES.every((s) => auth.scope!.includes(s))
-      : false;
+    // A grant missing a scope and a grant Google refused are fixed the same way:
+    // a forced-consent reconnect, which keeps every synced row.
+    const authError: GoogleAuthErrorState | null = auth.authError
+      ? { code: auth.authError, at: auth.authErrorAt }
+      : null;
+    const needsReauth = authError !== null || missingScopes(auth.scope).length > 0;
 
     return {
       connected: true,
@@ -228,7 +293,92 @@ export const googleAuthService = {
       lastSyncAt: auth.lastSyncAt,
       lastMailSyncAt: auth.lastMailSyncAt,
       needsReauth,
+      authError,
     };
+  },
+
+  /** What identifies the grant this account has stored right now — taken when a piece of work starts. */
+  async currentGrant(userId: string): Promise<GrantSnapshot> {
+    const row = await prisma.googleAuth.findUnique({ where: { userId }, select: { refreshToken: true } });
+    return row?.refreshToken ?? null;
+  },
+
+  /**
+   * Record that Google refused this account's grant.
+   *
+   * Conditional on the stored code differing, so the mail and calendar syncs
+   * hitting the same dead grant every minute write, log and announce it once
+   * between them — the line per tick is what made the old silence tempting.
+   *
+   * And conditional on `grant` — the one that was refused — still being the
+   * stored one: a Reconnect that landed while the refused request was in
+   * flight has already replaced it, and its error is not the new grant's.
+   * Returns whether anything changed.
+   */
+  async recordAuthError(userId: string, code: AuthErrorCode, grant: string): Promise<boolean> {
+    const at = new Date();
+    // `OR … null` spelled out: Prisma's `not` leaves out NULL rows, which is
+    // every healthy one.
+    const { count } = await prisma.googleAuth.updateMany({
+      where: { userId, refreshToken: grant, OR: [{ authError: null }, { authError: { not: code } }] },
+      data: { authError: code, authErrorAt: at },
+    });
+    if (count === 0) return false;
+    console.warn(
+      code === TOKEN_UNREADABLE
+        ? `[GoogleAuth] The stored Google tokens for ${userId} cannot be decrypted (${code}) — its sync is stopped until it reconnects`
+        : `[GoogleAuth] Google refused the grant for ${userId} (${code}) — its sync is stopped until it reconnects`
+    );
+    wsEmitToUser(userId, 'google:auth', { authError: { code, at } satisfies GoogleAuthErrorState });
+    return true;
+  },
+
+  /** The grant works again: clear the error, once, and tell the account's open tabs. */
+  async clearAuthError(userId: string): Promise<boolean> {
+    const { count } = await prisma.googleAuth.updateMany({
+      where: { userId, authError: { not: null } },
+      data: { authError: null, authErrorAt: null },
+    });
+    if (count === 0) return false;
+    console.log(`[GoogleAuth] Google accepts the grant for ${userId} again`);
+    wsEmitToUser(userId, 'google:auth', { authError: null });
+    return true;
+  },
+
+  /**
+   * Whether a sync failed because Google refused the grant, or because the
+   * stored tokens cannot be read (`token_unreadable`) — recorded if so.
+   *
+   * For the schedulers and the manual syncs, which skip the account either way:
+   * this decides whether Settings hears about it, and lets the caller stay
+   * quiet instead of logging the same refusal every tick. Never throws — it
+   * runs inside their catch blocks.
+   *
+   * A 401 is checked rather than trusted. It is what an API answers once the
+   * user has revoked the grant, but google-auth-library does not refresh on a
+   * 401 when the token's expiry is known, so the refusal itself only surfaced
+   * at the next proactive refresh — up to fifty minutes later. Forcing one
+   * asks the token endpoint now, and records whatever it says.
+   *
+   * `grant` is `currentGrant` as it was when the failed work started. A
+   * refusal of a grant that has since been replaced is still the caller's to
+   * skip quietly, but is not recorded.
+   */
+  async noteAuthFailure(userId: string, err: unknown, grant: GrantSnapshot): Promise<boolean> {
+    const code = classifyAuthFailure(err);
+    try {
+      if (code) {
+        if (grant !== null) await googleAuthService.recordAuthError(userId, code, grant);
+        return true;
+      }
+      if (httpStatusOf(err) !== 401) return false;
+      await googleAuthService.getAuthenticatedClient(userId, true);
+      const row = await prisma.googleAuth.findUnique({ where: { userId }, select: { authError: true } });
+      return Boolean(row?.authError);
+    } catch (recordErr) {
+      console.error('[GoogleAuth] Could not record a refused grant:', (recordErr as Error)?.message ?? recordErr);
+      return code !== null;
+    }
   },
 
   /**
@@ -322,8 +472,21 @@ export const googleAuthService = {
     const auth = await prisma.googleAuth.findFirst({ where });
     if (!auth) return null;
 
-    const accessToken = decrypt(auth.accessToken);
-    const refreshToken = decrypt(auth.refreshToken);
+    let accessToken: string;
+    let refreshToken: string;
+    try {
+      accessToken = decrypt(auth.accessToken);
+      refreshToken = decrypt(auth.refreshToken);
+    } catch {
+      // A different TOKEN_ENCRYPTION_KEY, or a damaged row: nothing here can
+      // reach Google, and only a Reconnect writes tokens this key can read.
+      // Recorded once, like a refusal — the decryption error itself is
+      // dropped, so neither the row nor the key can reach a log line.
+      await googleAuthService.recordAuthError(auth.userId, TOKEN_UNREADABLE, auth.refreshToken).catch((recordErr) => {
+        console.error('[GoogleAuth] Could not record unreadable credentials:', recordErr?.message ?? recordErr);
+      });
+      throw tokenUnreadableError();
+    }
 
     const oauth2Client = createOAuth2Client();
     oauth2Client.setCredentials({
@@ -339,9 +502,12 @@ export const googleAuthService = {
         if (tokens.access_token) updateData.accessToken = encrypt(tokens.access_token);
         if (tokens.refresh_token) updateData.refreshToken = encrypt(tokens.refresh_token);
         if (tokens.expiry_date) updateData.tokenExpiry = new Date(tokens.expiry_date);
+        if (tokens.scope) updateData.scope = tokens.scope;
         if (Object.keys(updateData).length > 0) {
           await prisma.googleAuth.update({ where: { id: auth.id }, data: updateData });
         }
+        // A refresh Google answered is the grant working.
+        if (tokens.access_token) await googleAuthService.clearAuthError(auth.userId);
       } catch {
         // Best effort — don't crash on token persistence failure
       }
@@ -353,17 +519,40 @@ export const googleAuthService = {
     if (forceRefresh || expiresIn < 10 * 60 * 1000) {
       try {
         const { credentials } = await oauth2Client.refreshAccessToken();
+        // google-auth-library hands the refresh token it was given back in
+        // `credentials` whether or not Google rotated it. Re-encrypting that
+        // echo wrote new ciphertext (a fresh IV) on every refresh, so the
+        // stored grant appeared to change hourly — and `recordAuthError`
+        // compares it to know which grant a refusal belongs to.
+        const rotated =
+          credentials.refresh_token && credentials.refresh_token !== refreshToken
+            ? credentials.refresh_token
+            : null;
         await prisma.googleAuth.update({
           where: { id: auth.id },
           data: {
             accessToken: encrypt(credentials.access_token!),
             tokenExpiry: new Date(credentials.expiry_date!),
-            ...(credentials.refresh_token ? { refreshToken: encrypt(credentials.refresh_token) } : {}),
+            ...(rotated ? { refreshToken: encrypt(rotated) } : {}),
+            // The refresh response names the granted scopes too, which is what
+            // corrects a row written before they were stored.
+            ...(credentials.scope ? { scope: credentials.scope } : {}),
           },
         });
         oauth2Client.setCredentials(credentials);
-      } catch {
-        // If refresh fails, continue with existing token
+        await googleAuthService.clearAuthError(auth.userId);
+      } catch (err) {
+        // If refresh fails, continue with the existing token: a 5xx or a network
+        // blip must not cost the sync its run. A refusal is different — the
+        // grant is dead, and the account has to be told. Against the refresh
+        // token this call read: a Reconnect that landed during the round trip
+        // has already replaced it.
+        const code = classifyGoogleAuthError(err);
+        if (code) {
+          await googleAuthService.recordAuthError(auth.userId, code, auth.refreshToken).catch((recordErr) => {
+            console.error('[GoogleAuth] Could not record a refused grant:', recordErr?.message ?? recordErr);
+          });
+        }
       }
     }
 

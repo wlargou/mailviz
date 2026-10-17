@@ -1,4 +1,5 @@
 import * as cron from 'node-cron';
+import { runJob } from '../lib/lifecycle.js';
 import { terminalStatusNames, notTerminal } from '../utils/taskStatus.js';
 import { prisma } from '../lib/prisma.js';
 import { notificationService } from '../services/notificationService.js';
@@ -193,10 +194,10 @@ async function runNotificationCheck() {
 export function startNotificationScheduler() {
   // Every 5 minutes
   console.log('[NotificationScheduler] Starting notification check every 5 minutes');
-  task = cron.schedule('*/5 * * * *', runNotificationCheck);
+  task = cron.schedule('*/5 * * * *', () => runJob(runNotificationCheck));
 
   // Run initial check 10 seconds after startup
-  setTimeout(runNotificationCheck, 10_000);
+  setTimeout(() => void runJob(runNotificationCheck), 10_000);
 }
 
 export function stopNotificationScheduler() {

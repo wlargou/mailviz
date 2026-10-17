@@ -11,7 +11,21 @@ import {
   createEmail,
   createTask,
 } from '../test/factories.js';
+import {
+  INVALID_GRANT,
+  encryptedUnderAnotherKey,
+  tokenEndpointError,
+  tokenEndpointUnreachable,
+} from '../test/googleRefusal.js';
 import { googleAuthService, SCOPES } from './googleAuthService.js';
+
+// Only so the `google:auth` pushes can be watched; nothing here opens a socket.
+const ws = vi.hoisted(() => ({ wsEmitToUser: vi.fn() }));
+vi.mock('../websocket.js', () => ({ wsEmitToUser: ws.wsEmitToUser, wsEmit: vi.fn(), wsEmitToUsers: vi.fn() }));
+
+beforeEach(() => {
+  ws.wsEmitToUser.mockClear();
+});
 
 /**
  * Storing Google's tokens after the OAuth callback.
@@ -84,6 +98,51 @@ describe('googleAuthService.upsertGoogleAuth', () => {
 
     const bobAuth = await prisma.googleAuth.findUnique({ where: { userId: bob.id } });
     expect(decrypt(bobAuth!.refreshToken)).toBe('bob-refresh');
+  });
+
+  it('stores the scopes Google granted, not the ones it was asked for — REGRESSION', async () => {
+    const user = await createUser();
+    // The user unticked Gmail on the consent screen.
+    const granted = SCOPES.filter((s) => !s.endsWith('gmail.modify')).join(' ');
+
+    await googleAuthService.upsertGoogleAuth(user.id, { ...TOKENS, scope: granted });
+
+    // This used to write `SCOPES.join(' ')` whatever came back, so the
+    // connection read as complete and every Gmail call 403'd.
+    const auth = await prisma.googleAuth.findUnique({ where: { userId: user.id } });
+    expect(auth!.scope).toBe(granted);
+  });
+
+  it('clears a refused grant on a reconnect, which brings a new refresh token', async () => {
+    const user = await createUser();
+    await googleAuthService.upsertGoogleAuth(user.id, TOKENS);
+    await prisma.googleAuth.update({
+      where: { userId: user.id },
+      data: { authError: 'invalid_grant', authErrorAt: new Date() },
+    });
+
+    await googleAuthService.upsertGoogleAuth(user.id, { ...TOKENS, refreshToken: 'new-grant' });
+
+    const auth = await prisma.googleAuth.findUnique({ where: { userId: user.id } });
+    expect(auth!.authError).toBeNull();
+    expect(ws.wsEmitToUser).toHaveBeenCalledWith(user.id, 'google:auth', { authError: null });
+  });
+
+  it('keeps a refused grant through a login that brought no refresh token', async () => {
+    const user = await createUser();
+    await googleAuthService.upsertGoogleAuth(user.id, TOKENS);
+    await prisma.googleAuth.update({
+      where: { userId: user.id },
+      data: { authError: 'invalid_grant', authErrorAt: new Date() },
+    });
+
+    // An ordinary sign-in: a fresh access token, and the dead refresh token
+    // still stored. Clearing here would hide the warning until the next tick
+    // put it back, on every login.
+    await googleAuthService.upsertGoogleAuth(user.id, { accessToken: 'login-access', expiryDate: Date.now() + 3_600_000 });
+
+    const auth = await prisma.googleAuth.findUnique({ where: { userId: user.id } });
+    expect(auth!.authError).toBe('invalid_grant');
   });
 });
 
@@ -313,22 +372,157 @@ describe('googleAuthService.getAuthenticatedClient', () => {
     expect(decrypt(row!.accessToken)).toBe('forced-fresh');
   });
 
-  it('still returns a client when the grant has been revoked', async () => {
+  it('still returns a client when the grant has been revoked, and records why', async () => {
     const user = await createUser();
     const auth = await connectGoogle(user.id, { tokenExpiry: new Date(Date.now() + 5 * 60_000) });
+    const refused = await tokenEndpointError(400, INVALID_GRANT);
     stubRefresh(async () => {
-      throw Object.assign(new Error('invalid_grant'), { response: { status: 400 } });
+      throw refused;
     });
 
     // A user who removed the app in their Google account settings must not take
     // down the scheduler for everyone: the refresh failure is swallowed here and
-    // the resulting 401 is handled where the API call is made.
+    // the account is skipped where the API call fails.
     const client = await googleAuthService.getAuthenticatedClient(user.id);
     expect(client).not.toBeNull();
 
     const row = await prisma.googleAuth.findUnique({ where: { id: auth.id } });
     expect(decrypt(row!.accessToken)).toBe('stored-access');
     expect(decrypt(row!.refreshToken)).toBe('stored-refresh');
+    // Swallowed, but no longer silently: this is what Settings reads. Before,
+    // the account showed Connected for as long as anyone cared to look.
+    expect(row!.authError).toBe('invalid_grant');
+    expect(row!.authErrorAt).toBeInstanceOf(Date);
+  });
+
+  it('does not record the refusal when a Reconnect lands during the refresh', async () => {
+    const user = await createUser();
+    await connectGoogle(user.id, { tokenExpiry: new Date(Date.now() + 5 * 60_000) });
+    const refused = await tokenEndpointError(400, INVALID_GRANT);
+    stubRefresh(async () => {
+      // The consent callback stores the new grant while Google is still
+      // answering for the old one.
+      await googleAuthService.upsertGoogleAuth(user.id, { ...TOKENS, refreshToken: 'new-grant' });
+      throw refused;
+    });
+
+    await googleAuthService.getAuthenticatedClient(user.id);
+
+    const row = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: user.id } });
+    expect(decrypt(row.refreshToken)).toBe('new-grant');
+    expect(row.authError).toBeNull();
+  });
+
+  it('leaves the stored refresh token as stored when the refresh only echoes it back', async () => {
+    const user = await createUser();
+    const auth = await connectGoogle(user.id, { tokenExpiry: new Date(Date.now() + 5 * 60_000) });
+    // What google-auth-library really returns: the refresh token it was given,
+    // whether or not Google rotated it.
+    stubRefresh(async () => ({
+      credentials: { access_token: 'fresh-access', refresh_token: 'stored-refresh', expiry_date: Date.now() + HOUR },
+    }));
+
+    await googleAuthService.getAuthenticatedClient(user.id);
+
+    // Re-encrypted, the same token is new ciphertext every hour, and a refusal
+    // compared against the grant a sync started with would be dropped as
+    // belonging to a grant that no longer exists.
+    const row = await prisma.googleAuth.findUniqueOrThrow({ where: { id: auth.id } });
+    expect(decrypt(row.accessToken)).toBe('fresh-access');
+    expect(row.refreshToken).toBe(auth.refreshToken);
+  });
+
+  it.each([
+    ['a 500', () => tokenEndpointError(500, { error: 'backend_error' })],
+    ['a 429', () => tokenEndpointError(429, { error: 'rate_limit_exceeded' })],
+    ['a dropped connection', () => tokenEndpointUnreachable()],
+  ])('does not mark the grant dead for %s', async (_label, failure) => {
+    const user = await createUser();
+    const auth = await connectGoogle(user.id, { tokenExpiry: new Date(Date.now() + 5 * 60_000) });
+    const err = await failure();
+    stubRefresh(async () => {
+      throw err;
+    });
+
+    await googleAuthService.getAuthenticatedClient(user.id);
+
+    // Google having a bad minute is not the user's grant dying. Recording it
+    // would tell a working account to reconnect, every time.
+    const row = await prisma.googleAuth.findUnique({ where: { id: auth.id } });
+    expect(row!.authError).toBeNull();
+    expect(ws.wsEmitToUser).not.toHaveBeenCalled();
+  });
+
+  it('clears a recorded refusal once a refresh succeeds', async () => {
+    const user = await createUser();
+    const auth = await connectGoogle(user.id, { tokenExpiry: new Date(Date.now() + 5 * 60_000) });
+    await prisma.googleAuth.update({
+      where: { id: auth.id },
+      data: { authError: 'invalid_grant', authErrorAt: new Date('2026-10-17T08:00:00Z') },
+    });
+    stubRefresh(async () => ({
+      credentials: { access_token: 'fresh-access', expiry_date: Date.now() + HOUR },
+    }));
+
+    await googleAuthService.getAuthenticatedClient(user.id);
+
+    // Google answered, so the grant works: leaving the error in place would
+    // keep the warning up after the user fixed it.
+    const row = await prisma.googleAuth.findUnique({ where: { id: auth.id } });
+    expect(row!.authError).toBeNull();
+    expect(row!.authErrorAt).toBeNull();
+    expect(ws.wsEmitToUser).toHaveBeenCalledWith(user.id, 'google:auth', { authError: null });
+  });
+
+  it('records the refusal on the calling account only', async () => {
+    const { alice, bob } = await createTwoUsers();
+    await connectGoogle(alice.id, { tokenExpiry: new Date(Date.now() + 5 * 60_000) });
+    const bobAuth = await connectGoogle(bob.id);
+    const refused = await tokenEndpointError(400, INVALID_GRANT);
+    stubRefresh(async () => {
+      throw refused;
+    });
+
+    await googleAuthService.getAuthenticatedClient(alice.id);
+
+    const bobRow = await prisma.googleAuth.findUnique({ where: { id: bobAuth.id } });
+    expect(bobRow!.authError).toBeNull();
+    expect(ws.wsEmitToUser).not.toHaveBeenCalledWith(bob.id, expect.anything(), expect.anything());
+  });
+
+  it('clears the calling account only', async () => {
+    const { alice, bob } = await createTwoUsers();
+    await connectGoogle(alice.id, { tokenExpiry: new Date(Date.now() + 5 * 60_000) });
+    const bobAuth = await connectGoogle(bob.id);
+    await prisma.googleAuth.updateMany({
+      where: { userId: { in: [alice.id, bob.id] } },
+      data: { authError: 'invalid_grant', authErrorAt: new Date() },
+    });
+    stubRefresh(async () => ({
+      credentials: { access_token: 'alice-fresh', expiry_date: Date.now() + HOUR },
+    }));
+
+    await googleAuthService.getAuthenticatedClient(alice.id);
+
+    // Bob's grant is still dead; Alice's refresh says nothing about it.
+    const bobRow = await prisma.googleAuth.findUnique({ where: { id: bobAuth.id } });
+    expect(bobRow!.authError).toBe('invalid_grant');
+  });
+
+  it('stores the scopes a refresh reports, correcting a row from before they were kept', async () => {
+    const user = await createUser();
+    const auth = await connectGoogle(user.id, { tokenExpiry: new Date(Date.now() + 5 * 60_000) });
+    // What every row written before 1.29.3 holds: the list the app asked for.
+    await prisma.googleAuth.update({ where: { id: auth.id }, data: { scope: SCOPES.join(' ') } });
+    const granted = SCOPES.filter((s) => !s.endsWith('gmail.modify')).join(' ');
+    stubRefresh(async () => ({
+      credentials: { access_token: 'fresh-access', expiry_date: Date.now() + HOUR, scope: granted },
+    }));
+
+    await googleAuthService.getAuthenticatedClient(user.id);
+
+    const row = await prisma.googleAuth.findUnique({ where: { id: auth.id } });
+    expect(row!.scope).toBe(granted);
   });
 
   it('persists tokens Google hands back mid-operation', async () => {
@@ -345,6 +539,275 @@ describe('googleAuthService.getAuthenticatedClient', () => {
       const row = await prisma.googleAuth.findUnique({ where: { id: auth.id } });
       expect(decrypt(row!.accessToken)).toBe('mid-flight');
     });
+  });
+
+  it('clears a recorded refusal when Google renews a token mid-operation', async () => {
+    const user = await createUser();
+    const auth = await connectGoogle(user.id, { tokenExpiry: new Date(Date.now() + HOUR) });
+    await prisma.googleAuth.update({
+      where: { id: auth.id },
+      data: { authError: 'invalid_grant', authErrorAt: new Date() },
+    });
+    const client = await googleAuthService.getAuthenticatedClient(user.id);
+
+    // The library refreshing on its own is as much a working grant as the
+    // proactive refresh above, and the only one a long sync goes through.
+    client!.emit('tokens', { access_token: 'mid-flight', expiry_date: Date.now() + HOUR });
+
+    await vi.waitFor(async () => {
+      const row = await prisma.googleAuth.findUnique({ where: { id: auth.id } });
+      expect(row!.authError).toBeNull();
+    });
+  });
+});
+
+describe('googleAuthService.recordAuthError', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('logs and announces a refusal once, however often it is seen', async () => {
+    const user = await createUser();
+    const auth = await connectGoogle(user.id);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    expect(await googleAuthService.recordAuthError(user.id, 'invalid_grant', auth.refreshToken)).toBe(true);
+    const first = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: user.id } });
+    expect(await googleAuthService.recordAuthError(user.id, 'invalid_grant', auth.refreshToken)).toBe(false);
+
+    // Every tick of two schedulers sees the same dead grant. One line, one
+    // push, and the time it started — not the time it was last seen.
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(ws.wsEmitToUser).toHaveBeenCalledTimes(1);
+    expect(ws.wsEmitToUser).toHaveBeenCalledWith(user.id, 'google:auth', {
+      authError: { code: 'invalid_grant', at: first.authErrorAt },
+    });
+    const second = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: user.id } });
+    expect(second.authErrorAt).toEqual(first.authErrorAt);
+  });
+
+  it('records a different refusal as a change', async () => {
+    const user = await createUser();
+    const auth = await connectGoogle(user.id);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await googleAuthService.recordAuthError(user.id, 'invalid_grant', auth.refreshToken);
+    expect(await googleAuthService.recordAuthError(user.id, 'unauthorized_client', auth.refreshToken)).toBe(true);
+
+    const row = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: user.id } });
+    expect(row.authError).toBe('unauthorized_client');
+  });
+
+  it('does not record a refusal of a grant a Reconnect has since replaced — REGRESSION', async () => {
+    const user = await createUser();
+    await connectGoogle(user.id);
+    // What a sync read when it started: the old grant, about to be refused.
+    const refusedGrant = await googleAuthService.currentGrant(user.id);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    // The user reconnects while that sync's request is in flight.
+    await googleAuthService.upsertGoogleAuth(user.id, { ...TOKENS, refreshToken: 'new-grant' });
+    ws.wsEmitToUser.mockClear();
+
+    // Unconditional, this put the error back over the new grant, and nothing
+    // that succeeds clears it until the next token refresh — "Sync has
+    // stopped" for most of an hour, just after the user fixed it.
+    expect(await googleAuthService.recordAuthError(user.id, 'invalid_grant', refusedGrant!)).toBe(false);
+
+    const row = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: user.id } });
+    expect(row.authError).toBeNull();
+    expect(warn).not.toHaveBeenCalled();
+    expect(ws.wsEmitToUser).not.toHaveBeenCalled();
+  });
+});
+
+describe('googleAuthService.currentGrant', () => {
+  it('is the caller’s stored refresh token, as stored, and null without a connection', async () => {
+    const { alice, bob } = await createTwoUsers();
+    const aliceAuth = await connectGoogle(alice.id, { refreshToken: 'alice-refresh' });
+    await connectGoogle(bob.id, { refreshToken: 'bob-refresh' });
+    const nobody = await createUser();
+
+    // Ciphertext, compared with the column — never decrypted to be compared.
+    expect(await googleAuthService.currentGrant(alice.id)).toBe(aliceAuth.refreshToken);
+    expect(await googleAuthService.currentGrant(nobody.id)).toBeNull();
+  });
+});
+
+describe('googleAuthService.noteAuthFailure', () => {
+  beforeEach(() => {
+    stubRefresh(async () => {
+      throw new Error('refreshAccessToken called without a stub');
+    });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /** What Gmail answers once the grant behind an unexpired access token is revoked. */
+  const revokedAccessToken = () =>
+    Object.assign(new Error('Request had invalid authentication credentials.'), {
+      status: 401,
+      response: { status: 401, data: { error: { code: 401, status: 'UNAUTHENTICATED' } } },
+    });
+
+  it('records a refusal and reports it handled', async () => {
+    const user = await createUser();
+    const { refreshToken: grant } = await connectGoogle(user.id);
+
+    expect(await googleAuthService.noteAuthFailure(user.id, await tokenEndpointError(400, INVALID_GRANT), grant)).toBe(true);
+
+    const row = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: user.id } });
+    expect(row.authError).toBe('invalid_grant');
+  });
+
+  it('asks the token endpoint about a 401, and records its refusal', async () => {
+    const user = await createUser();
+    const { refreshToken: grant } = await connectGoogle(user.id);
+    const refused = await tokenEndpointError(400, INVALID_GRANT);
+    const refresh = vi.spyOn(google.auth.OAuth2.prototype, 'refreshAccessToken').mockImplementation(async () => {
+      throw refused;
+    });
+
+    // google-auth-library does not refresh on a 401 when the expiry is known,
+    // so without the probe a revoked grant surfaced only at the next proactive
+    // refresh — up to fifty minutes of mail not arriving with Settings content.
+    expect(await googleAuthService.noteAuthFailure(user.id, revokedAccessToken(), grant)).toBe(true);
+
+    expect(refresh).toHaveBeenCalledTimes(1);
+    const row = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: user.id } });
+    expect(row.authError).toBe('invalid_grant');
+  });
+
+  it('leaves a 401 to the caller when the grant refreshes fine', async () => {
+    const user = await createUser();
+    const { refreshToken: grant } = await connectGoogle(user.id);
+    stubRefresh(async () => ({
+      credentials: { access_token: 'fresh-access', expiry_date: Date.now() + HOUR },
+    }));
+
+    expect(await googleAuthService.noteAuthFailure(user.id, revokedAccessToken(), grant)).toBe(false);
+
+    const row = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: user.id } });
+    expect(row.authError).toBeNull();
+  });
+
+  it('does not probe, or record, any other failure', async () => {
+    const user = await createUser();
+    const { refreshToken: grant } = await connectGoogle(user.id);
+    const refresh = vi.spyOn(google.auth.OAuth2.prototype, 'refreshAccessToken');
+
+    expect(await googleAuthService.noteAuthFailure(user.id, await tokenEndpointError(500, { error: 'x' }), grant)).toBe(false);
+    expect(await googleAuthService.noteAuthFailure(user.id, await tokenEndpointUnreachable(), grant)).toBe(false);
+
+    expect(refresh).not.toHaveBeenCalled();
+    const row = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: user.id } });
+    expect(row.authError).toBeNull();
+  });
+});
+
+/**
+ * Stored tokens this process cannot decrypt — what a move to a host with a
+ * different `TOKEN_ENCRYPTION_KEY` does to every row.
+ *
+ * Before, `decrypt` threw on every call: a crypto error in the log each minute
+ * per account, a 500 from every Google action, and Settings saying Connected.
+ */
+describe('googleAuthService — stored tokens that cannot be read', () => {
+  const UNREADABLE_MESSAGE = 'Stored Google credentials can’t be read. Reconnect Google to restore sync.';
+
+  beforeEach(() => {
+    stubRefresh(async () => {
+      throw new Error('refreshAccessToken called without a stub');
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  async function connectUnderAnotherKey(userId: string) {
+    return prisma.googleAuth.create({
+      data: {
+        userId,
+        accessToken: encryptedUnderAnotherKey('old-host-access'),
+        refreshToken: encryptedUnderAnotherKey('old-host-refresh'),
+        tokenExpiry: new Date(Date.now() + HOUR),
+        email: `google-${userId}@example.com`,
+      },
+    });
+  }
+
+  it('records token_unreadable once, and refuses with a message that carries no secret', async () => {
+    const user = await createUser();
+    const auth = await connectUnderAnotherKey(user.id);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const first = await googleAuthService.getAuthenticatedClient(user.id).catch((e: unknown) => e);
+    const second = await googleAuthService.getAuthenticatedClient(user.id).catch((e: unknown) => e);
+
+    // A 400 that says what to do, as every route that needs Google answers.
+    for (const err of [first, second]) {
+      expect(err).toBeInstanceOf(Error);
+      expect(err).toMatchObject({ status: 400, code: 'GOOGLE_TOKEN_UNREADABLE', message: UNREADABLE_MESSAGE });
+    }
+    const row = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: user.id } });
+    expect(row.authError).toBe('token_unreadable');
+    expect(row.authErrorAt).toBeInstanceOf(Date);
+    expect(await googleAuthService.getStatus(user.id)).toMatchObject({
+      needsReauth: true,
+      authError: { code: 'token_unreadable' },
+    });
+
+    // One line for the change, however often it is met, and one push.
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(error).not.toHaveBeenCalled();
+    expect(ws.wsEmitToUser).toHaveBeenCalledTimes(1);
+    expect(ws.wsEmitToUser).toHaveBeenCalledWith(user.id, 'google:auth', {
+      authError: { code: 'token_unreadable', at: row.authErrorAt },
+    });
+    const logged = warn.mock.calls.flat().map(String).join('\n');
+    expect(logged).toContain('token_unreadable');
+    // Not Google's doing, and not to be blamed on it.
+    expect(logged).not.toContain('Google refused');
+    for (const secret of [
+      auth.accessToken,
+      auth.refreshToken,
+      'old-host-access',
+      'old-host-refresh',
+      process.env.TOKEN_ENCRYPTION_KEY!,
+    ]) {
+      expect(logged).not.toContain(secret);
+      expect((first as Error).message).not.toContain(secret);
+    }
+  });
+
+  it('is a failure the syncs skip quietly', async () => {
+    const user = await createUser();
+    const { refreshToken: grant } = await connectUnderAnotherKey(user.id);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const err = await googleAuthService.getAuthenticatedClient(user.id).catch((e: unknown) => e);
+
+    expect(await googleAuthService.noteAuthFailure(user.id, err, grant)).toBe(true);
+  });
+
+  it('is cleared by a Reconnect, whose tokens this key can read', async () => {
+    const user = await createUser();
+    await connectUnderAnotherKey(user.id);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    await googleAuthService.getAuthenticatedClient(user.id).catch(() => {});
+
+    // Forced consent: Google sends both tokens again, written under this key.
+    await googleAuthService.upsertGoogleAuth(user.id, { ...TOKENS, refreshToken: 'new-grant' });
+
+    expect(await googleAuthService.getAuthenticatedClient(user.id)).not.toBeNull();
+    const row = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: user.id } });
+    expect(row.authError).toBeNull();
+    expect(ws.wsEmitToUser).toHaveBeenLastCalledWith(user.id, 'google:auth', { authError: null });
   });
 });
 
@@ -532,6 +995,94 @@ describe('googleAuthService.getStatus', () => {
 
     // Without this the app looks connected and every Gmail call 403s.
     expect(status.needsReauth).toBe(true);
+  });
+
+  it('flags a grant whose scopes lack gmail.modify', async () => {
+    const user = await createUser();
+    const auth = await createGoogleAuth(user.id);
+    await prisma.googleAuth.update({
+      where: { id: auth.id },
+      data: { scope: SCOPES.filter((s) => !s.endsWith('gmail.modify')).join(' ') },
+    });
+
+    expect((await googleAuthService.getStatus(user.id)).needsReauth).toBe(true);
+  });
+
+  it('does not take a narrower scope for the one required', async () => {
+    const user = await createUser();
+    const auth = await createGoogleAuth(user.id);
+    // `calendar.readonly` contains `calendar` as a string. The old substring
+    // check passed it; a read-only grant cannot write an event.
+    await prisma.googleAuth.update({
+      where: { id: auth.id },
+      data: {
+        scope: SCOPES.map((s) => (s.endsWith('/calendar') ? `${s}.readonly` : s)).join(' '),
+      },
+    });
+
+    expect((await googleAuthService.getStatus(user.id)).needsReauth).toBe(true);
+  });
+
+  it('accepts the short names Google may answer with for email and profile', async () => {
+    const user = await createUser();
+    const auth = await createGoogleAuth(user.id);
+    await prisma.googleAuth.update({
+      where: { id: auth.id },
+      data: {
+        scope: [
+          'openid',
+          'email',
+          'profile',
+          'https://www.googleapis.com/auth/calendar',
+          'https://www.googleapis.com/auth/gmail.modify',
+        ].join(' '),
+      },
+    });
+
+    expect((await googleAuthService.getStatus(user.id)).needsReauth).toBe(false);
+  });
+
+  it('does not flag a row written before scopes were stored', async () => {
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+
+    // A null scope is how every early connection reads. Treating it as
+    // "nothing granted" would put every one of them behind a reconnect banner.
+    const status = await googleAuthService.getStatus(user.id);
+    expect(status.needsReauth).toBe(false);
+    expect(status.authError).toBeNull();
+  });
+
+  it('reports a refused grant, and asks for a reconnect even with every scope', async () => {
+    const user = await createUser();
+    const auth = await createGoogleAuth(user.id);
+    const at = new Date('2026-10-17T08:00:00.000Z');
+    await prisma.googleAuth.update({
+      where: { id: auth.id },
+      data: { scope: SCOPES.join(' '), authError: 'invalid_grant', authErrorAt: at },
+    });
+
+    const status = await googleAuthService.getStatus(user.id);
+
+    // The state this whole change exists for: the scopes are all there, the
+    // grant is dead, and the page used to say Connected.
+    expect(status.needsReauth).toBe(true);
+    expect(status.authError).toEqual({ code: 'invalid_grant', at });
+  });
+
+  it('reports only the caller’s refused grant', async () => {
+    const { alice, bob } = await createTwoUsers();
+    await createGoogleAuth(alice.id);
+    const bobAuth = await createGoogleAuth(bob.id);
+    await prisma.googleAuth.update({
+      where: { id: bobAuth.id },
+      data: { authError: 'invalid_grant', authErrorAt: new Date() },
+    });
+
+    const status = await googleAuthService.getStatus(alice.id);
+
+    expect(status.authError).toBeNull();
+    expect(status.needsReauth).toBe(false);
   });
 });
 

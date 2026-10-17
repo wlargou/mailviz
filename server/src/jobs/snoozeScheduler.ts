@@ -1,4 +1,5 @@
 import * as cron from 'node-cron';
+import { runJob } from '../lib/lifecycle.js';
 import { snoozeService } from '../services/snoozeService.js';
 
 /**
@@ -44,11 +45,11 @@ async function runReminderCheck() {
 
 export function startSnoozeScheduler() {
   console.log('[Snooze] Starting reminder check every 30s');
-  task = cron.schedule('*/30 * * * * *', runReminderCheck);
+  task = cron.schedule('*/30 * * * * *', () => runJob(runReminderCheck));
 
   // Catch anything that came due while the process was down, but not in the
   // same breath as startup — the email sync's own initial pass fires at 5s.
-  setTimeout(runReminderCheck, 15_000);
+  setTimeout(() => void runJob(runReminderCheck), 15_000);
 }
 
 export function stopSnoozeScheduler() {

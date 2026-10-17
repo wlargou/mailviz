@@ -79,6 +79,11 @@ export interface GoogleStatus {
   lastSyncAt?: string;
   lastMailSyncAt?: string;
   needsReauth?: boolean;
+  /**
+   * Why Google refused the grant, and since when — null while it works. Set by
+   * the server's syncs and token refresh; while set, nothing syncs.
+   */
+  authError?: { code: string; at: string | null } | null;
 }
 
 export type CalendarViewMode = 'month' | 'week' | 'day';

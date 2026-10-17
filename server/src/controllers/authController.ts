@@ -10,6 +10,7 @@ import { env } from '../config/env.js';
 import { signAccessToken, signRefreshToken } from '../utils/jwt.js';
 import { setAuthCookies, clearAuthCookies } from '../utils/cookies.js';
 import { prisma } from '../lib/prisma.js';
+import { runJob } from '../lib/lifecycle.js';
 
 export const authController = {
   // ── Login flow ──
@@ -182,12 +183,18 @@ export const authController = {
         // Deliberately not awaited: a first sync can run for hours, and the
         // browser is waiting on this redirect. The runner's per-account guard
         // makes a concurrent tick a no-op, so nothing races.
-        void syncAccountNow(user.id).catch((err) => {
-          console.warn('[Auth] Post-login mail sync failed:', err?.message || err);
-        });
-        void syncCalendarNow(user.id).catch((err) => {
-          console.warn('[Auth] Post-login calendar sync failed:', err?.message || err);
-        });
+        //
+        // Background work like a tick, so it obeys the same switch: a process
+        // with RUN_SCHEDULERS=false (staging on a copy of production) must not
+        // sync either. `runJob` lets shutdown wait for it.
+        if (env.RUN_SCHEDULERS) {
+          void runJob(() => syncAccountNow(user.id)).catch((err) => {
+            console.warn('[Auth] Post-login mail sync failed:', err?.message || err);
+          });
+          void runJob(() => syncCalendarNow(user.id)).catch((err) => {
+            console.warn('[Auth] Post-login calendar sync failed:', err?.message || err);
+          });
+        }
 
         // Issue JWT cookies
         const accessToken = signAccessToken(user.id);
