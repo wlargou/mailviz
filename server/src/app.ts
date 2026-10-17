@@ -108,10 +108,17 @@ app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev'));
  * looks the account up, creates or updates the user, and mints the session
  * cookies. It is also where the ALLOWED_EMAILS check runs, so an unlimited
  * callback is an unlimited oracle for which addresses are on the whitelist.
+ *
+ * 60 per 15 minutes, up from 20, because the bucket may be shared. Behind a
+ * cluster's load balancer the client address can be the balancer's for every
+ * request (see config/trustedProxies.ts), and then this one bucket is everyone's:
+ * at 20, two people signing in and out while a session misbehaves could lock
+ * both out for a quarter of an hour. 60 still holds the callback, and the
+ * whitelist oracle in it, to four attempts a minute.
  */
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: 60,
   message: { error: { code: 'TOO_MANY_REQUESTS', message: 'Too many login attempts' } },
 });
 
