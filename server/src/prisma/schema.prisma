@@ -290,6 +290,7 @@ model Customer {
   emails         Email[]
   deals          Deal[]
   rfps            Rfp[]
+  clientReferences ClientReference[]
 
   @@unique([userId, domain])
   @@index([categoryId])
@@ -416,6 +417,7 @@ model User {
   rfpVerifications     RfpItemVerification[]
   rfpItemsAssigned     RfpFolderItem[]        @relation("RfpItemAssignee")
   rfpThreadsLinked     RfpThread[]            @relation("RfpThreadsLinked")
+  clientReferences     ClientReference[]
 
   createdAt DateTime    @default(now()) @map("created_at")
   updatedAt DateTime    @updatedAt @map("updated_at")
@@ -1228,4 +1230,134 @@ model RfpThread {
   @@unique([rfpId, threadId])
   @@index([threadId])
   @@map("rfp_threads")
+}
+
+// ─── CLIENT REFERENCES ────────────────────────────
+
+/// A customer's attestation that PowerM did a project for them: the proof a
+/// tender asks for ("références similaires"), one row per document.
+///
+/// Not called `references`: REFERENCES is an SQL keyword, and every raw query
+/// against the table would have to quote it.
+///
+/// Everything is stored as the document says it, plus a few columns derived
+/// from that on every write — `amountHt`, `effectiveDate`, `technologyTags`,
+/// `prestationTags` — which the service recomputes and nothing else writes
+/// (see `services/clientReferenceService.ts`). They exist so the register can
+/// filter and sort on them in SQL.
+model ClientReference {
+  id     String @id @default(uuid())
+  userId String @map("user_id")
+
+  /// ATTESTATION_REFERENCE, ATTESTATION_EXECUTION, FICHE_PROJET — an
+  /// unsigned project sheet PowerM wrote itself, kept so the project can be
+  /// found but never to be mistaken for the customer's word — or CONTRAT, the
+  /// signed contract or avenant: proof of the award, not of the delivery.
+  documentType String @default("ATTESTATION_REFERENCE") @map("document_type") @db.VarChar(30)
+  /// COMPLETED or IN_PROGRESS — several letters attest a run that is still going.
+  workStatus   String @default("COMPLETED") @map("work_status") @db.VarChar(20)
+
+  /// The issuer as the letter names it. Always kept, linked company or not:
+  /// the letter is the proof, and its wording is what goes into a bid.
+  customerName String  @map("customer_name") @db.VarChar(500)
+  customerId   String? @map("customer_id")
+  city         String? @db.VarChar(100)
+
+  projectName       String? @map("project_name") @db.Text
+  /// The market, contract or purchase-order number(s).
+  projectReference  String? @map("project_reference") @db.VarChar(500)
+  /// The letter's own outgoing number, when it has one.
+  attestationNumber String? @map("attestation_number") @db.VarChar(255)
+
+  amount      Decimal? @db.Decimal(16, 2)
+  currency    String   @default("MAD") @db.VarChar(3)
+  /// HT or TTC as the letter states it; null when it says neither.
+  amountType  String?  @map("amount_type") @db.VarChar(3)
+  /// What the amount covers: a project total, a turnover over a period, a lot,
+  /// a consortium's total… The same column can mean very different things.
+  amountScope String?  @map("amount_scope") @db.VarChar(255)
+  /// Derived: what amount filters and sorts compare on. The amount itself when
+  /// HT, the amount over 1.2 when TTC, and the amount as written when the
+  /// letter states neither — compared as written rather than dropped from
+  /// every amount search.
+  amountHt    Decimal? @map("amount_ht") @db.Decimal(16, 2)
+
+  /// SATISFACTION, GOOD_EXECUTION (conformity only) or NONE.
+  appreciation      String  @default("NONE") @db.VarChar(20)
+  appreciationQuote String? @map("appreciation_quote") @db.Text
+
+  /// The first day of the period the letter gives, at the precision it gives
+  /// it: "2025" is 2025-01-01 with YEAR, "07/2025" 2025-07-01 with MONTH.
+  projectStart          DateTime? @map("project_start") @db.Date
+  projectStartPrecision String?   @map("project_start_precision") @db.VarChar(5)
+  projectEnd            DateTime? @map("project_end") @db.Date
+  projectEndPrecision   String?   @map("project_end_precision") @db.VarChar(5)
+  /// When the customer signed. Never the 2026 certified-copy stamp's date.
+  signedAt              DateTime? @map("signed_at") @db.Date
+  signedPlace           String?   @map("signed_place") @db.VarChar(100)
+  /// Derived: the last day of the project's end (or, without one, its start)
+  /// period, else the signature date. "In the last N years" is measured on it.
+  effectiveDate         DateTime? @map("effective_date") @db.Date
+
+  /// As written, one product per entry.
+  technologies       String[] @default([])
+  /// Derived from `technologies` and the project name by the taxonomy in
+  /// `utils/referenceTaxonomy.ts`.
+  technologyTags     String[] @default([]) @map("technology_tags")
+  prestations        String[] @default([])
+  prestationTags     String[] @default([]) @map("prestation_tags")
+  /// The vendors PowerM partnered with on it — IBM, Red Hat… The "Partenaire"
+  /// column of the references sheet tenders ask for.
+  partners           String[] @default([])
+  /// Companies credited together with Power Maroc (a groupement). Such a
+  /// reference still counts, but it must say so.
+  consortiumPartners String[] @default([]) @map("consortium_partners")
+
+  /// Everything else the document says: lots, sizing, sites, contract and
+  /// reception dates, the customer's legal ids.
+  details String? @db.Text
+
+  /// Set by the import: the fields a reader could not read with confidence.
+  needsReview Boolean @default(false) @map("needs_review")
+  reviewNotes String? @map("review_notes") @db.Text
+
+  /// The document — one file, replaced rather than versioned. On the same
+  /// volume as the tender documents (`services/rfpStorage.ts`).
+  documentStorageKey String?   @map("document_storage_key") @db.VarChar(500)
+  documentFilename   String?   @map("document_filename") @db.VarChar(500)
+  documentMimeType   String?   @map("document_mime_type") @db.VarChar(255)
+  documentSize       Int?      @map("document_size")
+  documentUploadedAt DateTime? @map("document_uploaded_at")
+
+  /// Where an imported row came from ("attestations-2026:p001-003"), so a
+  /// re-run of the import updates rather than duplicates. Null when typed in.
+  importKey String? @map("import_key") @db.VarChar(100)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user        User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  customer    Customer?                  @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  signatories ClientReferenceSignatory[]
+
+  @@unique([userId, importKey])
+  @@index([userId, effectiveDate])
+  @@index([userId, amountHt])
+  @@index([customerId])
+  @@map("client_references")
+}
+
+/// Who signed a reference for the customer, in the order the letter lists
+/// them. A name can be unreadable under a stamp while the role is not.
+model ClientReferenceSignatory {
+  id          String  @id @default(uuid())
+  referenceId String  @map("reference_id")
+  name        String? @db.VarChar(255)
+  role        String? @db.VarChar(500)
+  position    Int     @default(0)
+
+  reference ClientReference @relation(fields: [referenceId], references: [id], onDelete: Cascade)
+
+  @@index([referenceId])
+  @@map("client_reference_signatories")
 }

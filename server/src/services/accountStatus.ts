@@ -8,10 +8,10 @@ export type CompanyStatus = (typeof COMPANY_STATUSES)[number];
  * Promote senders that have become accounts.
  *
  * A company is an account once there is a relationship: marked by hand (VIP,
- * a category), your own organisation, work against it (a task, deal or
- * tender), a meeting with it, or someone there you have written to. Only
- * SENDER rows move — an ignored sender stays ignored until the user says
- * otherwise, which is the point of ignoring it.
+ * a category), your own organisation, work against it (a task, deal, tender
+ * or a reference it signed), a meeting with it, or someone there you have
+ * written to. Only SENDER rows move — an ignored sender stays ignored until
+ * the user says otherwise, which is the point of ignoring it.
  *
  * The same rule the migration applied once; re-run after each sync, since
  * that is when new meetings and new replies arrive.
@@ -31,6 +31,7 @@ export async function promoteSenders(userId: string, customerIds?: string[]): Pr
         OR EXISTS (SELECT 1 FROM "tasks" t WHERE t."customer_id" = c."id")
         OR EXISTS (SELECT 1 FROM "deals" d WHERE d."customer_id" = c."id")
         OR EXISTS (SELECT 1 FROM "rfps" r WHERE r."customer_id" = c."id")
+        OR EXISTS (SELECT 1 FROM "client_references" cr WHERE cr."customer_id" = c."id")
         OR EXISTS (SELECT 1 FROM "calendar_event_customers" e WHERE e."customer_id" = c."id")
         OR EXISTS (
           SELECT 1 FROM "contacts" ct

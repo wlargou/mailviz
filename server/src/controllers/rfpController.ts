@@ -1,9 +1,11 @@
 import fs from 'node:fs';
+import { pipeline } from 'node:stream';
 import { Response, NextFunction } from 'express';
 import type { Req } from '../types/http.js';
 import { rfpService } from '../services/rfpService.js';
 import { resolveStoragePath } from '../services/rfpStorage.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { contentDisposition } from '../utils/contentDisposition.js';
 import { rfpDocumentKindSchema } from '../validators/rfpValidator.js';
 
 export const rfpController = {
@@ -81,13 +83,15 @@ export const rfpController = {
         // restore that missed the disk. Say so rather than streaming nothing.
         throw new AppError(410, 'RFP_DOCUMENT_GONE', 'The stored file is missing');
       }
-      const disposition = req.query.inline === 'true' ? 'inline' : 'attachment';
-      // Same sanitising as the email attachments: a quote or a newline in the
-      // filename would otherwise split the header.
-      const safeFilename = doc.filename.replace(/["\r\n\\]/g, '_');
       res.setHeader('Content-Type', doc.mimeType);
-      res.setHeader('Content-Disposition', `${disposition}; filename="${safeFilename}"`);
-      fs.createReadStream(full).pipe(res);
+      res.setHeader('Content-Disposition', contentDisposition(req.query.inline === 'true' ? 'inline' : 'attachment', doc.filename));
+      // pipeline, not pipe: a read error must reach the error handler rather
+      // than crash the process with an unhandled 'error' event.
+      pipeline(fs.createReadStream(full), res, (err) => {
+        if (!err) return;
+        if (!res.headersSent) next(err);
+        else res.destroy(err);
+      });
     } catch (err) {
       next(err);
     }

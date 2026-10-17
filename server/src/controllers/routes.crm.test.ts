@@ -41,7 +41,7 @@ import {
  * not silently turned into an empty list.
  */
 
-type HttpMethod = 'get' | 'post' | 'patch' | 'delete';
+type HttpMethod = 'get' | 'post' | 'patch' | 'delete' | 'put';
 
 interface ErrorBody {
   error: { code: string; message: string };
@@ -121,6 +121,8 @@ function call(method: HttpMethod, path: string): Test {
       return agent.patch(path);
     case 'delete':
       return agent.delete(path);
+    case 'put':
+      return agent.put(path);
   }
 }
 
@@ -222,6 +224,16 @@ const PROTECTED_ROUTES: Array<[HttpMethod, string]> = [
   ['post', `/api/v1/rfps/${PLACEHOLDER_ID}/documents`],
   ['get', `/api/v1/rfps/${PLACEHOLDER_ID}/documents/${PLACEHOLDER_ID}`],
   ['delete', `/api/v1/rfps/${PLACEHOLDER_ID}/documents/${PLACEHOLDER_ID}`],
+
+  ['get', '/api/v1/client-references'],
+  ['get', '/api/v1/client-references/ids'],
+  ['get', '/api/v1/client-references/facets'],
+  ['get', `/api/v1/client-references/${PLACEHOLDER_ID}`],
+  ['post', '/api/v1/client-references'],
+  ['patch', `/api/v1/client-references/${PLACEHOLDER_ID}`],
+  ['delete', `/api/v1/client-references/${PLACEHOLDER_ID}`],
+  ['put', `/api/v1/client-references/${PLACEHOLDER_ID}/document`],
+  ['get', `/api/v1/client-references/${PLACEHOLDER_ID}/document`],
 
   ['get', '/api/v1/customers'],
   ['get', `/api/v1/customers/${PLACEHOLDER_ID}`],
@@ -1839,11 +1851,32 @@ describe('/api/v1/rfps', () => {
     const download = await request(app).get(`/api/v1/rfps/${rfp.id}/documents/${doc.id}`).set('Cookie', cookie);
     expect(download.status).toBe(200);
     expect(download.headers['content-type']).toContain('application/pdf');
-    expect(download.headers['content-disposition']).toBe('attachment; filename="Avis AO 70.pdf"');
+    expect(download.headers['content-disposition']).toBe(`attachment; filename="Avis AO 70.pdf"; filename*=UTF-8''Avis%20AO%2070.pdf`);
     expect(download.body.toString()).toBe('%PDF-1.4 avis');
 
     expect((await request(app).delete(`/api/v1/rfps/${rfp.id}/documents/${doc.id}`).set('Cookie', cookie)).status).toBe(204);
     expect(fs.existsSync(path.join(storageDir, doc.storageKey))).toBe(false);
+  });
+
+  it('keeps an accented filename as the browser sent it — REGRESSION', async () => {
+    // multer read the filename as latin1, so the register listed
+    // "RÃ¨glement de consultation.pdf" and downloaded it under that name.
+    const { alice } = await createTwoUsers();
+    const rfp = await createRfp(alice.id);
+
+    const uploaded = await request(app)
+      .post(`/api/v1/rfps/${rfp.id}/documents`)
+      .set('Cookie', authFor(alice.id))
+      .attach('file', Buffer.from('%PDF-1.4 rc'), { filename: 'Règlement de consultation.pdf', contentType: 'application/pdf' });
+
+    expect(uploaded.status).toBe(201);
+    const doc = (uploaded.body as ItemBody<{ id: string; filename: string }>).data;
+    expect(doc.filename).toBe('Règlement de consultation.pdf');
+
+    // And it downloads: a name above Latin-1 in the header was a 500.
+    const download = await request(app).get(`/api/v1/rfps/${rfp.id}/documents/${doc.id}`).set('Cookie', authFor(alice.id));
+    expect(download.status).toBe(200);
+    expect(download.headers['content-disposition']).toContain(`filename*=UTF-8''R%C3%A8glement%20de%20consultation.pdf`);
   });
 
   it('rejects a file type that is not a tender document, as a 400 rather than a 500', async () => {

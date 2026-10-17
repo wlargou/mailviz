@@ -293,3 +293,16 @@ export async function createRfp(
     },
   });
 }
+
+/**
+ * A client reference, made by the service so its derived columns (amount HT,
+ * effective date, tags) are what a real write leaves — a fixture inserted
+ * raw would carry whatever the test wrote there instead.
+ */
+export async function createClientReference(
+  userId: string,
+  overrides: Partial<import('../validators/clientReferenceValidator.js').CreateClientReferenceInput> = {}
+) {
+  const { clientReferenceService } = await import('../services/clientReferenceService.js');
+  return clientReferenceService.create(userId, { customerName: `Customer ${uniq()}`, ...overrides });
+}

@@ -88,11 +88,21 @@ export async function removeStoredFile(storageKey: string): Promise<void> {
 }
 
 /**
- * The upload middleware. Streams straight to the volume rather than buffering:
+ * A client reference's document is the customer's signed letter: a PDF, or a
+ * photo of it. Nothing else is a proof a tender would accept.
+ */
+const REFERENCE_TYPES = new Set(['application/pdf', 'image/png', 'image/jpeg']);
+
+export function isReferenceType(mimeType: string): boolean {
+  return REFERENCE_TYPES.has(mimeType);
+}
+
+/**
+ * An upload middleware. Streams straight to the volume rather than buffering:
  * a 25 MB file held in memory per concurrent upload is a needless way to run
  * the container out of heap.
  */
-export const rfpUpload = multer({
+const uploadAccepting = (accepts: (mimeType: string) => boolean) => multer({
   storage: multer.diskStorage({
     destination: (req, _file, cb) => {
       const userId = (req as { user?: { id: string } }).user?.id;
@@ -110,8 +120,12 @@ export const rfpUpload = multer({
     },
   }),
   limits: { fileSize: MAX_DOCUMENT_BYTES, files: 1 },
+  // Browsers send the filename as raw UTF-8; multer reads it as latin1 unless
+  // told otherwise, which stored "Règlement de consultation.pdf" as
+  // "RÃ¨glement…" — the label the register shows and downloads under.
+  defParamCharset: 'utf8',
   fileFilter: (_req, file, cb) => {
-    if (!isAllowedType(file.mimetype)) {
+    if (!accepts(file.mimetype)) {
       cb(new AppError(400, 'UNSUPPORTED_FILE_TYPE', `Unsupported file type: ${file.mimetype}`));
       return;
     }
@@ -119,7 +133,24 @@ export const rfpUpload = multer({
   },
 }).single('file');
 
+export const rfpUpload = uploadAccepting(isAllowedType);
+/** The same volume and layout as the tender documents, PDFs and images only. */
+export const referenceUpload = uploadAccepting(isReferenceType);
+
 /** The key for a file multer has already written, relative to the root. */
 export function storageKeyFor(userId: string, storedFilename: string): string {
   return path.posix.join(userId, storedFilename);
+}
+
+/**
+ * Write bytes the server already holds — an import, not an upload — under a
+ * fresh key, exactly where an upload of the same type would have gone.
+ */
+export async function writeStoredFile(userId: string, mimeType: string, data: Buffer): Promise<string> {
+  if (!isAllowedType(mimeType)) throw new AppError(400, 'UNSUPPORTED_FILE_TYPE', `Unsupported file type: ${mimeType}`);
+  const key = makeStorageKey(userId, mimeType);
+  const full = resolveStoragePath(key);
+  await fs.promises.mkdir(path.dirname(full), { recursive: true });
+  await fs.promises.writeFile(full, data);
+  return key;
 }
