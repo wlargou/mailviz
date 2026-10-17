@@ -1,5 +1,11 @@
 import 'dotenv/config';
 import { defineConfig, env } from 'prisma/config';
+import { loadSecretFiles } from './src/config/secretFiles.js';
+
+// The migrator container is given DATABASE_URL_FILE (a mounted secret) rather
+// than DATABASE_URL, the same way the app is. Before `env()` below, which
+// throws when the variable is unset.
+loadSecretFiles(['DATABASE_URL']);
 
 /**
  * Prisma 7 removed the `prisma` key from package.json AND stopped allowing the

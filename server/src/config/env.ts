@@ -1,7 +1,12 @@
 import dotenv from 'dotenv';
 import crypto from 'crypto';
+import { loadSecretFiles } from './secretFiles.js';
 
 dotenv.config();
+// After dotenv, so a .env counts as the environment and wins over a *_FILE;
+// before `env` below and before assertProductionSecrets, which both read the
+// variables the files fill in. Containers have no .env.
+loadSecretFiles();
 
 // Generate deterministic dev secrets from a seed (only for local development)
 function devSecret(seed: string): string {
