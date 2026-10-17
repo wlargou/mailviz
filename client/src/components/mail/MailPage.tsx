@@ -69,8 +69,19 @@ interface ScheduledEmailRow {
   subject: string | null;
   to: string[] | null;
   sendAt: string;
-  status: 'pending' | 'sent' | 'failed' | 'cancelled';
+  /** `sending` while the scheduler has it: it cannot be moved or cancelled then. */
+  status: 'pending' | 'sending' | 'sent' | 'failed' | 'cancelled';
+  /** Why a failed send failed — an interrupted one says to check Sent. */
+  errorMessage: string | null;
 }
+
+const SCHEDULED_STATUS_TAG: Record<ScheduledEmailRow['status'], 'blue' | 'cyan' | 'green' | 'red' | 'gray'> = {
+  pending: 'blue',
+  sending: 'cyan',
+  sent: 'green',
+  failed: 'red',
+  cancelled: 'gray',
+};
 
 export function MailPage() {
   const navigate = useNavigate();
@@ -891,7 +902,7 @@ export function MailPage() {
             />
           ) : (
             <div className="scheduled-emails-list">
-              {scheduledEmails.map((se: any) => (
+              {scheduledEmails.map((se) => (
                 <div key={se.id} className="scheduled-email-item">
                   <div className="scheduled-email-item__info">
                     <div className="scheduled-email-item__subject">
@@ -900,12 +911,15 @@ export function MailPage() {
                     <div className="scheduled-email-item__meta">
                       To: {se.to?.join(', ') || '—'}
                     </div>
+                    {se.status === 'failed' && se.errorMessage && (
+                      <div className="scheduled-email-item__meta">{se.errorMessage}</div>
+                    )}
                   </div>
                   <div className="scheduled-email-item__schedule">
                     <Time size={14} />
                     <span>{format(new Date(se.sendAt), 'MMM d, yyyy h:mm a')}</span>
                   </div>
-                  <Tag size="sm" type={se.status === 'pending' ? 'blue' : se.status === 'failed' ? 'red' : 'green'}>
+                  <Tag size="sm" type={SCHEDULED_STATUS_TAG[se.status] ?? 'gray'}>
                     {se.status}
                   </Tag>
                   {se.status === 'pending' && (
