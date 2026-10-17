@@ -2,7 +2,7 @@ import { promoteSenders } from '../services/accountStatus.js';
 import * as cron from 'node-cron';
 import { emailService } from '../services/emailService.js';
 import { draftService } from '../services/draftService.js';
-import { googleAuthService } from '../services/googleAuthService.js';
+import { googleAuthService, type GrantSnapshot } from '../services/googleAuthService.js';
 import { env } from '../config/env.js';
 import { wsEmitToUser } from '../websocket.js';
 import { secondsToCron } from '../utils/shared.js';
@@ -145,9 +145,15 @@ export function syncAccountNow(userId: string): Promise<void> {
  * the same as on a scheduled tick.
  */
 export async function runManualSync<T>(userId: string, job: () => Promise<T>) {
-  const grant = await googleAuthService.currentGrant(userId);
+  // Snapshotted inside the guard, as the job starts: read before it, the
+  // account would only be marked in flight after a database round trip, and a
+  // second Sync arriving meanwhile would not see it.
+  let grant: GrantSnapshot = null;
   try {
-    return await runner.runExclusive(userId, job);
+    return await runner.runExclusive(userId, async () => {
+      grant = await googleAuthService.currentGrant(userId);
+      return job();
+    });
   } catch (err) {
     await googleAuthService.noteAuthFailure(userId, err, grant);
     throw err;

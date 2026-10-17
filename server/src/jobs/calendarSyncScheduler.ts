@@ -136,9 +136,15 @@ export function syncCalendarNow(userId: string): Promise<void> {
  * failure goes on to the caller, as on a scheduled tick.
  */
 export async function runCalendarManualSync<T>(userId: string, job: () => Promise<T>) {
-  const grant = await googleAuthService.currentGrant(userId);
+  // Snapshotted inside the guard, as the job starts: read before it, the
+  // account would only be marked in flight after a database round trip, and a
+  // second Sync arriving meanwhile would not see it.
+  let grant: GrantSnapshot = null;
   try {
-    return await runner.runExclusive(userId, job);
+    return await runner.runExclusive(userId, async () => {
+      grant = await googleAuthService.currentGrant(userId);
+      return job();
+    });
   } catch (err) {
     await googleAuthService.noteAuthFailure(userId, err, grant);
     throw err;

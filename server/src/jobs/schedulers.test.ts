@@ -616,6 +616,24 @@ describe('a refused Google grant', () => {
   });
 
   it.each([
+    ['mail', () => runManualSync, () => isSyncInProgressFor],
+    ['calendar', () => runCalendarManualSync, () => isCalendarSyncInProgress],
+  ])('marks the account in flight the moment a manual %s sync is asked for', async (_label, manual, inProgress) => {
+    const user = await createConnectedUser();
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => { release = resolve; });
+
+    const held = manual()(user.id, () => blocked);
+
+    // Synchronously, before anything is awaited: reading the grant snapshot
+    // ahead of the guard left a database round trip in which a second "Sync
+    // now" did not see the first, and the two raced on one history cursor.
+    expect(inProgress()(user.id)).toBe(true);
+    release();
+    await held;
+  });
+
+  it.each([
     ['mail', () => runManualSync],
     ['calendar', () => runCalendarManualSync],
   ])('records it from a manual %s sync, and still fails the request', async (_label, manual) => {
