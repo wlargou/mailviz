@@ -86,19 +86,6 @@ body {
   box-shadow: none;
 }
 
-// Header logo + text alignment
-.mailviz-header-name {
-  display: inline-flex !important;
-  align-items: center;
-  gap: $spacing-03;
-
-  svg {
-    flex-shrink: 0;
-    position: relative;
-    top: 2px;
-  }
-}
-
 .app-content {
   flex: 1;
   margin-left: $sidenav-expanded-width;
@@ -295,9 +282,9 @@ body {
   gap: 0.25rem;
   padding: 1rem 0 0.5rem;
 
+  // The weight is the name's own, from `.brand-name`.
   .about-modal__name {
     font-size: 1.25rem;
-    font-weight: 600;
     color: var(--cds-text-primary);
     margin: 0.5rem 0 0;
   }

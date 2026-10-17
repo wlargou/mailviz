@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <!-- Olympusx AI — the Sovereign Cross, reduced glyph.
+       Vendored from brand/icon/olympusx-favicon.svg and brand/icon/olympusx-favicon-dark.svg,
+       combined into ONE file: a favicon has no theme class to inherit, so the
+       two colourways are selected here by prefers-color-scheme. Blue 60 / Teal 40
+       on a light tab strip, Blue 50 / Teal 30 on a dark one — the brand rule.
+       The reduced glyph, not the full mark, because a favicon is 16-32px and the
+       orbit collapses below 24. -->
+  <title>Olympusx AI</title>
+  <style>
+    .p { fill: #0f62fe; stroke: #0f62fe; }
+    .a { fill: #08bdba; }
+    @media (prefers-color-scheme: dark) {
+      .p { fill: #4589ff; stroke: #4589ff; }
+      .a { fill: #3ddbd9; }
+    }
+  </style>
+  <line class="p" x1="150.91" y1="49.09" x2="115.56" y2="84.44" stroke-width="14" stroke-linecap="round"/>
+  <line class="p" x1="150.91" y1="150.91" x2="115.56" y2="115.56" stroke-width="14" stroke-linecap="round"/>
+  <line class="p" x1="49.09" y1="150.91" x2="84.44" y2="115.56" stroke-width="14" stroke-linecap="round"/>
+  <line class="p" x1="49.09" y1="49.09" x2="84.44" y2="84.44" stroke-width="14" stroke-linecap="round"/>
+  <rect class="p" x="83" y="83" width="34" height="34" transform="rotate(45 100 100)"/>
+  <circle class="a" cx="100" cy="20" r="9"/>
+  <circle class="a" cx="180" cy="100" r="9"/>
+  <circle class="a" cx="100" cy="180" r="9"/>
+  <circle class="a" cx="20" cy="100" r="9"/>
+</svg>

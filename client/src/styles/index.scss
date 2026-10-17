@@ -19,6 +19,8 @@
 // App base styles — must load before the component partials so the cascade
 // order matches the previous `@import`-at-the-bottom arrangement.
 @use 'base';
+// The mark's colours and the header lockup — see the note in _brand.scss.
+@use 'brand';
 
 // Component partials.
 // These are `@use`d, not `@import`ed: `@import` is deprecated and removed in

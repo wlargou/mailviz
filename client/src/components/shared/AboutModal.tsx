@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Modal, SkeletonText, Tag } from '@carbon/react';
 import { fetchServerVersion, type ServerVersion } from '../../api/auth';
-import { MailvizLogo } from './MailvizLogo';
+import { BrandMark } from './BrandMark';
+import { PRODUCT_DESCRIPTOR, PRODUCT_NAME } from '../../brand';
 
 interface AboutModalProps {
   open: boolean;
@@ -55,14 +56,14 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
       open={open}
       passiveModal
       size="sm"
-      modalHeading="About Mailviz"
+      modalHeading={`About ${PRODUCT_NAME}`}
       onRequestClose={onClose}
     >
       <div className="about-modal">
-        <MailvizLogo size={40} />
+        <BrandMark size={48} />
 
-        <p className="about-modal__name">Mailviz</p>
-        <p className="about-modal__tagline">Personal CRM &amp; email manager</p>
+        <p className="about-modal__name brand-name">{PRODUCT_NAME}</p>
+        <p className="about-modal__tagline">{PRODUCT_DESCRIPTOR}</p>
 
         {loading ? (
           <SkeletonText width="50%" />

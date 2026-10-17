@@ -1,0 +1,69 @@
+// The brand: the mark's two colours, the mark itself and the header lockup.
+//
+// The pairs are the design system's own (its Logos README and tokens.css):
+// Blue 50 / Teal 30 on dark grounds, Blue 60 / Teal 40 on light. They colour
+// the mark only — the one brand hue for everything else is Carbon's own Blue 60
+// (button-primary, interactive), which the themes already carry.
+@use '@carbon/colors';
+@use '@carbon/react/scss/spacing' as *;
+
+// Declared on the theme scopes, not only at :root. A custom property resolves
+// from its nearest declaring ancestor, so a mark inside a <Theme> (class
+// `cds--g10`) or under <html data-carbon-theme="g10"> gets that theme's pair by
+// inheritance, whatever the selector weights. :root takes the dark pair because
+// the root theme is g100 (index.scss). The light rule comes second: on <html>,
+// `:root` and `[data-carbon-theme]` tie on specificity and the later one wins.
+:root,
+.cds--g90,
+.cds--g100,
+[data-carbon-theme='g100'] {
+  // On Gray 100, Blue 60 is 3.6:1 and Blue 50 5.4:1: a contrast rule, not taste.
+  --brand-primary: #{colors.$blue-50};
+  --brand-accent: #{colors.$teal-30};
+}
+
+.cds--white,
+.cds--g10,
+[data-carbon-theme='g10'] {
+  --brand-primary: #{colors.$blue-60};
+  --brand-accent: #{colors.$teal-40};
+}
+
+// ─── THE MARK ────────────────────────────────────────────────────────────────
+.brand-mark {
+  display: block;
+  flex: none;
+}
+
+.brand-mark__primary {
+  fill: var(--brand-primary);
+  stroke: var(--brand-primary);
+}
+
+.brand-mark__accent {
+  fill: var(--brand-accent);
+  stroke: var(--brand-accent);
+}
+
+// The two orbits are outlines; a fill would paint two discs over the mark.
+.brand-mark__ring {
+  fill: none;
+}
+
+// ─── THE LOCKUP ──────────────────────────────────────────────────────────────
+// The glyph and the name, as the design system's `.ox-lockup` composes them: a
+// 24px glyph, a spacing-03 gap, and the name as live text — never an SVG
+// wordmark, which could not reach the page's Plex.
+.brand-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-03;
+  white-space: nowrap;
+}
+
+// The name is Plex Sans 400 wherever it is set (the design system's rule). Set
+// on the name's own element because Carbon's `a.cds--header__name` is 600 and
+// would out-specify a class on the link.
+.brand-name {
+  font-weight: 400;
+}
