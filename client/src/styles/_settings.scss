@@ -86,6 +86,7 @@
 // ─── Connection status ───
 .settings-connection-status {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: $spacing-04;
 }
@@ -96,7 +97,12 @@
   flex: 1;
 }
 
+// Reconnect Google and Disconnect, side by side; on a phone they wrap under
+// the address rather than pushing the row wider than the tile.
 .settings-connection-status__action {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-03;
   margin-left: auto;
 }
 
