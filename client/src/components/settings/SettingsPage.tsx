@@ -727,9 +727,9 @@ export function SettingsPage() {
                       Reconnect is always offered, not only when something is
                       known to be wrong: it asks Google for consent again, which
                       replaces both tokens and keeps every synced row — the one
-                      recovery for a grant the server cannot see is broken (a
-                      changed encryption key, say). Disconnect deletes the
-                      synced data, so it is never the only way out.
+                      recovery for a grant that has failed in a way the server
+                      has not met yet. Disconnect deletes the synced data, so it
+                      is never the only way out.
                     */}
                     <div className="settings-connection-status__action">
                       <Button

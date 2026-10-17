@@ -2,9 +2,11 @@
  * What a refused Google grant means, in words for the person whose sync stopped.
  *
  * The codes are Google's own OAuth errors, recorded by the server
- * (`server/src/utils/googleAuthError.ts`). Most are fixed by Reconnect Google,
- * which asks for consent again and keeps every synced row; the client ones are
- * not, and saying "reconnect" there would send the user round in circles.
+ * (`server/src/utils/googleAuthError.ts`), plus one of the server's own:
+ * `token_unreadable`, stored tokens it cannot decrypt (a changed encryption
+ * key). Most are fixed by Reconnect Google, which asks for consent again and
+ * keeps every synced row; the client ones are not, and saying "reconnect"
+ * there would send the user round in circles.
  */
 const MESSAGES: Record<string, string> = {
   invalid_grant:
@@ -17,6 +19,7 @@ const MESSAGES: Record<string, string> = {
     'Google does not recognise this app’s own credentials. Reconnecting will not help until an administrator corrects the app’s Google configuration.',
   admin_policy_enforced:
     'Your Google Workspace administrator has blocked this app. Ask them to allow it, then reconnect Google.',
+  token_unreadable: 'Stored Google credentials can’t be read. Reconnect Google to restore sync.',
 };
 
 const FALLBACK = 'Google refused this app’s access to your account. Reconnect Google to resume.';

@@ -101,6 +101,22 @@ describe('SettingsPage — Google connection', () => {
     expect(screen.getByRole('button', { name: /reconnect google/i })).toBeInTheDocument();
   });
 
+  it('explains stored credentials the server cannot read, and that Reconnect fixes it', async () => {
+    // A move to a host with a different encryption key: no refusal from
+    // Google, just tokens nothing can decrypt. Without a message of its own it
+    // fell back to "Google refused", which sends the user to look in the wrong
+    // place.
+    statusIs({ ...refused, authError: { code: 'token_unreadable', at: '2026-10-17T08:00:00.000Z' } });
+    renderSettings();
+
+    expect(await screen.findByText('Sync has stopped')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Stored Google credentials can’t be read\. Reconnect Google to restore sync\./)
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/token_unreadable/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /reconnect google/i })).toBeInTheDocument();
+  });
+
   it('offers Reconnect Google on a healthy connection too', async () => {
     statusIs(healthy);
     renderSettings();
