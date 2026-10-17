@@ -1,4 +1,4 @@
-# MailViz Backlog
+# Olympusx Productivity Hub Backlog
 
 Working order: **Phase 1 → 2 → 3 → 4**. Phase 1 is cheapest per unit of value
 (the backend already exists); Phase 4 is the one that de-risks everything else.
