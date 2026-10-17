@@ -320,7 +320,7 @@ describe('authentication gate', () => {
    * writes the user row, mints the session cookies and applies the
    * ALLOWED_EMAILS check, was unlimited.
    *
-   * Asserted through the headers rather than by exhausting the bucket: 20
+   * Asserted through the headers rather than by exhausting the bucket: 60
    * requests would leak into every other test in this file that touches an
    * auth route, and a limiter poisoned by its own test is worse than no test.
    */
@@ -546,6 +546,27 @@ describe('/api/v1/auth', () => {
     const bobStatus = await call('GET', '/api/v1/auth/google/status', { as: bob.id });
     expect(bobStatus.status).toBe(200);
     expect(bobStatus.body.data).toEqual({ connected: false });
+  });
+
+  it('GET /google/status says why Google refused the grant, for the caller only', async () => {
+    // What Settings reads to replace "Connected" with "sync has stopped".
+    const { alice, bob } = await createTwoUsers();
+    await createGoogleAuth(alice.id);
+    await createGoogleAuth(bob.id);
+    await prisma.googleAuth.update({
+      where: { userId: alice.id },
+      data: { authError: 'invalid_grant', authErrorAt: new Date('2026-10-17T08:00:00.000Z') },
+    });
+
+    const aliceStatus = await call('GET', '/api/v1/auth/google/status', { as: alice.id });
+    expect(aliceStatus.body.data).toMatchObject({
+      connected: true,
+      needsReauth: true,
+      authError: { code: 'invalid_grant', at: '2026-10-17T08:00:00.000Z' },
+    });
+
+    const bobStatus = await call('GET', '/api/v1/auth/google/status', { as: bob.id });
+    expect(bobStatus.body.data).toMatchObject({ connected: true, needsReauth: false, authError: null });
   });
 
   it('GET /users lists other users and excludes the caller', async () => {

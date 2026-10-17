@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { assertProductionSecrets } from './env.js';
 
 /**
@@ -22,8 +22,20 @@ afterEach(() => {
   process.env = { ...saved };
 });
 
+const PUBLIC_URLS = {
+  CLIENT_URL: 'https://hub.example.com',
+  GOOGLE_REDIRECT_URI: 'https://hub.example.com/api/v1/auth/google/callback',
+};
+
+const SECRETS = {
+  JWT_SECRET: 'a-real-secret',
+  JWT_REFRESH_SECRET: 'a-different-real-secret',
+  TOKEN_ENCRYPTION_KEY: 'ff'.repeat(32),
+};
+
+/** Production with public URLs unless a test says otherwise. */
 function productionWith(vars: Record<string, string | undefined>) {
-  process.env = { ...saved, NODE_ENV: 'production', ...vars };
+  process.env = { ...saved, NODE_ENV: 'production', ...PUBLIC_URLS, ...vars };
 }
 
 describe('assertProductionSecrets', () => {
@@ -83,5 +95,84 @@ describe('assertProductionSecrets', () => {
     });
 
     expect(() => assertProductionSecrets()).not.toThrow();
+  });
+});
+
+describe('assertProductionSecrets — the public addresses', () => {
+  /**
+   * CLIENT_URL and GOOGLE_REDIRECT_URI fall back to localhost. On a new host,
+   * forgetting one sends Google's sign-in redirect, or the app's own redirect
+   * after it, to the user's machine — which looks like Google being broken,
+   * not like a missing variable.
+   */
+  it.each(['CLIENT_URL', 'GOOGLE_REDIRECT_URI'])('refuses to start in production without %s', (name) => {
+    productionWith({ ...SECRETS, [name]: undefined });
+
+    expect(() => assertProductionSecrets()).toThrow(new RegExp(`${name} unset or on localhost`));
+  });
+
+  it.each([
+    'http://localhost:5174',
+    'http://127.0.0.1:3002/api/v1/auth/google/callback',
+    'http://[::1]:5174',
+    'http://hub.localhost:5174',
+    'http://0.0.0.0:3002',
+    'hub.example.com',
+  ])('refuses %s as CLIENT_URL', (value) => {
+    productionWith({ ...SECRETS, CLIENT_URL: value });
+
+    expect(() => assertProductionSecrets()).toThrow(/CLIENT_URL unset or on localhost/);
+  });
+
+  it('accepts a host that merely contains "localhost"', () => {
+    productionWith({ ...SECRETS, CLIENT_URL: 'https://localhost-free.example.com' });
+
+    expect(() => assertProductionSecrets()).not.toThrow();
+  });
+
+  it('names a missing secret and a local address in the same error', () => {
+    productionWith({ ...SECRETS, JWT_SECRET: undefined, GOOGLE_REDIRECT_URI: 'http://localhost:3002/cb' });
+
+    expect(() => assertProductionSecrets()).toThrow(/JWT_SECRET[\s\S]*GOOGLE_REDIRECT_URI/);
+  });
+
+  it('leaves development on its localhost defaults', () => {
+    process.env = { ...saved, NODE_ENV: 'development', ...SECRETS, CLIENT_URL: undefined, GOOGLE_REDIRECT_URI: undefined };
+
+    expect(() => assertProductionSecrets()).not.toThrow();
+  });
+});
+
+/**
+ * dotenv 17's `config()` prints a line every time it loads — "injected env (N)
+ * from .env", with a rotating advert — unless passed `{ quiet: true }`. It went
+ * into the app's container log at every boot. (`dotenv/config`, which
+ * prisma.config.ts imports, is quiet by default; its test is here so that it
+ * stays that way.) These load the real dotenv.
+ */
+describe('loading the configuration', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.resetModules();
+  });
+
+  it('env.ts loads .env without printing anything', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.resetModules();
+
+    await import('./env.js');
+
+    expect(log.mock.calls).toEqual([]);
+  });
+
+  it('prisma.config.ts loads .env without printing anything', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.resetModules();
+
+    // Outside src/, so outside tsconfig's rootDir: imported by URL, untyped.
+    const configUrl = new URL('../../prisma.config.ts', import.meta.url).href;
+    await import(/* @vite-ignore */ configUrl);
+
+    expect(log.mock.calls).toEqual([]);
   });
 });

@@ -1,6 +1,8 @@
 import { promoteSenders } from '../services/accountStatus.js';
 import * as cron from 'node-cron';
+import { runJob } from '../lib/lifecycle.js';
 import { calendarService } from '../services/calendarService.js';
+import { googleAuthService, type GrantSnapshot } from '../services/googleAuthService.js';
 import { env } from '../config/env.js';
 import { wsEmitToUser } from '../websocket.js';
 import { secondsToCron } from '../utils/shared.js';
@@ -12,7 +14,12 @@ let syncTask: ReturnType<typeof cron.schedule> | null = null;
 async function syncAccount(userId: string): Promise<void> {
   // Per-account, like the mail scheduler — see the note there.
   wsEmitToUser(userId, 'calendar:sync:status', { syncing: true });
+  // The grant this run starts with — see the mail scheduler. Read inside the
+  // try, so a failure to read it still clears the spinner.
+  let grant: GrantSnapshot = null;
   try {
+    grant = await googleAuthService.currentGrant(userId);
+
     /**
      * Before the pull, not after: a retry that lands means Google already holds
      * our version by the time the sync lists it, so the row converges on this
@@ -25,7 +32,11 @@ async function syncAccount(userId: string): Promise<void> {
     try {
       await sweepPendingPushes(userId);
     } catch (err) {
-      console.error('[CalendarSync] Pending-push sweep failed:', (err as Error)?.message ?? err);
+      // A refused grant is recorded and said once, like the sync's own below —
+      // not a line per tick for as long as the account has pending events.
+      if (!(await googleAuthService.noteAuthFailure(userId, err, grant))) {
+        console.error('[CalendarSync] Pending-push sweep failed:', (err as Error)?.message ?? err);
+      }
     }
 
     const result = await calendarService.syncFromGoogle(false, userId);
@@ -43,7 +54,10 @@ async function syncAccount(userId: string): Promise<void> {
       });
     }
   } catch (err: any) {
-    if (err?.status === 400) {
+    if (await googleAuthService.noteAuthFailure(userId, err, grant)) {
+      // Google refused the grant — recorded and announced once by
+      // noteAuthFailure, skipped here like any 400.
+    } else if (err?.status === 400) {
       // Google not connected — silently skip
     } else {
       console.error('[CalendarSync] Sync failed:', err?.message || err);
@@ -74,10 +88,10 @@ export function startCalendarSyncScheduler() {
 
   console.log(`[CalendarSync] Starting background sync every ${interval}s (cron: ${cronExpr})`);
 
-  syncTask = cron.schedule(cronExpr, () => runner.runAll());
+  syncTask = cron.schedule(cronExpr, () => runJob(() => runner.runAll()));
 
   // Run an initial sync 10 seconds after startup (staggered from email sync at 5s)
-  setTimeout(() => void runner.runAll(), 10000);
+  setTimeout(() => void runJob(() => runner.runAll()), 10000);
 }
 
 export function stopCalendarSyncScheduler() {
@@ -119,8 +133,21 @@ export function syncCalendarNow(userId: string): Promise<void> {
  * which would turn the "Google not connected" 400 into a 200.
  *
  * Returns `{ ran: false }` when a sync is already going, so the caller can say
- * so rather than starting a second one.
+ * so rather than starting a second one. A refused grant is recorded before the
+ * failure goes on to the caller, as on a scheduled tick.
  */
-export function runCalendarManualSync<T>(userId: string, job: () => Promise<T>) {
-  return runner.runExclusive(userId, job);
+export async function runCalendarManualSync<T>(userId: string, job: () => Promise<T>) {
+  // Snapshotted inside the guard, as the job starts: read before it, the
+  // account would only be marked in flight after a database round trip, and a
+  // second Sync arriving meanwhile would not see it.
+  let grant: GrantSnapshot = null;
+  try {
+    return await runner.runExclusive(userId, async () => {
+      grant = await googleAuthService.currentGrant(userId);
+      return job();
+    });
+  } catch (err) {
+    await googleAuthService.noteAuthFailure(userId, err, grant);
+    throw err;
+  }
 }
