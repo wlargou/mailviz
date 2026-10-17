@@ -56,6 +56,11 @@ export const env = {
   GMAIL_RETRY_BASE_MS: parseInt(process.env.GMAIL_RETRY_BASE_MS || '1000', 10),
   GMAIL_RETRY_MAX_MS: parseInt(process.env.GMAIL_RETRY_MAX_MS || '32000', 10),
 
+  // The proxy hops whose X-Forwarded-For is believed, comma-separated: IPs,
+  // CIDR ranges, or loopback / linklocal / uniquelocal. Set, it REPLACES the
+  // built-in list (see config/trustedProxies.ts); unset keeps that list.
+  TRUSTED_PROXIES: process.env.TRUSTED_PROXIES || '',
+
   // Auth
   JWT_SECRET: process.env.JWT_SECRET || devSecret('mailviz-jwt-dev'),
   JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET || devSecret('mailviz-jwt-refresh-dev'),
