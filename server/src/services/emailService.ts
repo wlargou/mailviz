@@ -1,8 +1,9 @@
 import { google } from 'googleapis';
-import { Prisma } from '../lib/prismaClient.js';
+import { Prisma, type ScheduledEmail } from '../lib/prismaClient.js';
 import { prisma } from '../lib/prisma.js';
 import { getGmailClient } from '../lib/gmail.js';
 import { isGmailRateLimitError } from '../lib/gmailLimiter.js';
+import { isDraining } from '../lib/lifecycle.js';
 import { customerService } from './customerService.js';
 import {
   extractDomain,
@@ -128,6 +129,49 @@ function flagsFromLabels(labelIds: string[]) {
     isArchived: !labelIds.includes('INBOX') && !labelIds.includes('TRASH'),
     isTrashed: labelIds.includes('TRASH'),
   };
+}
+
+/**
+ * How long a scheduled email may sit in `sending` before it counts as
+ * interrupted. A send is one Gmail call behind a limiter whose retries give up
+ * after about a minute, so ten is far past any send still running.
+ */
+export const SCHEDULED_SEND_STUCK_MS = 10 * 60_000;
+
+/** What an interrupted send says, in the Scheduled folder and in the row. */
+export const INTERRUPTED_SEND_MESSAGE =
+  'Sending was interrupted, and it may have gone out. Check Sent before sending it again.';
+
+/**
+ * The error for a change to a scheduled email that is no longer pending.
+ *
+ * `sending` gets its own 409: the row was pending a moment ago, so the client's
+ * list is stale rather than its request malformed.
+ */
+function notPending(status: string, action: 'updated' | 'cancelled') {
+  if (status === 'sending') {
+    return Object.assign(new Error('This email is being sent and can no longer be changed'), { status: 409 });
+  }
+  return Object.assign(new Error(`Only pending emails can be ${action}`), { status: 400 });
+}
+
+/**
+ * Change a scheduled email only while it is still pending, in one conditional
+ * write. A read-then-update let a cancel land on a row the scheduler had just
+ * claimed: the user saw "cancelled" and the email went anyway.
+ */
+async function updateIfPending(
+  userId: string,
+  id: string,
+  data: Prisma.ScheduledEmailUpdateManyMutationInput,
+  action: 'updated' | 'cancelled'
+) {
+  const [row] = await prisma.scheduledEmail.updateManyAndReturn({ where: { id, userId, status: 'pending' }, data });
+  if (row) return row;
+
+  const current = await prisma.scheduledEmail.findFirst({ where: { id, userId }, select: { status: true } });
+  if (!current) throw Object.assign(new Error('Scheduled email not found'), { status: 404 });
+  throw notPending(current.status, action);
 }
 
 export const emailService = {
@@ -1517,6 +1561,44 @@ export const emailService = {
     return prisma.email.count({ where });
   },
 
+  /**
+   * Everything a send does once Gmail has accepted the message: store it
+   * locally, tell the user's tabs, write the audit row. None of it may throw.
+   *
+   * The message has gone by then. A throw here reported a delivered email as
+   * failed: a person sending by hand would send it again, and the scheduled
+   * send put its row back to pending and sent it again on the next tick, up to
+   * three times while the audit write kept failing. So each step logs its own
+   * failure and the send still reports success.
+   */
+  async afterGmailAccepted(
+    gmail: Awaited<ReturnType<typeof getGmailClient>>,
+    userId: string,
+    sent: { id?: string | null; threadId?: string | null },
+    audit: Parameters<typeof auditService.logSync>[0]
+  ) {
+    if (sent.id) {
+      try {
+        const msgRes = await gmail.users.messages.get({ userId: 'me', id: sent.id, format: 'full' });
+        await this.upsertMessage(msgRes.data, userId);
+      } catch (err: any) {
+        console.warn('[EmailSync] Gmail API call failed:', err?.message || err);
+      }
+    }
+
+    try {
+      wsEmitToUser(userId, 'email:sent', { threadId: sent.threadId });
+    } catch (err: any) {
+      console.error(`[EmailSend] Sent message ${sent.id ?? '(no id)'} but could not notify the user's tabs:`, err?.message || err);
+    }
+
+    try {
+      await auditService.logSync(audit);
+    } catch (err: any) {
+      console.error(`[EmailSend] Sent message ${sent.id ?? '(no id)'} but could not write its ${audit.action} audit row:`, err?.message || err);
+    }
+  },
+
   async sendEmail(data: { to: string[]; cc?: string[]; bcc?: string[]; subject: string; htmlBody: string; attachments?: Array<{ filename: string; content: string; contentType: string; size: number }> }, userId: string) {
     const gmail = await getGmailClient(userId);
     const auth = await prisma.googleAuth.findFirst({ where: { userId } });
@@ -1537,23 +1619,7 @@ export const emailService = {
       requestBody: { raw },
     });
 
-    // Fetch the sent message to store locally
-    if (sendRes.data.id) {
-      try {
-        const msgRes = await gmail.users.messages.get({
-          userId: 'me',
-          id: sendRes.data.id,
-          format: 'full',
-        });
-        await this.upsertMessage(msgRes.data, userId);
-      } catch (err: any) {
-        console.warn('[EmailSync] Gmail API call failed:', err?.message || err);
-      }
-    }
-
-    wsEmitToUser(userId, 'email:sent', { threadId: sendRes.data.threadId });
-
-    await auditService.logSync({ userId, action: 'EMAIL_SENT', entityType: 'email', entityId: sendRes.data.id || undefined, details: { to: data.to, cc: data.cc, subject: data.subject, hasAttachments: !!(data.attachments?.length) } });
+    await this.afterGmailAccepted(gmail, userId, sendRes.data, { userId, action: 'EMAIL_SENT', entityType: 'email', entityId: sendRes.data.id || undefined, details: { to: data.to, cc: data.cc, subject: data.subject, hasAttachments: !!(data.attachments?.length) } });
 
     return { messageId: sendRes.data.id, threadId: sendRes.data.threadId };
   },
@@ -1630,18 +1696,7 @@ export const emailService = {
       requestBody: { raw, threadId: original.threadId || undefined },
     });
 
-    if (sendRes.data.id) {
-      try {
-        const msgRes = await gmail.users.messages.get({ userId: 'me', id: sendRes.data.id, format: 'full' });
-        await this.upsertMessage(msgRes.data, userId);
-      } catch (err: any) {
-        console.warn('[EmailSync] Gmail API call failed:', err?.message || err);
-      }
-    }
-
-    wsEmitToUser(userId, 'email:sent', { threadId: sendRes.data.threadId });
-
-    await auditService.logSync({ userId, action: 'EMAIL_REPLY', entityType: 'email', entityId: emailId, details: { to: to, cc: cc.length > 0 ? cc : undefined, subject: original.subject, originalFrom: original.from } });
+    await this.afterGmailAccepted(gmail, userId, sendRes.data, { userId, action: 'EMAIL_REPLY', entityType: 'email', entityId: emailId, details: { to: to, cc: cc.length > 0 ? cc : undefined, subject: original.subject, originalFrom: original.from } });
 
     return { messageId: sendRes.data.id, threadId: sendRes.data.threadId };
   },
@@ -1739,18 +1794,7 @@ export const emailService = {
       requestBody: { raw },
     });
 
-    if (sendRes.data.id) {
-      try {
-        const msgRes = await gmail.users.messages.get({ userId: 'me', id: sendRes.data.id, format: 'full' });
-        await this.upsertMessage(msgRes.data, userId);
-      } catch (err: any) {
-        console.warn('[EmailSync] Gmail API call failed:', err?.message || err);
-      }
-    }
-
-    wsEmitToUser(userId, 'email:sent', { threadId: sendRes.data.threadId });
-
-    await auditService.logSync({ userId, action: 'EMAIL_FORWARD', entityType: 'email', entityId: emailId, details: { to: data.to, subject: original.subject, originalFrom: original.from } });
+    await this.afterGmailAccepted(gmail, userId, sendRes.data, { userId, action: 'EMAIL_FORWARD', entityType: 'email', entityId: emailId, details: { to: data.to, subject: original.subject, originalFrom: original.from } });
 
     return { messageId: sendRes.data.id, threadId: sendRes.data.threadId };
   },
@@ -1859,7 +1903,9 @@ export const emailService = {
 
   async getScheduledEmails(userId: string) {
     return prisma.scheduledEmail.findMany({
-      where: { userId, status: { in: ['pending', 'failed'] } },
+      // `sending` too: a row the scheduler has claimed is still the user's
+      // scheduled email until it has gone, and vanishing mid-send reads as lost.
+      where: { userId, status: { in: ['pending', 'sending', 'failed'] } },
       orderBy: { sendAt: 'asc' },
     });
   },
@@ -1867,12 +1913,9 @@ export const emailService = {
   async updateScheduledEmail(userId: string, id: string, data: { sendAt: string }) {
     const existing = await prisma.scheduledEmail.findFirst({ where: { id, userId } });
     if (!existing) throw Object.assign(new Error('Scheduled email not found'), { status: 404 });
-    if (existing.status !== 'pending') throw Object.assign(new Error('Only pending emails can be updated'), { status: 400 });
+    if (existing.status !== 'pending') throw notPending(existing.status, 'updated');
 
-    const updated = await prisma.scheduledEmail.update({
-      where: { id },
-      data: { sendAt: new Date(data.sendAt) },
-    });
+    const updated = await updateIfPending(userId, id, { sendAt: new Date(data.sendAt) }, 'updated');
 
     // Cancel was already audited; rescheduling was not. Record both times so the
     // trail shows what the send time was moved from and to.
@@ -1892,96 +1935,167 @@ export const emailService = {
   },
 
   async cancelScheduledEmail(userId: string, id: string) {
-    const existing = await prisma.scheduledEmail.findFirst({ where: { id, userId } });
-    if (!existing) throw Object.assign(new Error('Scheduled email not found'), { status: 404 });
-    if (existing.status !== 'pending') throw Object.assign(new Error('Only pending emails can be cancelled'), { status: 400 });
-
-    const result = await prisma.scheduledEmail.update({
-      where: { id },
-      data: { status: 'cancelled' },
-    });
+    const result = await updateIfPending(userId, id, { status: 'cancelled' }, 'cancelled');
 
     auditService.log({ userId, action: 'EMAIL_SCHEDULE_CANCELLED', entityType: 'scheduled_email', entityId: id });
 
     return result;
   },
 
+  /**
+   * Send what has come due, each row exactly once however many processes run
+   * this at the same moment.
+   *
+   * It used to read the due rows, send them, then mark them sent. Two processes
+   * — or one restarting between Gmail accepting a message and the `sent` write —
+   * sent the same email twice. Now each row is claimed first, `pending` to
+   * `sending` in one conditional UPDATE, and only the caller that moved it
+   * sends it: Postgres re-checks the condition once the competing write
+   * commits, so the second claim matches nothing.
+   *
+   * Claimed one row at a time, just before its send, not all at once: the claim
+   * time is what the sweep measures, and a batch claimed up front would age
+   * towards the stuck threshold while waiting its turn.
+   */
   async processScheduledEmails() {
+    await this.failInterruptedSends();
+
     const due = await prisma.scheduledEmail.findMany({
       where: { status: 'pending', sendAt: { lte: new Date() } },
+      select: { id: true },
+      orderBy: { sendAt: 'asc' },
     });
 
     let processed = 0;
 
-    for (const scheduled of due) {
+    for (const { id } of due) {
+      // Shutting down: what has not been claimed stays pending for the next
+      // process, rather than being started against the drain deadline.
+      if (isDraining()) break;
+
+      const now = new Date();
+      // `sendAt` again: a reschedule may have moved it since the read above.
+      // `updatedAt` set rather than left to @updatedAt, because it IS the claim
+      // time the sweep reads.
+      const [scheduled] = await prisma.scheduledEmail.updateManyAndReturn({
+        where: { id, status: 'pending', sendAt: { lte: now } },
+        data: { status: 'sending', updatedAt: now },
+      });
+      // Another process has it, or it was cancelled or moved in the meantime.
+      if (!scheduled) continue;
+
+      let result: { messageId?: string | null; threadId?: string | null };
       try {
-        const attachments = (scheduled.attachments as Array<{ filename: string; content: string; contentType: string; size: number }>) || [];
-        let result: { messageId?: string | null; threadId?: string | null };
+        result = await this.sendScheduledEmail(scheduled);
+      } catch (err: any) {
+        // Gmail did not accept it: the send paths throw only up to and
+        // including users.messages.send, and what follows it in them
+        // (afterGmailAccepted) logs its failures instead of throwing.
+        //
+        // As before: back to pending for the next tick, failed on the third
+        // try. Only from `sending` — if the sweep gave up on this row in the
+        // meantime, it stays failed rather than queueing a second send.
+        const newRetryCount = scheduled.retryCount + 1;
+        await prisma.scheduledEmail.updateMany({
+          where: { id, status: 'sending' },
+          data: {
+            status: newRetryCount >= 3 ? 'failed' : 'pending',
+            retryCount: newRetryCount,
+            errorMessage: err?.message || 'Unknown error',
+          },
+        });
 
-        if (scheduled.mode === 'new') {
-          result = await this.sendEmail({
-            to: scheduled.to,
-            cc: scheduled.cc,
-            bcc: scheduled.bcc,
-            subject: scheduled.subject,
-            htmlBody: scheduled.htmlBody,
-            attachments,
-          }, scheduled.userId);
-        } else if (scheduled.mode === 'reply' || scheduled.mode === 'replyAll') {
-          result = await this.replyToEmail(scheduled.replyToEmailId!, {
-            htmlBody: scheduled.htmlBody,
-            // The recipients the form held when it was scheduled — without
-            // them an edited To was dropped at send time.
-            to: scheduled.to,
-            replyAll: scheduled.mode === 'replyAll',
-            cc: scheduled.cc,
-            bcc: scheduled.bcc,
-            attachments,
-          }, scheduled.userId);
-        } else if (scheduled.mode === 'forward') {
-          result = await this.forwardEmail(scheduled.replyToEmailId!, {
-            to: scheduled.to,
-            cc: scheduled.cc,
-            bcc: scheduled.bcc,
-            htmlBody: scheduled.htmlBody,
-            attachments,
-            forwardExistingAttachments: scheduled.forwardExistingAttachments,
-          }, scheduled.userId);
-        } else {
-          throw new Error(`Unknown mode: ${scheduled.mode}`);
-        }
+        wsEmitToUser(scheduled.userId, 'email:scheduled:sent', { id });
+        console.error(`[ScheduledSend] Failed to send scheduled email ${id}:`, err?.message);
+        continue;
+      }
 
+      // Gmail has accepted it — sendScheduledEmail resolved — so nothing from
+      // here on may put the row back to pending. If this write fails the row
+      // stays `sending`, and the sweep fails it rather than sending it again.
+      try {
         await prisma.scheduledEmail.update({
-          where: { id: scheduled.id },
+          where: { id },
           data: {
             status: 'sent',
             sentMessageId: result.messageId || null,
             sentThreadId: result.threadId || null,
           },
         });
-
-        wsEmitToUser(scheduled.userId, 'email:scheduled:sent', { id: scheduled.id });
-        processed++;
       } catch (err: any) {
-        const newRetryCount = scheduled.retryCount + 1;
-        const update: Record<string, unknown> = {
-          retryCount: newRetryCount,
-          errorMessage: err?.message || 'Unknown error',
-        };
-        if (newRetryCount >= 3) {
-          update.status = 'failed';
-        }
-        await prisma.scheduledEmail.update({
-          where: { id: scheduled.id },
-          data: update,
-        });
-
-        wsEmitToUser(scheduled.userId, 'email:scheduled:sent', { id: scheduled.id });
-        console.error(`[ScheduledSend] Failed to send scheduled email ${scheduled.id}:`, err?.message);
+        console.error(`[ScheduledSend] Sent scheduled email ${id} but could not record it:`, err?.message);
+        continue;
       }
+
+      wsEmitToUser(scheduled.userId, 'email:scheduled:sent', { id });
+      processed++;
     }
 
     return processed;
+  },
+
+  /** One claimed scheduled email, through the same path as sending it by hand. */
+  async sendScheduledEmail(scheduled: ScheduledEmail): Promise<{ messageId?: string | null; threadId?: string | null }> {
+    const attachments = (scheduled.attachments as Array<{ filename: string; content: string; contentType: string; size: number }>) || [];
+
+    if (scheduled.mode === 'new') {
+      return this.sendEmail({
+        to: scheduled.to,
+        cc: scheduled.cc,
+        bcc: scheduled.bcc,
+        subject: scheduled.subject,
+        htmlBody: scheduled.htmlBody,
+        attachments,
+      }, scheduled.userId);
+    }
+    if (scheduled.mode === 'reply' || scheduled.mode === 'replyAll') {
+      return this.replyToEmail(scheduled.replyToEmailId!, {
+        htmlBody: scheduled.htmlBody,
+        // The recipients the form held when it was scheduled — without
+        // them an edited To was dropped at send time.
+        to: scheduled.to,
+        replyAll: scheduled.mode === 'replyAll',
+        cc: scheduled.cc,
+        bcc: scheduled.bcc,
+        attachments,
+      }, scheduled.userId);
+    }
+    if (scheduled.mode === 'forward') {
+      return this.forwardEmail(scheduled.replyToEmailId!, {
+        to: scheduled.to,
+        cc: scheduled.cc,
+        bcc: scheduled.bcc,
+        htmlBody: scheduled.htmlBody,
+        attachments,
+        forwardExistingAttachments: scheduled.forwardExistingAttachments,
+      }, scheduled.userId);
+    }
+    throw new Error(`Unknown mode: ${scheduled.mode}`);
+  },
+
+  /**
+   * Give up on sends that were interrupted, and never send them again.
+   *
+   * A row is `sending` only between its claim and the write after the Gmail
+   * call. One still `sending` ten minutes on belongs to a process that died in
+   * between — killed mid-deploy, out of memory — and nothing here can tell
+   * whether Gmail accepted the message before it went. Sending it again risks
+   * exactly the duplicate the claim exists to prevent, so it is failed, with a
+   * message telling the user to check Sent.
+   */
+  async failInterruptedSends(now = new Date()) {
+    const interrupted = await prisma.scheduledEmail.updateManyAndReturn({
+      where: { status: 'sending', updatedAt: { lt: new Date(now.getTime() - SCHEDULED_SEND_STUCK_MS) } },
+      data: { status: 'failed', errorMessage: INTERRUPTED_SEND_MESSAGE },
+      select: { id: true, userId: true },
+    });
+
+    for (const row of interrupted) {
+      console.warn(`[ScheduledSend] Scheduled email ${row.id} was interrupted mid-send; marked failed, not resent`);
+      wsEmitToUser(row.userId, 'email:scheduled:sent', { id: row.id });
+    }
+
+    return interrupted.length;
   },
 
   /**

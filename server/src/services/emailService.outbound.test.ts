@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { prisma } from '../lib/prisma.js';
 import { getGmailClient } from '../lib/gmail.js';
 import { createUser, createEmail } from '../test/factories.js';
 import { createGmailMock, type GmailMock } from '../test/gmailMock.js';
+import { auditService } from './auditService.js';
 import { emailService } from './emailService.js';
 
 /**
@@ -219,4 +220,35 @@ describe('replyToEmail — the quoted history', () => {
     expect(html).toContain('<div class="gmail_quote">');
     expect(html).toContain('<blockquote class="gmail_quote"');
   });
+});
+
+describe('outbound mail — once Gmail has accepted it', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it.each(['send', 'reply', 'forward'] as const)(
+    'a %s reports success when the audit write after it fails — REGRESSION',
+    async (kind) => {
+      // The message has gone. Answering "failed" here made people send it
+      // again by hand, and a scheduled send queued itself for a second go.
+      const user = await connected();
+      const original = await createEmail(user.id, { subject: 'Plan', from: 'them@other.test' });
+      const logSync = vi.spyOn(auditService, 'logSync').mockRejectedValue(new Error('Timed out fetching a new connection'));
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const result =
+        kind === 'send'
+          ? await emailService.sendEmail({ to: ['you@x.test'], subject: 'Plan', htmlBody: '<p>hi</p>' }, user.id)
+          : kind === 'reply'
+            ? await emailService.replyToEmail(original.id, { htmlBody: '<p>hi</p>' }, user.id)
+            : await emailService.forwardEmail(original.id, { to: ['you@x.test'], htmlBody: '<p>fyi</p>' }, user.id);
+
+      expect(result).toEqual({ messageId: 'sent-msg', threadId: 'thread-sent' });
+      expect(gmail.messagesSend).toHaveBeenCalledTimes(1);
+      expect(logSync).toHaveBeenCalledTimes(1);
+      // Swallowed, but not silently: the lost audit row is in the logs.
+      expect(logged).toHaveBeenCalledWith(expect.stringContaining('sent-msg'), 'Timed out fetching a new connection');
+    }
+  );
 });
