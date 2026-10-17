@@ -6,6 +6,7 @@ import type { Duplex } from 'stream';
 import { parseCookie } from 'cookie';
 import { env } from './config/env.js';
 import { verifyAccessToken, verifyRefreshToken } from './utils/jwt.js';
+import { appOriginCheck } from './utils/appOrigin.js';
 
 /**
  * How often every socket is pinged: well inside the idle timeout a proxy puts
@@ -19,8 +20,12 @@ export const HEARTBEAT_INTERVAL_MS = 25_000;
 let wss: WebSocketServer | null = null;
 let attachedTo: Server | null = null;
 let heartbeat: ReturnType<typeof setInterval> | null = null;
-/** The one origin allowed to open a socket: the app's own, from CLIENT_URL. */
-let allowedOrigin = '';
+/**
+ * Whether an Origin may open a socket: the app's own, from CLIENT_URL — plus
+ * loopback pages in development. The same rule as the API's writes. Refuses
+ * everything until `initWebSocket` sets it.
+ */
+let isAppOrigin: (origin: string) => boolean = () => false;
 const clients = new Set<WebSocket>();
 const userClients = new Map<string, Set<WebSocket>>();
 /** Sockets that answered the last ping, or have not been pinged yet. */
@@ -135,7 +140,7 @@ function onUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer) {
   }
 
   const origin = req.headers.origin;
-  if (origin !== allowedOrigin) {
+  if (origin === undefined || !isAppOrigin(origin)) {
     // Logged with the value: after a hostname change, a CLIENT_URL that was not
     // updated refuses every socket, and this line is what says so.
     console.warn(`[WS] Refused upgrade from origin ${JSON.stringify(origin ?? null)}`);
@@ -171,7 +176,7 @@ function sweep() {
 }
 
 export function initWebSocket(server: Server) {
-  allowedOrigin = new URL(env.CLIENT_URL).origin;
+  isAppOrigin = appOriginCheck(env.CLIENT_URL, env.NODE_ENV);
   wss = new WebSocketServer({ noServer: true });
   server.on('upgrade', onUpgrade);
   attachedTo = server;

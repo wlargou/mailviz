@@ -153,6 +153,26 @@ async function connectAs(userId: string, options: ConnectOptions = {}): Promise<
 const ALICE = '11111111-1111-4111-8111-111111111111';
 const BOB = '22222222-2222-4222-8222-222222222222';
 
+/**
+ * Run one describe's tests against a socket server initialised under another
+ * NODE_ENV and CLIENT_URL — both read by `initWebSocket`, as they are once at
+ * boot — and put the file's own back afterwards.
+ */
+function underEnv(nodeEnv: string, clientUrl: string) {
+  const saved = { NODE_ENV: env.NODE_ENV, CLIENT_URL: env.CLIENT_URL };
+  beforeEach(() => {
+    shutdownWebSocket();
+    env.NODE_ENV = nodeEnv;
+    env.CLIENT_URL = clientUrl;
+    initWebSocket(server);
+  });
+  afterEach(() => {
+    shutdownWebSocket();
+    Object.assign(env, saved);
+    initWebSocket(server);
+  });
+}
+
 describe('WebSocket authentication', () => {
   it('refuses a connection with no cookies at all, before the upgrade', async () => {
     expect(await refusedWith(connect())).toBe(401);
@@ -275,6 +295,89 @@ describe('WebSocket Origin check', () => {
 
     expect(bobSaw.map((m) => m.event)).toEqual(['emails:synced']);
     expect(aliceSaw).toEqual([]);
+  });
+});
+
+describe('WebSocket Origin check, by environment', () => {
+  /**
+   * In production only CLIENT_URL's origin opens a socket — scheme, host and
+   * port, all three. In development a loopback page on any port does too: the
+   * client connects to :3002 directly with its page's Origin, and the repo's
+   * own preview serves that page on 5180 while CLIENT_URL says 5174.
+   */
+  const SITE = 'https://mailviz.example.test';
+  const LOOPBACK = ['http://localhost:5180', 'http://127.0.0.1:5180'];
+  const valid = () => `access_token=${signAccessToken(ALICE)}`;
+
+  /**
+   * The first event a valid session opened from `origin` receives. A refusal
+   * rejects with its status rather than leaving the test to time out.
+   */
+  function opens(origin: string): Promise<string> {
+    const ws = connect(valid(), { origin });
+    return new Promise((resolve, reject) => {
+      ws.on('message', (raw) => resolve(JSON.parse(raw.toString()).event));
+      ws.on('unexpected-response', (req, res) => {
+        res.resume();
+        req.destroy();
+        reject(new Error(`refused with ${res.statusCode}`));
+      });
+      ws.on('error', () => {});
+      ws.on('close', (code) => reject(new Error(`socket closed with ${code} before any message`)));
+    });
+  }
+
+  describe('in production', () => {
+    underEnv('production', SITE);
+
+    it("accepts CLIENT_URL's origin", async () => {
+      expect(await opens(SITE)).toBe('connected');
+    });
+
+    it('refuses the same host over the other scheme', async () => {
+      // A page served over plain http — or anything that can pose as one on
+      // the network — must not read the user's events.
+      expect(await refusedWith(connect(valid(), { origin: 'http://mailviz.example.test' }))).toBe(403);
+    });
+
+    it('refuses the same host on another port', async () => {
+      // Another service behind the same host name is another origin.
+      expect(await refusedWith(connect(valid(), { origin: `${SITE}:8443` }))).toBe(403);
+    });
+
+    it('refuses loopback pages', async () => {
+      for (const origin of LOOPBACK) {
+        expect({ origin, status: await refusedWith(connect(valid(), { origin })) }).toEqual({ origin, status: 403 });
+      }
+    });
+  });
+
+  describe('in development', () => {
+    underEnv('development', SITE);
+
+    it('accepts a loopback page on any port', async () => {
+      for (const origin of LOOPBACK) {
+        expect({ origin, event: await opens(origin) }).toEqual({ origin, event: 'connected' });
+      }
+    });
+
+    it("still accepts CLIENT_URL's origin", async () => {
+      expect(await opens(SITE)).toBe('connected');
+    });
+
+    it('refuses everything else', async () => {
+      for (const origin of [
+        'https://studio.example.test',
+        'https://localhost:5180', // loopback, but not over http
+        'http://localhost:5180.evil.test',
+        'http://localhost.evil.test:5180',
+        'http://evil.localhost:5180',
+        'null',
+      ]) {
+        expect({ origin, status: await refusedWith(connect(valid(), { origin })) }).toEqual({ origin, status: 403 });
+      }
+      expect(await refusedWith(connect(valid(), { origin: null }))).toBe(403);
+    });
   });
 });
 

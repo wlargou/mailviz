@@ -98,7 +98,7 @@ app.use(cors({
 // them refuses is still logged.
 app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev', { skip: isProbe }));
 // Before the body parsers too: a refused request is not worth reading 35 MB of.
-app.use('/api', sameOriginWrites(env.CLIENT_URL));
+app.use('/api', sameOriginWrites(env.CLIENT_URL, env.NODE_ENV));
 // Larger body limit for email send routes (attachments up to 25MB, base64 ~33% overhead)
 app.use('/api/v1/emails/send', express.json({ limit: '35mb' }));
 app.use('/api/v1/emails/:id/reply', express.json({ limit: '35mb' }));
