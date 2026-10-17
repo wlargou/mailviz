@@ -171,6 +171,12 @@ export function createShutdown(steps: ShutdownSteps, deadlineMs = SHUTDOWN_DEADL
     force.unref();
 
     try {
+      // `/api/ready` turns 503 here, but with no job running the listener
+      // closes milliseconds later: too soon for a probe to see it, or for the
+      // Service to drop this pod from its endpoints. That gap is covered
+      // outside the process: the cluster manifest gives the pod a preStop
+      // sleep, which Kubernetes runs before sending SIGTERM, so the endpoints
+      // have dropped the pod before this listener closes.
       startDraining();
       steps.stopSchedulers();
 
