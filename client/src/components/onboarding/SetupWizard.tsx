@@ -94,7 +94,9 @@ export function SetupWizard({ status, onFinish }: SetupWizardProps) {
         backButtonText="Back"
         cancelButtonText="Finish later"
         nextButtonText="Next"
-        submitButtonText={`Start using ${PRODUCT_NAME}`}
+        // Not the product's name: CreateFullPage's action button has ~150px of
+        // text room, and "Start using Olympusx Productivity Hub" wrapped there.
+        submitButtonText="Finish setup"
         // Setup writes each step as it completes, so leaving keeps what is saved.
         // The modal says that rather than implying the work is discarded.
         modalTitle="Leave setup?"

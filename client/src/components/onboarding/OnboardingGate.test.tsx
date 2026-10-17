@@ -18,6 +18,7 @@ vi.mock('../../api/onboarding', () => ({
     getStatus: vi.fn(),
     complete: vi.fn(),
     seedTaskStatuses: vi.fn(),
+    seedLabels: vi.fn(),
     reset: vi.fn(),
   },
 }));
@@ -64,6 +65,7 @@ beforeEach(() => {
   vi.mocked(onboardingApi.seedTaskStatuses).mockResolvedValue({
     data: { data: { created: 3, skipped: false } },
   } as never);
+  vi.mocked(onboardingApi.seedLabels).mockResolvedValue({} as never);
 });
 
 describe('OnboardingGate', () => {
@@ -119,6 +121,26 @@ describe('OnboardingGate', () => {
     expect(await screen.findByRole('heading', { name: 'Your task board' })).toBeInTheDocument();
     // Entering the wizard must not yet mark setup complete.
     expect(onboardingApi.complete).not.toHaveBeenCalled();
+  });
+
+  it('ends the wizard on "Finish setup", which records setup as done', async () => {
+    mockStatus(status());
+    render(<OnboardingGate />);
+    await screen.findByRole('heading', { name: /your workday in one place/i });
+    await userEvent.click(await screen.findByRole('button', { name: /set up olympusx productivity hub/i }));
+
+    // Board, partner and signature each move on with Next; the last two are
+    // optional and left blank.
+    for (const step of ['Your task board', 'Who you sell with', 'How you sign off']) {
+      expect(await screen.findByRole('heading', { name: step })).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+    }
+    expect(await screen.findByRole('heading', { name: "You're set" })).toBeInTheDocument();
+
+    // Not the product's name: in CreateFullPage's action button that wrapped.
+    await userEvent.click(screen.getByRole('button', { name: 'Finish setup' }));
+
+    await waitFor(() => expect(onboardingApi.complete).toHaveBeenCalledWith(false));
   });
 
   it('tells a user with existing columns that nothing will change', async () => {
