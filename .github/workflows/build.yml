@@ -19,9 +19,15 @@ name: Build
 
 on:
   pull_request:
+    # Everything the images are built from, or that decides how: the
+    # Dockerfile and its ignore file, the manifests and lockfile, the root
+    # tsconfig the build stage copies, .nvmrc (the base image's Node must
+    # match it), the app itself, and these two workflows.
     paths:
       - 'docker/**'
       - 'package*.json'
+      - 'tsconfig*.json'
+      - .nvmrc
       - 'client/**'
       - 'server/**'
       - VERSION
