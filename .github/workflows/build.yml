@@ -1,0 +1,84 @@
+name: Build
+
+# The container images, from docker/Dockerfile with the repo root as the
+# context, for linux/amd64:
+#   ghcr.io/wlargou/mailviz/app       the server, serving the client
+#   ghcr.io/wlargou/mailviz/migrator  `prisma migrate deploy`, run before a rollout
+# A script in olympusx-hosting mirrors them to OCIR and pins each by digest.
+# Railway does not use them: it keeps building with Nixpacks until the move,
+# which is why the Dockerfile is not at the root (Railway builds with a root
+# Dockerfile whenever it finds one).
+#
+# This file decides when, and with what token; images.yml is the job itself,
+# the same steps for a pull request and for a release, so that what main
+# publishes is built and tested exactly as the pull request was.
+#
+# Built on GitHub-hosted runners and never on a self-hosted one: these are what
+# production runs, so they come from a fresh VM, not from a machine that also
+# runs pull-request code. ubuntu-latest is amd64, so nothing is emulated.
+
+on:
+  pull_request:
+    # Everything the images are built from, or that decides how: the
+    # Dockerfile and its ignore file, the manifests and lockfile, the root
+    # tsconfig the build stage copies, .nvmrc (the base image's Node must
+    # match it), the app itself, and these two workflows.
+    paths:
+      - 'docker/**'
+      - 'package*.json'
+      - 'tsconfig*.json'
+      - .nvmrc
+      - 'client/**'
+      - 'server/**'
+      - VERSION
+      - .github/workflows/build.yml
+      - .github/workflows/images.yml
+  # Every commit on main gets images named after it, whatever it touched, so
+  # `sha-<commit>` exists for every commit of main.
+  push:
+    branches: [main]
+    tags: ['v*']
+  # On main or a tag this publishes; on any other ref it is a dry run, which is
+  # how a change to these files is tried before it merges.
+  workflow_dispatch:
+
+# Read-only by default. Only `publish` pushes, and only it asks for
+# packages: write.
+permissions:
+  contents: read
+
+# Pull requests: one group per pull request, and a new push cancels the run it
+# replaces. Everything else — main, tags, a dispatch — gets a group of its own
+# per ref and commit. GitHub keeps one pending run per group and cancels the
+# older, so a shared group on main would drop a commit's images whenever two
+# merges queued behind a running build; one group per commit is never shared,
+# and so never cancelled. Two commits of main can therefore publish at once:
+# their sha tags differ, but the VERSION tag is pushed by every run of a commit
+# carrying that VERSION — two concurrent merges, a merge that does not bump it,
+# a v* tag — so it can end on an older commit's image. The mirror pins digests.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('build-pr-{0}', github.ref) || format('build-{0}-{1}', github.ref, github.sha) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # Pull requests, and a dispatch off main: build both images, smoke-test
+  # them, push nothing. This job has no packages permission at all.
+  test:
+    if: github.event_name == 'pull_request' || !(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    permissions:
+      contents: read
+    uses: ./.github/workflows/images.yml
+    with:
+      publish: false
+
+  # main and v* tags: the only job that may push. One job builds both images,
+  # smoke-tests them, and pushes those same loaded images, with no rebuild
+  # between the test and the push. Their digests are in the job summary.
+  publish:
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/images.yml
+    with:
+      publish: true

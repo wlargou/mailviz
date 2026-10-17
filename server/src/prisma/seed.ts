@@ -1,14 +1,13 @@
-import dotenv from 'dotenv';
-dotenv.config();
-
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../lib/prismaClient.js';
+// Loads .env and any DATABASE_URL_FILE, like the app does.
+import { env } from '../config/env.js';
 
 // Prisma 7 requires a driver adapter — `new PrismaClient()` with no arguments
 // no longer opens a connection. This script runs standalone (npm run db:seed),
 // so it builds its own rather than importing the shared singleton.
 const prisma = new PrismaClient({
-  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+  adapter: new PrismaPg({ connectionString: env.DATABASE_URL }),
 });
 
 async function main() {
