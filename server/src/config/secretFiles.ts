@@ -39,6 +39,11 @@ export const SECRET_FILE_VARIABLES = [
  * - A missing or unreadable file throws. Starting without the secret would fall
  *   back to a development default, which is the failure `assertProductionSecrets`
  *   exists to stop, and an error naming the path is the useful one.
+ * - So does a file with nothing in it but whitespace — a Secret key created
+ *   empty. As '' it would count as unset everywhere in env.ts: DATABASE_URL
+ *   would quietly become the development database on localhost, and the pod
+ *   would crash-loop on a connection error that names neither the file nor the
+ *   variable.
  *
  * Writes into `source` (process.env by default) so that every reader, the boot
  * guard included, sees the same value. The value itself is never logged.
@@ -68,6 +73,10 @@ export function loadSecretFiles(
           : `${fileVariable} is ${path}, which cannot be read (${code ?? (err as Error).message}).`
       );
     }
-    source[name] = contents.replace(/\r?\n$/, '');
+    const value = contents.replace(/\r?\n$/, '');
+    if (value.trim() === '') {
+      throw new Error(`${fileVariable} is ${path}, which is empty.`);
+    }
+    source[name] = value;
   }
 }

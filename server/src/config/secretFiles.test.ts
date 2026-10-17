@@ -115,6 +115,24 @@ describe('loadSecretFiles', () => {
     ).toThrow(`JWT_SECRET_FILE is ${directory}, which cannot be read (EISDIR).`);
   });
 
+  it.each([
+    ['nothing', ''],
+    ['a newline', '\n'],
+    ['a Windows newline', '\r\n'],
+    ['two newlines', '\n\n'],
+    ['spaces and a tab', '  \t \n'],
+  ])('refuses a file holding %s, naming the variable', (label, contents) => {
+    const path = secretFile(`blank-${label.replace(/\W+/g, '-')}`, contents);
+    const source: NodeJS.ProcessEnv = { DATABASE_URL_FILE: path };
+
+    // Read as '', it would count as unset, and env.ts would fall back to the
+    // development database on localhost: a crash loop that names nothing.
+    expect(() => loadSecretFiles(['DATABASE_URL'], source)).toThrow(
+      `DATABASE_URL_FILE is ${path}, which is empty.`
+    );
+    expect(source.DATABASE_URL).toBeUndefined();
+  });
+
   it('leaves alone a variable that is not on its list', () => {
     const source: NodeJS.ProcessEnv = { ALLOWED_EMAILS_FILE: secretFile('allowed', '@example.com') };
 
@@ -208,6 +226,13 @@ describe('secret files at startup', () => {
     vi.resetModules();
 
     await expect(import('./env.js')).rejects.toThrow(/JWT_SECRET_FILE is .*never-mounted, which does not exist/);
+  });
+
+  it('fails the import on an empty database URL file, not on localhost later', async () => {
+    environmentWithFiles({ DATABASE_URL: '\n' });
+    vi.resetModules();
+
+    await expect(import('./env.js')).rejects.toThrow(/DATABASE_URL_FILE is .*startup-DATABASE_URL, which is empty\./);
   });
 
   it('prisma.config.ts reads DATABASE_URL_FILE, for the migrator', async () => {
