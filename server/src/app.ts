@@ -79,6 +79,16 @@ export function cspOptions(nodeEnv: string) {
   };
 }
 
+/**
+ * Probes, which a platform sends every few seconds for as long as the process
+ * lives. Logged, they would be most of the log and say nothing.
+ */
+const PROBE_PATHS = new Set(['/api/health', '/api/ready']);
+
+function isProbe(req: { originalUrl?: string; url?: string }): boolean {
+  return PROBE_PATHS.has((req.originalUrl ?? req.url ?? '').split('?')[0]);
+}
+
 app.use(helmet({ contentSecurityPolicy: cspOptions(env.NODE_ENV) }));
 app.use(cors({
   origin: env.CLIENT_URL,
@@ -86,7 +96,7 @@ app.use(cors({
 }));
 // Before the body parsers and the Origin check, so that a request either of
 // them refuses is still logged.
-app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev', { skip: isProbe }));
 // Before the body parsers too: a refused request is not worth reading 35 MB of.
 app.use('/api', sameOriginWrites(env.CLIENT_URL));
 // Larger body limit for email send routes (attachments up to 25MB, base64 ~33% overhead)
