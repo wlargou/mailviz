@@ -403,7 +403,7 @@ restore, validation, smoke).
 |---|---|---|---|---|---|
 | 6.1 | You | T0 | Railway **app** stopped (remove the active deployment or scale to 0) and its GitHub auto-deploy disconnected, so a merge cannot start it | `curl https://invigorating-recreation-production-df3d.up.railway.app/api/health` fails | redeploy |
 | 6.2 | Claude | T0 | Railway **Postgres** kept running, set read-only: `ALTER DATABASE <db> SET default_transaction_read_only = on` (reversible) | a write attempt fails with `cannot execute … in a read-only transaction` | `… = off` |
-| 6.3 | You | T+7 d | Final archive: one last `pg_dump -Fc` of Railway (read-only) to Object Storage (private bucket, retention 90 d), with the Railway `/data/rfp` tarball | object listed with its size and sha256 | — |
+| 6.3 | You | T+7 d | Final archive: one last `pg_dump -Fc` of Railway (read-only) to Object Storage (a private bucket with a **90-day lifecycle rule** — none exists yet, and `olympusx-cnpg-backups` is versioned, so a deleted object would survive as an old version; the privacy policy promises deletion after 90 days), with the Railway `/data/rfp` tarball | object listed with its size and sha256 | — |
 | 6.4 | You | T+7 d | Delete the Railway project (app service, Postgres, both volumes); cancel Pro if nothing else uses it | Railway dashboard empty; the next invoice is $0 | none: irreversible, hence the archive in 6.3 |
 | 6.5 | You | T+30 d | Remove the Cloudflare 301 for `mailviz.rkube.io` and its DNS record | `dig mailviz.rkube.io` returns nothing | re-create |
 | 6.6 | Claude | T+7 d | Docs: CLAUDE.md (deploy, running scripts with `kubectl exec` instead of `railway ssh`, host), README, memory notes; `.nvmrc` and `engines.node` re-pinned to the image's Node | PR merged | — |
@@ -506,7 +506,8 @@ reverse path takes about the same 30 minutes.
 
 - **T+1 h:** a scheduled email sent once; CNPG WAL archiving succeeding (`kubectl cnpg status`).
 - **T+24 h:** a nightly base backup in the bucket; no restarts; `google_auth` sync fresh for both
-  users.
+  users. Then delete the cutover's local copies on the Mac: `final.fc`, the document tarball, its
+  checksum manifest and the dump client's env file (Claude). The privacy policy says so.
 - **T+7 d:** raise the TTL; measure the backup size and cost.
 - **T+7 d:** Phase 6.3–6.4 and 4.7.
 - **T+30 d:** Phase 6.5 (the `mailviz.rkube.io` 301 and record go).
