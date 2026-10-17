@@ -1,0 +1,37 @@
+# Build context for the Dockerfile (context = repo root). The Dockerfile COPYs
+# only the manifests, VERSION, tsconfig.base.json, client/ and server/, so this
+# keeps secrets, data and bulk out of the context rather than out of the image.
+
+# Secrets: never in a layer, not even in the build context. server/.env is the
+# one the server actually loads.
+**/.env
+**/.env.*
+
+# Customer data: RFP documents uploaded in development.
+server/uploads
+
+# Reinstalled and rebuilt inside the image.
+**/node_modules
+**/dist
+server/generated
+**/.vite
+
+# Tests and their artefacts. esbuild compiles every .ts under server/src, so
+# leaving tests out of the context also leaves them out of the image.
+**/*.test.ts
+**/*.test.tsx
+server/src/test
+**/coverage
+**/test-results
+
+# VCS, CI, editor and agent state; docs no build reads.
+.git
+.github
+.claude
+.design-review
+.vscode
+.idea
+docs
+*.md
+*.log
+**/.DS_Store
