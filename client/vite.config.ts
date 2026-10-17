@@ -1,7 +1,11 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+// The extension, and `import.meta.dirname` below rather than `__dirname`: Vite's
+// native config loader, planned as the default, loads this file as Node does,
+// and every build warned about both. This file is outside tsconfig's include.
+import { PRODUCT_NAME } from './src/brand.ts';
 
 /**
  * The version, baked in at build time.
@@ -14,11 +18,25 @@ import { resolve } from 'node:path';
  */
 function appVersion(): string {
   try {
-    return readFileSync(resolve(__dirname, '../VERSION'), 'utf-8').trim() || 'unknown';
+    return readFileSync(resolve(import.meta.dirname, '../VERSION'), 'utf-8').trim() || 'unknown';
   } catch {
     // A missing file must not fail the build — the version is diagnostic.
     return 'unknown';
   }
+}
+
+/**
+ * The tab title, from the same constant as every other place the name appears.
+ *
+ * Vite's own `%NAME%` substitution reads only env variables, and leaves any
+ * other placeholder as written, so without this the tab would say
+ * "%PRODUCT_NAME%" — silently, since it warns only for `VITE_` names.
+ */
+function productTitle(): Plugin {
+  return {
+    name: 'product-title',
+    transformIndexHtml: (html) => html.replaceAll('%PRODUCT_NAME%', PRODUCT_NAME),
+  };
 }
 
 export default defineConfig({
@@ -26,7 +44,7 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(appVersion()),
     __BUILT_AT__: JSON.stringify(new Date().toISOString()),
   },
-  plugins: [react()],
+  plugins: [react(), productTitle()],
   resolve: {
     dedupe: ['react', 'react-dom'],
   },

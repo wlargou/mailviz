@@ -1,6 +1,8 @@
-# MailViz — CRM with Gmail & Google Calendar Integration
+# Olympusx Productivity Hub — CRM with Gmail & Google Calendar Integration
 
-A full-stack CRM with deep Gmail and Google Calendar integration. Manage customers, contacts, deals, tasks, and email in one workspace with real-time sync.
+Your workday in one place: a full-stack CRM with deep Gmail and Google Calendar integration. Manage customers, contacts, deals, tasks, and email in one workspace with real-time sync.
+
+The product was called MailViz until 1.30. The repository, the npm packages (`mailviz`, `mailviz-client`, `mailviz-server`), the databases and the `mv_*` SQL functions keep the name `mailviz` on purpose: renaming them changes nothing a user sees and costs a migration.
 
 ![TypeScript](https://img.shields.io/badge/TypeScript-7-blue)
 ![React](https://img.shields.io/badge/React-19-61dafb)

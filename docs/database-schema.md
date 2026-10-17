@@ -1,4 +1,4 @@
-# Mailviz Database Schema
+# Olympusx Productivity Hub Database Schema
 
 Generated from `server/src/prisma/schema.prisma`. PostgreSQL 16, accessed through
 Prisma. **22 models and 1 enum** (`TaskPriority`) as of migration
