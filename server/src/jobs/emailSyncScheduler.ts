@@ -66,7 +66,12 @@ async function syncAccount(userId: string): Promise<void> {
         console.log(`[DraftSync] ${drafts.synced} drafts updated, ${drafts.removed} removed`);
       }
     } catch (err: any) {
-      if (err?.status !== 400 && err?.status !== 403) {
+      // A refusal here is the same one the mail sync just met, and Google
+      // sends the client-side codes (`invalid_client`, `deleted_client`) as a
+      // 401, which the status check below would log every tick.
+      if (await googleAuthService.noteAuthFailure(userId, err, grant)) {
+        // Recorded, and said once, by noteAuthFailure.
+      } else if (err?.status !== 400 && err?.status !== 403) {
         console.error('[DraftSync] Draft sync failed:', err?.message || err);
       }
     }

@@ -105,6 +105,27 @@ describe('sweepPendingPushes', () => {
     expect(calendar.eventsUpdate.mock.calls[0][0].sendUpdates).toBe('none');
   });
 
+  it('leaves an account whose grant Google refused alone, its rows still pending', async () => {
+    const user = await createUser();
+    await createGoogleAuth(user.id);
+    await prisma.googleAuth.update({
+      where: { userId: user.id },
+      data: { authError: 'invalid_grant', authErrorAt: new Date() },
+    });
+    const event = await pendingEvent(user.id);
+
+    const result = await sweepPendingPushes(user.id);
+
+    // Every push would fail, and `pushToGoogle` logs each failure itself: one
+    // line per pending event per tick until the user reconnects.
+    expect(result).toEqual({ attempted: 0, cleared: 0 });
+    expect(calendar.eventsUpdate).not.toHaveBeenCalled();
+    // Still pending, so the sync cannot revert the edit and the first tick
+    // after a Reconnect pushes it.
+    const row = await prisma.calendarEvent.findUniqueOrThrow({ where: { id: event.id } });
+    expect(row.pendingSince).not.toBeNull();
+  });
+
   it('leaves a row that is still being pushed by the request that made it', async () => {
     const user = await createUser();
     await createGoogleAuth(user.id);

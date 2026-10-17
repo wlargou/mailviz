@@ -31,7 +31,11 @@ async function syncAccount(userId: string): Promise<void> {
     try {
       await sweepPendingPushes(userId);
     } catch (err) {
-      console.error('[CalendarSync] Pending-push sweep failed:', (err as Error)?.message ?? err);
+      // A refused grant is recorded and said once, like the sync's own below —
+      // not a line per tick for as long as the account has pending events.
+      if (!(await googleAuthService.noteAuthFailure(userId, err, grant))) {
+        console.error('[CalendarSync] Pending-push sweep failed:', (err as Error)?.message ?? err);
+      }
     }
 
     const result = await calendarService.syncFromGoogle(false, userId);

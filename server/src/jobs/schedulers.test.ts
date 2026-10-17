@@ -57,6 +57,7 @@ const mocks = vi.hoisted(() => ({
   syncFromGmail: vi.fn<(userId: string) => Promise<MailSyncResult>>(),
   syncDrafts: vi.fn<(userId: string) => Promise<{ synced: number; removed: number }>>(),
   syncCalendar: vi.fn<(incremental: boolean, userId: string) => Promise<CalendarSyncResult>>(),
+  pushToGoogle: vi.fn<(eventId: string, action: string, userId: string) => Promise<{ status: string }>>(),
   processScheduledEmails: vi.fn<() => Promise<number>>(),
   cancelRepliedFollowUps: vi.fn<() => Promise<number>>(),
   processDue: vi.fn<() => Promise<number>>(),
@@ -93,7 +94,10 @@ vi.mock('../services/draftService.js', () => ({
   draftService: { syncDrafts: mocks.syncDrafts },
 }));
 vi.mock('../services/calendarService.js', () => ({
-  calendarService: { syncFromGoogle: mocks.syncCalendar },
+  calendarService: { syncFromGoogle: mocks.syncCalendar, pushToGoogle: mocks.pushToGoogle },
+  // The pending-push sweep runs for real; these two only shape its push.
+  settlePending: vi.fn(),
+  pushExtrasFromRow: () => ({}),
 }));
 vi.mock('../services/snoozeService.js', () => ({
   snoozeService: {
@@ -181,6 +185,7 @@ beforeEach(() => {
   mocks.syncFromGmail.mockResolvedValue(okMailSync);
   mocks.syncDrafts.mockResolvedValue({ synced: 0, removed: 0 });
   mocks.syncCalendar.mockResolvedValue(okCalendarSync);
+  mocks.pushToGoogle.mockResolvedValue({ status: 'pushed' });
   mocks.processScheduledEmails.mockResolvedValue(0);
   mocks.cancelRepliedFollowUps.mockResolvedValue(0);
   mocks.processDue.mockResolvedValue(0);
@@ -426,6 +431,50 @@ describe('a refused Google grant', () => {
     // Still skipped like a "not connected" 400: no error line, spinner cleared.
     expect(console.error).not.toHaveBeenCalled();
     expect(eventsFor(user.id).at(-1)).toEqual({ event: 'sync:status', data: { syncing: false } });
+  });
+
+  it('records a 401 invalid_client from the drafts call, and says so once across two ticks', async () => {
+    // The host-move case: a wrong client secret. Google's token endpoint
+    // answers 401 for it, and the drafts catch skipped only 400 and 403 — so it
+    // printed "[DraftSync] Draft sync failed: invalid_client" for every account,
+    // every minute.
+    const user = await createConnectedUser();
+    mocks.syncDrafts.mockRejectedValue(await tokenEndpointError(401, { error: 'invalid_client' }));
+    const tick = captureTick(startEmailSyncScheduler);
+
+    await tick();
+    await tick();
+
+    const row = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: user.id } });
+    expect(row.authError).toBe('invalid_client');
+    expect(linesAbout('invalid_client')).toHaveLength(1);
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
+  it('records a refusal escaping the pending-push sweep, and says so once across two ticks', async () => {
+    const user = await createConnectedUser();
+    await prisma.calendarEvent.create({
+      data: {
+        userId: user.id,
+        title: 'Edited while Google was away',
+        startTime: new Date('2026-10-20T09:00:00.000Z'),
+        endTime: new Date('2026-10-20T10:00:00.000Z'),
+        googleEventId: 'g-1',
+        pendingSince: new Date(Date.now() - 5 * 60_000),
+      },
+    });
+    mocks.pushToGoogle.mockRejectedValue(await tokenEndpointError(400, INVALID_GRANT));
+    const tick = captureTick(startCalendarSyncScheduler);
+
+    await tick();
+    await tick();
+
+    // The sweep's catch logged "Pending-push sweep failed: invalid_grant" on
+    // every tick while the account had anything pending.
+    const row = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: user.id } });
+    expect(row.authError).toBe('invalid_grant');
+    expect(linesAbout('invalid_grant')).toHaveLength(1);
+    expect(console.error).not.toHaveBeenCalled();
   });
 
   it('records it from a scheduled calendar sync too', async () => {
