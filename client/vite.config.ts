@@ -2,7 +2,10 @@ import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { PRODUCT_NAME } from './src/brand';
+// The extension, and `import.meta.dirname` below rather than `__dirname`: Vite's
+// native config loader, planned as the default, loads this file as Node does,
+// and every build warned about both. This file is outside tsconfig's include.
+import { PRODUCT_NAME } from './src/brand.ts';
 
 /**
  * The version, baked in at build time.
@@ -15,7 +18,7 @@ import { PRODUCT_NAME } from './src/brand';
  */
 function appVersion(): string {
   try {
-    return readFileSync(resolve(__dirname, '../VERSION'), 'utf-8').trim() || 'unknown';
+    return readFileSync(resolve(import.meta.dirname, '../VERSION'), 'utf-8').trim() || 'unknown';
   } catch {
     // A missing file must not fail the build — the version is diagnostic.
     return 'unknown';
