@@ -1,0 +1,298 @@
+@use '@carbon/react/scss/type' as type;
+@use '@carbon/react/scss/spacing' as *;
+
+// ─── REFERENCES REGISTER ─────────────────────────
+// The filter bar: every filter visible, in a grid that wraps — a bid team
+// sets several at once and must see which are on.
+.references-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: $spacing-04 $spacing-05;
+  padding: $spacing-05;
+  background-color: var(--cds-layer-01);
+  border-bottom: 1px solid var(--cds-border-subtle-01);
+  align-items: end;
+}
+
+.references-applied {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-03;
+  min-height: $spacing-09;
+  padding: $spacing-03 $spacing-05;
+  background-color: var(--cds-layer-01);
+}
+
+.references-applied__count {
+  @include type.type-style('label-02');
+  color: var(--cds-text-secondary);
+  margin-right: $spacing-03;
+}
+
+.references-applied__review {
+  @include type.type-style('label-02');
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--cds-link-primary);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+// Fixed layout, so long project names and tag lists wrap inside their column
+// instead of pushing the table past its container. Widths are by position:
+// adding a column means re-indexing them (see the CLAUDE.md note on
+// nth-child widths).
+.references-table {
+  table-layout: fixed;
+  width: 100%;
+
+  th:nth-child(1) { width: 16%; }
+  th:nth-child(2) { width: 30%; }
+  th:nth-child(3) { width: 12%; }
+  th:nth-child(4) { width: 6%; }
+  th:nth-child(5) { width: 11%; }
+  th:nth-child(6) { width: 15%; }
+  th:nth-child(7) { width: 10%; }
+
+  td {
+    vertical-align: top;
+    padding-top: $spacing-04;
+    padding-bottom: $spacing-04;
+    overflow-wrap: anywhere;
+  }
+}
+
+.references-customer {
+  text-align: left;
+}
+
+.references-secondary {
+  @include type.type-style('label-01');
+  display: block;
+  color: var(--cds-text-secondary);
+}
+
+// Two lines of the project name, the rest on hover.
+.references-project {
+  @include type.type-style('body-compact-01');
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.references-amount-cell {
+  white-space: nowrap;
+  text-align: right;
+}
+
+.references-amount {
+  @include type.type-style('body-compact-01');
+  font-variant-numeric: tabular-nums;
+  display: block;
+}
+
+.references-tags,
+.references-flags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-02;
+
+  .cds--tag {
+    margin: 0;
+  }
+}
+
+.references-flags__doc {
+  display: inline-flex;
+  color: var(--cds-icon-secondary);
+}
+
+.references-muted {
+  color: var(--cds-text-secondary);
+}
+
+// ─── ONE REFERENCE: the fields beside the letter ──
+// The page takes the content area's full height; each pane scrolls on its
+// own, so the document stays in view while the form is worked down.
+.reference-detail {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.reference-detail__actions {
+  display: flex;
+  align-items: center;
+  gap: $spacing-03;
+}
+
+.reference-detail__stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-02;
+  margin-right: $spacing-03;
+}
+
+.reference-detail__position {
+  @include type.type-style('label-02');
+  color: var(--cds-text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.reference-detail__split {
+  display: grid;
+  grid-template-columns: minmax(24rem, 5fr) 7fr;
+  gap: $spacing-05;
+  flex: 1;
+  min-height: 0;
+}
+
+.reference-form {
+  overflow-y: auto;
+  padding-right: $spacing-03;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-06;
+  padding-bottom: $spacing-07;
+
+  // A flex column that scrolls shrinks its children to fit unless told not
+  // to: the review notice was cut to half its height.
+  > * {
+    flex-shrink: 0;
+  }
+
+  .cds--inline-notification {
+    max-width: none;
+    margin: 0;
+  }
+}
+
+.reference-form__section {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-05;
+}
+
+.reference-form__heading {
+  @include type.type-style('heading-compact-02');
+  color: var(--cds-text-primary);
+  padding-bottom: $spacing-03;
+  border-bottom: 1px solid var(--cds-border-subtle-01);
+}
+
+.reference-form__row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: $spacing-05;
+  align-items: start;
+}
+
+.reference-form__row--amount {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) 6rem;
+}
+
+.reference-form__signatories {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-03;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.reference-form__signatory {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) auto;
+  gap: $spacing-03;
+  align-items: end;
+}
+
+.reference-form__tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-02;
+  margin-top: -$spacing-03;
+
+  .cds--tag {
+    margin: 0;
+  }
+}
+
+.reference-form__tags-label {
+  @include type.type-style('label-01');
+  color: var(--cds-text-secondary);
+  margin-right: $spacing-02;
+}
+
+.reference-form__tags-none {
+  @include type.type-style('label-01');
+  color: var(--cds-text-helper);
+}
+
+.reference-preview {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background-color: var(--cds-layer-01);
+  border: 1px solid var(--cds-border-subtle-01);
+}
+
+.reference-preview__bar {
+  display: flex;
+  align-items: center;
+  gap: $spacing-03;
+  padding: $spacing-02 $spacing-02 $spacing-02 $spacing-05;
+  border-bottom: 1px solid var(--cds-border-subtle-01);
+}
+
+.reference-preview__name {
+  @include type.type-style('label-02');
+  color: var(--cds-text-secondary);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reference-preview__frame {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  background-color: var(--cds-layer-02);
+}
+
+.reference-preview__empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: $spacing-07;
+
+  .cds--file-browse-btn {
+    max-width: 28rem;
+  }
+}
+
+// Narrow screens: the letter goes under the form, at a readable height.
+@media (max-width: 1055px) {
+  .reference-detail__split {
+    grid-template-columns: 1fr;
+  }
+
+  .reference-form {
+    overflow: visible;
+  }
+
+  .reference-preview {
+    min-height: 80vh;
+  }
+}

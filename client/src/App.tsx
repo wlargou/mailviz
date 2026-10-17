@@ -18,6 +18,7 @@ import { SettingsPage } from './components/settings/SettingsPage';
 import { NotFoundPage } from './components/shared/NotFoundPage';
 import { PursuitsPage, PursuitsRedirect } from './components/pursuits/PursuitsPage';
 import { RfpDetailPage } from './components/rfps/RfpDetailPage';
+import { ReferenceDetailPage } from './components/references/ReferenceDetailPage';
 import { ActivityLogPage } from './components/audit/ActivityLogPage';
 
 /**
@@ -86,6 +87,8 @@ export function App() {
             <Route path="/pursuits" element={<PursuitsRedirect />} />
             <Route path="/rfps" element={<PursuitsRedirect tab="tenders" />} />
             <Route path="/rfps/:id" element={<RfpDetailPage />} />
+            <Route path="/references" element={<PursuitsRedirect tab="references" />} />
+            <Route path="/references/:id" element={<ReferenceDetailPage />} />
             <Route path="/calendar" element={<CalendarPage />} />
             <Route path="/mail" element={<MailPage />} />
             <Route path="/mail/review" element={<ReviewPage />} />

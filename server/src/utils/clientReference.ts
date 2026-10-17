@@ -3,7 +3,12 @@
  * from what a reference says. See `ClientReference` in the schema.
  */
 
-export const REFERENCE_DOCUMENT_TYPES = ['ATTESTATION_REFERENCE', 'ATTESTATION_EXECUTION', 'FICHE_PROJET'] as const;
+/**
+ * The customer's attestation (de référence, or d'exécution), an unsigned
+ * fiche projet PowerM wrote, or the signed contract itself — a framework
+ * contract or an avenant, which proves the award but not the delivery.
+ */
+export const REFERENCE_DOCUMENT_TYPES = ['ATTESTATION_REFERENCE', 'ATTESTATION_EXECUTION', 'FICHE_PROJET', 'CONTRAT'] as const;
 export type ReferenceDocumentType = (typeof REFERENCE_DOCUMENT_TYPES)[number];
 
 export const REFERENCE_WORK_STATUSES = ['COMPLETED', 'IN_PROGRESS'] as const;

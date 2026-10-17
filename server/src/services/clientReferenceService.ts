@@ -353,7 +353,8 @@ export const clientReferenceService = {
     return formatReference(await ownedRow(userId, id));
   },
 
-  async create(userId: string, data: CreateClientReferenceInput) {
+  /** `importKey` is the import script's: a re-run finds the row it made. */
+  async create(userId: string, data: CreateClientReferenceInput, options: { importKey?: string } = {}) {
     await assertCustomerOwnedBy(userId, data.customerId);
     const columns = columnsOf(data) as Prisma.ClientReferenceUncheckedCreateInput;
     const fields: Fields = {
@@ -375,6 +376,7 @@ export const clientReferenceService = {
         ...derive(fields),
         userId,
         customerName: data.customerName,
+        importKey: options.importKey ?? null,
         signatories: data.signatories?.length ? { create: signatoryRows(data.signatories) } : undefined,
       },
       include: includes,

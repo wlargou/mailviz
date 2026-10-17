@@ -1249,9 +1249,10 @@ model ClientReference {
   id     String @id @default(uuid())
   userId String @map("user_id")
 
-  /// ATTESTATION_REFERENCE, ATTESTATION_EXECUTION, or FICHE_PROJET — an
+  /// ATTESTATION_REFERENCE, ATTESTATION_EXECUTION, FICHE_PROJET — an
   /// unsigned project sheet PowerM wrote itself, kept so the project can be
-  /// found but never to be mistaken for the customer's word.
+  /// found but never to be mistaken for the customer's word — or CONTRAT, the
+  /// signed contract or avenant: proof of the award, not of the delivery.
   documentType String @default("ATTESTATION_REFERENCE") @map("document_type") @db.VarChar(30)
   /// COMPLETED or IN_PROGRESS — several letters attest a run that is still going.
   workStatus   String @default("COMPLETED") @map("work_status") @db.VarChar(20)
