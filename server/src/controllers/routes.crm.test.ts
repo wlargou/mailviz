@@ -41,7 +41,7 @@ import {
  * not silently turned into an empty list.
  */
 
-type HttpMethod = 'get' | 'post' | 'patch' | 'delete';
+type HttpMethod = 'get' | 'post' | 'patch' | 'delete' | 'put';
 
 interface ErrorBody {
   error: { code: string; message: string };
@@ -121,6 +121,8 @@ function call(method: HttpMethod, path: string): Test {
       return agent.patch(path);
     case 'delete':
       return agent.delete(path);
+    case 'put':
+      return agent.put(path);
   }
 }
 
@@ -222,6 +224,16 @@ const PROTECTED_ROUTES: Array<[HttpMethod, string]> = [
   ['post', `/api/v1/rfps/${PLACEHOLDER_ID}/documents`],
   ['get', `/api/v1/rfps/${PLACEHOLDER_ID}/documents/${PLACEHOLDER_ID}`],
   ['delete', `/api/v1/rfps/${PLACEHOLDER_ID}/documents/${PLACEHOLDER_ID}`],
+
+  ['get', '/api/v1/client-references'],
+  ['get', '/api/v1/client-references/ids'],
+  ['get', '/api/v1/client-references/facets'],
+  ['get', `/api/v1/client-references/${PLACEHOLDER_ID}`],
+  ['post', '/api/v1/client-references'],
+  ['patch', `/api/v1/client-references/${PLACEHOLDER_ID}`],
+  ['delete', `/api/v1/client-references/${PLACEHOLDER_ID}`],
+  ['put', `/api/v1/client-references/${PLACEHOLDER_ID}/document`],
+  ['get', `/api/v1/client-references/${PLACEHOLDER_ID}/document`],
 
   ['get', '/api/v1/customers'],
   ['get', `/api/v1/customers/${PLACEHOLDER_ID}`],
@@ -1844,6 +1856,21 @@ describe('/api/v1/rfps', () => {
 
     expect((await request(app).delete(`/api/v1/rfps/${rfp.id}/documents/${doc.id}`).set('Cookie', cookie)).status).toBe(204);
     expect(fs.existsSync(path.join(storageDir, doc.storageKey))).toBe(false);
+  });
+
+  it('keeps an accented filename as the browser sent it — REGRESSION', async () => {
+    // multer read the filename as latin1, so the register listed
+    // "RÃ¨glement de consultation.pdf" and downloaded it under that name.
+    const { alice } = await createTwoUsers();
+    const rfp = await createRfp(alice.id);
+
+    const uploaded = await request(app)
+      .post(`/api/v1/rfps/${rfp.id}/documents`)
+      .set('Cookie', authFor(alice.id))
+      .attach('file', Buffer.from('%PDF-1.4 rc'), { filename: 'Règlement de consultation.pdf', contentType: 'application/pdf' });
+
+    expect(uploaded.status).toBe(201);
+    expect((uploaded.body as ItemBody<{ filename: string }>).data.filename).toBe('Règlement de consultation.pdf');
   });
 
   it('rejects a file type that is not a tender document, as a 400 rather than a 500', async () => {

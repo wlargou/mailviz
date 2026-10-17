@@ -42,6 +42,11 @@ export type AuditAction =
   | 'RFP_UNSHARED'
   | 'RFP_THREAD_LINKED'
   | 'RFP_THREAD_UNLINKED'
+  // Client references register
+  | 'REFERENCE_CREATED'
+  | 'REFERENCE_UPDATED'
+  | 'REFERENCE_DELETED'
+  | 'REFERENCE_DOCUMENT_REPLACED'
   | 'EMAIL_FOLLOW_UP_SET'
   | 'EMAIL_FOLLOW_UP_CLEARED'
   // Task actions
@@ -106,7 +111,7 @@ export type AuditAction =
   | 'ONBOARDING_COMPLETED'
   | 'ONBOARDING_SKIPPED';
 
-export type EntityType = 'email' | 'task' | 'task_template' | 'deal' | 'event' | 'company' | 'contact' | 'label' | 'auth' | 'scheduled_email' | 'email_draft' | 'email_template' | 'rfp';
+export type EntityType = 'email' | 'task' | 'task_template' | 'deal' | 'event' | 'company' | 'contact' | 'label' | 'auth' | 'scheduled_email' | 'email_draft' | 'email_template' | 'rfp' | 'client_reference';
 
 /**
  * Anything that can write an audit row — the shared client or a transaction
