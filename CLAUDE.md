@@ -76,7 +76,8 @@ npm run build --workspace=server  # esbuild → server/dist/
 - **Styles**: SCSS partials in `styles/`, `@use`d by `index.scss` (which is a pure manifest). `_base.scss` holds app-level base CSS and loads first. All colors use Carbon tokens (`var(--cds-*)`).
 - **Dev proxy**: Vite forwards `/api` and `/ws` to `http://localhost:3002`.
 
-### Database (PostgreSQL 16)
+### Database (PostgreSQL 18; 16 locally)
+- **Versions.** Production and CI run PostgreSQL 18 (Debian, glibc collation; `postgres:18` in `ci.yml` and `images.yml`). The local `docker-compose.yml` still runs `postgres:16-alpine`, and that is deliberate: moving it needs a volume migration (an existing data directory cannot change major version in place, and the 18 image mounts its volume at a different path). Alpine's musl collation also differs from glibc's, so for anything that sorts or lowercases text, CI is the reference, not the local database.
 - Schema: `server/src/prisma/schema.prisma`
 - Key models: User ↔ GoogleAuth (1:1), Task (dynamic string status via TaskStatus model), Email (Gmail sync), CalendarEvent, Customer ↔ Contact, Deal ↔ DealPartner, Label, ScheduledEmail, AuditLog, Notification, and the `*Share` join tables (EmailThreadShare, DealShare, TaskShare).
 - Task statuses are dynamic (stored in `task_statuses` table), not enum. The Kanban board reads from this table.
