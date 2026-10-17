@@ -53,8 +53,9 @@ permissions:
 # older, so a shared group on main would drop a commit's images whenever two
 # merges queued behind a running build; one group per commit is never shared,
 # and so never cancelled. Two commits of main can therefore publish at once:
-# their sha tags differ, and the VERSION tag (shared only when a merge changes
-# no shipped code) may land on either, which is why the mirror pins digests.
+# their sha tags differ, but the VERSION tag is pushed by every run of a commit
+# carrying that VERSION — two concurrent merges, a merge that does not bump it,
+# a v* tag — so it can end on an older commit's image. The mirror pins digests.
 concurrency:
   group: ${{ github.event_name == 'pull_request' && format('build-pr-{0}', github.ref) || format('build-{0}-{1}', github.ref, github.sha) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}

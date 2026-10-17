@@ -53,9 +53,9 @@ jobs:
 
       # `sha-<7>` names the commit; VERSION names the release. Built with both
       # tags whether or not it publishes, so a pull request tests exactly what
-      # main will push. A later build of the same VERSION (a tag on that commit,
-      # or a merge that changes no shipped code and so bumps nothing) moves the
-      # VERSION tag, never the sha tag's commit.
+      # main will push. The VERSION tag moves: any later or concurrent build of a
+      # commit carrying the same VERSION re-pushes it, so it may name an older
+      # commit's image. Only the sha tag and the digest are stable.
       - name: Name the images
         id: names
         run: |

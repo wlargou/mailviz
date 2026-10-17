@@ -10,11 +10,12 @@ on:
 permissions:
   contents: read
 
-# A new push to a pull request cancels the run it replaces. main is never
-# cancelled mid-run — every merge is verified — though a burst of merges keeps
-# only the newest of the runs still waiting.
+# A new push to a pull request cancels the run it replaces. Everything else gets
+# a group per ref and commit: GitHub keeps one pending run per group and cancels
+# the older, so a shared group on main would skip verifying a merge whenever two
+# queued behind a running one.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ${{ github.event_name == 'pull_request' && format('ci-pr-{0}', github.ref) || format('ci-{0}-{1}', github.ref, github.sha) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
