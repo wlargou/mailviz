@@ -23,4 +23,4 @@ cmds = [
 ]
 
 [start]
-cmd = "cd server && npx prisma migrate deploy && node dist/index.js"
+cmd = "cd server && npx prisma migrate deploy && exec node dist/index.js"

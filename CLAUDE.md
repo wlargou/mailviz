@@ -219,7 +219,8 @@ process start would relabel every container restart as a release.
 
 **A volume is required since 1.15.** RFP documents are the only bytes this app keeps on disk. Attach a Railway volume, mount it (e.g. `/data`), and set `RFP_STORAGE_DIR=/data/rfp`. Without it uploads appear to work and vanish at the next deploy.
 
-Configured via `nixpacks.toml` + `railway.json`. Node 22 via nixPkgs. Build: `npm ci` → client vite build → server `prisma generate` + esbuild. Start: `cd server && npx prisma migrate deploy && node dist/index.js`. Healthcheck: `/api/health` (static; liveness). `/api/ready` is the readiness probe: 503 only while draining, never a database check.
+Configured via `nixpacks.toml` + `railway.json`. Node 22 via nixPkgs. Build: `npm ci` → client vite build → server `prisma generate` + esbuild. Start: `cd server && npx prisma migrate deploy && exec node dist/index.js`. Healthcheck: `/api/health` (static; liveness). `/api/ready` is the readiness probe: 503 only while draining, never a database check.
+The start command ends in `exec` so that node, not a shell, receives Railway's SIGTERM and the drain runs, and `deploy.drainingSeconds: "35"` in `railway.json` leaves the drain's 30 s deadline room before SIGKILL.
 
 ### Running a script against production
 
