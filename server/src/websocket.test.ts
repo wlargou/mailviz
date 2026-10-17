@@ -49,7 +49,19 @@ let wsUrl: string;
 /** What a browser on the app's own page sends, read from CLIENT_URL as the server reads it. */
 const APP_ORIGIN = new URL(env.CLIENT_URL).origin;
 
+/**
+ * A listener leak — in the helpers below, or in the server's own socket
+ * handling, which runs in this process too — shows only as a
+ * MaxListenersExceededWarning on stderr. Collected here so that it fails the
+ * file instead of scrolling past.
+ */
+const listenerLeaks: string[] = [];
+function onWarning(warning: Error) {
+  if (warning.name === 'MaxListenersExceededWarning') listenerLeaks.push(warning.message);
+}
+
 beforeAll(async () => {
+  process.on('warning', onWarning);
   server = createServer();
   initWebSocket(server);
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -60,6 +72,8 @@ beforeAll(async () => {
 afterAll(async () => {
   shutdownWebSocket();
   await new Promise<void>((resolve) => server.close(() => resolve()));
+  process.off('warning', onWarning);
+  expect(listenerLeaks).toEqual([]);
 });
 
 /** Sockets opened by the current test, closed in afterEach so counts do not leak. */
@@ -610,8 +624,18 @@ describe('WebSocket heartbeat', () => {
    */
   function roundTrip(ws: WebSocket): Promise<void> {
     return new Promise((resolve, reject) => {
-      ws.once('pong', () => resolve());
-      ws.once('close', (code) => reject(new Error(`socket closed with ${code}`)));
+      // Each listener takes the other with it: a test makes a dozen round trips
+      // on one socket, and leftover close listeners pile up past Node's limit.
+      const onPong = () => {
+        ws.off('close', onClose);
+        resolve();
+      };
+      const onClose = (code: number) => {
+        ws.off('pong', onPong);
+        reject(new Error(`socket closed with ${code}`));
+      };
+      ws.once('pong', onPong);
+      ws.once('close', onClose);
       ws.ping();
     });
   }
