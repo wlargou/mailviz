@@ -1,3 +1,4 @@
+import { createCipheriv, randomBytes } from 'crypto';
 import { google } from 'googleapis';
 
 /**
@@ -51,3 +52,15 @@ async function refreshFailure(fetchImplementation: () => Promise<Response>): Pro
 
 /** Google's answer for a revoked or expired grant, as its token endpoint sends it. */
 export const INVALID_GRANT = { error: 'invalid_grant', error_description: 'Token has been expired or revoked.' };
+
+/**
+ * A token stored the way `encrypt` stores it, but under a key this process does
+ * not hold — the database after a move to a host with a different
+ * `TOKEN_ENCRYPTION_KEY`. `decrypt` throws on it, as it does in production.
+ */
+export function encryptedUnderAnotherKey(plaintext: string): string {
+  const iv = randomBytes(16);
+  const cipher = createCipheriv('aes-256-gcm', Buffer.alloc(32, 0xab), iv);
+  const body = cipher.update(plaintext, 'utf8', 'hex') + cipher.final('hex');
+  return `${iv.toString('hex')}:${cipher.getAuthTag().toString('hex')}:${body}`;
+}

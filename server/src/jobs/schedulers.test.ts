@@ -1,7 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { prisma } from '../lib/prisma.js';
 import { createUser, createGoogleAuth, createTwoUsers } from '../test/factories.js';
-import { INVALID_GRANT, tokenEndpointError, tokenEndpointUnreachable } from '../test/googleRefusal.js';
+import {
+  INVALID_GRANT,
+  encryptedUnderAnotherKey,
+  tokenEndpointError,
+  tokenEndpointUnreachable,
+} from '../test/googleRefusal.js';
 
 /**
  * The five background schedulers, at the seam where they meet cron.
@@ -72,6 +77,8 @@ const mockEnv = vi.hoisted(() => ({
   SYNC_INTERVAL_SECONDS: 60,
   CALENDAR_SYNC_INTERVAL_SECONDS: 120,
   SYNC_MAX_CONCURRENT_ACCOUNTS: 3,
+  // Empty is the plaintext fallback, which every test but one runs on.
+  TOKEN_ENCRYPTION_KEY: '',
 }));
 
 vi.mock('../config/env.js', () => ({ env: mockEnv }));
@@ -195,6 +202,7 @@ beforeEach(() => {
   mockEnv.CALENDAR_SYNC_ENABLED = true;
   mockEnv.SYNC_INTERVAL_SECONDS = 60;
   mockEnv.CALENDAR_SYNC_INTERVAL_SECONDS = 120;
+  mockEnv.TOKEN_ENCRYPTION_KEY = '';
 
   // The schedulers log per tick; silence it so a failing assertion is readable.
   vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -475,6 +483,37 @@ describe('a refused Google grant', () => {
     expect(row.authError).toBe('invalid_grant');
     expect(linesAbout('invalid_grant')).toHaveLength(1);
     expect(console.error).not.toHaveBeenCalled();
+  });
+
+  it('records stored tokens it cannot read once, and skips the account quietly', async () => {
+    // A move to a host with a different TOKEN_ENCRYPTION_KEY: the row was
+    // written under the old one. Before, every tick logged the crypto error.
+    mockEnv.TOKEN_ENCRYPTION_KEY = 'cd'.repeat(32);
+    const user = await createConnectedUser();
+    const stored = {
+      accessToken: encryptedUnderAnotherKey('old-host-access'),
+      refreshToken: encryptedUnderAnotherKey('old-host-refresh'),
+    };
+    await prisma.googleAuth.update({ where: { userId: user.id }, data: stored });
+    // What the real mail and draft syncs do first, through getGmailClient.
+    const throughTheClient = async (userId: string): Promise<never> => {
+      await googleAuthService.getAuthenticatedClient(userId);
+      throw new Error('reached Google with tokens it could not read');
+    };
+    mocks.syncFromGmail.mockImplementation(throughTheClient);
+    mocks.syncDrafts.mockImplementation(throughTheClient);
+    const tick = captureTick(startEmailSyncScheduler);
+
+    await tick();
+    await tick();
+
+    const row = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: user.id } });
+    expect(row.authError).toBe('token_unreadable');
+    expect(linesAbout('token_unreadable')).toHaveLength(1);
+    expect(console.error).not.toHaveBeenCalled();
+    expect(linesAbout(stored.refreshToken)).toEqual([]);
+    expect(linesAbout(stored.accessToken)).toEqual([]);
+    expect(eventsFor(user.id).at(-1)).toEqual({ event: 'sync:status', data: { syncing: false } });
   });
 
   it('records it from a scheduled calendar sync too', async () => {

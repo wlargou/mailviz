@@ -5,9 +5,12 @@ import { encrypt, decrypt } from '../utils/encryption.js';
 import { prisma } from '../lib/prisma.js';
 import { wsEmitToUser } from '../websocket.js';
 import {
+  classifyAuthFailure,
   classifyGoogleAuthError,
   httpStatusOf,
-  type GoogleAuthErrorCode,
+  TOKEN_UNREADABLE,
+  tokenUnreadableError,
+  type AuthErrorCode,
 } from '../utils/googleAuthError.js';
 
 /**
@@ -312,7 +315,7 @@ export const googleAuthService = {
    * flight has already replaced it, and its error is not the new grant's.
    * Returns whether anything changed.
    */
-  async recordAuthError(userId: string, code: GoogleAuthErrorCode, grant: string): Promise<boolean> {
+  async recordAuthError(userId: string, code: AuthErrorCode, grant: string): Promise<boolean> {
     const at = new Date();
     // `OR … null` spelled out: Prisma's `not` leaves out NULL rows, which is
     // every healthy one.
@@ -321,7 +324,11 @@ export const googleAuthService = {
       data: { authError: code, authErrorAt: at },
     });
     if (count === 0) return false;
-    console.warn(`[GoogleAuth] Google refused the grant for ${userId} (${code}) — its sync is stopped until it reconnects`);
+    console.warn(
+      code === TOKEN_UNREADABLE
+        ? `[GoogleAuth] The stored Google tokens for ${userId} cannot be decrypted (${code}) — its sync is stopped until it reconnects`
+        : `[GoogleAuth] Google refused the grant for ${userId} (${code}) — its sync is stopped until it reconnects`
+    );
     wsEmitToUser(userId, 'google:auth', { authError: { code, at } satisfies GoogleAuthErrorState });
     return true;
   },
@@ -339,7 +346,8 @@ export const googleAuthService = {
   },
 
   /**
-   * Whether a sync failed because Google refused the grant — recorded if so.
+   * Whether a sync failed because Google refused the grant, or because the
+   * stored tokens cannot be read (`token_unreadable`) — recorded if so.
    *
    * For the schedulers and the manual syncs, which skip the account either way:
    * this decides whether Settings hears about it, and lets the caller stay
@@ -357,7 +365,7 @@ export const googleAuthService = {
    * skip quietly, but is not recorded.
    */
   async noteAuthFailure(userId: string, err: unknown, grant: GrantSnapshot): Promise<boolean> {
-    const code = classifyGoogleAuthError(err);
+    const code = classifyAuthFailure(err);
     try {
       if (code) {
         if (grant !== null) await googleAuthService.recordAuthError(userId, code, grant);
@@ -464,8 +472,21 @@ export const googleAuthService = {
     const auth = await prisma.googleAuth.findFirst({ where });
     if (!auth) return null;
 
-    const accessToken = decrypt(auth.accessToken);
-    const refreshToken = decrypt(auth.refreshToken);
+    let accessToken: string;
+    let refreshToken: string;
+    try {
+      accessToken = decrypt(auth.accessToken);
+      refreshToken = decrypt(auth.refreshToken);
+    } catch {
+      // A different TOKEN_ENCRYPTION_KEY, or a damaged row: nothing here can
+      // reach Google, and only a Reconnect writes tokens this key can read.
+      // Recorded once, like a refusal — the decryption error itself is
+      // dropped, so neither the row nor the key can reach a log line.
+      await googleAuthService.recordAuthError(auth.userId, TOKEN_UNREADABLE, auth.refreshToken).catch((recordErr) => {
+        console.error('[GoogleAuth] Could not record unreadable credentials:', recordErr?.message ?? recordErr);
+      });
+      throw tokenUnreadableError();
+    }
 
     const oauth2Client = createOAuth2Client();
     oauth2Client.setCredentials({

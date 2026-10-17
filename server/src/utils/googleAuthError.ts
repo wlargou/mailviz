@@ -63,6 +63,41 @@ export function classifyGoogleAuthError(err: unknown): GoogleAuthErrorCode | nul
   return null;
 }
 
+/**
+ * Not Google's answer but ours: the stored tokens cannot be decrypted — a
+ * different `TOKEN_ENCRYPTION_KEY` after a move, or a damaged row. Nothing can
+ * reach Google with them, and before this it surfaced only as a crypto error
+ * in the log every minute while Settings said Connected. It is recorded and
+ * shown like a refusal, and fixed the same way: Reconnect Google forces
+ * consent, which writes both tokens again under the current key.
+ */
+export const TOKEN_UNREADABLE = 'token_unreadable';
+
+/** Every reason `google_auth.auth_error` can hold. */
+export type AuthErrorCode = GoogleAuthErrorCode | typeof TOKEN_UNREADABLE;
+
+const TOKEN_UNREADABLE_ERROR = 'GOOGLE_TOKEN_UNREADABLE';
+
+/**
+ * What `getAuthenticatedClient` throws for it. A route answers with this
+ * message, so it says what to do — and it carries nothing from the row, the
+ * key or the decryption failure.
+ */
+export function tokenUnreadableError(): Error {
+  return Object.assign(new Error('Stored Google credentials can’t be read. Reconnect Google to restore sync.'), {
+    status: 400,
+    code: TOKEN_UNREADABLE_ERROR,
+  });
+}
+
+/** Why this failure means the grant is unusable — a Google refusal, or tokens that cannot be read — or null. */
+export function classifyAuthFailure(err: unknown): AuthErrorCode | null {
+  if (err && typeof err === 'object' && (err as { code?: unknown }).code === TOKEN_UNREADABLE_ERROR) {
+    return TOKEN_UNREADABLE;
+  }
+  return classifyGoogleAuthError(err);
+}
+
 /** The HTTP status of a gaxios error, wherever this version of the library put it. */
 export function httpStatusOf(err: unknown): number | undefined {
   if (!err || typeof err !== 'object') return undefined;

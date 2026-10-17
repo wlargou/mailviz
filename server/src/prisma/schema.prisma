@@ -480,7 +480,8 @@ model GoogleAuth {
   syncFailedMessageIds String[] @map("sync_failed_message_ids")
 
   /// Why Google refused this grant (`invalid_grant`, `unauthorized_client`, …),
-  /// and since when. Null while the grant works. Written only through
+  /// or `token_unreadable` when the stored tokens cannot be decrypted, and since
+  /// when. Null while the grant works. Written only through
   /// `googleAuthService.recordAuthError` / `clearAuthError` — see
   /// `utils/googleAuthError.ts` for what counts.
   authError    String?   @map("auth_error") @db.VarChar(50)

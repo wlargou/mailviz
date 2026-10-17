@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { classifyGoogleAuthError, httpStatusOf } from './googleAuthError.js';
+import { classifyAuthFailure, classifyGoogleAuthError, httpStatusOf, tokenUnreadableError } from './googleAuthError.js';
 import { INVALID_GRANT, tokenEndpointError, tokenEndpointUnreachable } from '../test/googleRefusal.js';
 
 /**
@@ -83,5 +83,22 @@ describe('classifyGoogleAuthError — everything else', () => {
     expect(classifyGoogleAuthError({ response: { data: { error: 'invalid_request' } } })).toBeNull();
     expect(classifyGoogleAuthError(null)).toBeNull();
     expect(classifyGoogleAuthError('invalid_grant')).toBeNull();
+  });
+});
+
+describe('classifyAuthFailure', () => {
+  it('reads the unreadable-credentials error as token_unreadable', () => {
+    expect(classifyAuthFailure(tokenUnreadableError())).toBe('token_unreadable');
+  });
+
+  it('reads a refusal as Google’s code, like classifyGoogleAuthError', async () => {
+    expect(classifyAuthFailure(await tokenEndpointError(400, INVALID_GRANT))).toBe('invalid_grant');
+  });
+
+  it('leaves a raw decryption failure alone — getAuthenticatedClient is what names it', () => {
+    // The guard around `decrypt` turns it into tokenUnreadableError. Anything
+    // that throws the crypto error itself is a different failure.
+    expect(classifyAuthFailure(new Error('Unsupported state or unable to authenticate data'))).toBeNull();
+    expect(classifyAuthFailure(Object.assign(new Error('Google not connected'), { status: 400 }))).toBeNull();
   });
 });

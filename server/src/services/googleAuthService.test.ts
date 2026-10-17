@@ -11,7 +11,12 @@ import {
   createEmail,
   createTask,
 } from '../test/factories.js';
-import { INVALID_GRANT, tokenEndpointError, tokenEndpointUnreachable } from '../test/googleRefusal.js';
+import {
+  INVALID_GRANT,
+  encryptedUnderAnotherKey,
+  tokenEndpointError,
+  tokenEndpointUnreachable,
+} from '../test/googleRefusal.js';
 import { googleAuthService, SCOPES } from './googleAuthService.js';
 
 // Only so the `google:auth` pushes can be watched; nothing here opens a socket.
@@ -700,6 +705,109 @@ describe('googleAuthService.noteAuthFailure', () => {
     expect(refresh).not.toHaveBeenCalled();
     const row = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: user.id } });
     expect(row.authError).toBeNull();
+  });
+});
+
+/**
+ * Stored tokens this process cannot decrypt — what a move to a host with a
+ * different `TOKEN_ENCRYPTION_KEY` does to every row.
+ *
+ * Before, `decrypt` threw on every call: a crypto error in the log each minute
+ * per account, a 500 from every Google action, and Settings saying Connected.
+ */
+describe('googleAuthService — stored tokens that cannot be read', () => {
+  const UNREADABLE_MESSAGE = 'Stored Google credentials can’t be read. Reconnect Google to restore sync.';
+
+  beforeEach(() => {
+    stubRefresh(async () => {
+      throw new Error('refreshAccessToken called without a stub');
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  async function connectUnderAnotherKey(userId: string) {
+    return prisma.googleAuth.create({
+      data: {
+        userId,
+        accessToken: encryptedUnderAnotherKey('old-host-access'),
+        refreshToken: encryptedUnderAnotherKey('old-host-refresh'),
+        tokenExpiry: new Date(Date.now() + HOUR),
+        email: `google-${userId}@example.com`,
+      },
+    });
+  }
+
+  it('records token_unreadable once, and refuses with a message that carries no secret', async () => {
+    const user = await createUser();
+    const auth = await connectUnderAnotherKey(user.id);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const first = await googleAuthService.getAuthenticatedClient(user.id).catch((e: unknown) => e);
+    const second = await googleAuthService.getAuthenticatedClient(user.id).catch((e: unknown) => e);
+
+    // A 400 that says what to do, as every route that needs Google answers.
+    for (const err of [first, second]) {
+      expect(err).toBeInstanceOf(Error);
+      expect(err).toMatchObject({ status: 400, code: 'GOOGLE_TOKEN_UNREADABLE', message: UNREADABLE_MESSAGE });
+    }
+    const row = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: user.id } });
+    expect(row.authError).toBe('token_unreadable');
+    expect(row.authErrorAt).toBeInstanceOf(Date);
+    expect(await googleAuthService.getStatus(user.id)).toMatchObject({
+      needsReauth: true,
+      authError: { code: 'token_unreadable' },
+    });
+
+    // One line for the change, however often it is met, and one push.
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(error).not.toHaveBeenCalled();
+    expect(ws.wsEmitToUser).toHaveBeenCalledTimes(1);
+    expect(ws.wsEmitToUser).toHaveBeenCalledWith(user.id, 'google:auth', {
+      authError: { code: 'token_unreadable', at: row.authErrorAt },
+    });
+    const logged = warn.mock.calls.flat().map(String).join('\n');
+    expect(logged).toContain('token_unreadable');
+    // Not Google's doing, and not to be blamed on it.
+    expect(logged).not.toContain('Google refused');
+    for (const secret of [
+      auth.accessToken,
+      auth.refreshToken,
+      'old-host-access',
+      'old-host-refresh',
+      process.env.TOKEN_ENCRYPTION_KEY!,
+    ]) {
+      expect(logged).not.toContain(secret);
+      expect((first as Error).message).not.toContain(secret);
+    }
+  });
+
+  it('is a failure the syncs skip quietly', async () => {
+    const user = await createUser();
+    const { refreshToken: grant } = await connectUnderAnotherKey(user.id);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const err = await googleAuthService.getAuthenticatedClient(user.id).catch((e: unknown) => e);
+
+    expect(await googleAuthService.noteAuthFailure(user.id, err, grant)).toBe(true);
+  });
+
+  it('is cleared by a Reconnect, whose tokens this key can read', async () => {
+    const user = await createUser();
+    await connectUnderAnotherKey(user.id);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    await googleAuthService.getAuthenticatedClient(user.id).catch(() => {});
+
+    // Forced consent: Google sends both tokens again, written under this key.
+    await googleAuthService.upsertGoogleAuth(user.id, { ...TOKENS, refreshToken: 'new-grant' });
+
+    expect(await googleAuthService.getAuthenticatedClient(user.id)).not.toBeNull();
+    const row = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: user.id } });
+    expect(row.authError).toBeNull();
+    expect(ws.wsEmitToUser).toHaveBeenLastCalledWith(user.id, 'google:auth', { authError: null });
   });
 });
 
