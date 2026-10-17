@@ -170,14 +170,19 @@ jobs:
         run: |
           set -euo pipefail
           s=/var/run/secrets/app
+          # Production refuses a localhost CLIENT_URL or redirect URI (1.29.1), so the smoke
+          # test names a public-looking host it never visits: every check below is a GET to
+          # localhost, which the Origin check does not apply to. RUN_SCHEDULERS=false keeps
+          # the five background jobs off.
           docker run -d --name app --network host --read-only --tmpfs /tmp \
             -v "$SECRETS_DIR:$s:ro" \
             -e DATABASE_URL_FILE="$s/DATABASE_URL" \
             -e JWT_SECRET_FILE="$s/JWT_SECRET" \
             -e JWT_REFRESH_SECRET_FILE="$s/JWT_REFRESH_SECRET" \
             -e TOKEN_ENCRYPTION_KEY_FILE="$s/TOKEN_ENCRYPTION_KEY" \
-            -e CLIENT_URL=http://localhost:3002 \
-            -e GOOGLE_REDIRECT_URI=http://localhost:3002/api/v1/auth/google/callback \
+            -e CLIENT_URL=https://smoke.invalid \
+            -e GOOGLE_REDIRECT_URI=https://smoke.invalid/api/v1/auth/google/callback \
+            -e RUN_SCHEDULERS=false \
             -e EMAIL_SYNC_ENABLED=false \
             -e CALENDAR_SYNC_ENABLED=false \
             "$APP_IMAGE:$SHA_TAG"
