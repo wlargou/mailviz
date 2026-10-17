@@ -25,6 +25,18 @@ describe('AppHeader', () => {
     expect(screen.getByRole('button', { name: 'About Olympusx Productivity Hub' })).toBeInTheDocument();
   });
 
+  it('end-aligns the About tooltip, which carries the full name, so it stays inside the window', () => {
+    render(<AppHeader />);
+
+    // Centred, a ~250px tooltip on a button 120px from the right edge runs past
+    // it. Carbon spells the alignment as a class on the popover container:
+    // `bottom` when centred, `bottom-end` when aligned to the button's end.
+    const about = screen.getByRole('button', { name: 'About Olympusx Productivity Hub' });
+    const popover = about.closest('.cds--popover-container');
+    expect(popover).toHaveClass('cds--popover--bottom-end');
+    expect(popover).not.toHaveClass('cds--popover--bottom');
+  });
+
   it('shows the glyph and the short name, at the name weight, linking home', () => {
     render(<AppHeader />);
 

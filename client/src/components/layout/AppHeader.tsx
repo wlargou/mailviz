@@ -44,8 +44,15 @@ export function AppHeader() {
         <NotificationBell />
         {/* Next to the connection indicator on purpose: both answer "is what I
             am looking at current", which is the question someone has when they
-            reach for either. */}
-        <HeaderGlobalAction aria-label={`About ${PRODUCT_NAME}`} onClick={() => setAboutOpen(true)}>
+            reach for either.
+            Its tooltip is end-aligned like the two actions after it: the full
+            name makes it ~250px wide, and centred on a button 120px from the
+            edge it ran past the right side of the window. */}
+        <HeaderGlobalAction
+          aria-label={`About ${PRODUCT_NAME}`}
+          onClick={() => setAboutOpen(true)}
+          tooltipAlignment="end"
+        >
           <Information size={20} />
         </HeaderGlobalAction>
         <HeaderGlobalAction
