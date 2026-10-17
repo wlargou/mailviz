@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { assertProductionSecrets } from './env.js';
 
 /**
@@ -83,5 +83,39 @@ describe('assertProductionSecrets', () => {
     });
 
     expect(() => assertProductionSecrets()).not.toThrow();
+  });
+});
+
+/**
+ * dotenv 17's `config()` prints a line every time it loads — "injected env (N)
+ * from .env", with a rotating advert — unless passed `{ quiet: true }`. It went
+ * into the app's container log at every boot. (`dotenv/config`, which
+ * prisma.config.ts imports, is quiet by default; its test is here so that it
+ * stays that way.) These load the real dotenv.
+ */
+describe('loading the configuration', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.resetModules();
+  });
+
+  it('env.ts loads .env without printing anything', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.resetModules();
+
+    await import('./env.js');
+
+    expect(log.mock.calls).toEqual([]);
+  });
+
+  it('prisma.config.ts loads .env without printing anything', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.resetModules();
+
+    // Outside src/, so outside tsconfig's rootDir: imported by URL, untyped.
+    const configUrl = new URL('../../prisma.config.ts', import.meta.url).href;
+    await import(/* @vite-ignore */ configUrl);
+
+    expect(log.mock.calls).toEqual([]);
   });
 });

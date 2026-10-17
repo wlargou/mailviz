@@ -2,7 +2,9 @@ import dotenv from 'dotenv';
 import crypto from 'crypto';
 import { loadSecretFiles } from './secretFiles.js';
 
-dotenv.config();
+// quiet: dotenv 17 otherwise prints a line at every boot, with an advert in it,
+// into every container log.
+dotenv.config({ quiet: true });
 // After dotenv, so a .env counts as the environment and wins over a *_FILE;
 // before `env` below and before assertProductionSecrets, which both read the
 // variables the files fill in. Containers have no .env.

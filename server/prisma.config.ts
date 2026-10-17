@@ -18,7 +18,9 @@ loadSecretFiles(['DATABASE_URL']);
  * --schema flag, rather than anything local.
  *
  * `dotenv/config` is imported first because the CLI reads this file directly
- * and does not load server/.env on its own.
+ * and does not load server/.env on its own. It is quiet by default, unlike
+ * `dotenv.config()`, which in dotenv 17 prints a line at every load unless
+ * passed `{ quiet: true }` (see env.ts).
  */
 export default defineConfig({
   schema: 'src/prisma/schema.prisma',
