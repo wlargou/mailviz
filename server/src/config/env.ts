@@ -21,6 +21,12 @@ export const env = {
   // so an unmounted path loses every uploaded document at the next push while
   // uploads keep appearing to work. See services/rfpStorage.ts.
   RFP_STORAGE_DIR: process.env.RFP_STORAGE_DIR || '',
+  // Whether this process runs the background jobs at all: the five schedulers
+  // and the sync a login starts. false for a process that must not act on the
+  // data — staging on a copy of production, a second replica — while "Sync now"
+  // and every request still work. Most jobs are not safe to run in two
+  // processes at once (see jobs/schedulers.ts): one process has this on.
+  RUN_SCHEDULERS: process.env.RUN_SCHEDULERS !== 'false',
   SYNC_INTERVAL_SECONDS: parseInt(process.env.SYNC_INTERVAL_SECONDS || '60', 10),
   EMAIL_SYNC_ENABLED: process.env.EMAIL_SYNC_ENABLED !== 'false',
   CALENDAR_SYNC_ENABLED: process.env.CALENDAR_SYNC_ENABLED !== 'false',
@@ -50,6 +56,11 @@ export const env = {
   GMAIL_RETRY_BASE_MS: parseInt(process.env.GMAIL_RETRY_BASE_MS || '1000', 10),
   GMAIL_RETRY_MAX_MS: parseInt(process.env.GMAIL_RETRY_MAX_MS || '32000', 10),
 
+  // The proxy hops whose X-Forwarded-For is believed, comma-separated: IPs,
+  // CIDR ranges, or loopback / linklocal / uniquelocal. Set, it REPLACES the
+  // built-in list (see config/trustedProxies.ts); unset keeps that list.
+  TRUSTED_PROXIES: process.env.TRUSTED_PROXIES || '',
+
   // Auth
   JWT_SECRET: process.env.JWT_SECRET || devSecret('mailviz-jwt-dev'),
   JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET || devSecret('mailviz-jwt-refresh-dev'),
@@ -57,6 +68,28 @@ export const env = {
   TOKEN_ENCRYPTION_KEY: process.env.TOKEN_ENCRYPTION_KEY || '',
   LOGO_DEV_TOKEN: process.env.LOGO_DEV_TOKEN || 'pk_fUKO-TNBQ3SBr89r_dj_6Q',
 };
+
+/**
+ * Whether a URL can only ever mean the machine it is read on: localhost, a
+ * `.localhost` name, loopback or the unspecified address. Something that does
+ * not parse as a URL counts too — it is no more use as a redirect target.
+ */
+export function isLocalUrl(value: string): boolean {
+  let host: string;
+  try {
+    host = new URL(value).hostname.toLowerCase().replace(/^\[(.*)\]$/, '$1');
+  } catch {
+    return true;
+  }
+  return (
+    host === 'localhost' ||
+    host.endsWith('.localhost') ||
+    /^127\.\d+\.\d+\.\d+$/.test(host) ||
+    host === '0.0.0.0' ||
+    host === '::1' ||
+    host === '::'
+  );
+}
 
 /**
  * Refuse to start in production on a development fallback.
@@ -73,8 +106,14 @@ export const env = {
  * falling back to PLAINTEXT storage of Google refresh tokens. Failing at boot is
  * the only signal that reliably reaches somebody.
  *
+ * CLIENT_URL and GOOGLE_REDIRECT_URI are checked the same way: unset, they
+ * fall back to the development addresses on localhost, so Google sends every
+ * sign-in to the user's own machine and the app redirects there after it. On a
+ * new host that is the one mistake that looks like Google being broken.
+ *
  * Deliberately a hard exit rather than a warning: a warning in a deploy log is
- * a warning nobody reads.
+ * a warning nobody reads. Every problem is named in one error, so a deployment
+ * missing several is fixed in one cycle rather than one per restart.
  */
 export function assertProductionSecrets(): void {
   // process.env, not the captured `env.NODE_ENV`. The rest of this function
@@ -89,13 +128,22 @@ export function assertProductionSecrets(): void {
     !process.env.TOKEN_ENCRYPTION_KEY && 'TOKEN_ENCRYPTION_KEY',
   ].filter(Boolean) as string[];
 
-  if (missing.length > 0) {
-    throw new Error(
+  const local = (['CLIENT_URL', 'GOOGLE_REDIRECT_URI'] as const).filter((name) => {
+    const value = process.env[name];
+    return !value || isLocalUrl(value);
+  });
+
+  const problems = [
+    missing.length > 0 &&
       `Refusing to start in production without: ${missing.join(', ')}. ` +
         'These fall back to values derived from a string in the repository, ' +
-        'which would let anyone forge a session or read stored Google tokens.'
-    );
-  }
+        'which would let anyone forge a session or read stored Google tokens.',
+    local.length > 0 &&
+      `Refusing to start in production with ${local.join(', ')} unset or on localhost. ` +
+        'Google would send every sign-in to the user’s own machine rather than to this server.',
+  ].filter(Boolean);
+
+  if (problems.length > 0) throw new Error(problems.join(' '));
 
   // Distinct secrets are what keep a 7-day refresh token from being accepted
   // as a 15-minute access token. The `type` claim is the second line of

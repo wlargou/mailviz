@@ -1,3 +1,6 @@
+import { isIP } from 'node:net';
+import { env } from './env.js';
+
 /**
  * Which upstream hops may be believed about who the client is.
  *
@@ -54,10 +57,60 @@ export const CLOUDFLARE_RANGES = [
  */
 const RAILWAY_INTERNAL = '100.64.0.0/10';
 
-export const TRUSTED_PROXIES: string[] = [
+/** The hops trusted when TRUSTED_PROXIES is unset: Railway behind Cloudflare. */
+export const DEFAULT_TRUSTED_PROXIES: readonly string[] = [
   'loopback',
   'linklocal',
   'uniquelocal',
   RAILWAY_INTERNAL,
   ...CLOUDFLARE_RANGES,
 ];
+
+/** proxy-addr's names for whole ranges, as Express's `trust proxy` takes them. */
+const NAMED_RANGES = new Set(['loopback', 'linklocal', 'uniquelocal']);
+
+/**
+ * An address, an address with a CIDR prefix, or a named range.
+ *
+ * A /0 is refused: it trusts every address, which is `trust proxy: true` by
+ * another name — the leftmost, client-written X-Forwarded-For entry wins.
+ * Netmask notation (`/255.0.0.0`), which proxy-addr also reads, is refused for
+ * simplicity; write the prefix.
+ */
+function isValidEntry(entry: string): boolean {
+  if (NAMED_RANGES.has(entry)) return true;
+  const [address, prefix, ...rest] = entry.split('/');
+  const family = isIP(address);
+  if (family === 0 || rest.length > 0) return false;
+  if (prefix === undefined) return true;
+  if (!/^\d{1,3}$/.test(prefix)) return false;
+  const bits = Number(prefix);
+  return bits > 0 && bits <= (family === 4 ? 32 : 128);
+}
+
+/**
+ * The trusted hops: TRUSTED_PROXIES when set, otherwise the list above.
+ *
+ * Set, it replaces the list rather than adding to it. Behind a cluster's load
+ * balancer the peer is the in-cluster proxy, and trusting `uniquelocal` there
+ * means trusting all of 10.0.0.0/8 — every pod — so the deployment has to be
+ * able to say "this range only". Unset keeps Railway's behaviour unchanged.
+ *
+ * Validated here, at import, so a typo stops the boot with the entry named
+ * rather than surfacing as Express's error about an "invalid IP address".
+ */
+export function parseTrustedProxies(raw: string | undefined): string[] {
+  const entries = (raw ?? '').split(',').map((entry) => entry.trim()).filter(Boolean);
+  if (entries.length === 0) return [...DEFAULT_TRUSTED_PROXIES];
+
+  const invalid = entries.filter((entry) => !isValidEntry(entry));
+  if (invalid.length > 0) {
+    throw new Error(
+      'TRUSTED_PROXIES entries must be an IP address, a CIDR range other than /0, or one of ' +
+        `loopback, linklocal, uniquelocal. Not: ${invalid.join(', ')}`
+    );
+  }
+  return entries;
+}
+
+export const TRUSTED_PROXIES: string[] = parseTrustedProxies(env.TRUSTED_PROXIES);

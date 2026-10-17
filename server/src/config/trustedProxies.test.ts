@@ -1,8 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 import rateLimit from 'express-rate-limit';
-import { TRUSTED_PROXIES, CLOUDFLARE_RANGES } from './trustedProxies.js';
+import { TRUSTED_PROXIES, CLOUDFLARE_RANGES, parseTrustedProxies } from './trustedProxies.js';
 
 /**
  * Who the app believes the client is.
@@ -146,5 +146,76 @@ describe('rate limiting keys on the real client', () => {
     const second = await remainingFor(app, '2.2.2.2, 203.0.113.5');
 
     expect(second).toBe(first - 1);
+  });
+});
+
+/**
+ * TRUSTED_PROXIES from the environment.
+ *
+ * Behind a cluster's load balancer the peer is the in-cluster proxy, and the
+ * built-in `uniquelocal` trusts all of 10.0.0.0/8 — every pod on the cluster —
+ * so a deployment has to be able to name its proxy's range and nothing else.
+ * Unset, Railway must behave exactly as it does today.
+ */
+describe('TRUSTED_PROXIES from the environment', () => {
+  const TODAY = [
+    'loopback',
+    'linklocal',
+    'uniquelocal',
+    '100.64.0.0/10',
+    ...CLOUDFLARE_RANGES,
+  ];
+
+  it.each([undefined, '', '  ', ' , '])('keeps today’s list exactly when unset (%j)', (raw) => {
+    expect(parseTrustedProxies(raw)).toEqual(TODAY);
+  });
+
+  it('is today’s list in this process, where the variable is unset', () => {
+    expect(TRUSTED_PROXIES).toEqual(TODAY);
+  });
+
+  it('is what the variable says when it is set at boot', async () => {
+    const saved = process.env.TRUSTED_PROXIES;
+    process.env.TRUSTED_PROXIES = '10.244.0.0/16';
+    try {
+      vi.resetModules();
+      const fresh = await import('./trustedProxies.js');
+      expect(fresh.TRUSTED_PROXIES).toEqual(['10.244.0.0/16']);
+    } finally {
+      if (saved === undefined) delete process.env.TRUSTED_PROXIES;
+      else process.env.TRUSTED_PROXIES = saved;
+    }
+  });
+
+  it('replaces the list rather than adding to it', () => {
+    expect(parseTrustedProxies(' 10.244.0.0/16 , fd00:10::/64,loopback ')).toEqual([
+      '10.244.0.0/16',
+      'fd00:10::/64',
+      'loopback',
+    ]);
+  });
+
+  it('stops believing a hop that is no longer on the list', async () => {
+    // The replacement is what makes it useful: with only the proxy's range
+    // trusted, a request whose peer is anything else — here loopback — keys
+    // on that peer, whatever X-Forwarded-For says.
+    const app = express();
+    app.set('trust proxy', parseTrustedProxies('10.244.0.0/16'));
+    app.get('/who', (req, res) => { res.json({ ip: req.ip }); });
+
+    const res = await request(app).get('/who').set('X-Forwarded-For', '203.0.113.5');
+
+    expect(res.body.ip).toMatch(/127\.0\.0\.1|::1/);
+  });
+
+  it('refuses the boot on anything Express would not read as a hop, naming each one', () => {
+    expect(() => parseTrustedProxies('10.0.0.0/8, true, 10.0.0.0/33, proxy.internal, 10.0.0.0/8/1, ::/129'))
+      .toThrow(/Not: true, 10\.0\.0\.0\/33, proxy\.internal, 10\.0\.0\.0\/8\/1, ::\/129$/);
+  });
+
+  it.each(['0.0.0.0/0', '::/0'])('refuses %s, which trusts every address', (range) => {
+    // A /0 is `trust proxy: true` by another name: every hop is believed, so
+    // the client's own leftmost X-Forwarded-For entry becomes its address.
+    expect(() => parseTrustedProxies(range)).toThrow(/TRUSTED_PROXIES/);
   });
 });

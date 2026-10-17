@@ -69,8 +69,19 @@ interface ScheduledEmailRow {
   subject: string | null;
   to: string[] | null;
   sendAt: string;
-  status: 'pending' | 'sent' | 'failed' | 'cancelled';
+  /** `sending` while the scheduler has it: it cannot be moved or cancelled then. */
+  status: 'pending' | 'sending' | 'sent' | 'failed' | 'cancelled';
+  /** Why a failed send failed — an interrupted one says to check Sent. */
+  errorMessage: string | null;
 }
+
+const SCHEDULED_STATUS_TAG: Record<ScheduledEmailRow['status'], 'blue' | 'cyan' | 'green' | 'red' | 'gray'> = {
+  pending: 'blue',
+  sending: 'cyan',
+  sent: 'green',
+  failed: 'red',
+  cancelled: 'gray',
+};
 
 export function MailPage() {
   const navigate = useNavigate();
@@ -178,6 +189,11 @@ export function MailPage() {
     'drafts:changed': () => {
       fetchDraftsRef.current?.();
     },
+    // A scheduled email went out, failed, or was put back for another try —
+    // the server says so for each. Only wired while Scheduled is open.
+    'email:scheduled:sent': () => {
+      fetchScheduledRef.current?.();
+    },
     'email:shared': () => {
       addNotification({ kind: 'info', title: 'An email thread was shared with you' });
       fetchThreadsRef.current?.(true);
@@ -196,11 +212,17 @@ export function MailPage() {
     },
   }), [addNotification]);
   // Refetch on reconnect — events broadcast while the socket was down are lost.
-  useEmailWebSocket(wsHandlers, { onReconnect: () => fetchThreadsRef.current?.(true) });
+  useEmailWebSocket(wsHandlers, {
+    onReconnect: () => {
+      fetchThreadsRef.current?.(true);
+      fetchScheduledRef.current?.();
+    },
+  });
 
   // Ref to fetchThreads so WS handlers don't need it as a dependency
   const fetchThreadsRef = useRef<((silent?: boolean) => void) | null>(null);
   const fetchDraftsRef = useRef<(() => void) | null>(null);
+  const fetchScheduledRef = useRef<(() => void) | null>(null);
   const fetchRemindersRef = useRef<(() => void) | null>(null);
 
   const fetchRepliesOwed = useCallback(async (silent = false) => {
@@ -254,17 +276,44 @@ export function MailPage() {
     }
   }, []);
 
-  const fetchScheduledEmails = useCallback(async () => {
-    setScheduledLoading(true);
+  // Silent for a reread behind the user's back (an event, a refused change):
+  // the list updates in place instead of flashing to a spinner.
+  const fetchScheduledEmails = useCallback(async (silent = false) => {
+    if (!silent) setScheduledLoading(true);
     try {
       const { data: response } = await emailsApi.getScheduledEmails();
       setScheduledEmails((response as { data?: ScheduledEmailRow[] }).data || []);
     } catch {
       // ignore
     } finally {
-      setScheduledLoading(false);
+      if (!silent) setScheduledLoading(false);
     }
   }, []);
+
+  /**
+   * A cancel or reschedule the server refused. A 409 means the scheduler took
+   * the email after this list was loaded and is sending it: say that, and
+   * reread the list so the row shows what it is now — sending, sent or failed
+   * — instead of a pending row whose buttons can no longer work.
+   */
+  const scheduledChangeFailed = useCallback((err: unknown, fallback: string) => {
+    if (isAxiosError(err) && err.response?.status === 409) {
+      addNotification({ kind: 'warning', title: 'This email is being sent right now', subtitle: 'It can no longer be changed.' });
+      fetchScheduledEmails(true);
+      return;
+    }
+    addNotification({ kind: 'error', title: fallback });
+  }, [addNotification, fetchScheduledEmails]);
+
+  const cancelScheduled = async (se: ScheduledEmailRow) => {
+    try {
+      await emailsApi.cancelScheduledEmail(se.id);
+      addNotification({ kind: 'success', title: 'Scheduled email cancelled' });
+      fetchScheduledEmails();
+    } catch (err) {
+      scheduledChangeFailed(err, 'Failed to cancel');
+    }
+  };
 
   /**
    * The Drafts folder reads the server's Gmail mirror, so opening the folder is
@@ -351,8 +400,10 @@ export function MailPage() {
       addNotification({ kind: 'success', title: 'Send time updated' });
       closeReschedule();
       fetchScheduledEmails();
-    } catch {
-      addNotification({ kind: 'error', title: 'Failed to reschedule' });
+    } catch (err) {
+      // Refused because it is being sent: there is no time left to move.
+      if (isAxiosError(err) && err.response?.status === 409) closeReschedule();
+      scheduledChangeFailed(err, 'Failed to reschedule');
     } finally {
       setRescheduleSaving(false);
     }
@@ -376,6 +427,10 @@ export function MailPage() {
   useEffect(() => {
     fetchDraftsRef.current = filters.folder === 'drafts' ? () => fetchDrafts() : null;
   }, [fetchDrafts, filters.folder]);
+
+  useEffect(() => {
+    fetchScheduledRef.current = filters.folder === 'scheduled' ? () => fetchScheduledEmails(true) : null;
+  }, [fetchScheduledEmails, filters.folder]);
 
   useEffect(() => {
     fetchRemindersRef.current = fetchReminders;
@@ -891,7 +946,7 @@ export function MailPage() {
             />
           ) : (
             <div className="scheduled-emails-list">
-              {scheduledEmails.map((se: any) => (
+              {scheduledEmails.map((se) => (
                 <div key={se.id} className="scheduled-email-item">
                   <div className="scheduled-email-item__info">
                     <div className="scheduled-email-item__subject">
@@ -900,12 +955,15 @@ export function MailPage() {
                     <div className="scheduled-email-item__meta">
                       To: {se.to?.join(', ') || '—'}
                     </div>
+                    {se.status === 'failed' && se.errorMessage && (
+                      <div className="scheduled-email-item__error">{se.errorMessage}</div>
+                    )}
                   </div>
                   <div className="scheduled-email-item__schedule">
                     <Time size={14} />
                     <span>{format(new Date(se.sendAt), 'MMM d, yyyy h:mm a')}</span>
                   </div>
-                  <Tag size="sm" type={se.status === 'pending' ? 'blue' : se.status === 'failed' ? 'red' : 'green'}>
+                  <Tag size="sm" type={SCHEDULED_STATUS_TAG[se.status] ?? 'gray'}>
                     {se.status}
                   </Tag>
                   {se.status === 'pending' && (
@@ -913,19 +971,7 @@ export function MailPage() {
                       <Button kind="ghost" size="sm" onClick={() => openReschedule(se)}>
                         Reschedule
                       </Button>
-                      <Button
-                        kind="danger--ghost"
-                        size="sm"
-                        onClick={async () => {
-                          try {
-                            await emailsApi.cancelScheduledEmail(se.id);
-                            addNotification({ kind: 'success', title: 'Scheduled email cancelled' });
-                            fetchScheduledEmails();
-                          } catch {
-                            addNotification({ kind: 'error', title: 'Failed to cancel' });
-                          }
-                        }}
-                      >
+                      <Button kind="danger--ghost" size="sm" onClick={() => cancelScheduled(se)}>
                         Cancel
                       </Button>
                     </>

@@ -1,5 +1,6 @@
 import { promoteSenders } from '../services/accountStatus.js';
 import * as cron from 'node-cron';
+import { runJob } from '../lib/lifecycle.js';
 import { calendarService } from '../services/calendarService.js';
 import { googleAuthService, type GrantSnapshot } from '../services/googleAuthService.js';
 import { env } from '../config/env.js';
@@ -87,10 +88,10 @@ export function startCalendarSyncScheduler() {
 
   console.log(`[CalendarSync] Starting background sync every ${interval}s (cron: ${cronExpr})`);
 
-  syncTask = cron.schedule(cronExpr, () => runner.runAll());
+  syncTask = cron.schedule(cronExpr, () => runJob(() => runner.runAll()));
 
   // Run an initial sync 10 seconds after startup (staggered from email sync at 5s)
-  setTimeout(() => void runner.runAll(), 10000);
+  setTimeout(() => void runJob(() => runner.runAll()), 10000);
 }
 
 export function stopCalendarSyncScheduler() {

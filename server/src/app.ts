@@ -9,8 +9,10 @@ import { fileURLToPath } from 'url';
 import { env } from './config/env.js';
 import { APP_VERSION, RELEASED_AT } from './config/version.js';
 import { TRUSTED_PROXIES } from './config/trustedProxies.js';
+import { isDraining } from './lib/lifecycle.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requireAuth } from './middleware/auth.js';
+import { sameOriginWrites } from './middleware/sameOrigin.js';
 import { taskRoutes } from './routes/tasks.js';
 import { taskTemplateRoutes } from './routes/taskTemplates.js';
 import { labelRoutes } from './routes/labels.js';
@@ -78,11 +80,26 @@ export function cspOptions(nodeEnv: string) {
   };
 }
 
+/**
+ * Probes, which a platform sends every few seconds for as long as the process
+ * lives. Logged, they would be most of the log and say nothing.
+ */
+const PROBE_PATHS = new Set(['/api/health', '/api/ready']);
+
+function isProbe(req: { originalUrl?: string; url?: string }): boolean {
+  return PROBE_PATHS.has((req.originalUrl ?? req.url ?? '').split('?')[0]);
+}
+
 app.use(helmet({ contentSecurityPolicy: cspOptions(env.NODE_ENV) }));
 app.use(cors({
   origin: env.CLIENT_URL,
   credentials: true,
 }));
+// Before the body parsers and the Origin check, so that a request either of
+// them refuses is still logged.
+app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev', { skip: isProbe }));
+// Before the body parsers too: a refused request is not worth reading 35 MB of.
+app.use('/api', sameOriginWrites(env.CLIENT_URL, env.NODE_ENV));
 // Larger body limit for email send routes (attachments up to 25MB, base64 ~33% overhead)
 app.use('/api/v1/emails/send', express.json({ limit: '35mb' }));
 app.use('/api/v1/emails/:id/reply', express.json({ limit: '35mb' }));
@@ -92,7 +109,6 @@ app.use('/api/v1/emails/schedule', express.json({ limit: '35mb' }));
 app.use('/api/v1/emails/drafts', express.json({ limit: '35mb' }));
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
-app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
 /**
  * Rate limiting on the routes that actually authenticate.
@@ -107,15 +123,38 @@ app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev'));
  * looks the account up, creates or updates the user, and mints the session
  * cookies. It is also where the ALLOWED_EMAILS check runs, so an unlimited
  * callback is an unlimited oracle for which addresses are on the whitelist.
+ *
+ * 60 per 15 minutes, up from 20, because the bucket may be shared. Behind a
+ * cluster's load balancer the client address can be the balancer's for every
+ * request (see config/trustedProxies.ts), and then this one bucket is everyone's:
+ * at 20, two people signing in and out while a session misbehaves could lock
+ * both out for a quarter of an hour. 60 still holds the callback, and the
+ * whitelist oracle in it, to four attempts a minute.
  */
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: 60,
   message: { error: { code: 'TOO_MANY_REQUESTS', message: 'Too many login attempts' } },
 });
 
 // Health check (public)
 app.get('/api/health', (_req, res) => {
+  res.json({ status: 'ok' });
+});
+
+/**
+ * Whether to send this process traffic (public): 503 once it is shutting down.
+ *
+ * Deliberately not a database check. The process serves the SPA and holds the
+ * WebSockets as well as the API, so taking it out of rotation over a database
+ * blip would turn a few failed queries into a blank page for everyone. Only
+ * the one thing a probe should act on: this process is on its way out.
+ */
+app.get('/api/ready', (_req, res) => {
+  if (isDraining()) {
+    res.status(503).json({ status: 'draining' });
+    return;
+  }
   res.json({ status: 'ok' });
 });
 
