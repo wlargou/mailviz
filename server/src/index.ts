@@ -1,12 +1,9 @@
 import { app } from './app.js';
 import { env, assertProductionSecrets } from './config/env.js';
-import { startEmailSyncScheduler, stopEmailSyncScheduler } from './jobs/emailSyncScheduler.js';
-import { startCalendarSyncScheduler, stopCalendarSyncScheduler } from './jobs/calendarSyncScheduler.js';
-import { startScheduledSendScheduler, stopScheduledSendScheduler } from './jobs/scheduledSendScheduler.js';
-import { startNotificationScheduler, stopNotificationScheduler } from './jobs/notificationScheduler.js';
-import { startSnoozeScheduler, stopSnoozeScheduler } from './jobs/snoozeScheduler.js';
+import { startSchedulers, stopSchedulers } from './jobs/schedulers.js';
 import { initWebSocket, shutdownWebSocket } from './websocket.js';
 import { prisma } from './lib/prisma.js';
+import { closeHttpServer, configureHttpServer, createShutdown } from './lib/lifecycle.js';
 
 // Before the port opens, not after: a server that is already accepting requests
 // while signing tokens with a repository-derived secret has already failed.
@@ -15,50 +12,21 @@ assertProductionSecrets();
 const server = app.listen(env.PORT, () => {
   console.log(`Server running on http://localhost:${env.PORT}`);
   initWebSocket(server);
-  startEmailSyncScheduler();
-  startCalendarSyncScheduler();
-  startScheduledSendScheduler();
-  startNotificationScheduler();
-  startSnoozeScheduler();
+  startSchedulers();
+});
+configureHttpServer(server);
+
+// Drain, then close: running jobs and requests finish inside one deadline
+// before the process exits. See lib/lifecycle.ts.
+const shutdown = createShutdown({
+  stopSchedulers,
+  closeHttp: (deadlineMs) => closeHttpServer(server, deadlineMs),
+  closeWebSocket: shutdownWebSocket,
+  disconnect: () => prisma.$disconnect(),
+  exit: (code) => process.exit(code),
 });
 
-// ── Graceful shutdown (E2) ──
-let isShuttingDown = false;
-
-async function gracefulShutdown(signal: string) {
-  if (isShuttingDown) return;
-  isShuttingDown = true;
-  console.log(`\n[Shutdown] Received ${signal}, shutting down gracefully...`);
-
-  // 1. Stop accepting new connections
-  server.close(() => {
-    console.log('[Shutdown] HTTP server closed');
-  });
-
-  // 2. Stop background sync schedulers
-  stopEmailSyncScheduler();
-  stopCalendarSyncScheduler();
-  stopScheduledSendScheduler();
-  stopNotificationScheduler();
-  stopSnoozeScheduler();
-
-  // 3. Close WebSocket connections
-  shutdownWebSocket();
-
-  // 4. Disconnect Prisma
-  await prisma.$disconnect();
-  console.log('[Shutdown] Database disconnected');
-
-  // 5. Force exit after 10s if still hanging
-  setTimeout(() => {
-    console.error('[Shutdown] Forced exit after timeout');
-    process.exit(1);
-  }, 10_000).unref();
-
-  process.exit(0);
-}
-
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
+process.on('SIGINT', () => void shutdown('SIGINT'));
 
 export { server };

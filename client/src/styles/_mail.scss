@@ -100,6 +100,17 @@
   white-space: nowrap;
 }
 
+// Why a send failed. Wraps, unlike the meta line above it: an interrupted
+// send's message ends with what to do about it ("Check Sent…"), which an
+// ellipsis would cut.
+.scheduled-email-item__error {
+  @include type.type-style('label-01');
+  color: var(--cds-text-error);
+  margin-top: $spacing-02;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .scheduled-email-item__schedule {
   display: flex;
   align-items: center;

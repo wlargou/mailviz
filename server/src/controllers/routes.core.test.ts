@@ -320,7 +320,7 @@ describe('authentication gate', () => {
    * writes the user row, mints the session cookies and applies the
    * ALLOWED_EMAILS check, was unlimited.
    *
-   * Asserted through the headers rather than by exhausting the bucket: 20
+   * Asserted through the headers rather than by exhausting the bucket: 60
    * requests would leak into every other test in this file that touches an
    * auth route, and a limiter poisoned by its own test is worse than no test.
    */
