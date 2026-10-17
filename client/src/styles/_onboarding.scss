@@ -345,7 +345,11 @@
     flex-direction: column;
     gap: $spacing-03;
     // Hover changes colour only: the design system's cards never move or lift.
-    transition: background 110ms ease;
+    // Even the fade waits on the motion preference, like every other animation
+    // here; with reduced motion the colour simply changes.
+    @media (prefers-reduced-motion: no-preference) {
+      transition: background 110ms ease;
+    }
 
     &:hover {
       background: var(--cds-layer-hover-01);
