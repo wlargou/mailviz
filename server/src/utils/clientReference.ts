@@ -80,13 +80,16 @@ export function endOfPeriod(date: Date, precision: string | null): Date {
 
 /**
  * The date "in the last N years" is measured on: the end of the project as
- * the letter gives it, or the end of its start period when it gives no end,
- * or failing both the signature date.
+ * the letter gives it; without an end, the end of its start period — or the
+ * signature, when the letter attests work still running then, since it had
+ * not ended by that day; and failing both, the signature date.
  *
  * At the end of the period because a letter that says "2023" may mean
- * December: "the last three years" from October 2026 includes it.
+ * December. The filter compares years (see `clientReferenceService`), so the
+ * day only matters for sorting.
  */
 export function effectiveDateOf(r: {
+  workStatus: string | null;
   projectStart: Date | null;
   projectStartPrecision: string | null;
   projectEnd: Date | null;
@@ -94,8 +97,9 @@ export function effectiveDateOf(r: {
   signedAt: Date | null;
 }): Date | null {
   if (r.projectEnd) return endOfPeriod(r.projectEnd, r.projectEndPrecision);
-  if (r.projectStart) return endOfPeriod(r.projectStart, r.projectStartPrecision);
-  return r.signedAt;
+  const startPeriod = r.projectStart ? endOfPeriod(r.projectStart, r.projectStartPrecision) : null;
+  if (r.workStatus === 'IN_PROGRESS' && r.signedAt && (!startPeriod || r.signedAt > startPeriod)) return r.signedAt;
+  return startPeriod ?? r.signedAt;
 }
 
 /**

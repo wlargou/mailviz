@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Button,
@@ -200,30 +200,41 @@ export function ReferencesPage() {
     [setParams],
   );
 
+  // Compared with the value that would be written, not the raw text: a
+  // trailing space must not count as a new filter on every render, which
+  // reset the page each time.
   useEffect(() => {
     const t = setTimeout(() => {
-      if ((params.get('q') ?? '') !== search) update({ q: search.trim() ? search : null });
+      const wanted = search.trim() ? search : '';
+      if ((params.get('q') ?? '') !== wanted) update({ q: wanted || null });
     }, 300);
     return () => clearTimeout(t);
   }, [search, params, update]);
 
   useEffect(() => {
     const t = setTimeout(() => {
-      if ((params.get('min') ?? '') !== minAmount && parseAmount(minAmount) !== undefined) update({ min: minAmount.trim() || null });
+      const wanted = minAmount.trim();
+      if ((params.get('min') ?? '') !== wanted && parseAmount(minAmount) !== undefined) update({ min: wanted || null });
     }, 400);
     return () => clearTimeout(t);
   }, [minAmount, params, update]);
 
+  // Only the latest request may fill the table: filters change faster than
+  // the server answers.
+  const requestSeq = useRef(0);
+
   const fetchRows = useCallback(async () => {
+    const seq = ++requestSeq.current;
     setLoading(true);
     try {
       const { data: res } = await clientReferencesApi.getAll({ ...JSON.parse(queryKey), page: String(page), limit: String(pageSize) });
+      if (seq !== requestSeq.current) return;
       setRows(res.data);
       setMeta(res.meta ?? null);
     } catch {
-      addNotification({ kind: 'error', title: 'Failed to load references' });
+      if (seq === requestSeq.current) addNotification({ kind: 'error', title: 'Failed to load references' });
     } finally {
-      setLoading(false);
+      if (seq === requestSeq.current) setLoading(false);
     }
   }, [queryKey, page, pageSize, addNotification]);
 
@@ -365,7 +376,12 @@ export function ReferencesPage() {
             items={companyItems}
             itemToString={(c) => (c ? `${c.name} (${c.count})` : '')}
             selectedItem={company ?? null}
-            onChange={({ selectedItem }: { selectedItem?: (typeof companyItems)[number] | null }) => update({ company: selectedItem?.id ?? null })}
+            onChange={({ selectedItem }: { selectedItem?: (typeof companyItems)[number] | null }) => {
+              // Carbon also calls this when the facets arrive and the selected
+              // item resolves: that is no new filter, and must keep the page.
+              const id = selectedItem?.id ?? null;
+              if (id !== params.get('company')) update({ company: id });
+            }}
           />
           {dropdown('ref-filter-partner', 'partner', partnerItems, 'Partner')}
           {dropdown('ref-filter-status', 'status', STATUS_ITEMS, 'Status')}

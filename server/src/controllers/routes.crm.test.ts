@@ -1851,7 +1851,7 @@ describe('/api/v1/rfps', () => {
     const download = await request(app).get(`/api/v1/rfps/${rfp.id}/documents/${doc.id}`).set('Cookie', cookie);
     expect(download.status).toBe(200);
     expect(download.headers['content-type']).toContain('application/pdf');
-    expect(download.headers['content-disposition']).toBe('attachment; filename="Avis AO 70.pdf"');
+    expect(download.headers['content-disposition']).toBe(`attachment; filename="Avis AO 70.pdf"; filename*=UTF-8''Avis%20AO%2070.pdf`);
     expect(download.body.toString()).toBe('%PDF-1.4 avis');
 
     expect((await request(app).delete(`/api/v1/rfps/${rfp.id}/documents/${doc.id}`).set('Cookie', cookie)).status).toBe(204);
@@ -1870,7 +1870,13 @@ describe('/api/v1/rfps', () => {
       .attach('file', Buffer.from('%PDF-1.4 rc'), { filename: 'Règlement de consultation.pdf', contentType: 'application/pdf' });
 
     expect(uploaded.status).toBe(201);
-    expect((uploaded.body as ItemBody<{ filename: string }>).data.filename).toBe('Règlement de consultation.pdf');
+    const doc = (uploaded.body as ItemBody<{ id: string; filename: string }>).data;
+    expect(doc.filename).toBe('Règlement de consultation.pdf');
+
+    // And it downloads: a name above Latin-1 in the header was a 500.
+    const download = await request(app).get(`/api/v1/rfps/${rfp.id}/documents/${doc.id}`).set('Cookie', authFor(alice.id));
+    expect(download.status).toBe(200);
+    expect(download.headers['content-disposition']).toContain(`filename*=UTF-8''R%C3%A8glement%20de%20consultation.pdf`);
   });
 
   it('rejects a file type that is not a tender document, as a 400 rather than a 500', async () => {

@@ -1,3 +1,4 @@
+import { contentDisposition } from '../utils/contentDisposition.js';
 import { Response, NextFunction } from 'express';
 import type { Req } from "../types/http.js";
 import { emailService } from '../services/emailService.js';
@@ -51,11 +52,10 @@ export const emailController = {
         req.params.aid,
         req.user!.id
       );
-      const disposition = req.query.inline === 'true' ? 'inline' : 'attachment';
-      // Sanitize filename to prevent header injection (S3)
-      const safeFilename = filename.replace(/["\r\n\\]/g, '_');
       res.setHeader('Content-Type', mimeType);
-      res.setHeader('Content-Disposition', `${disposition}; filename="${safeFilename}"`);
+      // Gmail hands back UTF-8 names; see `contentDisposition` for why the
+      // raw name in a quoted string was a 500 (and its header injection guard).
+      res.setHeader('Content-Disposition', contentDisposition(req.query.inline === 'true' ? 'inline' : 'attachment', filename));
       res.send(data);
     } catch (err) {
       next(err);

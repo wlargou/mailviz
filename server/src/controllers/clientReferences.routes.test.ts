@@ -52,18 +52,26 @@ describe('/api/v1/client-references', () => {
     expect(ref.technologyTags).toContain('IBM Power 11');
     expect(ref.signatories).toEqual([expect.objectContaining({ name: 'Imad Chahine', role: 'Directeur Central' })]);
 
+    const read = await request(app).get(`/api/v1/client-references/${ref.id}`).set('Cookie', cookie);
+    expect(read.status).toBe(200);
+    expect(read.body.data).toMatchObject({ id: ref.id, customerName: 'Crédit Agricole du Maroc', signedAt: '2026-08-17' });
+    expect(read.body.data).not.toHaveProperty('documentStorageKey');
+
     const patched = await request(app).patch(`/api/v1/client-references/${ref.id}`).set('Cookie', cookie).send({ workStatus: 'IN_PROGRESS' });
     expect(patched.status).toBe(200);
     expect(patched.body.data.workStatus).toBe('IN_PROGRESS');
     // The PATCH carried no appreciation, so none was defaulted over it.
     expect(patched.body.data.appreciation).toBe('SATISFACTION');
 
+    // One that must not match, so a route that ignored the query would show.
+    await createClientReference(alice.id, { customerName: 'Other Bank' });
     const list = await request(app).get('/api/v1/client-references?tags=IBM%20Power&sinceYears=3').set('Cookie', cookie);
     expect(list.status).toBe(200);
     expect(list.body.data.map((r: { id: string }) => r.id)).toEqual([ref.id]);
 
     expect((await request(app).delete(`/api/v1/client-references/${ref.id}`).set('Cookie', cookie)).status).toBe(204);
-    expect(await prisma.clientReference.count({ where: { userId: alice.id } })).toBe(0);
+    expect(await prisma.clientReference.count({ where: { id: ref.id } })).toBe(0);
+    expect(await prisma.clientReference.count({ where: { userId: alice.id } })).toBe(1);
   });
 
   it('answers 400 on an invalid body, and 404 for another account’s reference without leaking it', async () => {
@@ -91,6 +99,9 @@ describe('/api/v1/client-references', () => {
     const ids = await request(app).get('/api/v1/client-references/ids').set('Cookie', cookie);
     expect(ids.status).toBe(200);
     expect(ids.body.data).toEqual([big.id, small.id]);
+    // And it reads the same filters as the list.
+    const filtered = await request(app).get('/api/v1/client-references/ids?tags=IBM%20Power').set('Cookie', cookie);
+    expect(filtered.body.data).toEqual([big.id]);
 
     const facets = await request(app).get('/api/v1/client-references/facets').set('Cookie', cookie);
     expect(facets.status).toBe(200);
@@ -126,7 +137,7 @@ describe('/api/v1/client-references', () => {
     const inline = await request(app).get(`/api/v1/client-references/${ref.id}/document?inline=true`).set('Cookie', cookie);
     expect(inline.status).toBe(200);
     expect(inline.headers['content-type']).toContain('application/pdf');
-    expect(inline.headers['content-disposition']).toBe('inline; filename="rescan.pdf"');
+    expect(inline.headers['content-disposition']).toBe(`inline; filename="rescan.pdf"; filename*=UTF-8''rescan.pdf`);
     expect(inline.body.toString()).toBe('%PDF-1.4 second');
 
     const word = await request(app)
@@ -137,6 +148,26 @@ describe('/api/v1/client-references', () => {
     expect(word.body.error.code).toBe('UNSUPPORTED_FILE_TYPE');
     // Still the second file.
     expect((await prisma.clientReference.findUniqueOrThrow({ where: { id: ref.id } })).documentFilename).toBe('rescan.pdf');
+  });
+
+  it('serves a document whose name is beyond Latin-1 — REGRESSION', async () => {
+    // Read as UTF-8 since this branch, such a name went raw into
+    // Content-Disposition, which Node refuses: every preview was a 500.
+    const { alice } = await createTwoUsers();
+    const cookie = cookieFor(alice.id);
+    const ref = await createClientReference(alice.id);
+    const name = 'Attestation d’exécution – CMI.pdf';
+
+    const put = await request(app)
+      .put(`/api/v1/client-references/${ref.id}/document`)
+      .set('Cookie', cookie)
+      .attach('file', Buffer.from('%PDF-1.4'), { filename: name, contentType: 'application/pdf' });
+    expect(put.status).toBe(200);
+    expect(put.body.data.documentFilename).toBe(name);
+
+    const res = await request(app).get(`/api/v1/client-references/${ref.id}/document?inline=true`).set('Cookie', cookie);
+    expect(res.status).toBe(200);
+    expect(res.headers['content-disposition']).toContain(`filename*=UTF-8''Attestation%20d%E2%80%99ex%C3%A9cution%20%E2%80%93%20CMI.pdf`);
   });
 
   it('says so when the row outlived its file', async () => {

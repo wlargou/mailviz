@@ -88,7 +88,10 @@ export interface ClientReferenceQuery {
   /** Compared on `amountHt` — see the schema. */
   minAmount?: string;
   maxAmount?: string;
-  /** "In the last N years", measured on `effectiveDate`. */
+  /**
+   * "In the last N years", measured on the year of `effectiveDate`: in 2026,
+   * the last three years are 2023 onwards, whatever the day the letter gives.
+   */
   sinceYears?: string;
   /** One appreciation, or POSITIVE for satisfaction or good execution. */
   appreciation?: string;
@@ -172,7 +175,7 @@ async function whereFor(userId: string, query: ClientReferenceQuery, now: Date):
 
   const years = finite(query.sinceYears);
   if (years !== null && years > 0) {
-    const since = new Date(Date.UTC(now.getUTCFullYear() - Math.floor(years), now.getUTCMonth(), now.getUTCDate()));
+    const since = new Date(Date.UTC(now.getUTCFullYear() - Math.floor(years), 0, 1));
     and.push({ effectiveDate: { gte: since } });
   }
 
@@ -216,6 +219,7 @@ async function ownedRow(userId: string, id: string) {
 
 /** The fields a write can set, before the derived ones are added. */
 interface Fields {
+  workStatus: string | null;
   projectName: string | null;
   amount: number | null;
   amountType: string | null;
@@ -358,6 +362,7 @@ export const clientReferenceService = {
     await assertCustomerOwnedBy(userId, data.customerId);
     const columns = columnsOf(data) as Prisma.ClientReferenceUncheckedCreateInput;
     const fields: Fields = {
+      workStatus: data.workStatus ?? 'COMPLETED',
       projectName: data.projectName ?? null,
       amount: data.amount ?? null,
       amountType: data.amountType ?? null,
@@ -393,6 +398,7 @@ export const clientReferenceService = {
     const pick = <K extends keyof Fields>(key: K): Fields[K] =>
       (key in columns ? (columns as Record<string, unknown>)[key] : existing[key as keyof Row]) as Fields[K];
     const fields: Fields = {
+      workStatus: pick('workStatus'),
       projectName: pick('projectName'),
       amount: 'amount' in columns ? (columns.amount as number | null) : num(existing.amount),
       amountType: pick('amountType'),

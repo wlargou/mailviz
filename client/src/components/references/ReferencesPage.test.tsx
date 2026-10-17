@@ -129,6 +129,29 @@ describe('ReferencesPage', () => {
     });
   });
 
+  it('writes the typed search and minimum amount to the URL, and asks the API with them', async () => {
+    const user = userEvent.setup();
+    renderAt();
+    await screen.findByRole('button', { name: 'CMI — Centre Monétique Interbancaire' });
+
+    await user.type(screen.getByPlaceholderText(/Search customer, project/), 'sauvegarde');
+    await waitFor(() => expect(screen.getByTestId('where').textContent).toContain('q=sauvegarde'));
+    await user.type(screen.getByRole('textbox', { name: 'Minimum amount (HT)' }), '1 000 000');
+    await waitFor(() => expect(screen.getByTestId('where').textContent).toContain('min=1+000+000'));
+    await waitFor(() =>
+      expect(vi.mocked(clientReferencesApi.getAll)).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'sauvegarde', minAmount: '1000000' })),
+    );
+  });
+
+  it('keeps the page when nothing but spaces was typed', async () => {
+    const user = userEvent.setup();
+    renderAt('/deals?tab=references&page=2');
+    await screen.findByRole('button', { name: 'CMI — Centre Monétique Interbancaire' });
+    await user.type(screen.getByPlaceholderText(/Search customer, project/), '   ');
+    await new Promise((r) => setTimeout(r, 450));
+    expect(screen.getByTestId('where').textContent).toContain('page=2');
+  });
+
   it('offers the review backlog as a filter', async () => {
     const user = userEvent.setup();
     renderAt();

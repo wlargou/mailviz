@@ -29,6 +29,19 @@ describe('technologyTagsFor', () => {
     expect(technologyTagsFor(['Robot de sauvegarde DELL PowerVault TL4000'])).toEqual(['Backup']);
   });
 
+  it('still sees IBM Power in a line that also names a Dell PowerEdge', () => {
+    // An `unless` vetoed the whole line, so the Power servers vanished with the Dell ones.
+    expect(technologyTagsFor(['Serveurs DELL PowerEdge R740 et IBM Power 10 S1024'])).toEqual(
+      expect.arrayContaining(['IBM Power', 'IBM Power 10', 'x86 servers']),
+    );
+  });
+
+  it('does not find technologies inside ordinary French words', () => {
+    for (const line of ['Rationalisation des serveurs', 'Secrétariat général', 'Masse salariale', 'Partenariat', 'Les étapes du projet', 'Concertation avec les équipes', 'Hanane Bennani']) {
+      expect(technologyTagsFor([line])).toEqual([]);
+    }
+  });
+
   it.each([
     ['Baie de stockage IBM Full Flash FS7200 NVMe', 'IBM Storage'],
     ['IBM Strowize V7000', 'IBM Storage'],
@@ -46,6 +59,35 @@ describe('technologyTagsFor', () => {
     ['IBM Spectrum Scale (GPFS)', 'IBM Storage Scale & Ceph'],
   ])('%s takes %s', (line, tag) => {
     expect(technologyTagsFor([line])).toContain(tag);
+  });
+
+  it.each([
+    ['Brocade 300 Switch', 'SAN switches'],
+    ['Switch IBM Brocades 24 ports', 'SAN switches'],
+    ['ProtecTier software', 'Backup'],
+    ['lecteurs de bandes 3592-e05 drives', 'Backup'],
+    ['Nœuds Lenovo à 96 cores chacun', 'x86 servers'],
+    ['Châssis IBM BladeCenter Modèle H', 'x86 servers'],
+    ['10 Switchs HP 2530-24G-PoE+', 'Network & security'],
+    ['Commutateurs Haut Débit FIBER STORE N5850-48S6Q', 'Network & security'],
+    ['IBM Cognos Analytics Explorer', 'IBM Data & Analytics'],
+    ['Licences ONTAP, CIFS, iSCSI et FC', 'Storage'],
+    ['Solution de Stockage FUJITSU ETERNUS DX100', 'Storage'],
+    ['IBM CLOUD PACK FOR INTEGRATION', 'IBM Cloud Pak'],
+    ['Solution de Clustering IBM iCluster', 'IBM i'],
+    ['Axway CFT', 'File transfer'],
+    ['Alfresco (GED)', 'ECM & GED'],
+    ['Une solution de cryptage des données', 'Data security'],
+    ['Nagios (solution de supervision)', 'Observability & DevOps'],
+  ])('%s takes %s', (line, tag) => {
+    expect(technologyTagsFor([line])).toContain(tag);
+  });
+
+  it('keeps SAN switches, backup and software-defined storage out of the generic storage tag', () => {
+    for (const line of ['IBM Storage Networking SAN64B-7', 'IBM Spectrum Protect Plus', 'IBM Storage Ceph', 'IBM Spectrum Scale (GPFS)']) {
+      expect(technologyTagsFor([line])).not.toContain('Storage');
+    }
+    expect(technologyTagsFor(['Switchs SAN Brocade 64Gpbs'])).not.toContain('Network & security');
   });
 
   it('reads the project name too, and leaves an unknown line untagged', () => {
@@ -69,6 +111,11 @@ describe('prestationTagsFor', () => {
 
   it('does not read "dépôt" as a proof of technology', () => {
     expect(prestationTagsFor(['Dépôt des équipements'])).toEqual([]);
+  });
+
+  it('does not take "système d’information" for training — REGRESSION', () => {
+    expect(prestationTagsFor(['Mise à niveau du système d’information'])).toEqual(['Installation & configuration']);
+    expect(prestationTagsFor(['Formation des équipes'])).toEqual(['Training & skills transfer']);
   });
 });
 

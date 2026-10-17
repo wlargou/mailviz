@@ -199,6 +199,13 @@ describe('clientReferenceService — signatories', () => {
     });
     expect(ref.signatories.map((s) => s.name)).toEqual(['BAKI NEZHA', 'KHADI RACHID', null]);
 
+    // Reordered: the stored position, not the insertion order, decides.
+    const reordered = await clientReferenceService.update(alice.id, ref.id, {
+      signatories: [{ role: 'Directeur Général' }, { name: 'KHADI RACHID', role: 'Achats Groupe' }, { name: 'BAKI NEZHA', role: 'Ordonnateur' }],
+    });
+    expect(reordered.signatories.map((s) => s.name)).toEqual([null, 'KHADI RACHID', 'BAKI NEZHA']);
+    expect((await clientReferenceService.findById(alice.id, ref.id)).signatories.map((s) => s.role)).toEqual(['Directeur Général', 'Achats Groupe', 'Ordonnateur']);
+
     const updated = await clientReferenceService.update(alice.id, ref.id, { signatories: [{ name: 'Reda Loudiyi', role: 'Managing Director' }] });
     expect(updated.signatories.map((s) => s.name)).toEqual(['Reda Loudiyi']);
     expect(await prisma.clientReferenceSignatory.count({ where: { referenceId: ref.id } })).toBe(1);
@@ -223,15 +230,27 @@ describe('clientReferenceService — filters', () => {
     expect(names(res.data)).toEqual(['Hit']);
   });
 
-  it('counts "the last N years" back from today, to the day', async () => {
+  it('counts "the last N years" on the end year, whatever the day the letter gives', async () => {
+    // In October 2026 the last three years are 2023 onwards — January 2023 too.
     const { alice } = await createTwoUsers();
-    await createClientReference(alice.id, { customerName: 'Inside', projectEnd: '2023-10-17' });
-    await createClientReference(alice.id, { customerName: 'Outside', projectEnd: '2023-10-16' });
+    await createClientReference(alice.id, { customerName: 'Early 2023', projectEnd: '2023-01-02' });
+    await createClientReference(alice.id, { customerName: 'Year 2023', projectEnd: '2023' });
+    await createClientReference(alice.id, { customerName: 'Late 2022', projectEnd: '2022-12-31' });
     await createClientReference(alice.id, { customerName: 'Undated' });
 
     const res = await clientReferenceService.findAll(alice.id, { sinceYears: '3' }, NOW);
 
-    expect(names(res.data)).toEqual(['Inside']);
+    expect(names(res.data)).toEqual(['Early 2023', 'Year 2023']);
+  });
+
+  it('keeps work still running in the last N years, however long ago it started', async () => {
+    const { alice } = await createTwoUsers();
+    await createClientReference(alice.id, { customerName: 'Running', workStatus: 'IN_PROGRESS', projectStart: '2019-11-15', signedAt: '2025-03-01' });
+    await createClientReference(alice.id, { customerName: 'Done long ago', projectStart: '2019-11-15', signedAt: '2025-03-01' });
+
+    const res = await clientReferenceService.findAll(alice.id, { sinceYears: '3' }, NOW);
+
+    expect(names(res.data)).toEqual(['Running']);
   });
 
   it('filters on appreciation, a stated signer role, type, status and the review flag', async () => {
@@ -290,13 +309,24 @@ describe('clientReferenceService — search', () => {
     expect(await q('sauvegarde cfg')).toEqual([]);
   });
 
-  it('finds a reference by its linked company’s name and by a standard tag', async () => {
+  it('finds a reference by its linked company, a standard tag, a service tag and a consortium partner', async () => {
     const { alice } = await createTwoUsers();
     const company = await createCustomer(alice.id, { name: 'Marocmeteo' });
-    await createClientReference(alice.id, { customerName: 'Direction Générale de la Météorologie', customerId: company.id, technologies: ['Serveurs IBM Power10'] });
+    // The raw line says neither "IBM" nor "Power 10": only the derived tags do.
+    await createClientReference(alice.id, {
+      customerName: 'Direction Générale de la Météorologie',
+      customerId: company.id,
+      technologies: ['BM Power System E1050'],
+      prestations: ['Prestations de transfert de compétences'],
+      consortiumPartners: ['Corporate Software'],
+    });
+    await createClientReference(alice.id, { customerName: 'Other' });
 
-    expect((await clientReferenceService.findAll(alice.id, { search: 'marocmeteo' })).data).toHaveLength(1);
-    expect((await clientReferenceService.findAll(alice.id, { search: 'IBM Power 10' })).data).toHaveLength(1);
+    const q = (search: string) => clientReferenceService.findAll(alice.id, { search }).then((r) => names(r.data));
+    expect(await q('marocmeteo')).toEqual(['Direction Générale de la Météorologie']);
+    expect(await q('IBM Power 10')).toEqual(['Direction Générale de la Météorologie']);
+    expect(await q('skills transfer')).toEqual(['Direction Générale de la Météorologie']);
+    expect(await q('corporate software')).toEqual(['Direction Générale de la Météorologie']);
   });
 
   it('treats % and _ as themselves', async () => {
@@ -314,13 +344,14 @@ describe('clientReferenceService — order', () => {
     const { alice } = await createTwoUsers();
     await createClientReference(alice.id, { customerName: 'None' });
     await createClientReference(alice.id, { customerName: 'Small', amount: 100, amountType: 'HT' });
+    // 1200 TTC is 1000 HT: below Mid's 1100 once the VAT is out, above it as written.
     await createClientReference(alice.id, { customerName: 'Big TTC', amount: 1200, amountType: 'TTC' });
-    await createClientReference(alice.id, { customerName: 'Mid', amount: 500, amountType: 'HT' });
+    await createClientReference(alice.id, { customerName: 'Mid', amount: 1100, amountType: 'HT' });
 
     const res = await clientReferenceService.findAll(alice.id, {});
-    expect(res.data.map((r) => r.customerName)).toEqual(['Big TTC', 'Mid', 'Small', 'None']);
+    expect(res.data.map((r) => r.customerName)).toEqual(['Mid', 'Big TTC', 'Small', 'None']);
     const asc = await clientReferenceService.findAll(alice.id, { sortOrder: 'asc' });
-    expect(asc.data.map((r) => r.customerName)).toEqual(['Small', 'Mid', 'Big TTC', 'None']);
+    expect(asc.data.map((r) => r.customerName)).toEqual(['Small', 'Big TTC', 'Mid', 'None']);
 
     expect(await clientReferenceService.ids(alice.id, {})).toEqual(res.data.map((r) => r.id));
   });

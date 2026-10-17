@@ -88,22 +88,31 @@ export function ReferenceDetailPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [leaveTo, setLeaveTo] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  // The router reuses this component from one reference to the next: a load
+  // that resolves after a newer one began must not land on screen.
+  const loadSeq = useRef(0);
+  const savingRef = useRef(false);
 
   const load = useCallback(async () => {
     if (!id || isNew) return;
+    const seq = ++loadSeq.current;
     setLoading(true);
+    setDeleteOpen(false);
+    setLeaveTo(null);
     try {
       const { data: res } = await clientReferencesApi.getById(id);
+      if (seq !== loadSeq.current) return;
       setReference(res.data);
       const f = toForm(res.data);
       setBase(f);
       setForm(f);
       setNotFound(false);
     } catch (err) {
+      if (seq !== loadSeq.current) return;
       if (isAxiosError(err) && err.response?.status === 404) setNotFound(true);
       else addNotification({ kind: 'error', title: 'Failed to load the reference' });
     } finally {
-      setLoading(false);
+      if (seq === loadSeq.current) setLoading(false);
     }
   }, [id, isNew, addNotification]);
 
@@ -153,12 +162,17 @@ export function ReferenceDetailPage() {
 
   /** Save what changed. Resolves to whether the reference is now saved. */
   const save = useCallback(async (): Promise<boolean> => {
+    // One save at a time: a second ⌘S during the first would create the
+    // reference twice, or send two overlapping PATCHes.
+    if (savingRef.current) return false;
     if (!valid) {
       addNotification({ kind: 'error', title: 'Some fields need correcting', subtitle: Object.values(errors)[0] });
       return false;
     }
     if (!isNew && Object.keys(changes).length === 0) return true;
+    savingRef.current = true;
     setSaving(true);
+    const snapshot = form;
     try {
       if (isNew) {
         const { data: res } = await clientReferencesApi.create(toInput(form));
@@ -172,6 +186,8 @@ export function ReferenceDetailPage() {
         }
         addNotification({ kind: 'success', title: 'Reference added' });
         setBase(form);
+        setPendingFile(null);
+        setPendingUrl(null);
         navigate(`/references/${created.id}`, { replace: true, state });
         return true;
       }
@@ -179,7 +195,8 @@ export function ReferenceDetailPage() {
       setReference(res.data);
       const f = toForm(res.data);
       setBase(f);
-      setForm(f);
+      // The saved row, plus whatever was typed while the request was out.
+      setForm((current) => (current === snapshot ? f : rebase(f, snapshot, current)));
       addNotification({ kind: 'success', title: 'Reference saved' });
       return true;
     } catch (err) {
@@ -187,6 +204,7 @@ export function ReferenceDetailPage() {
       addNotification({ kind: 'error', title: 'Failed to save the reference', subtitle: message });
       return false;
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }, [valid, errors, isNew, changes, form, pendingFile, reference, navigate, state, addNotification]);
@@ -196,7 +214,7 @@ export function ReferenceDetailPage() {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
-        void save();
+        if (!e.repeat) void save();
       }
     };
     window.addEventListener('keydown', onKey);
@@ -236,11 +254,13 @@ export function ReferenceDetailPage() {
       setPendingFile(file);
       return;
     }
+    const forId = reference!.id;
     setUploading(true);
     try {
-      const { data: res } = await clientReferencesApi.uploadDocument(reference!.id, file);
-      // Only the document's fields: the form may hold unsaved corrections.
-      setReference((r) => (r ? { ...r, ...pickDocument(res.data) } : res.data));
+      const { data: res } = await clientReferencesApi.uploadDocument(forId, file);
+      // Only the document's fields — the form may hold unsaved corrections —
+      // and only if this is still the reference on screen.
+      setReference((r) => (r && r.id === forId ? { ...r, ...pickDocument(res.data) } : r));
       addNotification({ kind: 'success', title: 'Document replaced' });
     } catch (err) {
       const message = isAxiosError(err) ? err.response?.data?.error?.message : undefined;
@@ -319,7 +339,7 @@ export function ReferenceDetailPage() {
                   size="md"
                   label={dirty ? 'Save and open the previous' : 'Previous reference'}
                   autoAlign
-                  disabled={!prevId || saving}
+                  disabled={!prevId || saving || uploading}
                   onClick={() => step(prevId)}
                 >
                   <ChevronLeft />
@@ -332,7 +352,7 @@ export function ReferenceDetailPage() {
                   size="md"
                   label={dirty ? 'Save and open the next' : 'Next reference'}
                   autoAlign
-                  disabled={!nextId || saving}
+                  disabled={!nextId || saving || uploading}
                   onClick={() => step(nextId)}
                 >
                   <ChevronRight />
@@ -722,6 +742,18 @@ function StandardTags({ label, tags }: { label: string; tags: string[] }) {
       )}
     </div>
   );
+}
+
+/**
+ * The saved row with the edits made since `snapshot` was sent laid back on
+ * top: a field the user changed while the PATCH was out keeps their value.
+ */
+function rebase(saved: ReferenceForm, snapshot: ReferenceForm, current: ReferenceForm): ReferenceForm {
+  const next = { ...saved };
+  for (const key of Object.keys(current) as Array<keyof ReferenceForm>) {
+    if (JSON.stringify(current[key]) !== JSON.stringify(snapshot[key])) (next as Record<string, unknown>)[key] = current[key];
+  }
+  return next;
 }
 
 function pickDocument(r: ClientReference) {

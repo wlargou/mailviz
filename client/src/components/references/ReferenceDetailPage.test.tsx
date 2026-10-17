@@ -139,6 +139,82 @@ describe('ReferenceDetailPage', () => {
     expect(await screen.findByText('Not an amount — e.g. 1 500 000,00')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Save' }));
     expect(api.update).not.toHaveBeenCalled();
+    expect(useUIStore.getState().notifications).toEqual(
+      expect.arrayContaining([expect.objectContaining({ title: 'Some fields need correcting', subtitle: 'Not an amount — e.g. 1 500 000,00' })]),
+    );
+  });
+
+  it('does not step away from a field that does not read', async () => {
+    const user = userEvent.setup();
+    renderAt('ref1');
+    await screen.findByText('2 of 3');
+    const amount = field('Amount');
+    await user.clear(amount);
+    await user.type(amount, '12 abc');
+    await user.click(button('Save and open the next'));
+    expect(navigateSpy).not.toHaveBeenCalled();
+    expect(api.update).not.toHaveBeenCalled();
+  });
+
+  it('saves once however often ⌘S is pressed while the save is out', async () => {
+    const user = userEvent.setup();
+    let resolve!: (v: unknown) => void;
+    api.update.mockReturnValue(new Promise((r) => (resolve = r)) as never);
+    renderAt('ref1');
+    await screen.findByDisplayValue('CMI — Centre Monétique Interbancaire');
+    await user.type(field('City'), ' Centre');
+    fireEvent.keyDown(window, { key: 's', metaKey: true });
+    fireEvent.keyDown(window, { key: 's', metaKey: true });
+    fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+    resolve(ok(makeReference({ city: 'Casablanca Centre' })));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled());
+    expect(api.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps what was typed while the save was out — REGRESSION', async () => {
+    // The response replaced the whole form, erasing the newer edit.
+    const user = userEvent.setup();
+    let resolve!: (v: unknown) => void;
+    api.update.mockReturnValue(new Promise((r) => (resolve = r)) as never);
+    renderAt('ref1');
+    await screen.findByDisplayValue('CMI — Centre Monétique Interbancaire');
+    await user.clear(field('City'));
+    await user.type(field('City'), 'Rabat');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await user.type(field('Attestation n°'), 'N°12');
+    resolve(ok(makeReference({ city: 'Rabat' })));
+
+    await waitFor(() => expect(field('City').value).toBe('Rabat'));
+    expect(field('Attestation n°').value).toBe('N°12');
+    // Still unsaved, so Save is offered again.
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
+  });
+
+  it('asks before leaving with unsaved corrections', async () => {
+    const user = userEvent.setup();
+    renderAt('ref1');
+    await screen.findByDisplayValue('CMI — Centre Monétique Interbancaire');
+    await user.type(field('City'), ' Centre');
+
+    await user.click(screen.getByRole('link', { name: 'References' }));
+    expect(await screen.findByText('Discard your changes?')).toBeInTheDocument();
+    expect(navigateSpy).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Keep editing' }));
+    expect(navigateSpy).not.toHaveBeenCalled();
+    expect(field('City').value).toBe('Casablanca Centre');
+
+    await user.click(screen.getByRole('link', { name: 'References' }));
+    await user.click(await screen.findByRole('button', { name: 'Discard' }));
+    expect(navigateSpy).toHaveBeenCalledWith(STATE.back);
+    expect(api.update).not.toHaveBeenCalled();
+  });
+
+  it('leaves at once when nothing changed', async () => {
+    const user = userEvent.setup();
+    renderAt('ref1');
+    await screen.findByDisplayValue('CMI — Centre Monétique Interbancaire');
+    await user.click(screen.getByRole('link', { name: 'References' }));
+    expect(navigateSpy).toHaveBeenCalledWith(STATE.back);
   });
 
   it('replaces the document with a PDF, and refuses anything else', async () => {

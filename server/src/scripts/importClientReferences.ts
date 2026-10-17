@@ -23,6 +23,7 @@ import { prisma } from '../lib/prisma.js';
 import { clientReferenceService } from '../services/clientReferenceService.js';
 import { writeStoredFile } from '../services/rfpStorage.js';
 import { createClientReferenceSchema } from '../validators/clientReferenceValidator.js';
+import { endOfPeriod, parsePartialDate } from '../utils/clientReference.js';
 
 export interface ManifestEntry {
   importKey: string;
@@ -77,6 +78,14 @@ export async function importClientReferences({ userEmail, dir, apply, log = cons
     const parsed = createClientReferenceSchema.safeParse(entry.input);
     if (!parsed.success) {
       result.invalid.push({ importKey: entry.importKey, error: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ') });
+      continue;
+    }
+    // The service's own period check, here too, so a dry run reports what
+    // --apply would refuse rather than stopping halfway through.
+    const start = parsed.data.projectStart ? parsePartialDate(parsed.data.projectStart) : null;
+    const end = parsed.data.projectEnd ? parsePartialDate(parsed.data.projectEnd) : null;
+    if (start && end && endOfPeriod(end.date, end.precision) < start.date) {
+      result.invalid.push({ importKey: entry.importKey, error: 'projectEnd: the project cannot end before it starts' });
       continue;
     }
     const filePath = entry.file ? path.join(dir, 'files', path.basename(entry.file)) : null;

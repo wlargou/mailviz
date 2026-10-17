@@ -1,9 +1,11 @@
 import fs from 'node:fs';
+import { pipeline } from 'node:stream';
 import { Response, NextFunction } from 'express';
 import type { Req } from '../types/http.js';
 import { clientReferenceService } from '../services/clientReferenceService.js';
 import { resolveStoragePath } from '../services/rfpStorage.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { contentDisposition } from '../utils/contentDisposition.js';
 
 export const clientReferenceController = {
   async findAll(req: Req, res: Response, next: NextFunction) {
@@ -88,12 +90,16 @@ export const clientReferenceController = {
         // The row outlived its bytes — say so rather than streaming nothing.
         throw new AppError(410, 'REFERENCE_DOCUMENT_GONE', 'The stored file is missing');
       }
-      const disposition = req.query.inline === 'true' ? 'inline' : 'attachment';
-      // A quote or a newline in the filename would otherwise split the header.
-      const safeFilename = doc.filename.replace(/["\r\n\\]/g, '_');
       res.setHeader('Content-Type', doc.mimeType);
-      res.setHeader('Content-Disposition', `${disposition}; filename="${safeFilename}"`);
-      fs.createReadStream(full).pipe(res);
+      res.setHeader('Content-Disposition', contentDisposition(req.query.inline === 'true' ? 'inline' : 'attachment', doc.filename));
+      // pipeline, not pipe: a read error after the check above (the file
+      // removed in between) must reach the error handler, not crash the
+      // process with an unhandled 'error' event.
+      pipeline(fs.createReadStream(full), res, (err) => {
+        if (!err) return;
+        if (!res.headersSent) next(err);
+        else res.destroy(err);
+      });
     } catch (err) {
       next(err);
     }

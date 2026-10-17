@@ -29,7 +29,7 @@ describe('partial dates', () => {
 });
 
 describe('effectiveDateOf', () => {
-  const none = { projectStart: null, projectStartPrecision: null, projectEnd: null, projectEndPrecision: null, signedAt: null };
+  const none = { workStatus: 'COMPLETED', projectStart: null, projectStartPrecision: null, projectEnd: null, projectEndPrecision: null, signedAt: null };
 
   it('prefers the end, then the start, then the signature', () => {
     const signedAt = day('2026-01-01');
@@ -37,6 +37,15 @@ describe('effectiveDateOf', () => {
     expect(effectiveDateOf({ ...none, projectStart: day('2020-01-01'), projectStartPrecision: 'YEAR', signedAt })).toEqual(day('2020-12-31'));
     expect(effectiveDateOf({ ...none, signedAt })).toEqual(signedAt);
     expect(effectiveDateOf(none)).toBeNull();
+  });
+
+  it('counts work still running when the customer signed up to the signature', () => {
+    const running = { ...none, workStatus: 'IN_PROGRESS', projectStart: day('2023-03-17'), projectStartPrecision: 'DAY', signedAt: day('2026-01-30') };
+    expect(effectiveDateOf(running)).toEqual(day('2026-01-30'));
+    // A completed project started in 2023 ended then, whenever the letter came.
+    expect(effectiveDateOf({ ...running, workStatus: 'COMPLETED' })).toEqual(day('2023-03-17'));
+    // An end the letter gives wins, running or not.
+    expect(effectiveDateOf({ ...running, projectEnd: day('2025-01-01'), projectEndPrecision: 'YEAR' })).toEqual(day('2025-12-31'));
   });
 });
 
