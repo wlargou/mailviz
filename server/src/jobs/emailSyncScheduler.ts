@@ -18,6 +18,11 @@ async function syncAccount(userId: string): Promise<void> {
   wsEmitToUser(userId, 'sync:status', { syncing: true });
 
   try {
+    // The grant this run starts with: a refusal is recorded against it only,
+    // so a Reconnect that lands mid-run is not marked dead by the old grant's
+    // failure.
+    const grant = await googleAuthService.currentGrant(userId);
+
     try {
       const result = await emailService.syncFromGmail(userId);
       const hasChanges =
@@ -42,7 +47,7 @@ async function syncAccount(userId: string): Promise<void> {
         console.warn(`[EmailSync] ${result.failed} message(s) failed to fetch and will be retried`);
       }
     } catch (err: any) {
-      if (await googleAuthService.noteAuthFailure(userId, err)) {
+      if (await googleAuthService.noteAuthFailure(userId, err, grant)) {
         // Google refused the grant. Skipped like any 400, but recorded, logged
         // once and pushed to Settings by noteAuthFailure — not a line per tick.
       } else if (err?.status === 400 || err?.status === 403) {
@@ -135,10 +140,11 @@ export function syncAccountNow(userId: string): Promise<void> {
  * the same as on a scheduled tick.
  */
 export async function runManualSync<T>(userId: string, job: () => Promise<T>) {
+  const grant = await googleAuthService.currentGrant(userId);
   try {
     return await runner.runExclusive(userId, job);
   } catch (err) {
-    await googleAuthService.noteAuthFailure(userId, err);
+    await googleAuthService.noteAuthFailure(userId, err, grant);
     throw err;
   }
 }

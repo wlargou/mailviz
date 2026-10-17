@@ -119,6 +119,7 @@ const { startScheduledSendScheduler, stopScheduledSendScheduler } =
 const { startSnoozeScheduler, stopSnoozeScheduler } = await import('./snoozeScheduler.js');
 const { startNotificationScheduler, stopNotificationScheduler } =
   await import('./notificationScheduler.js');
+const { googleAuthService } = await import('../services/googleAuthService.js');
 
 const okMailSync: MailSyncResult = {
   synced: 0,
@@ -472,6 +473,58 @@ describe('a refused Google grant', () => {
     expect(eventsFor(bob.id).some((e) => e.event === 'google:auth')).toBe(false);
     const aliceRow = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: alice.id } });
     expect(aliceRow.authError).toBe('invalid_grant');
+  });
+
+  /**
+   * The user finishes Reconnect Google while a sync that read the old grant is
+   * still waiting on Google — which then refuses that old grant.
+   */
+  async function reconnectedMidSync(userId: string, refused: unknown): Promise<never> {
+    await googleAuthService.upsertGoogleAuth(userId, {
+      accessToken: 'new-access',
+      refreshToken: 'new-grant',
+      expiryDate: Date.now() + 3_600_000,
+    });
+    throw refused;
+  }
+
+  it.each<[string, (userId: string, run: () => Promise<never>) => Promise<unknown>]>([
+    [
+      'a scheduled mail sync',
+      async (_userId, run) => {
+        mocks.syncFromGmail.mockImplementation(run);
+        await captureTick(startEmailSyncScheduler)();
+      },
+    ],
+    [
+      'a scheduled calendar sync',
+      async (_userId, run) => {
+        mocks.syncCalendar.mockImplementation(run);
+        await captureTick(startCalendarSyncScheduler)();
+      },
+    ],
+    ['a manual mail sync', (userId, run) => runManualSync(userId, run).catch(() => {})],
+    ['a manual calendar sync', (userId, run) => runCalendarManualSync(userId, run).catch(() => {})],
+  ])('leaves the error clear when a Reconnect lands during %s — REGRESSION', async (_label, drive) => {
+    const user = await createConnectedUser();
+    // The account the user is fixing: its grant was refused and recorded.
+    await prisma.googleAuth.update({
+      where: { userId: user.id },
+      data: { authError: 'invalid_grant', authErrorAt: new Date() },
+    });
+    const refused = await tokenEndpointError(400, INVALID_GRANT);
+
+    await drive(user.id, () => reconnectedMidSync(user.id, refused));
+
+    // The old grant's refusal used to be written over the new one, and a sync
+    // that works never clears it: Settings said "Sync has stopped" straight
+    // after the Reconnect, for up to an hour.
+    const row = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: user.id } });
+    expect(row.refreshToken).toBe('new-grant');
+    expect(row.authError).toBeNull();
+    expect(eventsFor(user.id).filter((e) => e.event === 'google:auth')).toEqual([
+      { event: 'google:auth', data: { authError: null } },
+    ]);
   });
 
   it.each([

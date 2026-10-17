@@ -1,7 +1,7 @@
 import { promoteSenders } from '../services/accountStatus.js';
 import * as cron from 'node-cron';
 import { calendarService } from '../services/calendarService.js';
-import { googleAuthService } from '../services/googleAuthService.js';
+import { googleAuthService, type GrantSnapshot } from '../services/googleAuthService.js';
 import { env } from '../config/env.js';
 import { wsEmitToUser } from '../websocket.js';
 import { secondsToCron } from '../utils/shared.js';
@@ -13,7 +13,12 @@ let syncTask: ReturnType<typeof cron.schedule> | null = null;
 async function syncAccount(userId: string): Promise<void> {
   // Per-account, like the mail scheduler — see the note there.
   wsEmitToUser(userId, 'calendar:sync:status', { syncing: true });
+  // The grant this run starts with — see the mail scheduler. Read inside the
+  // try, so a failure to read it still clears the spinner.
+  let grant: GrantSnapshot = null;
   try {
+    grant = await googleAuthService.currentGrant(userId);
+
     /**
      * Before the pull, not after: a retry that lands means Google already holds
      * our version by the time the sync lists it, so the row converges on this
@@ -44,7 +49,7 @@ async function syncAccount(userId: string): Promise<void> {
       });
     }
   } catch (err: any) {
-    if (await googleAuthService.noteAuthFailure(userId, err)) {
+    if (await googleAuthService.noteAuthFailure(userId, err, grant)) {
       // Google refused the grant — recorded and announced once by
       // noteAuthFailure, skipped here like any 400.
     } else if (err?.status === 400) {
@@ -127,10 +132,11 @@ export function syncCalendarNow(userId: string): Promise<void> {
  * failure goes on to the caller, as on a scheduled tick.
  */
 export async function runCalendarManualSync<T>(userId: string, job: () => Promise<T>) {
+  const grant = await googleAuthService.currentGrant(userId);
   try {
     return await runner.runExclusive(userId, job);
   } catch (err) {
-    await googleAuthService.noteAuthFailure(userId, err);
+    await googleAuthService.noteAuthFailure(userId, err, grant);
     throw err;
   }
 }
