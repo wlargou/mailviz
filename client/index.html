@@ -3,7 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Mailviz - Productivity Hub</title>
+    <!-- The name comes from src/brand.ts; vite.config.ts substitutes it. -->
+    <title>%PRODUCT_NAME%</title>
+    <meta name="theme-color" content="#161616" />
+    <!-- The design system's reduced glyph, vendored from the website unchanged.
+         favicon.svg picks its colourway by prefers-color-scheme. -->
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   </head>
   <body>
     <div id="root"></div>

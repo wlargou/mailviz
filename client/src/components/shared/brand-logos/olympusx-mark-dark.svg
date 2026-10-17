@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img"><title>Olympusx AI — Sovereign Cross (for dark grounds)</title>
+<circle cx="100" cy="100" r="62" fill="none" stroke="#3ddbd9" stroke-width="1.5" stroke-dasharray="9 11" transform="rotate(11 100 100)"/>
+<circle cx="100" cy="100" r="34" fill="none" stroke="#4589ff" stroke-width="2" stroke-dasharray="14 7"/>
+<line x1="152.33" y1="47.67" x2="112.73" y2="87.27" stroke="#4589ff" stroke-width="6" stroke-linecap="round"/>
+<line x1="152.33" y1="152.33" x2="112.73" y2="112.73" stroke="#4589ff" stroke-width="6" stroke-linecap="round"/>
+<line x1="47.67" y1="152.33" x2="87.27" y2="112.73" stroke="#4589ff" stroke-width="6" stroke-linecap="round"/>
+<line x1="47.67" y1="47.67" x2="87.27" y2="87.27" stroke="#4589ff" stroke-width="6" stroke-linecap="round"/>
+<line x1="100" y1="48" x2="100" y2="76" stroke="#3ddbd9" stroke-width="2" stroke-linecap="round"/>
+<line x1="152" y1="100" x2="124" y2="100" stroke="#3ddbd9" stroke-width="2" stroke-linecap="round"/>
+<line x1="100" y1="152" x2="100" y2="124" stroke="#3ddbd9" stroke-width="2" stroke-linecap="round"/>
+<line x1="48" y1="100" x2="76" y2="100" stroke="#3ddbd9" stroke-width="2" stroke-linecap="round"/>
+<rect x="90" y="90" width="20" height="20" fill="#4589ff" stroke="#4589ff" transform="rotate(45 100 100)"/>
+<circle cx="100" cy="12" r="3.5" fill="#4589ff" stroke="#4589ff"/>
+<circle cx="188" cy="100" r="3.5" fill="#4589ff" stroke="#4589ff"/>
+<circle cx="100" cy="188" r="3.5" fill="#4589ff" stroke="#4589ff"/>
+<circle cx="12" cy="100" r="3.5" fill="#4589ff" stroke="#4589ff"/>
+<circle cx="133.68" cy="18.7" r="2" fill="#3ddbd9" stroke="#3ddbd9"/>
+<circle cx="162.23" cy="37.77" r="2" fill="#3ddbd9" stroke="#3ddbd9"/>
+<circle cx="181.3" cy="66.32" r="2" fill="#3ddbd9" stroke="#3ddbd9"/>
+<circle cx="181.3" cy="133.68" r="2" fill="#3ddbd9" stroke="#3ddbd9"/>
+<circle cx="162.23" cy="162.23" r="2" fill="#3ddbd9" stroke="#3ddbd9"/>
+<circle cx="133.68" cy="181.3" r="2" fill="#3ddbd9" stroke="#3ddbd9"/>
+<circle cx="66.32" cy="181.3" r="2" fill="#3ddbd9" stroke="#3ddbd9"/>
+<circle cx="37.77" cy="162.23" r="2" fill="#3ddbd9" stroke="#3ddbd9"/>
+<circle cx="18.7" cy="133.68" r="2" fill="#3ddbd9" stroke="#3ddbd9"/>
+<circle cx="18.7" cy="66.32" r="2" fill="#3ddbd9" stroke="#3ddbd9"/>
+<circle cx="37.77" cy="37.77" r="2" fill="#3ddbd9" stroke="#3ddbd9"/>
+<circle cx="66.32" cy="18.7" r="2" fill="#3ddbd9" stroke="#3ddbd9"/>
+<circle cx="152.33" cy="47.67" r="5.5" fill="#4589ff" stroke="#4589ff"/>
+<circle cx="152.33" cy="152.33" r="5.5" fill="#4589ff" stroke="#4589ff"/>
+<circle cx="47.67" cy="152.33" r="5.5" fill="#4589ff" stroke="#4589ff"/>
+<circle cx="47.67" cy="47.67" r="5.5" fill="#4589ff" stroke="#4589ff"/>
+<circle cx="133.94" cy="66.06" r="3.5" fill="#3ddbd9" stroke="#3ddbd9"/>
+<circle cx="133.94" cy="133.94" r="3.5" fill="#3ddbd9" stroke="#3ddbd9"/>
+<circle cx="66.06" cy="133.94" r="3.5" fill="#3ddbd9" stroke="#3ddbd9"/>
+<circle cx="66.06" cy="66.06" r="3.5" fill="#3ddbd9" stroke="#3ddbd9"/>
+<circle cx="100" cy="48" r="2.8" fill="#3ddbd9" stroke="#3ddbd9"/>
+<circle cx="152" cy="100" r="2.8" fill="#3ddbd9" stroke="#3ddbd9"/>
+<circle cx="100" cy="152" r="2.8" fill="#3ddbd9" stroke="#3ddbd9"/>
+<circle cx="48" cy="100" r="2.8" fill="#3ddbd9" stroke="#3ddbd9"/>
+</svg>
