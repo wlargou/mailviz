@@ -62,6 +62,17 @@ describe('AboutModal', () => {
     expect(released.textContent).not.toMatch(/\d{2}:\d{2}/);
   });
 
+  it('says what this is: the full name and the descriptor', async () => {
+    // Written out, not read from src/brand.ts, so a rename is made on purpose.
+    serverSays('1.0.0.0');
+    render(<AboutModal open onClose={vi.fn()} />);
+
+    expect(screen.getByRole('heading', { name: 'About Olympusx Productivity Hub' })).toBeInTheDocument();
+    expect(screen.getByText('Olympusx Productivity Hub')).toHaveClass('brand-name');
+    expect(screen.getByText('Your workday in one place')).toBeInTheDocument();
+    await screen.findByText(/^Released /);
+  });
+
   it('shows one version, not two', async () => {
     // The whole point of the trim: a reader should never have to work out
     // which of two numbers is "the version".

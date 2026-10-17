@@ -1130,7 +1130,7 @@ export function SettingsPage() {
         </UnorderedList>
         <p style={{ marginTop: '1rem', color: 'var(--cds-support-error)' }}>
           This action cannot be undone. Your tasks are kept, and so are any events that exist
-          only in Mailviz — both lose their company associations.
+          only here — both lose their company associations.
         </p>
       </Modal>
     </div>

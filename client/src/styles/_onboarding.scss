@@ -252,22 +252,13 @@
   inset: 0;
   z-index: 9000; // above SidePanel (8000) and its dropdowns (8001+)
   overflow-y: auto;
+  // The plain ground, as on the login page. It was a blue and purple gradient
+  // field; the design system allows no gradient but the AI aura, and that
+  // belongs to a live chat or run panel, not a welcome.
   background: var(--cds-background);
 
-  // The gradient field behind the content, echoing the login page so signing in
-  // and arriving read as one continuous moment.
-  &__field {
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    background:
-      radial-gradient(circle at 78% 18%, rgba(69, 137, 255, 0.20), transparent 55%),
-      radial-gradient(circle at 12% 88%, rgba(138, 63, 252, 0.16), transparent 50%),
-      radial-gradient(circle at 50% 50%, rgba(69, 137, 255, 0.05), transparent 70%);
-  }
-
   // Two columns so the primary action stays above the fold. Stacked in one
-  // column, the capability cards pushed "Set up mailviz" off a 840px-tall
+  // column, the capability cards pushed the set-up button off a 840px-tall
   // viewport — a welcome screen you have to scroll before you can act on is a
   // worse first impression than one that says slightly less.
   &__inner {
@@ -315,7 +306,7 @@
     margin-block-end: $spacing-04;
   }
 
-  // Light weight and large size, matching `.login-panel__title`.
+  // Light weight and large size: the design system's "thin and huge" heading.
   &__title {
     font-size: clamp(2rem, 3.4vw, 3rem);
     font-weight: 300;
@@ -347,17 +338,17 @@
     padding: $spacing-06;
     background: var(--cds-layer-01);
     border: 1px solid var(--cds-border-subtle-01);
-    // A hairline of brand colour, not a full border — enough to lift the card off
-    // the gradient without competing with the primary action.
+    // A hairline of brand colour, not a full border — enough to set the card off
+    // the ground without competing with the primary action.
     border-block-start: 2px solid var(--cds-border-interactive);
     display: flex;
     flex-direction: column;
     gap: $spacing-03;
-    transition: background 110ms ease, transform 110ms ease;
+    // Hover changes colour only: the design system's cards never move or lift.
+    transition: background 110ms ease;
 
     &:hover {
       background: var(--cds-layer-hover-01);
-      transform: translateY(-2px);
     }
   }
 

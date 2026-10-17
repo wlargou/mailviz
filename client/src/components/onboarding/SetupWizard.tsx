@@ -6,6 +6,7 @@ import { onboardingApi } from '../../api/onboarding';
 import { dealPartnersApi } from '../../api/dealPartners';
 import { authApi } from '../../api/auth';
 import { useUIStore } from '../../store/uiStore';
+import { PRODUCT_NAME } from '../../brand';
 import type { OnboardingStatus } from '../../types/onboarding';
 
 interface SetupWizardProps {
@@ -88,12 +89,12 @@ export function SetupWizard({ status, onFinish }: SetupWizardProps) {
     // screen it expects, putting its action bar on the bottom edge.
     <div className="onboarding-fullpage">
       <CreateFullPage
-        title="Set up mailviz"
+        title={`Set up ${PRODUCT_NAME}`}
         secondaryTitle="A minute of setup, then you are done"
         backButtonText="Back"
         cancelButtonText="Finish later"
         nextButtonText="Next"
-        submitButtonText="Start using mailviz"
+        submitButtonText={`Start using ${PRODUCT_NAME}`}
         // Setup writes each step as it completes, so leaving keeps what is saved.
         // The modal says that rather than implying the work is discarded.
         modalTitle="Leave setup?"

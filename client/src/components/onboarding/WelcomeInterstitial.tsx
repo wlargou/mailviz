@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { Button } from '@carbon/react';
 import { ArrowRight, Email, Building, Money, Time } from '@carbon/icons-react';
-import { MailvizLogo } from '../shared/MailvizLogo';
+import { BrandMark } from '../shared/BrandMark';
+import { PRODUCT_DESCRIPTOR, PRODUCT_NAME } from '../../brand';
 
 interface WelcomeInterstitialProps {
   open: boolean;
@@ -22,9 +23,9 @@ interface WelcomeInterstitialProps {
  * into a full-width slab. Fighting that produced a worse result than composing
  * the layout directly.
  *
- * The visual language is deliberately the login page's — the same orbit mark,
- * the same gradient field, the same light type weight — so signing in and
- * arriving read as one continuous moment rather than two unrelated screens.
+ * The visual language is deliberately the login page's — the same mark, the
+ * same descriptor, the same plain ground — so signing in and arriving read as
+ * one continuous moment rather than two unrelated screens.
  */
 
 const CAPABILITIES = [
@@ -79,21 +80,17 @@ export function WelcomeInterstitial({
   if (!open) return null;
 
   return (
-    <div className="onboarding-welcome" role="dialog" aria-modal="true" aria-label="Welcome to mailviz">
-      <div className="onboarding-welcome__field" aria-hidden="true" />
-
+    <div className="onboarding-welcome" role="dialog" aria-modal="true" aria-label={`Welcome to ${PRODUCT_NAME}`}>
       <div className="onboarding-welcome__inner">
         <div className="onboarding-welcome__col">
         <header className="onboarding-welcome__head">
           <div className="onboarding-welcome__mark">
-            <MailvizLogo size={72} variant="animated" />
+            <BrandMark size={72} />
           </div>
           <p className="onboarding-welcome__eyebrow">Welcome</p>
-          <h1 className="onboarding-welcome__title">
-            Your mail and your customers, in one place
-          </h1>
+          <h1 className="onboarding-welcome__title">{PRODUCT_DESCRIPTOR}</h1>
           <p className="onboarding-welcome__lead">
-            mailviz reads your Gmail and builds a picture of the companies behind it. A thread, the
+            {PRODUCT_NAME} reads your Gmail and builds a picture of the companies behind it. A thread, the
             person who sent it, the meetings you have had and the deals in flight all sit together —
             assembled as your mail arrives, not filed by you.
           </p>
@@ -118,7 +115,7 @@ export function WelcomeInterstitial({
           </p>
           <div className="onboarding-welcome__actions">
             <Button ref={primaryRef} size="lg" renderIcon={ArrowRight} onClick={onStartSetup}>
-              Set up mailviz
+              Set up {PRODUCT_NAME}
             </Button>
             <Button kind="ghost" size="lg" onClick={onSkip}>
               Explore on my own

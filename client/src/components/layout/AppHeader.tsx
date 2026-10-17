@@ -13,8 +13,9 @@ import { useAuthStore } from '../../store/authStore';
 import { GlobalSearch } from './GlobalSearch';
 import { NotificationBell } from './NotificationBell';
 import { ConnectionStatus } from './ConnectionStatus';
-import { MailvizLogo } from '../shared/MailvizLogo';
+import { BrandMark } from '../shared/BrandMark';
 import { AboutModal } from '../shared/AboutModal';
+import { PRODUCT_NAME, PRODUCT_SHORT_NAME } from '../../brand';
 
 export function AppHeader() {
   const { theme, toggleTheme, sideNavOpen, setSideNavOpen } = useUIStore();
@@ -22,16 +23,20 @@ export function AppHeader() {
   const [aboutOpen, setAboutOpen] = useState(false);
 
   return (
-    <Header aria-label="Mailviz Productivity Hub">
+    <Header aria-label={PRODUCT_NAME}>
       <SkipToContent />
       <HeaderMenuButton
         aria-label={sideNavOpen ? 'Close menu' : 'Open menu'}
         onClick={() => setSideNavOpen(!sideNavOpen)}
         isActive={sideNavOpen}
       />
-      <HeaderName href="/" prefix="" className="mailviz-header-name">
-        <MailvizLogo size={26} />
-        <span>Mailviz</span>
+      {/* `prefix=""`: Carbon renders the prefix before the children, so the
+          glyph could not lead it. The lockup is composed inside instead. */}
+      <HeaderName href="/" prefix="">
+        <span className="brand-lockup">
+          <BrandMark size={24} />
+          <span className="brand-name">{PRODUCT_SHORT_NAME}</span>
+        </span>
       </HeaderName>
       <HeaderGlobalBar>
         <GlobalSearch />
@@ -40,7 +45,7 @@ export function AppHeader() {
         {/* Next to the connection indicator on purpose: both answer "is what I
             am looking at current", which is the question someone has when they
             reach for either. */}
-        <HeaderGlobalAction aria-label="About Mailviz" onClick={() => setAboutOpen(true)}>
+        <HeaderGlobalAction aria-label={`About ${PRODUCT_NAME}`} onClick={() => setAboutOpen(true)}>
           <Information size={20} />
         </HeaderGlobalAction>
         <HeaderGlobalAction

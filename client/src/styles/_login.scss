@@ -2,33 +2,23 @@
 // modules it needs itself rather than inheriting them from index.scss.
 @use '@carbon/react/scss/type' as type;
 @use '@carbon/react/scss/spacing' as *;
+@use '@carbon/react/scss/breakpoint' as *;
+@use '@carbon/react/scss/motion' as motion;
 // ─── LOGIN PAGE ─────────────────────────────────
+// The panel on a layer step with a hairline, the mark on the page's ground:
+// surfaces separate by a layer and a 1px rule, not by a shadow or a gradient.
 .login-page {
-  position: relative;
   display: flex;
   min-height: 100vh;
   background: var(--cds-background);
-  overflow: hidden;
-}
-
-.login-water-canvas {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 0;
 }
 
 .login-panel {
-  position: relative;
-  z-index: 1;
+  flex: none;
   width: 420px;
   min-height: 100vh;
-  background: var(--cds-background);
-  backdrop-filter: blur(40px);
-  -webkit-backdrop-filter: blur(40px);
-  border-right: 1px solid var(--cds-border-subtle-01);
+  background: var(--cds-layer-01);
+  border-inline-end: 1px solid var(--cds-border-subtle-01);
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -38,17 +28,22 @@
   padding: $spacing-09 $spacing-08;
 }
 
+.login-panel__mark {
+  margin-block-end: $spacing-07;
+}
+
+// The name, at the weight `.brand-name` gives it. At 2rem it measures ~390px
+// against the panel's 340px, so it always takes two lines, and `balance` breaks
+// it as "Olympusx / Productivity Hub" rather than leaving "Hub" alone.
 .login-panel__title {
-  font-size: 2.25rem;
-  font-weight: 300;
+  @include type.type-style('heading-05');
   color: var(--cds-text-primary);
   margin: 0 0 $spacing-03;
-  letter-spacing: 0.01em;
+  text-wrap: balance;
 }
 
 .login-panel__subtitle {
-  @include type.type-style('body-compact-01');
-  line-height: 1.4;
+  @include type.type-style('body-01');
   color: var(--cds-text-secondary);
   margin: 0;
 }
@@ -74,155 +69,45 @@
   max-width: 100%;
 }
 
-// Typing animation overlay — centered in the visible background area (right of login panel)
-.login-typing-overlay {
-  position: absolute;
-  top: 45%;
-  // Center in the area to the right of the 420px login panel
-  left: calc(420px + (100% - 420px) / 2);
-  transform: translate(-50%, -50%);
-  z-index: 1;
-  pointer-events: none;
-  text-align: left;
+// The large mark, static. The design system allows the mark no animation
+// beyond the console's own sign-in choreography, and this is not that.
+.login-art {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: $spacing-10;
 }
 
-.login-typing__line1 {
-  font-size: 3.5rem;
-  font-weight: 200;
-  color: var(--cds-text-primary);
-  opacity: 0.85;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-  overflow: hidden;
-  border-right: 3px solid var(--cds-text-primary);
-  width: 0;
-  max-width: fit-content;
-  padding-bottom: 0.15em;
-  animation:
-    typing-reveal 2s steps(30, end) 0.5s forwards,
-    blink-caret 0.75s step-end 0.5s 4;
+.login-art__mark {
+  inline-size: min(25rem, 60vh, 100%);
+  block-size: auto;
 }
 
-.login-typing__line2 {
-  font-size: 1.5rem;
-  font-weight: 300;
-  color: var(--cds-text-secondary);
-  opacity: 0;
-  letter-spacing: 0.03em;
-  white-space: nowrap;
-  overflow: hidden;
-  border-right: 2px solid var(--cds-text-secondary);
-  width: 0;
-  max-width: fit-content;
-  padding-bottom: 0.1em;
-  margin-top: $spacing-05;
-  animation:
-    typing-reveal2 2.5s steps(50, end) 4s forwards,
-    blink-caret2 0.75s step-end 4s 5,
-    fade-caret 0.5s ease 7.5s forwards;
-}
-
-@keyframes typing-reveal {
-  from { width: 0; opacity: 0.85; }
-  to { width: 100%; opacity: 0.85; border-right-color: transparent; }
-}
-
-@keyframes typing-reveal2 {
-  0% { width: 0; opacity: 0.7; }
-  100% { width: 100%; opacity: 0.7; }
-}
-
-@keyframes blink-caret {
-  from, to { border-color: transparent; }
-  50% { border-color: var(--cds-text-primary); }
-}
-
-@keyframes blink-caret2 {
-  from, to { border-color: transparent; }
-  50% { border-color: var(--cds-text-secondary); }
-}
-
-@keyframes fade-caret {
-  to { border-color: transparent; }
-}
-
-@media (max-width: 900px) {
-  .login-typing-overlay {
-    display: none;
+// The one motion on the page: the panel's content rises once, as the design
+// system's `ox-rise` does (320ms), and only for people who have not asked for
+// less motion. Transform and opacity only.
+@media (prefers-reduced-motion: no-preference) {
+  .login-panel__content {
+    animation: login-rise 320ms motion.motion(entrance, productive) both;
   }
 }
 
-// Floating animated logo on login page
-.login-logo-float {
-  position: absolute;
-  right: 8%;
-  bottom: 8%;
-  z-index: 1;
-  opacity: 0.4;
-  animation: logo-float 8s ease-in-out infinite, logo-fade-in 2s ease-out;
-  pointer-events: none;
-}
-
-@keyframes logo-float {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  25% { transform: translateY(-15px) rotate(2deg); }
-  50% { transform: translateY(-5px) rotate(-1deg); }
-  75% { transform: translateY(-20px) rotate(1.5deg); }
-}
-
-@keyframes logo-fade-in {
-  from { opacity: 0; transform: scale(0.8); }
-  to { opacity: 0.4; transform: scale(1); }
-}
-
-// Orbit rotation animations
-.mailviz-logo--animated {
-  .mailviz-orbit--1 {
-    animation: orbit-spin-1 20s linear infinite;
-    transform-origin: center;
-  }
-  .mailviz-orbit--2 {
-    animation: orbit-spin-2 25s linear infinite reverse;
-    transform-origin: center;
-  }
-  .mailviz-orbit--3 {
-    animation: orbit-spin-3 30s linear infinite;
-    transform-origin: center;
-  }
-  .mailviz-satellite--1 {
-    animation: satellite-pulse 3s ease-in-out infinite;
-  }
-  .mailviz-satellite--2 {
-    animation: satellite-pulse 3s ease-in-out infinite 1s;
-  }
-  .mailviz-satellite--3 {
-    animation: satellite-pulse 3s ease-in-out infinite 2s;
+@keyframes login-rise {
+  from {
+    opacity: 0;
+    transform: translateY($spacing-05);
   }
 }
 
-@keyframes orbit-spin-1 {
-  from { transform: rotate(-25deg); }
-  to { transform: rotate(335deg); }
-}
-@keyframes orbit-spin-2 {
-  from { transform: rotate(35deg); }
-  to { transform: rotate(395deg); }
-}
-@keyframes orbit-spin-3 {
-  from { transform: rotate(-70deg); }
-  to { transform: rotate(290deg); }
-}
-@keyframes satellite-pulse {
-  0%, 100% { opacity: 0.9; r: 5; }
-  50% { opacity: 0.5; r: 3; }
-}
-
-@media (max-width: 640px) {
+@include breakpoint-down(md) {
   .login-panel {
     width: 100%;
-    border-right: none;
+    border-inline-end: none;
   }
-  .login-logo-float {
+
+  .login-art {
     display: none;
   }
 }

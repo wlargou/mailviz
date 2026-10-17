@@ -444,7 +444,7 @@ export function ReferenceDetailPage() {
               onChange={(e) => set('customerName', e.target.value)}
             />
             <div className="reference-form__row">
-              <CompanyComboBox id="ref-company" titleText="Company in Mailviz" size="md" selectedId={form.customerId} onChange={(cid) => set('customerId', cid)} />
+              <CompanyComboBox id="ref-company" titleText="Linked company" size="md" selectedId={form.customerId} onChange={(cid) => set('customerId', cid)} />
               <TextInput id="ref-city" labelText="City" value={form.city} onChange={(e) => set('city', e.target.value)} />
             </div>
           </section>
@@ -637,7 +637,7 @@ export function ReferenceDetailPage() {
                 id="ref-consortium"
                 labelText="Consortium partners"
                 placeholder="Corporate Software"
-                helperText="Credited together with Power Maroc"
+                helperText="Credited jointly on this reference"
                 value={form.consortiumPartners}
                 onChange={(e) => set('consortiumPartners', e.target.value)}
               />
