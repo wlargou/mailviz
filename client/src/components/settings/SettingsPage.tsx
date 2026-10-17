@@ -65,6 +65,7 @@ import { SettingsListEditor } from './SettingsListEditor';
 import { SettingsSection } from './SettingsSection';
 import { TimezoneSetting } from './TimezoneSetting';
 import { DeleteAccountModal } from './DeleteAccountModal';
+import { describeGoogleAuthError } from './googleAuthError';
 
 const STATUS_COLORS = [
   { hex: '#4589ff', label: 'Blue' },
@@ -294,7 +295,19 @@ export function SettingsPage() {
    *  - **A different URL in development.** It used `window.location.host`
    *    (Vite, 5174) while the shared socket goes straight to the API on 3002,
    *    so the two connected by different routes.
+   *
+   * `google:auth` is the server saying Google refused the grant, or accepts it
+   * again. The status is refetched rather than patched from the payload: it
+   * decides `needsReauth` together with the granted scopes, which the event
+   * does not carry. Quietly — the loading state would blank the whole tile.
    */
+  const refreshStatusQuietly = useCallback(async () => {
+    try {
+      const { data: response } = await authApi.getGoogleStatus();
+      setStatus(response.data);
+    } catch { /* the next event or page load will try again */ }
+  }, []);
+
   useEmailWebSocket(
     useMemo(
       () => ({
@@ -305,9 +318,14 @@ export function SettingsPage() {
           if (data.type === 'email') setEmailProgress(next);
           else if (data.type === 'calendar') setCalendarProgress(next);
         },
+        'google:auth': () => {
+          void refreshStatusQuietly();
+        },
       }),
-      []
-    )
+      [refreshStatusQuietly]
+    ),
+    // A `google:auth` sent while the socket was down is gone for good.
+    { onReconnect: refreshStatusQuietly }
   );
 
   useEffect(() => {
@@ -697,22 +715,50 @@ export function SettingsPage() {
               ) : status?.connected ? (
                 <Stack gap={4}>
                   <div className="settings-connection-status">
-                    <Tag type="green" size="sm" renderIcon={Checkmark}>Connected</Tag>
+                    {/* "Connected" while Google refuses the grant is the lie this
+                        replaced: the row exists, nothing syncs. */}
+                    {status.authError ? (
+                      <Tag type="red" size="sm">Sync stopped</Tag>
+                    ) : (
+                      <Tag type="green" size="sm" renderIcon={Checkmark}>Connected</Tag>
+                    )}
                     {status.email && <span className="settings-connection-email">{status.email}</span>}
+                    {/*
+                      Reconnect is always offered, not only when something is
+                      known to be wrong: it asks Google for consent again, which
+                      replaces both tokens and keeps every synced row — the one
+                      recovery for a grant that has failed in a way the server
+                      has not met yet. Disconnect deletes the synced data, so it
+                      is never the only way out.
+                    */}
                     <div className="settings-connection-status__action">
-                      {status.needsReauth ? (
-                        <Button kind="primary" size="sm" renderIcon={WarningAlt} onClick={handleConnect}>
-                          Reconnect
-                        </Button>
-                      ) : (
-                        <Button kind="danger--ghost" size="sm" renderIcon={Misuse} onClick={() => setDisconnectConfirmOpen(true)} disabled={disconnecting}>
-                          {disconnecting ? 'Disconnecting...' : 'Disconnect'}
-                        </Button>
-                      )}
+                      <Button
+                        kind={status.needsReauth ? 'primary' : 'ghost'}
+                        size="sm"
+                        renderIcon={status.needsReauth ? WarningAlt : Renew}
+                        onClick={handleConnect}
+                      >
+                        Reconnect Google
+                      </Button>
+                      <Button kind="danger--ghost" size="sm" renderIcon={Misuse} onClick={() => setDisconnectConfirmOpen(true)} disabled={disconnecting}>
+                        {disconnecting ? 'Disconnecting...' : 'Disconnect'}
+                      </Button>
                     </div>
                   </div>
 
-                  {status.needsReauth && (
+                  {status.authError ? (
+                    <InlineNotification
+                      kind="error"
+                      title="Sync has stopped"
+                      subtitle={
+                        (status.authError.at
+                          ? `Since ${format(new Date(status.authError.at), 'MMM d, h:mm a')}. `
+                          : '') + describeGoogleAuthError(status.authError.code)
+                      }
+                      lowContrast
+                      hideCloseButton
+                    />
+                  ) : status.needsReauth ? (
                     <InlineNotification
                       kind="warning"
                       title="Permissions upgrade needed"
@@ -720,7 +766,7 @@ export function SettingsPage() {
                       lowContrast
                       hideCloseButton
                     />
-                  )}
+                  ) : null}
 
                   <Layer>
                     <div className="settings-sync-grid">

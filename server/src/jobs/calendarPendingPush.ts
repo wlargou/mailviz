@@ -35,6 +35,16 @@ const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const BATCH = 20;
 
 export async function sweepPendingPushes(userId: string) {
+  /**
+   * Nothing reaches Google on a grant it has refused. Each attempt would fail
+   * inside `pushToGoogle`, which catches the refusal and logs it itself — one
+   * line per pending event per tick, for as long as the account stays
+   * disconnected. The rows stay pending, and so protected from the sync, until
+   * a Reconnect clears the error and the next tick pushes them.
+   */
+  const auth = await prisma.googleAuth.findUnique({ where: { userId }, select: { authError: true } });
+  if (auth?.authError) return { attempted: 0, cleared: 0 };
+
   const now = Date.now();
   const rows = await prisma.calendarEvent.findMany({
     where: {

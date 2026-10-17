@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { prisma } from '../lib/prisma.js';
-import { createUser, createGoogleAuth } from '../test/factories.js';
+import { createUser, createGoogleAuth, createTwoUsers } from '../test/factories.js';
+import {
+  INVALID_GRANT,
+  encryptedUnderAnotherKey,
+  tokenEndpointError,
+  tokenEndpointUnreachable,
+} from '../test/googleRefusal.js';
 
 /**
  * The five background schedulers, at the seam where they meet cron.
@@ -56,6 +62,7 @@ const mocks = vi.hoisted(() => ({
   syncFromGmail: vi.fn<(userId: string) => Promise<MailSyncResult>>(),
   syncDrafts: vi.fn<(userId: string) => Promise<{ synced: number; removed: number }>>(),
   syncCalendar: vi.fn<(incremental: boolean, userId: string) => Promise<CalendarSyncResult>>(),
+  pushToGoogle: vi.fn<(eventId: string, action: string, userId: string) => Promise<{ status: string }>>(),
   processScheduledEmails: vi.fn<() => Promise<number>>(),
   cancelRepliedFollowUps: vi.fn<() => Promise<number>>(),
   processDue: vi.fn<() => Promise<number>>(),
@@ -70,6 +77,8 @@ const mockEnv = vi.hoisted(() => ({
   SYNC_INTERVAL_SECONDS: 60,
   CALENDAR_SYNC_INTERVAL_SECONDS: 120,
   SYNC_MAX_CONCURRENT_ACCOUNTS: 3,
+  // Empty is the plaintext fallback, which every test but one runs on.
+  TOKEN_ENCRYPTION_KEY: '',
 }));
 
 vi.mock('../config/env.js', () => ({ env: mockEnv }));
@@ -92,7 +101,10 @@ vi.mock('../services/draftService.js', () => ({
   draftService: { syncDrafts: mocks.syncDrafts },
 }));
 vi.mock('../services/calendarService.js', () => ({
-  calendarService: { syncFromGoogle: mocks.syncCalendar },
+  calendarService: { syncFromGoogle: mocks.syncCalendar, pushToGoogle: mocks.pushToGoogle },
+  // The pending-push sweep runs for real; these two only shape its push.
+  settlePending: vi.fn(),
+  pushExtrasFromRow: () => ({}),
 }));
 vi.mock('../services/snoozeService.js', () => ({
   snoozeService: {
@@ -104,19 +116,21 @@ vi.mock('../services/notificationService.js', () => ({
   notificationService: { createIfNotExists: mocks.createIfNotExists, create: mocks.createNotification },
 }));
 
-const { startEmailSyncScheduler, stopEmailSyncScheduler, syncAccountNow, isSyncInProgressFor } =
+const { startEmailSyncScheduler, stopEmailSyncScheduler, syncAccountNow, isSyncInProgressFor, runManualSync } =
   await import('./emailSyncScheduler.js');
 const {
   startCalendarSyncScheduler,
   stopCalendarSyncScheduler,
   syncCalendarNow,
   isCalendarSyncInProgress,
+  runCalendarManualSync,
 } = await import('./calendarSyncScheduler.js');
 const { startScheduledSendScheduler, stopScheduledSendScheduler } =
   await import('./scheduledSendScheduler.js');
 const { startSnoozeScheduler, stopSnoozeScheduler } = await import('./snoozeScheduler.js');
 const { startNotificationScheduler, stopNotificationScheduler } =
   await import('./notificationScheduler.js');
+const { googleAuthService } = await import('../services/googleAuthService.js');
 
 const okMailSync: MailSyncResult = {
   synced: 0,
@@ -178,6 +192,7 @@ beforeEach(() => {
   mocks.syncFromGmail.mockResolvedValue(okMailSync);
   mocks.syncDrafts.mockResolvedValue({ synced: 0, removed: 0 });
   mocks.syncCalendar.mockResolvedValue(okCalendarSync);
+  mocks.pushToGoogle.mockResolvedValue({ status: 'pushed' });
   mocks.processScheduledEmails.mockResolvedValue(0);
   mocks.cancelRepliedFollowUps.mockResolvedValue(0);
   mocks.processDue.mockResolvedValue(0);
@@ -187,6 +202,7 @@ beforeEach(() => {
   mockEnv.CALENDAR_SYNC_ENABLED = true;
   mockEnv.SYNC_INTERVAL_SECONDS = 60;
   mockEnv.CALENDAR_SYNC_INTERVAL_SECONDS = 120;
+  mockEnv.TOKEN_ENCRYPTION_KEY = '';
 
   // The schedulers log per tick; silence it so a failing assertion is readable.
   vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -385,6 +401,251 @@ describe('emailSyncScheduler — one bad account', () => {
     stopEmailSyncScheduler();
 
     expect(mocks.cronStop).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * A grant Google no longer accepts.
+ *
+ * Both schedulers used to file it under "not connected" — any 400 — and skip it
+ * without a word, so the account's mail simply stopped while Settings said
+ * Connected. They still skip it; the difference is that it is now written to
+ * `google_auth.auth_error`, said once in the log, and pushed to the account.
+ */
+describe('a refused Google grant', () => {
+  /** Every console line that mentions this refusal, whichever level it went to. */
+  function linesAbout(text: string): unknown[][] {
+    return [console.log, console.warn, console.error]
+      .flatMap((fn) => vi.mocked(fn).mock.calls)
+      .filter((args) => args.some((a) => String(a).includes(text)));
+  }
+
+  it('records invalid_grant from a scheduled mail sync, and says so once across two ticks', async () => {
+    const user = await createConnectedUser();
+    mocks.syncFromGmail.mockRejectedValue(await tokenEndpointError(400, INVALID_GRANT));
+    const tick = captureTick(startEmailSyncScheduler);
+
+    await tick();
+    await tick();
+
+    const row = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: user.id } });
+    expect(row.authError).toBe('invalid_grant');
+    // One line for the change, not one per tick — a line every minute is how
+    // the old code justified saying nothing at all.
+    expect(linesAbout('invalid_grant')).toHaveLength(1);
+    expect(eventsFor(user.id).filter((e) => e.event === 'google:auth')).toEqual([
+      { event: 'google:auth', data: { authError: { code: 'invalid_grant', at: row.authErrorAt } } },
+    ]);
+    // Still skipped like a "not connected" 400: no error line, spinner cleared.
+    expect(console.error).not.toHaveBeenCalled();
+    expect(eventsFor(user.id).at(-1)).toEqual({ event: 'sync:status', data: { syncing: false } });
+  });
+
+  it('records a 401 invalid_client from the drafts call, and says so once across two ticks', async () => {
+    // The host-move case: a wrong client secret. Google's token endpoint
+    // answers 401 for it, and the drafts catch skipped only 400 and 403 — so it
+    // printed "[DraftSync] Draft sync failed: invalid_client" for every account,
+    // every minute.
+    const user = await createConnectedUser();
+    mocks.syncDrafts.mockRejectedValue(await tokenEndpointError(401, { error: 'invalid_client' }));
+    const tick = captureTick(startEmailSyncScheduler);
+
+    await tick();
+    await tick();
+
+    const row = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: user.id } });
+    expect(row.authError).toBe('invalid_client');
+    expect(linesAbout('invalid_client')).toHaveLength(1);
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
+  it('records a refusal escaping the pending-push sweep, and says so once across two ticks', async () => {
+    const user = await createConnectedUser();
+    await prisma.calendarEvent.create({
+      data: {
+        userId: user.id,
+        title: 'Edited while Google was away',
+        startTime: new Date('2026-10-20T09:00:00.000Z'),
+        endTime: new Date('2026-10-20T10:00:00.000Z'),
+        googleEventId: 'g-1',
+        pendingSince: new Date(Date.now() - 5 * 60_000),
+      },
+    });
+    mocks.pushToGoogle.mockRejectedValue(await tokenEndpointError(400, INVALID_GRANT));
+    const tick = captureTick(startCalendarSyncScheduler);
+
+    await tick();
+    await tick();
+
+    // The sweep's catch logged "Pending-push sweep failed: invalid_grant" on
+    // every tick while the account had anything pending.
+    const row = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: user.id } });
+    expect(row.authError).toBe('invalid_grant');
+    expect(linesAbout('invalid_grant')).toHaveLength(1);
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
+  it('records stored tokens it cannot read once, and skips the account quietly', async () => {
+    // A move to a host with a different TOKEN_ENCRYPTION_KEY: the row was
+    // written under the old one. Before, every tick logged the crypto error.
+    mockEnv.TOKEN_ENCRYPTION_KEY = 'cd'.repeat(32);
+    const user = await createConnectedUser();
+    const stored = {
+      accessToken: encryptedUnderAnotherKey('old-host-access'),
+      refreshToken: encryptedUnderAnotherKey('old-host-refresh'),
+    };
+    await prisma.googleAuth.update({ where: { userId: user.id }, data: stored });
+    // What the real mail and draft syncs do first, through getGmailClient.
+    const throughTheClient = async (userId: string): Promise<never> => {
+      await googleAuthService.getAuthenticatedClient(userId);
+      throw new Error('reached Google with tokens it could not read');
+    };
+    mocks.syncFromGmail.mockImplementation(throughTheClient);
+    mocks.syncDrafts.mockImplementation(throughTheClient);
+    const tick = captureTick(startEmailSyncScheduler);
+
+    await tick();
+    await tick();
+
+    const row = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: user.id } });
+    expect(row.authError).toBe('token_unreadable');
+    expect(linesAbout('token_unreadable')).toHaveLength(1);
+    expect(console.error).not.toHaveBeenCalled();
+    expect(linesAbout(stored.refreshToken)).toEqual([]);
+    expect(linesAbout(stored.accessToken)).toEqual([]);
+    expect(eventsFor(user.id).at(-1)).toEqual({ event: 'sync:status', data: { syncing: false } });
+  });
+
+  it('records it from a scheduled calendar sync too', async () => {
+    const user = await createConnectedUser();
+    mocks.syncCalendar.mockRejectedValue(await tokenEndpointError(400, INVALID_GRANT));
+
+    await captureTick(startCalendarSyncScheduler)();
+
+    const row = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: user.id } });
+    expect(row.authError).toBe('invalid_grant');
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['a 500', () => tokenEndpointError(500, { error: 'backend_error' })],
+    ['a dropped connection', () => tokenEndpointUnreachable()],
+  ])('does not record %s, and logs it as before', async (_label, failure) => {
+    const user = await createConnectedUser();
+    mocks.syncFromGmail.mockRejectedValue(await failure());
+
+    await captureTick(startEmailSyncScheduler)();
+
+    // Google having a bad minute is not the grant dying: telling the user to
+    // reconnect a working account would teach them to ignore the warning.
+    const row = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: user.id } });
+    expect(row.authError).toBeNull();
+    expect(eventsFor(user.id).some((e) => e.event === 'google:auth')).toBe(false);
+    expect(console.error).toHaveBeenCalledWith('[EmailSync] Sync failed:', expect.anything());
+  });
+
+  it('marks only the account whose grant was refused', async () => {
+    const { alice, bob } = await createTwoUsers();
+    await createGoogleAuth(alice.id);
+    await createGoogleAuth(bob.id);
+    const refused = await tokenEndpointError(400, INVALID_GRANT);
+    mocks.syncFromGmail.mockImplementation(async (userId: string) => {
+      if (userId === alice.id) throw refused;
+      return okMailSync;
+    });
+
+    await captureTick(startEmailSyncScheduler)();
+
+    const bobRow = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: bob.id } });
+    expect(bobRow.authError).toBeNull();
+    expect(eventsFor(bob.id).some((e) => e.event === 'google:auth')).toBe(false);
+    const aliceRow = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: alice.id } });
+    expect(aliceRow.authError).toBe('invalid_grant');
+  });
+
+  /**
+   * The user finishes Reconnect Google while a sync that read the old grant is
+   * still waiting on Google — which then refuses that old grant.
+   */
+  async function reconnectedMidSync(userId: string, refused: unknown): Promise<never> {
+    await googleAuthService.upsertGoogleAuth(userId, {
+      accessToken: 'new-access',
+      refreshToken: 'new-grant',
+      expiryDate: Date.now() + 3_600_000,
+    });
+    throw refused;
+  }
+
+  it.each<[string, (userId: string, run: () => Promise<never>) => Promise<unknown>]>([
+    [
+      'a scheduled mail sync',
+      async (_userId, run) => {
+        mocks.syncFromGmail.mockImplementation(run);
+        await captureTick(startEmailSyncScheduler)();
+      },
+    ],
+    [
+      'a scheduled calendar sync',
+      async (_userId, run) => {
+        mocks.syncCalendar.mockImplementation(run);
+        await captureTick(startCalendarSyncScheduler)();
+      },
+    ],
+    ['a manual mail sync', (userId, run) => runManualSync(userId, run).catch(() => {})],
+    ['a manual calendar sync', (userId, run) => runCalendarManualSync(userId, run).catch(() => {})],
+  ])('leaves the error clear when a Reconnect lands during %s — REGRESSION', async (_label, drive) => {
+    const user = await createConnectedUser();
+    // The account the user is fixing: its grant was refused and recorded.
+    await prisma.googleAuth.update({
+      where: { userId: user.id },
+      data: { authError: 'invalid_grant', authErrorAt: new Date() },
+    });
+    const refused = await tokenEndpointError(400, INVALID_GRANT);
+
+    await drive(user.id, () => reconnectedMidSync(user.id, refused));
+
+    // The old grant's refusal used to be written over the new one, and a sync
+    // that works never clears it: Settings said "Sync has stopped" straight
+    // after the Reconnect, for up to an hour.
+    const row = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: user.id } });
+    expect(row.refreshToken).toBe('new-grant');
+    expect(row.authError).toBeNull();
+    expect(eventsFor(user.id).filter((e) => e.event === 'google:auth')).toEqual([
+      { event: 'google:auth', data: { authError: null } },
+    ]);
+  });
+
+  it.each([
+    ['mail', () => runManualSync, () => isSyncInProgressFor],
+    ['calendar', () => runCalendarManualSync, () => isCalendarSyncInProgress],
+  ])('marks the account in flight the moment a manual %s sync is asked for', async (_label, manual, inProgress) => {
+    const user = await createConnectedUser();
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => { release = resolve; });
+
+    const held = manual()(user.id, () => blocked);
+
+    // Synchronously, before anything is awaited: reading the grant snapshot
+    // ahead of the guard left a database round trip in which a second "Sync
+    // now" did not see the first, and the two raced on one history cursor.
+    expect(inProgress()(user.id)).toBe(true);
+    release();
+    await held;
+  });
+
+  it.each([
+    ['mail', () => runManualSync],
+    ['calendar', () => runCalendarManualSync],
+  ])('records it from a manual %s sync, and still fails the request', async (_label, manual) => {
+    const user = await createConnectedUser();
+    const refused = await tokenEndpointError(400, INVALID_GRANT);
+
+    // The error still reaches the route — "Sync now" must not answer 200 for
+    // a sync that never ran — but Settings learns why first.
+    await expect(manual()(user.id, async () => { throw refused; })).rejects.toBe(refused);
+
+    const row = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: user.id } });
+    expect(row.authError).toBe('invalid_grant');
   });
 });
 
