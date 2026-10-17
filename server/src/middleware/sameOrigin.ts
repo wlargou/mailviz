@@ -24,6 +24,14 @@ const UNCHECKED_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
  * browser — curl, a script, another server — which has no victim's cookies to
  * spend. GET is left alone on purpose too: Google's OAuth callback arrives as a
  * cross-site GET by design.
+ *
+ * `Origin: null` is refused, like any other origin that is not the app's.
+ * Sandboxed frames, `file:` pages and other opaque origins send it, and none of
+ * them is the app. The SPA's own writes never do: they are axios requests,
+ * same-origin and in CORS mode, which carry the page's real origin. What would
+ * send null is a native HTML form POST (or a beacon) from the page itself,
+ * because the page is served with `Referrer-Policy: no-referrer` — so such a
+ * write would be refused, and writes go through the axios client.
  */
 export function sameOriginWrites(clientUrl: string, nodeEnv: string) {
   const isAppOrigin = appOriginCheck(clientUrl, nodeEnv);
