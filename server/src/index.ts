@@ -1,10 +1,6 @@
 import { app } from './app.js';
 import { env, assertProductionSecrets } from './config/env.js';
-import { startEmailSyncScheduler, stopEmailSyncScheduler } from './jobs/emailSyncScheduler.js';
-import { startCalendarSyncScheduler, stopCalendarSyncScheduler } from './jobs/calendarSyncScheduler.js';
-import { startScheduledSendScheduler, stopScheduledSendScheduler } from './jobs/scheduledSendScheduler.js';
-import { startNotificationScheduler, stopNotificationScheduler } from './jobs/notificationScheduler.js';
-import { startSnoozeScheduler, stopSnoozeScheduler } from './jobs/snoozeScheduler.js';
+import { startSchedulers, stopSchedulers } from './jobs/schedulers.js';
 import { initWebSocket, shutdownWebSocket } from './websocket.js';
 import { prisma } from './lib/prisma.js';
 
@@ -15,11 +11,7 @@ assertProductionSecrets();
 const server = app.listen(env.PORT, () => {
   console.log(`Server running on http://localhost:${env.PORT}`);
   initWebSocket(server);
-  startEmailSyncScheduler();
-  startCalendarSyncScheduler();
-  startScheduledSendScheduler();
-  startNotificationScheduler();
-  startSnoozeScheduler();
+  startSchedulers();
 });
 
 // ── Graceful shutdown (E2) ──
@@ -36,11 +28,7 @@ async function gracefulShutdown(signal: string) {
   });
 
   // 2. Stop background sync schedulers
-  stopEmailSyncScheduler();
-  stopCalendarSyncScheduler();
-  stopScheduledSendScheduler();
-  stopNotificationScheduler();
-  stopSnoozeScheduler();
+  stopSchedulers();
 
   // 3. Close WebSocket connections
   shutdownWebSocket();
