@@ -211,7 +211,13 @@ describe('secret files at startup', () => {
         JWT_REFRESH_SECRET: 'a-different-real-secret\n',
         TOKEN_ENCRYPTION_KEY: `${'ff'.repeat(32)}\n`,
       },
-      { NODE_ENV: 'production' }
+      // The public addresses are plain variables, not secrets, and the guard
+      // refuses localhost for them in production too.
+      {
+        NODE_ENV: 'production',
+        CLIENT_URL: 'https://work.example.com',
+        GOOGLE_REDIRECT_URI: 'https://work.example.com/api/v1/auth/google/callback',
+      }
     );
     vi.resetModules();
 
