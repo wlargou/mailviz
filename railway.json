@@ -5,7 +5,7 @@
   },
   "deploy": {
     "startCommand": "cd server && npx prisma migrate deploy && exec node dist/index.js",
-    "drainingSeconds": "35",
+    "drainingSeconds": 35,
     "healthcheckPath": "/api/health",
     "healthcheckTimeout": 30,
     "restartPolicyType": "ON_FAILURE",
