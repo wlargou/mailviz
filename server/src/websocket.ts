@@ -1,14 +1,30 @@
 import { WebSocketServer, WebSocket } from 'ws';
-import type { Server } from 'http';
-import type { IncomingMessage } from 'http';
+import { STATUS_CODES, type IncomingMessage, type Server } from 'http';
+import type { Duplex } from 'stream';
 // Named import, not default: cookie 2.x removed the default export and renamed
 // `parse` to `parseCookie`.
 import { parseCookie } from 'cookie';
+import { env } from './config/env.js';
 import { verifyAccessToken, verifyRefreshToken } from './utils/jwt.js';
 
+/**
+ * How often every socket is pinged: well inside the idle timeout a proxy puts
+ * on a quiet stream (Envoy's is 5 minutes), which otherwise cuts every socket
+ * that has had nothing to say. The same ping is how a dead peer — a laptop that
+ * slept, a network that vanished — is noticed: a socket that has not answered
+ * one ping by the next is terminated.
+ */
+export const HEARTBEAT_INTERVAL_MS = 25_000;
+
 let wss: WebSocketServer | null = null;
+let attachedTo: Server | null = null;
+let heartbeat: ReturnType<typeof setInterval> | null = null;
+/** The one origin allowed to open a socket: the app's own, from CLIENT_URL. */
+let allowedOrigin = '';
 const clients = new Set<WebSocket>();
 const userClients = new Map<string, Set<WebSocket>>();
+/** Sockets that answered the last ping, or have not been pinged yet. */
+const alive = new WeakSet<WebSocket>();
 
 function authenticateWs(req: IncomingMessage): string | null {
   try {
@@ -35,6 +51,21 @@ function authenticateWs(req: IncomingMessage): string | null {
 }
 
 /**
+ * Answer an upgrade with a plain HTTP status and hang up.
+ *
+ * Half-closed with `end` and destroyed on `finish`, as `ws` does for its own
+ * refusals, so the status line reaches the client before the socket goes. The
+ * error listener is not optional: Node detaches its own from a socket it hands
+ * to `'upgrade'`, so a client resetting mid-refusal would otherwise be an
+ * uncaught exception — a crashed server.
+ */
+function refuse(socket: Duplex, status: 401 | 403 | 404) {
+  socket.on('error', () => socket.destroy());
+  socket.once('finish', () => socket.destroy());
+  socket.end(`HTTP/1.1 ${status} ${STATUS_CODES[status]}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
+}
+
+/**
  * Drop a socket from both registries.
  *
  * Shared by the close and error handlers because it used to be written out
@@ -53,40 +84,99 @@ function forget(ws: WebSocket, userId: string) {
   }
 }
 
-export function initWebSocket(server: Server) {
-  wss = new WebSocketServer({ server, path: '/ws' });
+function register(ws: WebSocket, userId: string) {
+  clients.add(ws);
+  alive.add(ws);
 
-  wss.on('connection', (ws, req) => {
-    // Verify JWT from cookies
-    const userId = authenticateWs(req);
-    if (!userId) {
-      ws.close(4001, 'Unauthorized');
-      return;
-    }
+  // Track per-user connections
+  if (!userClients.has(userId)) {
+    userClients.set(userId, new Set());
+  }
+  userClients.get(userId)!.add(ws);
 
-    clients.add(ws);
+  console.log(`[WS] Client connected for user ${userId} (${clients.size} total)`);
 
-    // Track per-user connections
-    if (!userClients.has(userId)) {
-      userClients.set(userId, new Set());
-    }
-    userClients.get(userId)!.add(ws);
+  ws.on('pong', () => alive.add(ws));
 
-    console.log(`[WS] Client connected for user ${userId} (${clients.size} total)`);
-
-    ws.on('close', () => {
-      forget(ws, userId);
-      console.log(`[WS] Client disconnected (${clients.size} total)`);
-    });
-
-    ws.on('error', (err) => {
-      console.warn('[WS] Client error:', err.message);
-      forget(ws, userId);
-    });
-
-    // Send a welcome message so client knows connection is alive
-    ws.send(JSON.stringify({ event: 'connected', data: { timestamp: Date.now() } }));
+  ws.on('close', () => {
+    forget(ws, userId);
+    console.log(`[WS] Client disconnected (${clients.size} total)`);
   });
+
+  ws.on('error', (err) => {
+    console.warn('[WS] Client error:', err.message);
+    forget(ws, userId);
+  });
+
+  // Send a welcome message so client knows connection is alive
+  ws.send(JSON.stringify({ event: 'connected', data: { timestamp: Date.now() } }));
+}
+
+/**
+ * Decide an upgrade before answering it: path, then Origin, then session, all
+ * before the 101.
+ *
+ * `ws` used to accept every handshake on /ws and read the cookie afterwards,
+ * closing with 4001. The browser saw `open`, the client reset its backoff, and
+ * a tab whose session had expired reconnected once a second for as long as it
+ * stayed open. Refused here, the handshake fails as HTTP and nothing opens.
+ *
+ * The Origin check does what SameSite=Lax no longer can. A handshake carries
+ * the cookies from any page on the same *site*, and under one registrable
+ * domain every sibling subdomain is the same site — so without it, a page on
+ * any of them could open /ws as the user and read their events. Browsers always
+ * send Origin on a handshake, so a missing one is refused as well.
+ */
+function onUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer) {
+  const pathname = (req.url ?? '').split('?')[0];
+  if (pathname !== '/ws' || !wss) {
+    refuse(socket, 404);
+    return;
+  }
+
+  const origin = req.headers.origin;
+  if (origin !== allowedOrigin) {
+    // Logged with the value: after a hostname change, a CLIENT_URL that was not
+    // updated refuses every socket, and this line is what says so.
+    console.warn(`[WS] Refused upgrade from origin ${JSON.stringify(origin ?? null)}`);
+    refuse(socket, 403);
+    return;
+  }
+
+  const userId = authenticateWs(req);
+  if (!userId) {
+    refuse(socket, 401);
+    return;
+  }
+
+  wss.handleUpgrade(req, socket, head, (ws) => register(ws, userId));
+}
+
+/**
+ * Ping every socket, and terminate any that did not answer the previous ping.
+ *
+ * Terminate, not close: a peer that stopped answering will not answer a close
+ * frame either, and `terminate` is what fires `close` — and so `forget` — now
+ * rather than after `ws`'s 30-second closing timeout.
+ */
+function sweep() {
+  for (const ws of clients) {
+    if (!alive.has(ws)) {
+      ws.terminate();
+      continue;
+    }
+    alive.delete(ws);
+    ws.ping();
+  }
+}
+
+export function initWebSocket(server: Server) {
+  allowedOrigin = new URL(env.CLIENT_URL).origin;
+  wss = new WebSocketServer({ noServer: true });
+  server.on('upgrade', onUpgrade);
+  attachedTo = server;
+  heartbeat = setInterval(sweep, HEARTBEAT_INTERVAL_MS);
+  heartbeat.unref();
 
   console.log('[WS] WebSocket server initialized on /ws');
 }
@@ -153,6 +243,17 @@ export function wsUserCount(): number {
 
 /** Gracefully close all WebSocket connections */
 export function shutdownWebSocket() {
+  if (heartbeat) {
+    clearInterval(heartbeat);
+    heartbeat = null;
+  }
+  // Detached here rather than left to the process exit: a second
+  // `initWebSocket` on the same server (the tests do it) would otherwise leave
+  // two handlers answering every upgrade.
+  if (attachedTo) {
+    attachedTo.off('upgrade', onUpgrade);
+    attachedTo = null;
+  }
   for (const client of clients) {
     client.close(1001, 'Server shutting down');
   }

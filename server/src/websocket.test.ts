@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import { AddressInfo } from 'node:net';
 import WebSocket from 'ws';
@@ -34,12 +34,20 @@ import { env } from './config/env.js';
  *     nothing else would catch a mistake in it.
  *
  * The tests drive real sockets against a real server rather than mocking `ws`,
- * because the parts worth testing (cookie parsing, close codes, connection
- * bookkeeping) are precisely the parts a mock would replace.
+ * because the parts worth testing (the handshake, cookie parsing, close codes,
+ * connection bookkeeping) are precisely the parts a mock would replace.
+ *
+ * Since 1.29.2 a refusal is an HTTP status on the handshake — 401 without a
+ * session, 403 from another origin — decided before the 101. It used to be a
+ * 101 followed by a close with 4001, which a browser sees as a socket that
+ * opened.
  */
 
 let server: Server;
 let wsUrl: string;
+
+/** What a browser on the app's own page sends, read from CLIENT_URL as the server reads it. */
+const APP_ORIGIN = new URL(env.CLIENT_URL).origin;
 
 beforeAll(async () => {
   server = createServer();
@@ -59,7 +67,7 @@ let open: WebSocket[] = [];
 
 afterEach(async () => {
   for (const ws of open) {
-    if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) ws.close();
+    if (ws.readyState === WebSocket.OPEN) ws.close();
   }
   open = [];
   // The server's 'close' handler is what updates the bookkeeping, and it runs a
@@ -67,27 +75,46 @@ afterEach(async () => {
   await waitFor(() => wsClientCount() === 0);
 });
 
-function connect(cookie?: string): WebSocket {
-  const ws = new WebSocket(wsUrl, cookie ? { headers: { cookie } } : undefined);
+interface ConnectOptions {
+  /** The Origin header: the app's own unless a test says otherwise, `null` for none at all. */
+  origin?: string | null;
+  /** `false` makes a client that never answers the server's pings. */
+  autoPong?: boolean;
+  path?: string;
+}
+
+function connect(cookie?: string, { origin = APP_ORIGIN, autoPong, path = '/ws' }: ConnectOptions = {}): WebSocket {
+  const ws = new WebSocket(wsUrl.replace(/\/ws$/, path), {
+    ...(cookie ? { headers: { cookie } } : {}),
+    ...(origin !== null ? { origin } : {}),
+    ...(autoPong !== undefined ? { autoPong } : {}),
+  });
   open.push(ws);
   return ws;
 }
 
 /**
- * Resolves with the close code and whether anything was delivered first.
+ * Resolves with the HTTP status a handshake was refused with; rejects if the
+ * socket opens instead.
  *
- * Note what the server actually does: it lets the upgrade complete and *then*
- * closes with 4001, rather than refusing the handshake. So the client sees
- * `open` fire on a refused connection — checking for `open` would report every
- * rejection as an acceptance. What separates the two is the close code and the
- * absence of the `connected` greeting.
+ * Opening is the failure that matters. A refused connection used to open — the
+ * server completed the upgrade and closed with 4001 afterwards — and that
+ * `open` is what reset the browser's backoff and kept an expired tab
+ * reconnecting every second.
  */
-function expectRejected(ws: WebSocket): Promise<{ code: number; messages: number }> {
+function refusedWith(ws: WebSocket): Promise<number> {
   return new Promise((resolve, reject) => {
-    let messages = 0;
-    ws.on('message', () => (messages += 1));
-    ws.on('close', (code) => resolve({ code, messages }));
-    ws.on('error', reject);
+    ws.on('open', () => reject(new Error('socket opened instead of being refused')));
+    // Listening for it is what stops `ws` raising it as an error; ending the
+    // request is then ours to do.
+    ws.on('unexpected-response', (req, res) => {
+      res.resume();
+      req.destroy();
+      resolve(res.statusCode ?? 0);
+    });
+    ws.on('error', () => {});
+    // A no-op once settled; otherwise a socket dropped without any answer.
+    ws.on('close', (code) => reject(new Error(`socket closed with ${code} and no HTTP answer`)));
   });
 }
 
@@ -115,9 +142,9 @@ async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void
 }
 
 /** Connect and wait until the server has finished registering the socket. */
-async function connectAs(userId: string): Promise<WebSocket> {
+async function connectAs(userId: string, options: ConnectOptions = {}): Promise<WebSocket> {
   const before = wsClientCount();
-  const ws = connect(`access_token=${signAccessToken(userId)}`);
+  const ws = connect(`access_token=${signAccessToken(userId)}`, options);
   await firstMessage(ws);
   await waitFor(() => wsClientCount() > before);
   return ws;
@@ -127,16 +154,17 @@ const ALICE = '11111111-1111-4111-8111-111111111111';
 const BOB = '22222222-2222-4222-8222-222222222222';
 
 describe('WebSocket authentication', () => {
-  it('refuses a connection with no cookies at all', async () => {
-    expect(await expectRejected(connect())).toEqual({ code: 4001, messages: 0 });
+  it('refuses a connection with no cookies at all, before the upgrade', async () => {
+    expect(await refusedWith(connect())).toBe(401);
+    expect(wsClientCount()).toBe(0);
   });
 
   it('refuses a cookie header carrying no auth tokens', async () => {
-    expect(await expectRejected(connect('theme=g100; other=1'))).toEqual({ code: 4001, messages: 0 });
+    expect(await refusedWith(connect('theme=g100; other=1'))).toBe(401);
   });
 
   it('refuses a malformed token', async () => {
-    expect(await expectRejected(connect('access_token=not-a-jwt'))).toEqual({ code: 4001, messages: 0 });
+    expect(await refusedWith(connect('access_token=not-a-jwt'))).toBe(401);
   });
 
   it('refuses a token signed with the wrong secret', async () => {
@@ -144,7 +172,7 @@ describe('WebSocket authentication', () => {
     const forged = jwt.sign({ sub: ALICE, type: 'access' }, 'not-the-real-secret', {
       expiresIn: '15m',
     });
-    expect(await expectRejected(connect(`access_token=${forged}`))).toEqual({ code: 4001, messages: 0 });
+    expect(await refusedWith(connect(`access_token=${forged}`))).toBe(401);
   });
 
   it('accepts a valid access token and greets the client', async () => {
@@ -160,7 +188,7 @@ describe('WebSocket authentication', () => {
 
   it('falls back to the refresh token when the access token has expired', async () => {
     // Access tokens last 15 minutes and the socket is long-lived, so without
-    // this fallback every session loses realtime updates a quarter-hour in.
+    // this fallback every reconnect after the first quarter-hour is refused.
     const expired = jwt.sign({ sub: ALICE, type: 'access' }, env.JWT_SECRET, { expiresIn: '-1s' });
     const ws = connect(`access_token=${expired}; refresh_token=${signRefreshToken(ALICE)}`);
 
@@ -185,10 +213,7 @@ describe('WebSocket authentication', () => {
     const wrongType = jwt.sign({ sub: ALICE, type: 'refresh' }, env.JWT_SECRET, {
       expiresIn: '15m',
     });
-    expect(await expectRejected(connect(`access_token=${wrongType}`))).toEqual({
-      code: 4001,
-      messages: 0,
-    });
+    expect(await refusedWith(connect(`access_token=${wrongType}`))).toBe(401);
   });
 
   it('refuses an access-type token in the refresh slot', async () => {
@@ -196,17 +221,70 @@ describe('WebSocket authentication', () => {
     const wrongType = jwt.sign({ sub: ALICE, type: 'access' }, env.JWT_REFRESH_SECRET, {
       expiresIn: '7d',
     });
-    expect(await expectRejected(connect(`refresh_token=${wrongType}`))).toEqual({
-      code: 4001,
-      messages: 0,
-    });
+    expect(await refusedWith(connect(`refresh_token=${wrongType}`))).toBe(401);
   });
 
   it('refuses an expired refresh token', async () => {
     const expired = jwt.sign({ sub: ALICE, type: 'refresh' }, env.JWT_REFRESH_SECRET, {
       expiresIn: '-1s',
     });
-    expect(await expectRejected(connect(`refresh_token=${expired}`))).toEqual({ code: 4001, messages: 0 });
+    expect(await refusedWith(connect(`refresh_token=${expired}`))).toBe(401);
+  });
+});
+
+describe('WebSocket Origin check', () => {
+  /**
+   * The cookies are SameSite=Lax, and a handshake is a same-site request from
+   * any page under the same registrable domain — so once the app shares one
+   * with other apps, any of their pages could open this socket as the user and
+   * read their events. The Origin header is the only thing that tells them
+   * apart, and every case below carries a VALID session: the session is not
+   * what is being refused.
+   */
+  const valid = () => `access_token=${signAccessToken(ALICE)}`;
+
+  it('refuses a valid session opened from another origin', async () => {
+    expect(await refusedWith(connect(valid(), { origin: 'https://studio.example.test' }))).toBe(403);
+    expect(wsClientCount()).toBe(0);
+  });
+
+  it('refuses a handshake with no Origin at all', async () => {
+    // Every browser sends one on a WebSocket handshake; only a script does not.
+    expect(await refusedWith(connect(valid(), { origin: null }))).toBe(403);
+  });
+
+  it('compares the whole origin, not a prefix of it', async () => {
+    // `startsWith` would let any host that begins with the app's own through.
+    expect(await refusedWith(connect(valid(), { origin: `${APP_ORIGIN}.evil.test` }))).toBe(403);
+  });
+
+  it('checks the Origin before the session', async () => {
+    // A foreign page is refused for being foreign, whatever it carries: its
+    // cookies are never read, and the log line names the origin.
+    expect(await refusedWith(connect(undefined, { origin: 'https://studio.example.test' }))).toBe(403);
+  });
+
+  it("accepts the app's own origin and delivers only that account's events", async () => {
+    const alice = await connectAs(ALICE);
+    const bob = await connectAs(BOB);
+    const aliceSaw = collect(alice);
+    const bobSaw = collect(bob);
+
+    wsEmitToUser(BOB, 'emails:synced', { synced: 1 });
+    await waitFor(() => bobSaw.length > 0);
+
+    expect(bobSaw.map((m) => m.event)).toEqual(['emails:synced']);
+    expect(aliceSaw).toEqual([]);
+  });
+});
+
+describe('WebSocket path', () => {
+  it('answers upgrades on /ws only', async () => {
+    // The server no longer leaves the path to `ws`; anything else is refused
+    // rather than upgraded, whatever the session.
+    const ws = connect(`access_token=${signAccessToken(ALICE)}`, { path: '/elsewhere' });
+    expect(await refusedWith(ws)).toBe(404);
+    expect(wsClientCount()).toBe(0);
   });
 });
 
@@ -329,8 +407,18 @@ describe('shutdownWebSocket', () => {
     expect(wsUserCount()).toBe(0);
 
     // Put it back for the rest of the file. Safe only because the shutdown
-    // above detached the previous listener.
+    // above detached the previous upgrade listener.
     initWebSocket(server);
+  });
+
+  it('detaches from the HTTP server, so a second init does not answer twice', async () => {
+    // Shut down and initialise again, as a restart in place would. With the
+    // old listener left behind, both would try to complete the same handshake.
+    shutdownWebSocket();
+    initWebSocket(server);
+
+    expect(server.listenerCount('upgrade')).toBe(1);
+    expect((await firstMessage(connect(`access_token=${signAccessToken(ALICE)}`))).event).toBe('connected');
   });
 });
 
@@ -379,5 +467,124 @@ describe('WebSocket connection bookkeeping', () => {
 
     // Closing one tab must not stop the other from receiving.
     expect(saw).toHaveLength(1);
+  });
+});
+
+describe('WebSocket heartbeat', () => {
+  /**
+   * A proxy cuts a stream that has been quiet for its idle timeout (Envoy's is
+   * five minutes), and a peer that vanished without a close — a laptop lid, a
+   * dropped network — otherwise stays in the registry for good. The server pings
+   * every 25 seconds and terminates a socket that did not answer the last one.
+   *
+   * Only the interval is faked, so the heartbeat runs on the test's clock while
+   * the sockets, and `waitFor`, stay on real I/O and real timeouts.
+   */
+  beforeEach(() => {
+    shutdownWebSocket();
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    initWebSocket(server);
+  });
+
+  afterEach(() => {
+    shutdownWebSocket();
+    vi.useRealTimers();
+    initWebSocket(server);
+  });
+
+  /** Count the pings a client receives. */
+  function pings(ws: WebSocket): { count: number } {
+    const seen = { count: 0 };
+    ws.on('ping', () => (seen.count += 1));
+    return seen;
+  }
+
+  /**
+   * One client ping and its pong. Frames arrive in order both ways, so once it
+   * resolves the client has read everything the server sent before answering —
+   * a heartbeat ping included. Rejects if the socket closes instead, so a
+   * terminated socket fails the test rather than hanging it.
+   */
+  function roundTrip(ws: WebSocket): Promise<void> {
+    return new Promise((resolve, reject) => {
+      ws.once('pong', () => resolve());
+      ws.once('close', (code) => reject(new Error(`socket closed with ${code}`)));
+      ws.ping();
+    });
+  }
+
+  /**
+   * Two round trips: after the first the client has read the heartbeat's ping
+   * and sent its answer, after the second the server has read that answer. One
+   * is not enough — the answer leaves after the client's own ping, so the
+   * server can reply before it has seen it.
+   */
+  async function settle(ws: WebSocket): Promise<void> {
+    await roundTrip(ws);
+    await roundTrip(ws);
+  }
+
+  function closed(ws: WebSocket): Promise<number> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('socket was not closed')), 2000);
+      ws.on('close', (code) => {
+        clearTimeout(timer);
+        resolve(code);
+      });
+    });
+  }
+
+  it('pings every 25 seconds', async () => {
+    const alice = await connectAs(ALICE);
+    const seen = pings(alice);
+
+    vi.advanceTimersByTime(24_999);
+    await roundTrip(alice);
+    expect(seen.count).toBe(0);
+
+    vi.advanceTimersByTime(1);
+    await roundTrip(alice);
+    expect(seen.count).toBe(1);
+  });
+
+  it('terminates a socket that stops answering, and keeps one that answers', async () => {
+    const silent = await connectAs(ALICE, { autoPong: false });
+    const live = await connectAs(BOB);
+    const silentPings = pings(silent);
+    const livePings = pings(live);
+    const silentClosed = closed(silent);
+
+    vi.advanceTimersByTime(25_000);
+    await settle(silent);
+    await settle(live);
+    // Both were pinged; only `live` answered.
+    expect(silentPings.count).toBe(1);
+    expect(livePings.count).toBe(1);
+
+    vi.advanceTimersByTime(25_000);
+
+    // 1006: terminated, no close frame — the peer was not going to answer one.
+    expect(await silentClosed).toBe(1006);
+    await waitFor(() => wsClientCount() === 1);
+    expect(wsUserCount()).toBe(1);
+
+    // The answering socket survives this sweep and the ones after it.
+    for (let sweep = 0; sweep < 3; sweep++) {
+      await settle(live);
+      vi.advanceTimersByTime(25_000);
+    }
+    await settle(live);
+    expect(live.readyState).toBe(WebSocket.OPEN);
+    expect(livePings.count).toBe(5);
+  });
+
+  it('stops the heartbeat on shutdown', () => {
+    expect(vi.getTimerCount()).toBe(1);
+
+    shutdownWebSocket();
+
+    // A live interval would keep sweeping a registry nobody uses, and keep the
+    // process from exiting on its own.
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
