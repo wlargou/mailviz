@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { isAxiosError } from 'axios';
+import { api } from '../api/client';
 
 interface WsMessage {
   event: string;
@@ -41,13 +43,28 @@ interface Subscriber {
 const subscribers = new Set<Subscriber>();
 const statusListeners = new Set<(s: WsStatus) => void>();
 
+/** The longest the first retry waits; each failure doubles it, up to the cap. */
+const BASE_DELAY_MS = 1000;
+const MAX_DELAY_MS = 30_000;
+/** A connection that stayed up this long starts the backoff over when it drops. */
+const STABLE_AFTER_MS = 10_000;
+/** A session check that has not answered by now counts as "server unreachable". */
+const SESSION_CHECK_TIMEOUT_MS = 10_000;
+/** How servers before 1.29.2 closed an unauthenticated socket, after opening it. */
+const CLOSE_UNAUTHORIZED = 4001;
+
 let socket: WebSocket | null = null;
 let status: WsStatus = 'disconnected';
 let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 let teardownTimer: ReturnType<typeof setTimeout> | undefined;
-let reconnectDelay = 1000;
+let stableTimer: ReturnType<typeof setTimeout> | undefined;
+let backoff = BASE_DELAY_MS;
 let hasConnected = false;
 let wasDisconnected = false;
+/** The session check in flight, if any. Nothing reconnects until it answers. */
+let sessionCheck: symbol | null = null;
+/** The session check said 401: signed out, and the page is on its way to /login. */
+let sessionEnded = false;
 
 function setStatus(next: WsStatus) {
   if (status === next) return;
@@ -62,26 +79,81 @@ function socketUrl(): string {
   return `${protocol}//${host}/ws`;
 }
 
+/**
+ * The wait before the next attempt: the current window, jittered, and the
+ * window doubled for the attempt after.
+ *
+ * "Equal jitter" — somewhere in the top half of the window. Every tab dropped
+ * by one deploy then comes back spread out rather than in step, and no wait is
+ * ever close to zero.
+ */
+function nextDelay(): number {
+  const ceiling = backoff;
+  backoff = Math.min(backoff * 2, MAX_DELAY_MS);
+  return ceiling / 2 + Math.random() * (ceiling / 2);
+}
+
 function scheduleReconnect() {
   if (subscribers.size === 0) return;
-  const delay = reconnectDelay;
-  reconnectDelay = Math.min(delay * 2, 30000); // Exponential backoff, max 30s
+  clearTimeout(reconnectTimer);
   reconnectTimer = setTimeout(() => {
     if (subscribers.size > 0) connect();
-  }, delay);
+  }, nextDelay());
+}
+
+/**
+ * A socket that never opened: the server refused the handshake (no session,
+ * or the wrong Origin) or could not be reached. A browser reports all of them
+ * as 1006 and says nothing more, so ask the API instead. Its auth middleware
+ * also renews an expired access token from the refresh token, so a session
+ * that is merely stale comes back from this one request.
+ *
+ * A 401 ends it: the session is over, the API client's 401 handler is already
+ * taking the page to /login, and retrying would only knock on a locked door
+ * every 30 seconds. Anything else — the server down, a timeout, a 5xx — is not
+ * about the session, and the backoff carries on.
+ */
+async function checkSessionThenReconnect() {
+  const check = Symbol('session check');
+  sessionCheck = check;
+  let ended = false;
+  try {
+    await api.get('/auth/me', { timeout: SESSION_CHECK_TIMEOUT_MS });
+  } catch (err) {
+    ended = isAxiosError(err) && err.response?.status === 401;
+  }
+  // Released while the check was out: its answer belongs to a connection that
+  // no longer exists.
+  if (sessionCheck !== check) return;
+  sessionCheck = null;
+
+  if (ended) {
+    console.log('[WS] Session ended — not reconnecting');
+    sessionEnded = true;
+    return;
+  }
+  scheduleReconnect();
 }
 
 function connect() {
-  if (socket || subscribers.size === 0) return;
+  if (socket || sessionCheck || sessionEnded || subscribers.size === 0) return;
   setStatus(hasConnected ? 'disconnected' : 'connecting');
 
   try {
     const ws = new WebSocket(socketUrl());
     socket = ws;
+    let opened = false;
 
     ws.onopen = () => {
       console.log('[WS] Connected');
-      reconnectDelay = 1000; // Reset backoff on successful connect
+      opened = true;
+      // Reset the backoff once the connection has proved itself, not on open:
+      // a server that accepts and drops at once would otherwise be retried
+      // every second for as long as the tab stays open.
+      clearTimeout(stableTimer);
+      stableTimer = setTimeout(() => {
+        backoff = BASE_DELAY_MS;
+      }, STABLE_AFTER_MS);
       setStatus('connected');
 
       // Anything broadcast while we were down was missed, so tell subscribers
@@ -104,12 +176,18 @@ function connect() {
       }
     };
 
-    ws.onclose = () => {
-      console.log('[WS] Disconnected, reconnecting...');
+    ws.onclose = (event) => {
       socket = null;
+      clearTimeout(stableTimer);
       wasDisconnected = true;
       setStatus('disconnected');
-      scheduleReconnect();
+      if (!opened || event.code === CLOSE_UNAUTHORIZED) {
+        console.log('[WS] Connection refused — checking the session');
+        void checkSessionThenReconnect();
+      } else {
+        console.log('[WS] Disconnected, reconnecting...');
+        scheduleReconnect();
+      }
     };
 
     ws.onerror = () => {
@@ -130,9 +208,12 @@ function releaseIfUnused() {
   teardownTimer = setTimeout(() => {
     if (subscribers.size > 0) return;
     clearTimeout(reconnectTimer);
+    clearTimeout(stableTimer);
     hasConnected = false;
     wasDisconnected = false;
-    reconnectDelay = 1000;
+    backoff = BASE_DELAY_MS;
+    sessionCheck = null;
+    sessionEnded = false;
     if (socket) {
       const s = socket;
       socket = null;
@@ -146,7 +227,8 @@ function releaseIfUnused() {
 /**
  * Subscribe to real-time sync events (email, calendar, etc.) over the app's
  * shared WebSocket. Connects on the first subscriber and reconnects with
- * exponential backoff.
+ * jittered exponential backoff (1 s to 30 s), until the session is found to be
+ * over.
  */
 export function useEmailWebSocket(handlers: Record<string, EventHandler>, options: WsOptions = {}) {
   // Hold one stable subscriber object and keep its contents current, so
