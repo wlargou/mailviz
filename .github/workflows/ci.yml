@@ -5,6 +5,27 @@ on:
     branches: [main]
   pull_request:
 
+# Read-only for every job: nothing here writes to the repository or a registry.
+# A job that needs more asks for it itself, so a job added later inherits none.
+permissions:
+  contents: read
+
+# A new push to a pull request cancels the run it replaces. Everything else gets
+# a group per ref and commit: GitHub keeps one pending run per group and cancels
+# the older, so a shared group on main would skip verifying a merge whenever two
+# queued behind a running one.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('ci-pr-{0}', github.ref) || format('ci-{0}-{1}', github.ref, github.sha) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # npm ci runs Carbon's and IBM Plex's postinstalls, which report to IBM from
+  # CI; the Prisma CLI reports to checkpoint.prisma.io.
+  IBM_TELEMETRY_DISABLED: 'true'
+  CHECKPOINT_DISABLE: '1'
+
+# Actions are pinned to a full commit SHA, the version in the comment;
+# .github/dependabot.yml proposes the updates.
 jobs:
   # Every deploy should be identifiable, and nothing derives the version at
   # runtime — the container has no .git and Railway exposes no commit SHA, both
@@ -16,10 +37,12 @@ jobs:
   version-bump:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    # It takes about 6 seconds.
+    timeout-minutes: 5
     steps:
       # The comparison needs both branches, so the default shallow clone will
       # not do.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
 
@@ -64,18 +87,27 @@ jobs:
 
   verify:
     runs-on: ubuntu-latest
+    # Green runs take 11–16 minutes, but one took 41 (run 35711013336, 39 of
+    # them in Test server), so 45 would have been too tight.
+    timeout-minutes: 60
 
     services:
       postgres:
-        image: postgres:16-alpine
+        # Production's major version, and Debian rather than Alpine: production
+        # runs PostgreSQL 18 on glibc with en_US.utf8, and Alpine's musl has no
+        # libc locales, so mail search's lower() and text ordering were being
+        # tested under a different collation.
+        image: postgres:18
         env:
           POSTGRES_USER: mailviz
           POSTGRES_PASSWORD: mailviz_dev
           POSTGRES_DB: mailviz_db
         ports:
           - 5432:5432
+        # -h 127.0.0.1: over the unix socket, pg_isready also answers for the
+        # temporary server the image runs during initdb, which then restarts.
         options: >-
-          --health-cmd "pg_isready -U mailviz -d mailviz_db"
+          --health-cmd "pg_isready -h 127.0.0.1 -U mailviz -d mailviz_db"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 5
@@ -89,9 +121,9 @@ jobs:
       TEST_DATABASE_BASE_URL: postgresql://mailviz:mailviz_dev@localhost:5432/postgres?schema=public
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -134,3 +166,55 @@ jobs:
       - name: Audit (high severity)
         run: npm audit --audit-level=high
         continue-on-error: true
+
+  # `verify` migrates as the image's superuser. Production will not: CNPG
+  # creates the database with an owner role that is not a superuser
+  # (productivity_hub), and migrations run as that role. A migration that needs
+  # a superuser — ALTER SYSTEM, an untrusted extension, anything on another
+  # role's object — passes `verify` and fails at the first deploy. This is
+  # where it fails first. pg_trgm and unaccent are trusted extensions, so the
+  # owner may create them.
+  migrations-as-owner:
+    runs-on: ubuntu-latest
+    # About a minute: an install and 64 migrations.
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-throwaway
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create the owner, as CNPG does
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          docker exec -i "$POSTGRES_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres <<'SQL'
+          CREATE ROLE productivity_hub LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD 'ci-throwaway';
+          CREATE DATABASE productivity_hub OWNER productivity_hub;
+          SQL
+
+      - name: Apply every migration as that owner
+        run: npx prisma migrate deploy
+        working-directory: server
+        env:
+          DATABASE_URL: postgresql://productivity_hub:ci-throwaway@localhost:5432/productivity_hub?schema=public
