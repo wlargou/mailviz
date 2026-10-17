@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { prisma } from '../lib/prisma.js';
 import { getGmailClient } from '../lib/gmail.js';
+import { isDraining } from '../lib/lifecycle.js';
 import { createUser, createGoogleAuth } from '../test/factories.js';
 import { createGmailMock, type GmailMock } from '../test/gmailMock.js';
 import { emailService, INTERRUPTED_SEND_MESSAGE, SCHEDULED_SEND_STUCK_MS } from './emailService.js';
@@ -21,12 +22,18 @@ import { emailService, INTERRUPTED_SEND_MESSAGE, SCHEDULED_SEND_STUCK_MS } from 
  */
 
 vi.mock('../lib/gmail.js', () => ({ getGmailClient: vi.fn() }));
+// Draining cannot be undone in a process, so the flag is stubbed rather than set.
+vi.mock('../lib/lifecycle.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/lifecycle.js')>()),
+  isDraining: vi.fn(() => false),
+}));
 
 let gmail: GmailMock;
 
 beforeEach(() => {
   gmail = createGmailMock();
   vi.mocked(getGmailClient).mockResolvedValue(gmail.client);
+  vi.mocked(isDraining).mockReturnValue(false);
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
@@ -202,6 +209,26 @@ describe('processScheduledEmails — the sweep', () => {
 
     expect(gmail.messagesSend).not.toHaveBeenCalled();
     expect(await row(scheduled.id)).toMatchObject({ status: 'sending', errorMessage: null });
+  });
+});
+
+describe('processScheduledEmails — shutting down', () => {
+  it('claims nothing more once the process starts draining', async () => {
+    // Shutdown waits for the tick, up to a deadline. A row claimed after
+    // SIGTERM and cut off at that deadline is stuck in `sending` and failed by
+    // the sweep; left pending, the next process sends it.
+    const user = await connected();
+    const first = await createScheduled(user.id, { sendAt: new Date(Date.now() - 2000) });
+    const second = await createScheduled(user.id);
+    gmail.messagesSend.mockImplementation(async () => {
+      vi.mocked(isDraining).mockReturnValue(true);
+      return { data: { id: 'sent-msg', threadId: 'thread-sent' } };
+    });
+
+    expect(await emailService.processScheduledEmails()).toBe(1);
+
+    expect((await row(first.id)).status).toBe('sent');
+    expect(await row(second.id)).toMatchObject({ status: 'pending', retryCount: 0 });
   });
 });
 

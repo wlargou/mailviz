@@ -1,4 +1,5 @@
 import * as cron from 'node-cron';
+import { runJob } from '../lib/lifecycle.js';
 import { emailService } from '../services/emailService.js';
 
 let scheduledTask: ReturnType<typeof cron.schedule> | null = null;
@@ -19,7 +20,7 @@ async function processScheduledSends() {
 
 export function startScheduledSendScheduler() {
   // Check every 30 seconds
-  scheduledTask = cron.schedule('*/30 * * * * *', processScheduledSends);
+  scheduledTask = cron.schedule('*/30 * * * * *', () => runJob(processScheduledSends));
   console.log('[ScheduledSend] Scheduler started (every 30s)');
 }
 

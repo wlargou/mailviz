@@ -3,6 +3,7 @@ import { Prisma, type ScheduledEmail } from '../lib/prismaClient.js';
 import { prisma } from '../lib/prisma.js';
 import { getGmailClient } from '../lib/gmail.js';
 import { isGmailRateLimitError } from '../lib/gmailLimiter.js';
+import { isDraining } from '../lib/lifecycle.js';
 import { customerService } from './customerService.js';
 import {
   extractDomain,
@@ -1968,6 +1969,10 @@ export const emailService = {
     let processed = 0;
 
     for (const { id } of due) {
+      // Shutting down: what has not been claimed stays pending for the next
+      // process, rather than being started against the drain deadline.
+      if (isDraining()) break;
+
       const now = new Date();
       // `sendAt` again: a reschedule may have moved it since the read above.
       // `updatedAt` set rather than left to @updatedAt, because it IS the claim

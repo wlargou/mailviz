@@ -9,6 +9,7 @@ import { fileURLToPath } from 'url';
 import { env } from './config/env.js';
 import { APP_VERSION, RELEASED_AT } from './config/version.js';
 import { TRUSTED_PROXIES } from './config/trustedProxies.js';
+import { isDraining } from './lib/lifecycle.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requireAuth } from './middleware/auth.js';
 import { taskRoutes } from './routes/tasks.js';
@@ -116,6 +117,22 @@ const authLimiter = rateLimit({
 
 // Health check (public)
 app.get('/api/health', (_req, res) => {
+  res.json({ status: 'ok' });
+});
+
+/**
+ * Whether to send this process traffic (public): 503 once it is shutting down.
+ *
+ * Deliberately not a database check. The process serves the SPA and holds the
+ * WebSockets as well as the API, so taking it out of rotation over a database
+ * blip would turn a few failed queries into a blank page for everyone. Only
+ * the one thing a probe should act on: this process is on its way out.
+ */
+app.get('/api/ready', (_req, res) => {
+  if (isDraining()) {
+    res.status(503).json({ status: 'draining' });
+    return;
+  }
   res.json({ status: 'ok' });
 });
 

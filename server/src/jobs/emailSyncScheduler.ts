@@ -1,5 +1,6 @@
 import { promoteSenders } from '../services/accountStatus.js';
 import * as cron from 'node-cron';
+import { runJob } from '../lib/lifecycle.js';
 import { emailService } from '../services/emailService.js';
 import { draftService } from '../services/draftService.js';
 import { env } from '../config/env.js';
@@ -86,10 +87,10 @@ export function startEmailSyncScheduler() {
 
   console.log(`[EmailSync] Starting background sync every ${interval}s (cron: ${cronExpr})`);
 
-  syncTask = cron.schedule(cronExpr, () => runner.runAll());
+  syncTask = cron.schedule(cronExpr, () => runJob(() => runner.runAll()));
 
   // Run an initial sync 5 seconds after startup
-  setTimeout(() => void runner.runAll(), 5000);
+  setTimeout(() => void runJob(() => runner.runAll()), 5000);
 }
 
 export function stopEmailSyncScheduler() {
