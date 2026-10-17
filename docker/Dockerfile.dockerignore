@@ -1,6 +1,11 @@
-# Build context for the Dockerfile (context = repo root). The Dockerfile COPYs
-# only the manifests, VERSION, tsconfig.base.json, client/ and server/, so this
-# keeps secrets, data and bulk out of the context rather than out of the image.
+# Build context for docker/Dockerfile (context = repo root). BuildKit reads this
+# file because it sits beside that Dockerfile and is named after it; the
+# patterns are still relative to the context, the repo root. It is not a root
+# .dockerignore so that nothing at the root changes how Railway builds.
+#
+# The Dockerfile COPYs only the manifests, VERSION, tsconfig.base.json, client/
+# and server/, so this keeps secrets, data and bulk out of the context rather
+# than out of the image.
 
 # Secrets: never in a layer, not even in the build context. server/.env is the
 # one the server actually loads.

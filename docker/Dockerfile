@@ -2,13 +2,22 @@
 
 # ---- Mailviz: the app image and the migrator image -------------------------
 # Two targets, both for linux/amd64 (the OKE nodes), built by
-# .github/workflows/build.yml on a GitHub-hosted runner:
+# .github/workflows/build.yml on a GitHub-hosted runner. The build context is
+# the repo root, so build from there and name this file:
 #
-#   docker buildx build --platform linux/amd64 --target app .
-#   docker buildx build --platform linux/amd64 --target migrator .
+#   docker buildx build --platform linux/amd64 -f docker/Dockerfile --target app .
+#   docker buildx build --platform linux/amd64 -f docker/Dockerfile --target migrator .
 #
-# Railway does not read this file. It builds with Nixpacks (nixpacks.toml)
-# until the move, and nothing here changes that.
+# This file is in docker/ and not at the root on purpose. Railway builds with
+# any Dockerfile it finds at the root, whatever railway.json says, so a root
+# Dockerfile would replace Nixpacks (nixpacks.toml) in production. Railway
+# keeps building with Nixpacks until the move.
+#
+# What is left out of the context is in Dockerfile.dockerignore, beside this
+# file: BuildKit reads <Dockerfile>.dockerignore next to the Dockerfile it is
+# given, with patterns relative to the context root. Nor is there a root
+# .dockerignore: the root is what Railway builds from, and nothing added for
+# the images should change that build.
 #
 # The base is pinned by its multi-arch index digest, so a rebuild cannot pull a
 # re-tagged upstream; the tag is informational and matches .nvmrc. Refresh with

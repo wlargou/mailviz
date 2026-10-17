@@ -1,10 +1,13 @@
 name: Build
 
-# The container images, from the Dockerfile at the root, for linux/amd64:
+# The container images, from docker/Dockerfile with the repo root as the
+# context, for linux/amd64:
 #   ghcr.io/wlargou/mailviz/app       the server, serving the client
 #   ghcr.io/wlargou/mailviz/migrator  `prisma migrate deploy`, run before a rollout
 # A script in olympusx-hosting mirrors them to OCIR and pins each by digest.
-# Railway does not use them: it keeps building with Nixpacks until the move.
+# Railway does not use them: it keeps building with Nixpacks until the move,
+# which is why the Dockerfile is not at the root (Railway builds with a root
+# Dockerfile whenever it finds one).
 #
 # Built on GitHub-hosted runners and never on a self-hosted one: these are what
 # production runs, so they come from a fresh VM, not from a machine that also
@@ -13,8 +16,7 @@ name: Build
 on:
   pull_request:
     paths:
-      - Dockerfile
-      - .dockerignore
+      - 'docker/**'
       - 'package*.json'
       - 'client/**'
       - 'server/**'
@@ -85,6 +87,7 @@ jobs:
           DOCKER_BUILD_RECORD_UPLOAD: 'false'
         with:
           context: .
+          file: docker/Dockerfile
           target: app
           platforms: linux/amd64
           load: true
@@ -101,6 +104,7 @@ jobs:
           DOCKER_BUILD_RECORD_UPLOAD: 'false'
         with:
           context: .
+          file: docker/Dockerfile
           target: migrator
           platforms: linux/amd64
           load: true
@@ -245,6 +249,7 @@ jobs:
           DOCKER_BUILD_RECORD_UPLOAD: 'false'
         with:
           context: .
+          file: docker/Dockerfile
           target: app
           platforms: linux/amd64
           push: true
@@ -266,6 +271,7 @@ jobs:
           DOCKER_BUILD_RECORD_UPLOAD: 'false'
         with:
           context: .
+          file: docker/Dockerfile
           target: migrator
           platforms: linux/amd64
           push: true
