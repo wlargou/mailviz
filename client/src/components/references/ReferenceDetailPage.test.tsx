@@ -256,6 +256,16 @@ describe('ReferenceDetailPage', () => {
     expect(navigateSpy).toHaveBeenCalledWith('/references/new1', { replace: true, state: { back: '/deals?tab=references' } });
   });
 
+  it('does not call an empty new form wrong until a save is tried', async () => {
+    const user = userEvent.setup();
+    renderAt('new', { back: '/deals?tab=references' });
+    await screen.findByRole('textbox', { name: 'Customer, as the letter names it' });
+    expect(screen.queryByText('The customer is required')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Add reference' }));
+    expect(await screen.findByText('The customer is required')).toBeInTheDocument();
+    expect(api.create).not.toHaveBeenCalled();
+  });
+
   it('says so when the reference is gone', async () => {
     api.getById.mockRejectedValue(Object.assign(new Error('nf'), { isAxiosError: true, response: { status: 404 } }));
     renderAt('ref9');

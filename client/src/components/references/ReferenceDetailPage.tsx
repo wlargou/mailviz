@@ -87,6 +87,8 @@ export function ReferenceDetailPage() {
   const [ids, setIds] = useState<string[] | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [leaveTo, setLeaveTo] = useState<string | null>(null);
+  /** A required field left empty is only an error once a save was tried. */
+  const [attempted, setAttempted] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   // The router reuses this component from one reference to the next: a load
   // that resolves after a newer one began must not land on screen.
@@ -166,6 +168,7 @@ export function ReferenceDetailPage() {
     // reference twice, or send two overlapping PATCHes.
     if (savingRef.current) return false;
     if (!valid) {
+      setAttempted(true);
       addNotification({ kind: 'error', title: 'Some fields need correcting', subtitle: Object.values(errors)[0] });
       return false;
     }
@@ -436,7 +439,7 @@ export function ReferenceDetailPage() {
               id="ref-customer"
               labelText="Customer, as the letter names it"
               value={form.customerName}
-              invalid={Boolean(errors.customerName)}
+              invalid={Boolean(errors.customerName) && (attempted || form.customerName !== base.customerName)}
               invalidText={errors.customerName}
               onChange={(e) => set('customerName', e.target.value)}
             />
