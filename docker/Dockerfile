@@ -2,8 +2,9 @@
 
 # ---- Mailviz: the app image and the migrator image -------------------------
 # Two targets, both for linux/amd64 (the OKE nodes), built by
-# .github/workflows/build.yml on a GitHub-hosted runner. The build context is
-# the repo root, so build from there and name this file:
+# .github/workflows/images.yml (called from build.yml) on a GitHub-hosted
+# runner. The build context is the repo root, so build from there and name
+# this file:
 #
 #   docker buildx build --platform linux/amd64 -f docker/Dockerfile --target app .
 #   docker buildx build --platform linux/amd64 -f docker/Dockerfile --target migrator .
