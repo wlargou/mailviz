@@ -1561,6 +1561,44 @@ export const emailService = {
     return prisma.email.count({ where });
   },
 
+  /**
+   * Everything a send does once Gmail has accepted the message: store it
+   * locally, tell the user's tabs, write the audit row. None of it may throw.
+   *
+   * The message has gone by then. A throw here reported a delivered email as
+   * failed: a person sending by hand would send it again, and the scheduled
+   * send put its row back to pending and sent it again on the next tick, up to
+   * three times while the audit write kept failing. So each step logs its own
+   * failure and the send still reports success.
+   */
+  async afterGmailAccepted(
+    gmail: Awaited<ReturnType<typeof getGmailClient>>,
+    userId: string,
+    sent: { id?: string | null; threadId?: string | null },
+    audit: Parameters<typeof auditService.logSync>[0]
+  ) {
+    if (sent.id) {
+      try {
+        const msgRes = await gmail.users.messages.get({ userId: 'me', id: sent.id, format: 'full' });
+        await this.upsertMessage(msgRes.data, userId);
+      } catch (err: any) {
+        console.warn('[EmailSync] Gmail API call failed:', err?.message || err);
+      }
+    }
+
+    try {
+      wsEmitToUser(userId, 'email:sent', { threadId: sent.threadId });
+    } catch (err: any) {
+      console.error(`[EmailSend] Sent message ${sent.id ?? '(no id)'} but could not notify the user's tabs:`, err?.message || err);
+    }
+
+    try {
+      await auditService.logSync(audit);
+    } catch (err: any) {
+      console.error(`[EmailSend] Sent message ${sent.id ?? '(no id)'} but could not write its ${audit.action} audit row:`, err?.message || err);
+    }
+  },
+
   async sendEmail(data: { to: string[]; cc?: string[]; bcc?: string[]; subject: string; htmlBody: string; attachments?: Array<{ filename: string; content: string; contentType: string; size: number }> }, userId: string) {
     const gmail = await getGmailClient(userId);
     const auth = await prisma.googleAuth.findFirst({ where: { userId } });
@@ -1581,23 +1619,7 @@ export const emailService = {
       requestBody: { raw },
     });
 
-    // Fetch the sent message to store locally
-    if (sendRes.data.id) {
-      try {
-        const msgRes = await gmail.users.messages.get({
-          userId: 'me',
-          id: sendRes.data.id,
-          format: 'full',
-        });
-        await this.upsertMessage(msgRes.data, userId);
-      } catch (err: any) {
-        console.warn('[EmailSync] Gmail API call failed:', err?.message || err);
-      }
-    }
-
-    wsEmitToUser(userId, 'email:sent', { threadId: sendRes.data.threadId });
-
-    await auditService.logSync({ userId, action: 'EMAIL_SENT', entityType: 'email', entityId: sendRes.data.id || undefined, details: { to: data.to, cc: data.cc, subject: data.subject, hasAttachments: !!(data.attachments?.length) } });
+    await this.afterGmailAccepted(gmail, userId, sendRes.data, { userId, action: 'EMAIL_SENT', entityType: 'email', entityId: sendRes.data.id || undefined, details: { to: data.to, cc: data.cc, subject: data.subject, hasAttachments: !!(data.attachments?.length) } });
 
     return { messageId: sendRes.data.id, threadId: sendRes.data.threadId };
   },
@@ -1674,18 +1696,7 @@ export const emailService = {
       requestBody: { raw, threadId: original.threadId || undefined },
     });
 
-    if (sendRes.data.id) {
-      try {
-        const msgRes = await gmail.users.messages.get({ userId: 'me', id: sendRes.data.id, format: 'full' });
-        await this.upsertMessage(msgRes.data, userId);
-      } catch (err: any) {
-        console.warn('[EmailSync] Gmail API call failed:', err?.message || err);
-      }
-    }
-
-    wsEmitToUser(userId, 'email:sent', { threadId: sendRes.data.threadId });
-
-    await auditService.logSync({ userId, action: 'EMAIL_REPLY', entityType: 'email', entityId: emailId, details: { to: to, cc: cc.length > 0 ? cc : undefined, subject: original.subject, originalFrom: original.from } });
+    await this.afterGmailAccepted(gmail, userId, sendRes.data, { userId, action: 'EMAIL_REPLY', entityType: 'email', entityId: emailId, details: { to: to, cc: cc.length > 0 ? cc : undefined, subject: original.subject, originalFrom: original.from } });
 
     return { messageId: sendRes.data.id, threadId: sendRes.data.threadId };
   },
@@ -1783,18 +1794,7 @@ export const emailService = {
       requestBody: { raw },
     });
 
-    if (sendRes.data.id) {
-      try {
-        const msgRes = await gmail.users.messages.get({ userId: 'me', id: sendRes.data.id, format: 'full' });
-        await this.upsertMessage(msgRes.data, userId);
-      } catch (err: any) {
-        console.warn('[EmailSync] Gmail API call failed:', err?.message || err);
-      }
-    }
-
-    wsEmitToUser(userId, 'email:sent', { threadId: sendRes.data.threadId });
-
-    await auditService.logSync({ userId, action: 'EMAIL_FORWARD', entityType: 'email', entityId: emailId, details: { to: data.to, subject: original.subject, originalFrom: original.from } });
+    await this.afterGmailAccepted(gmail, userId, sendRes.data, { userId, action: 'EMAIL_FORWARD', entityType: 'email', entityId: emailId, details: { to: data.to, subject: original.subject, originalFrom: original.from } });
 
     return { messageId: sendRes.data.id, threadId: sendRes.data.threadId };
   },
@@ -1988,6 +1988,10 @@ export const emailService = {
       try {
         result = await this.sendScheduledEmail(scheduled);
       } catch (err: any) {
+        // Gmail did not accept it: the send paths throw only up to and
+        // including users.messages.send, and what follows it in them
+        // (afterGmailAccepted) logs its failures instead of throwing.
+        //
         // As before: back to pending for the next tick, failed on the third
         // try. Only from `sending` — if the sweep gave up on this row in the
         // meantime, it stays failed rather than queueing a second send.
@@ -2006,9 +2010,9 @@ export const emailService = {
         continue;
       }
 
-      // Gmail has accepted it, so nothing from here on may put the row back to
-      // pending. If this write fails the row stays `sending`, and the sweep
-      // fails it rather than sending it again.
+      // Gmail has accepted it — sendScheduledEmail resolved — so nothing from
+      // here on may put the row back to pending. If this write fails the row
+      // stays `sending`, and the sweep fails it rather than sending it again.
       try {
         await prisma.scheduledEmail.update({
           where: { id },

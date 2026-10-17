@@ -2,8 +2,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { prisma } from '../lib/prisma.js';
 import { getGmailClient } from '../lib/gmail.js';
 import { isDraining } from '../lib/lifecycle.js';
-import { createUser, createGoogleAuth } from '../test/factories.js';
+import { createUser, createGoogleAuth, createEmail } from '../test/factories.js';
 import { createGmailMock, type GmailMock } from '../test/gmailMock.js';
+import { auditService } from './auditService.js';
 import { emailService, INTERRUPTED_SEND_MESSAGE, SCHEDULED_SEND_STUCK_MS } from './emailService.js';
 
 /**
@@ -48,11 +49,15 @@ async function connected() {
   return user;
 }
 
-async function createScheduled(userId: string, overrides: { status?: string; retryCount?: number; sendAt?: Date } = {}) {
+async function createScheduled(
+  userId: string,
+  overrides: { status?: string; retryCount?: number; sendAt?: Date; mode?: string; replyToEmailId?: string } = {}
+) {
   return prisma.scheduledEmail.create({
     data: {
       userId,
-      mode: 'new',
+      mode: overrides.mode ?? 'new',
+      replyToEmailId: overrides.replyToEmailId ?? null,
       to: ['client@customer.test'],
       subject: 'Proposal',
       htmlBody: '<p>As discussed.</p>',
@@ -183,6 +188,29 @@ describe('processScheduledEmails — the claim', () => {
   });
 });
 
+describe('processScheduledEmails — once Gmail has accepted it', () => {
+  it.each(['new', 'reply', 'forward'] as const)(
+    'records a %s as sent when the audit write after it fails, and never sends it again — REGRESSION',
+    async (mode) => {
+      // The send paths awaited their audit row after users.messages.send, so a
+      // pool timeout on that INSERT failed a send Gmail had already accepted:
+      // the row went back to pending and the next tick sent the email again.
+      const user = await connected();
+      const original = mode === 'new' ? null : await createEmail(user.id, { from: 'client@customer.test' });
+      const scheduled = await createScheduled(user.id, { mode, replyToEmailId: original?.id });
+      const logSync = vi.spyOn(auditService, 'logSync').mockRejectedValue(new Error('Timed out fetching a new connection'));
+
+      expect(await emailService.processScheduledEmails()).toBe(1);
+      await emailService.processScheduledEmails();
+
+      // The audit write was reached and did fail — otherwise this proves nothing.
+      expect(logSync).toHaveBeenCalledTimes(1);
+      expect(gmail.messagesSend).toHaveBeenCalledTimes(1);
+      expect(await row(scheduled.id)).toMatchObject({ status: 'sent', sentMessageId: 'sent-msg', retryCount: 0, errorMessage: null });
+    }
+  );
+});
+
 describe('processScheduledEmails — the sweep', () => {
   it('fails a send interrupted mid-way, and never sends it again', async () => {
     // A process killed between its claim and its `sent` write leaves the row
@@ -198,6 +226,24 @@ describe('processScheduledEmails — the sweep', () => {
 
     expect(gmail.messagesSend).not.toHaveBeenCalled();
     expect(await row(scheduled.id)).toMatchObject({ status: 'failed', errorMessage: INTERRUPTED_SEND_MESSAGE });
+  });
+
+  it('touches only rows left sending, not ones scheduled long ago for later', async () => {
+    // Every row carries an `updated_at`; only a `sending` one's is a claim
+    // time. Without the status condition, an email scheduled this morning for
+    // this evening would be failed as "interrupted" ten minutes after it was
+    // written, and never sent.
+    const user = await connected();
+    const later = await createScheduled(user.id, { sendAt: new Date(Date.now() + 3_600_000) });
+    const sent = await createScheduled(user.id, { status: 'sent' });
+    await claimedAgo(later.id, SCHEDULED_SEND_STUCK_MS + 20 * 60_000);
+    await claimedAgo(sent.id, SCHEDULED_SEND_STUCK_MS + 20 * 60_000);
+
+    await emailService.processScheduledEmails();
+
+    expect(gmail.messagesSend).not.toHaveBeenCalled();
+    expect(await row(later.id)).toMatchObject({ status: 'pending', errorMessage: null });
+    expect(await row(sent.id)).toMatchObject({ status: 'sent', errorMessage: null });
   });
 
   it('leaves alone a send claimed a moment ago, which may still be in flight elsewhere', async () => {
