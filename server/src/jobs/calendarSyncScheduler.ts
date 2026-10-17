@@ -1,6 +1,7 @@
 import { promoteSenders } from '../services/accountStatus.js';
 import * as cron from 'node-cron';
 import { calendarService } from '../services/calendarService.js';
+import { googleAuthService } from '../services/googleAuthService.js';
 import { env } from '../config/env.js';
 import { wsEmitToUser } from '../websocket.js';
 import { secondsToCron } from '../utils/shared.js';
@@ -43,7 +44,10 @@ async function syncAccount(userId: string): Promise<void> {
       });
     }
   } catch (err: any) {
-    if (err?.status === 400) {
+    if (await googleAuthService.noteAuthFailure(userId, err)) {
+      // Google refused the grant — recorded and announced once by
+      // noteAuthFailure, skipped here like any 400.
+    } else if (err?.status === 400) {
       // Google not connected — silently skip
     } else {
       console.error('[CalendarSync] Sync failed:', err?.message || err);
@@ -119,8 +123,14 @@ export function syncCalendarNow(userId: string): Promise<void> {
  * which would turn the "Google not connected" 400 into a 200.
  *
  * Returns `{ ran: false }` when a sync is already going, so the caller can say
- * so rather than starting a second one.
+ * so rather than starting a second one. A refused grant is recorded before the
+ * failure goes on to the caller, as on a scheduled tick.
  */
-export function runCalendarManualSync<T>(userId: string, job: () => Promise<T>) {
-  return runner.runExclusive(userId, job);
+export async function runCalendarManualSync<T>(userId: string, job: () => Promise<T>) {
+  try {
+    return await runner.runExclusive(userId, job);
+  } catch (err) {
+    await googleAuthService.noteAuthFailure(userId, err);
+    throw err;
+  }
 }

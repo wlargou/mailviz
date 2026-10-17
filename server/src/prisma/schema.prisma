@@ -461,6 +461,9 @@ model GoogleAuth {
   refreshToken String    @db.Text @map("refresh_token")
   tokenExpiry  DateTime  @map("token_expiry")
   email        String?   @db.VarChar(255)
+  /// The scopes Google granted, from the token response — not the ones the app
+  /// asked for. A user can untick one on the consent screen. Rows written before
+  /// 1.29.3 hold the requested list until their next token refresh.
   scope        String?   @db.Text
   lastSyncAt   DateTime? @map("last_sync_at")
   lastMailSyncAt DateTime? @map("last_mail_sync_at")
@@ -475,6 +478,13 @@ model GoogleAuth {
   /// difference between a transient error costing a delay and costing a message.
   /// Capped in code so a permanently poisoned id cannot grow this without bound.
   syncFailedMessageIds String[] @map("sync_failed_message_ids")
+
+  /// Why Google refused this grant (`invalid_grant`, `unauthorized_client`, …),
+  /// and since when. Null while the grant works. Written only through
+  /// `googleAuthService.recordAuthError` / `clearAuthError` — see
+  /// `utils/googleAuthError.ts` for what counts.
+  authError    String?   @map("auth_error") @db.VarChar(50)
+  authErrorAt  DateTime? @map("auth_error_at")
   userId       String    @unique @map("user_id")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")

@@ -2,6 +2,7 @@ import { promoteSenders } from '../services/accountStatus.js';
 import * as cron from 'node-cron';
 import { emailService } from '../services/emailService.js';
 import { draftService } from '../services/draftService.js';
+import { googleAuthService } from '../services/googleAuthService.js';
 import { env } from '../config/env.js';
 import { wsEmitToUser } from '../websocket.js';
 import { secondsToCron } from '../utils/shared.js';
@@ -41,7 +42,10 @@ async function syncAccount(userId: string): Promise<void> {
         console.warn(`[EmailSync] ${result.failed} message(s) failed to fetch and will be retried`);
       }
     } catch (err: any) {
-      if (err?.status === 400 || err?.status === 403) {
+      if (await googleAuthService.noteAuthFailure(userId, err)) {
+        // Google refused the grant. Skipped like any 400, but recorded, logged
+        // once and pushed to Settings by noteAuthFailure — not a line per tick.
+      } else if (err?.status === 400 || err?.status === 403) {
         // Google not connected or permissions not granted — silently skip
       } else {
         console.error('[EmailSync] Sync failed:', err?.message || err);
@@ -126,9 +130,17 @@ export function syncAccountNow(userId: string): Promise<void> {
  *
  * Returns `{ ran: false }` when a sync is already going, so the caller can say
  * so rather than starting a second one.
+ *
+ * A failure still reaches the caller, but a refused grant is recorded first,
+ * the same as on a scheduled tick.
  */
-export function runManualSync<T>(userId: string, job: () => Promise<T>) {
-  return runner.runExclusive(userId, job);
+export async function runManualSync<T>(userId: string, job: () => Promise<T>) {
+  try {
+    return await runner.runExclusive(userId, job);
+  } catch (err) {
+    await googleAuthService.noteAuthFailure(userId, err);
+    throw err;
+  }
 }
 
 /** Whether any account is mid-sync. */

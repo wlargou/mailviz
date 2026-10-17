@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { prisma } from '../lib/prisma.js';
-import { createUser, createGoogleAuth } from '../test/factories.js';
+import { createUser, createGoogleAuth, createTwoUsers } from '../test/factories.js';
+import { INVALID_GRANT, tokenEndpointError, tokenEndpointUnreachable } from '../test/googleRefusal.js';
 
 /**
  * The five background schedulers, at the seam where they meet cron.
@@ -104,13 +105,14 @@ vi.mock('../services/notificationService.js', () => ({
   notificationService: { createIfNotExists: mocks.createIfNotExists, create: mocks.createNotification },
 }));
 
-const { startEmailSyncScheduler, stopEmailSyncScheduler, syncAccountNow, isSyncInProgressFor } =
+const { startEmailSyncScheduler, stopEmailSyncScheduler, syncAccountNow, isSyncInProgressFor, runManualSync } =
   await import('./emailSyncScheduler.js');
 const {
   startCalendarSyncScheduler,
   stopCalendarSyncScheduler,
   syncCalendarNow,
   isCalendarSyncInProgress,
+  runCalendarManualSync,
 } = await import('./calendarSyncScheduler.js');
 const { startScheduledSendScheduler, stopScheduledSendScheduler } =
   await import('./scheduledSendScheduler.js');
@@ -385,6 +387,106 @@ describe('emailSyncScheduler — one bad account', () => {
     stopEmailSyncScheduler();
 
     expect(mocks.cronStop).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * A grant Google no longer accepts.
+ *
+ * Both schedulers used to file it under "not connected" — any 400 — and skip it
+ * without a word, so the account's mail simply stopped while Settings said
+ * Connected. They still skip it; the difference is that it is now written to
+ * `google_auth.auth_error`, said once in the log, and pushed to the account.
+ */
+describe('a refused Google grant', () => {
+  /** Every console line that mentions this refusal, whichever level it went to. */
+  function linesAbout(text: string): unknown[][] {
+    return [console.log, console.warn, console.error]
+      .flatMap((fn) => vi.mocked(fn).mock.calls)
+      .filter((args) => args.some((a) => String(a).includes(text)));
+  }
+
+  it('records invalid_grant from a scheduled mail sync, and says so once across two ticks', async () => {
+    const user = await createConnectedUser();
+    mocks.syncFromGmail.mockRejectedValue(await tokenEndpointError(400, INVALID_GRANT));
+    const tick = captureTick(startEmailSyncScheduler);
+
+    await tick();
+    await tick();
+
+    const row = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: user.id } });
+    expect(row.authError).toBe('invalid_grant');
+    // One line for the change, not one per tick — a line every minute is how
+    // the old code justified saying nothing at all.
+    expect(linesAbout('invalid_grant')).toHaveLength(1);
+    expect(eventsFor(user.id).filter((e) => e.event === 'google:auth')).toEqual([
+      { event: 'google:auth', data: { authError: { code: 'invalid_grant', at: row.authErrorAt } } },
+    ]);
+    // Still skipped like a "not connected" 400: no error line, spinner cleared.
+    expect(console.error).not.toHaveBeenCalled();
+    expect(eventsFor(user.id).at(-1)).toEqual({ event: 'sync:status', data: { syncing: false } });
+  });
+
+  it('records it from a scheduled calendar sync too', async () => {
+    const user = await createConnectedUser();
+    mocks.syncCalendar.mockRejectedValue(await tokenEndpointError(400, INVALID_GRANT));
+
+    await captureTick(startCalendarSyncScheduler)();
+
+    const row = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: user.id } });
+    expect(row.authError).toBe('invalid_grant');
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['a 500', () => tokenEndpointError(500, { error: 'backend_error' })],
+    ['a dropped connection', () => tokenEndpointUnreachable()],
+  ])('does not record %s, and logs it as before', async (_label, failure) => {
+    const user = await createConnectedUser();
+    mocks.syncFromGmail.mockRejectedValue(await failure());
+
+    await captureTick(startEmailSyncScheduler)();
+
+    // Google having a bad minute is not the grant dying: telling the user to
+    // reconnect a working account would teach them to ignore the warning.
+    const row = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: user.id } });
+    expect(row.authError).toBeNull();
+    expect(eventsFor(user.id).some((e) => e.event === 'google:auth')).toBe(false);
+    expect(console.error).toHaveBeenCalledWith('[EmailSync] Sync failed:', expect.anything());
+  });
+
+  it('marks only the account whose grant was refused', async () => {
+    const { alice, bob } = await createTwoUsers();
+    await createGoogleAuth(alice.id);
+    await createGoogleAuth(bob.id);
+    const refused = await tokenEndpointError(400, INVALID_GRANT);
+    mocks.syncFromGmail.mockImplementation(async (userId: string) => {
+      if (userId === alice.id) throw refused;
+      return okMailSync;
+    });
+
+    await captureTick(startEmailSyncScheduler)();
+
+    const bobRow = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: bob.id } });
+    expect(bobRow.authError).toBeNull();
+    expect(eventsFor(bob.id).some((e) => e.event === 'google:auth')).toBe(false);
+    const aliceRow = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: alice.id } });
+    expect(aliceRow.authError).toBe('invalid_grant');
+  });
+
+  it.each([
+    ['mail', () => runManualSync],
+    ['calendar', () => runCalendarManualSync],
+  ])('records it from a manual %s sync, and still fails the request', async (_label, manual) => {
+    const user = await createConnectedUser();
+    const refused = await tokenEndpointError(400, INVALID_GRANT);
+
+    // The error still reaches the route — "Sync now" must not answer 200 for
+    // a sync that never ran — but Settings learns why first.
+    await expect(manual()(user.id, async () => { throw refused; })).rejects.toBe(refused);
+
+    const row = await prisma.googleAuth.findUniqueOrThrow({ where: { userId: user.id } });
+    expect(row.authError).toBe('invalid_grant');
   });
 });
 
