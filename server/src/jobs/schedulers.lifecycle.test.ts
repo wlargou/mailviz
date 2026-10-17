@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 const mockEnv = vi.hoisted(() => ({
+  RUN_SCHEDULERS: true,
   EMAIL_SYNC_ENABLED: true,
   CALENDAR_SYNC_ENABLED: true,
   SYNC_INTERVAL_SECONDS: 60,
@@ -95,6 +96,7 @@ beforeEach(() => {
   mocks.processScheduledEmails.mockResolvedValue(0);
   mocks.cancelRepliedFollowUps.mockResolvedValue(0);
   mocks.processDue.mockResolvedValue(0);
+  mockEnv.RUN_SCHEDULERS = true;
   vi.spyOn(console, 'log').mockImplementation(() => {});
 });
 
@@ -171,8 +173,24 @@ describe('startSchedulers / stopSchedulers', () => {
 
     schedulers.startSchedulers();
     expect(mocks.cronSchedule).toHaveBeenCalledTimes(5);
+    expect(vi.getTimerCount()).toBe(4); // every boot-time first run but scheduled send's
 
     schedulers.stopSchedulers();
     expect(mocks.cronStop).toHaveBeenCalledTimes(5);
+  });
+
+  it('starts nothing at all when RUN_SCHEDULERS is false', async () => {
+    // Staging on a copy of production: a scheduler there sends real customers
+    // the scheduled emails production already sent, and syncs real mailboxes.
+    // Not even the boot-time first runs, which are what a forgotten early
+    // return would leave behind.
+    mockEnv.RUN_SCHEDULERS = false;
+    const { schedulers } = await load();
+    vi.useFakeTimers();
+
+    schedulers.startSchedulers();
+
+    expect(mocks.cronSchedule).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

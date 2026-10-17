@@ -21,6 +21,12 @@ export const env = {
   // so an unmounted path loses every uploaded document at the next push while
   // uploads keep appearing to work. See services/rfpStorage.ts.
   RFP_STORAGE_DIR: process.env.RFP_STORAGE_DIR || '',
+  // Whether this process runs the background jobs at all: the five schedulers
+  // and the sync a login starts. false for a process that must not act on the
+  // data — staging on a copy of production, a second replica — while "Sync now"
+  // and every request still work. Most jobs are not safe to run in two
+  // processes at once (see jobs/schedulers.ts): one process has this on.
+  RUN_SCHEDULERS: process.env.RUN_SCHEDULERS !== 'false',
   SYNC_INTERVAL_SECONDS: parseInt(process.env.SYNC_INTERVAL_SECONDS || '60', 10),
   EMAIL_SYNC_ENABLED: process.env.EMAIL_SYNC_ENABLED !== 'false',
   CALENDAR_SYNC_ENABLED: process.env.CALENDAR_SYNC_ENABLED !== 'false',
